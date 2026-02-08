@@ -20,7 +20,9 @@ import {
     Menu,
     Search,
     Moon,
-    Sun
+    Sun,
+    Users,
+    ChevronDown
 } from 'lucide-vue-next'
 import ToastContainer from '@/components/ToastContainer.vue'
 
@@ -124,6 +126,50 @@ function logout() {
                 }) }}
             </div>
 
+            <!-- Global Member Selection -->
+            <v-menu offset="12" transition="scale-transition" v-if="auth.user && auth.user.role !== 'CHILD'">
+                <template v-slot:activator="{ props }">
+                    <v-btn v-bind="props" variant="elevated" color="surface" class="text-none font-weight-bold mr-4"
+                        height="40" rounded="pill" elevation="1">
+                        <template v-slot:prepend>
+                            <v-avatar v-if="auth.selectedMemberId" size="24" color="primary-lighten-5" class="mr-1">
+                                <span class="text-caption font-weight-black text-primary"
+                                    style="font-size: 0.6rem !important;">{{
+                                        auth.selectedMemberName.charAt(0).toUpperCase() }}</span>
+                            </v-avatar>
+                            <Users v-else :size="16" class="text-primary mr-2" />
+                        </template>
+                        {{ auth.selectedMemberName }}
+                        <ChevronDown :size="14" class="ml-2 opacity-50" />
+                    </v-btn>
+                </template>
+                <v-card width="260" rounded="xl" elevation="10" border>
+                    <v-list density="compact" nav>
+                        <v-list-item @click="auth.selectMember(null)" :active="auth.selectedMemberId === null"
+                            color="primary">
+                            <template v-slot:prepend>
+                                <Users :size="18" class="mr-3" />
+                            </template>
+                            <v-list-item-title class="font-weight-bold">All Members</v-list-item-title>
+                        </v-list-item>
+                        <v-divider class="my-2"></v-divider>
+                        <v-list-item v-for="user in auth.familyMembers" :key="user.id"
+                            @click="auth.selectMember(user.id)" :active="auth.selectedMemberId === user.id"
+                            color="primary">
+                            <template v-slot:prepend>
+                                <v-avatar size="28" color="primary-lighten-5" class="mr-3">
+                                    <span class="text-caption font-weight-black text-primary">{{ (user.full_name ||
+                                        user.email).charAt(0).toUpperCase() }}</span>
+                                </v-avatar>
+                            </template>
+                            <v-list-item-title class="font-weight-bold">{{ user.full_name ||
+                                user.email.split('@')[0]
+                                }}</v-list-item-title>
+                        </v-list-item>
+                    </v-list>
+                </v-card>
+            </v-menu>
+
             <!-- Theme Toggle -->
             <v-btn icon @click="toggleTheme" color="slate-600" class="mr-2">
                 <component :is="theme.global.current.value.dark ? Sun : Moon" :size="20" />
@@ -154,7 +200,7 @@ function logout() {
                                 </v-avatar>
                             </template>
                             <v-list-item-title class="text-h6 font-weight-bold">{{ auth.user.email.split('@')[0]
-                            }}</v-list-item-title>
+                                }}</v-list-item-title>
                             <v-list-item-subtitle class="text-primary font-weight-medium">Family
                                 Admin</v-list-item-subtitle>
                         </v-list-item>
@@ -226,7 +272,7 @@ function logout() {
     right: 0;
     bottom: 0;
     z-index: 0;
-    background: #f8fafc;
+    background: rgb(var(--v-theme-background));
     pointer-events: none;
     overflow: hidden;
 }
@@ -241,7 +287,7 @@ function logout() {
 .b1 {
     width: 800px;
     height: 800px;
-    background: #4f46e5;
+    background: rgb(var(--v-theme-primary));
     top: -200px;
     left: -100px;
     animation: orbit 30s infinite linear;
@@ -250,7 +296,7 @@ function logout() {
 .b2 {
     width: 700px;
     height: 700px;
-    background: #8b5cf6;
+    background: rgb(var(--v-theme-secondary));
     bottom: -200px;
     right: 0;
     animation: orbit 25s infinite linear reverse;
@@ -259,7 +305,7 @@ function logout() {
 .b3 {
     width: 500px;
     height: 500px;
-    background: #0ea5e9;
+    background: rgb(var(--v-theme-accent));
     top: 30%;
     right: 20%;
     animation: orbit 20s infinite linear;
@@ -276,10 +322,11 @@ function logout() {
 }
 
 .premium-header {
-    background: rgba(255, 255, 255, 0.7) !important;
+    background: rgb(var(--v-theme-surface)) !important;
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
     z-index: 1000 !important;
+    /* Removed fixed 0.95 opacity to let theme surface shine, or adjust per theme if needed */
 }
 
 .brand-link {
@@ -294,7 +341,8 @@ function logout() {
     display: block;
     font-size: 1.25rem;
     font-weight: 900;
-    color: #0f172a;
+    color: rgb(var(--v-theme-on-surface));
+    /* text-slate-900 */
     letter-spacing: -0.03em;
     line-height: 1;
 }
@@ -303,7 +351,8 @@ function logout() {
     display: block;
     font-size: 0.65rem;
     font-weight: 700;
-    color: #64748b;
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    /* text-slate-600 for better contrast */
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin-top: 2px;
@@ -315,14 +364,14 @@ function logout() {
 }
 
 :deep(.global-search .v-field) {
-    background: #f1f5f9 !important;
-    border: 1px solid #e2e8f0 !important;
+    background: rgb(var(--v-theme-surface), 0.8) !important;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)) !important;
     font-size: 0.875rem;
 }
 
 .profile-btn {
-    background: white !important;
-    border: 1px solid #e2e8f0 !important;
+    background: rgb(var(--v-theme-surface)) !important;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)) !important;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
     transition: all 0.2s;
 }
@@ -345,7 +394,8 @@ function logout() {
 
 .user-display-name {
     font-weight: 700;
-    color: #334155;
+    color: rgb(var(--v-theme-on-surface));
+    /* text-slate-800 */
     font-size: 0.875rem;
 }
 
@@ -357,10 +407,9 @@ function logout() {
 }
 
 .premium-sidebar {
-    background: rgba(255, 255, 255, 0.4) !important;
+    background: rgb(var(--v-theme-surface)) !important;
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-right: 1px solid rgba(255, 255, 255, 0.3) !important;
 }
 
 .nav-list-item {
@@ -368,7 +417,7 @@ function logout() {
 }
 
 .nav-list-item:not(.v-list-item--active):hover {
-    background: rgba(255, 255, 255, 0.6) !important;
+    background: rgba(var(--v-theme-on-surface), 0.05) !important;
     transform: translateX(4px);
 }
 
@@ -390,12 +439,13 @@ function logout() {
 }
 
 .nav-list-item.v-list-item--active :deep(.nav-title) {
-    color: #4f46e5 !important;
+    color: rgb(var(--v-theme-primary)) !important;
     font-weight: 700 !important;
 }
 
 .nav-icon {
-    color: #64748b;
+    color: rgb(var(--v-theme-on-surface), 0.7);
+    /* text-slate-600 */
     transition: all 0.2s;
 }
 
@@ -411,14 +461,15 @@ function logout() {
 }
 
 .sidebar-footer {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(var(--v-theme-on-surface), 0.05);
 }
 
 .os-label {
     display: block;
     font-size: 0.65rem;
     font-weight: 800;
-    color: #94a3b8;
+    color: rgb(var(--v-theme-on-surface), 0.5);
+    /* text-slate-600 */
     text-transform: uppercase;
     letter-spacing: 0.2em;
 }
@@ -432,6 +483,7 @@ function logout() {
 
 .layout-main {
     z-index: 1;
+    background: transparent !important;
 }
 
 .page-shell {
@@ -452,12 +504,12 @@ function logout() {
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.5);
+    background: rgb(var(--v-theme-surface), 0.5);
     border-radius: 20px;
     font-size: 0.8rem;
     font-weight: 700;
-    color: #475569;
-    border: 1px solid rgba(0, 0, 0, 0.05);
+    color: rgb(var(--v-theme-on-surface), 0.8);
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
 .pulse-dot {

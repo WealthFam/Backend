@@ -31,14 +31,38 @@ export const useAuthStore = defineStore('auth', () => {
 
     const isAuthenticated = computed(() => !!token.value)
 
+    const familyMembers = ref<any[]>([])
+    const selectedMemberId = ref<string | null>(null)
+
+    const selectedMemberName = computed(() => {
+        if (!selectedMemberId.value) return 'All Members'
+        const member = familyMembers.value.find(m => m.id === selectedMemberId.value)
+        return member ? (member.full_name || member.email) : 'All Members'
+    })
+
     async function fetchUser() {
         if (!token.value) return
         try {
             const response = await apiClient.get('/auth/me')
             user.value = response.data
+            // Fetch family members as well if user is authenticated
+            await fetchFamilyMembers()
         } catch (error) {
             console.error("Failed to fetch user profile", error)
         }
+    }
+
+    async function fetchFamilyMembers() {
+        try {
+            const response = await apiClient.get('/auth/users')
+            familyMembers.value = response.data
+        } catch (error) {
+            console.error("Failed to fetch family members", error)
+        }
+    }
+
+    function selectMember(id: string | null) {
+        selectedMemberId.value = id
     }
 
     async function login(email: string, password: string) {
@@ -64,6 +88,8 @@ export const useAuthStore = defineStore('auth', () => {
     function logout() {
         token.value = null
         user.value = null
+        selectedMemberId.value = null
+        familyMembers.value = []
         localStorage.removeItem('access_token')
     }
 
@@ -75,8 +101,13 @@ export const useAuthStore = defineStore('auth', () => {
         user,
         token,
         isAuthenticated,
+        familyMembers,
+        selectedMemberId,
+        selectedMemberName,
         login,
         logout,
-        fetchUser
+        fetchUser,
+        fetchFamilyMembers,
+        selectMember
     }
 })
