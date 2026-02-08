@@ -121,7 +121,7 @@
                                     <div class="d-flex align-center gap-2">
                                         <v-avatar size="32" color="surface-variant" variant="tonal">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(b.category).icon
-                                                }}</span>
+                                            }}</span>
                                         </v-avatar>
                                         <span class="text-subtitle-2 font-weight-black text-slate-700">
                                             {{ b.category }}
@@ -171,7 +171,7 @@
                                 </template>
                                 <v-list-item-title class="font-weight-bold text-subtitle-1">{{ txn.description ||
                                     'Transaction'
-                                    }}</v-list-item-title>
+                                }}</v-list-item-title>
                                 <v-list-item-subtitle class="text-caption font-weight-bold text-slate-500 mt-1">
                                     {{ formatDate(txn.date).day }} • {{ txn.account_owner_name || 'Personal' }}
                                 </v-list-item-subtitle>
@@ -201,11 +201,11 @@
                                     <template v-slot:prepend>
                                         <v-avatar size="40" color="surface-variant" variant="tonal" class="mr-4">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(bill.category).icon
-                                                }}</span>
+                                            }}</span>
                                         </v-avatar>
                                     </template>
                                     <v-list-item-title class="font-weight-bold">{{ bill.description
-                                        }}</v-list-item-title>
+                                    }}</v-list-item-title>
                                     <v-list-item-subtitle class="text-caption font-weight-bold text-error">Due {{
                                         formatDate(bill.next_date).day }}</v-list-item-subtitle>
                                     <template v-slot:append>
@@ -566,31 +566,6 @@ watch(() => auth.selectedMemberId, () => fetchAllData())
 </script>
 
 <style scoped>
-/* Design Tokens & Premium Components */
-.v-card.premium-glass-card {
-    background: rgb(var(--v-theme-surface), 0.95) !important;
-    color: rgb(var(--v-theme-on-surface)) !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)) !important;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1) !important;
-}
-
-:deep(.v-card) {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-:deep(.v-card:hover) {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.1) !important;
-}
-
-/* Specific non-clickable cards should not have hover effects */
-:deep(.v-card.no-hover:hover) {
-    transform: none;
-    box-shadow: inherit !important;
-}
-
 .gap-2 {
     gap: 8px;
 }
