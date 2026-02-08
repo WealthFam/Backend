@@ -1,275 +1,361 @@
 <template>
-    <div class="animate-in">
+    <v-container fluid class="pa-0 animate-in relative-pos z-10">
         <!-- Stats Overview -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div class="stat-card-premium cursor-pointer transition-all hover:scale-[1.02]"
-                @click="categoriesStore.searchFilter = 'all'"
-                :class="{ 'ring-2 ring-indigo-500 bg-indigo-50/50': categoriesStore.searchFilter === 'all' }">
-                <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-xl mb-3">📊</div>
-                <div class="flex flex-col">
-                    <span class="text-xs uppercase tracking-wider font-bold text-gray-500">Total</span>
-                    <span class="text-2xl font-bold text-gray-900">{{ categoriesStore.categoryStats.total }}</span>
-                </div>
-            </div>
-            <div class="stat-card-premium cursor-pointer transition-all hover:scale-[1.02]"
-                @click="categoriesStore.searchFilter = 'expense'"
-                :class="{ 'ring-2 ring-rose-500 bg-rose-50/50': categoriesStore.searchFilter === 'expense' }">
-                <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-xl mb-3">💸</div>
-                <div class="flex flex-col">
-                    <span class="text-xs uppercase tracking-wider font-bold text-rose-600">Expenses</span>
-                    <span class="text-2xl font-bold text-gray-900">{{ categoriesStore.categoryStats.expenses }}</span>
-                </div>
-            </div>
-            <div class="stat-card-premium cursor-pointer transition-all hover:scale-[1.02]"
-                @click="categoriesStore.searchFilter = 'income'"
-                :class="{ 'ring-2 ring-emerald-500 bg-emerald-50/50': categoriesStore.searchFilter === 'income' }">
-                <div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-xl mb-3">💰
-                </div>
-                <div class="flex flex-col">
-                    <span class="text-xs uppercase tracking-wider font-bold text-emerald-600">Income</span>
-                    <span class="text-2xl font-bold text-gray-900">{{ categoriesStore.categoryStats.income }}</span>
-                </div>
-            </div>
-            <div class="stat-card-premium cursor-pointer transition-all hover:scale-[1.02]"
-                @click="categoriesStore.searchFilter = 'transfer'"
-                :class="{ 'ring-2 ring-blue-500 bg-blue-50/50': categoriesStore.searchFilter === 'transfer' }">
-                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-xl mb-3">🔄</div>
-                <div class="flex flex-col">
-                    <span class="text-xs uppercase tracking-wider font-bold text-blue-600">Transfers</span>
-                    <span class="text-2xl font-bold text-gray-900">{{ categoriesStore.categoryStats.transfer }}</span>
-                </div>
-            </div>
+        <v-row class="mb-8">
+            <v-col cols="12" sm="6" md="3">
+                <v-card @click="categoriesStore.searchFilter = 'all'"
+                    class="premium-glass-card pa-6 h-100 cursor-pointer" rounded="xl">
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <span class="text-overline font-weight-black opacity-60 letter-spacing-1">Total</span>
+                        <v-avatar color="indigo-lighten-5" rounded="lg" size="44">
+                            <span class="text-h5">📊</span>
+                        </v-avatar>
+                    </div>
+                    <div class="text-h4 font-weight-black">
+                        {{ categoriesStore.categoryStats.total }}
+                    </div>
+                </v-card>
+            </v-col>
+
+            <v-col cols="12" sm="6" md="3">
+                <v-card @click="categoriesStore.searchFilter = 'expense'"
+                    class="premium-glass-card pa-6 h-100 cursor-pointer" rounded="xl"
+                    :class="{ 'border-error': categoriesStore.searchFilter === 'expense' }">
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <span class="text-overline font-weight-black opacity-60 letter-spacing-1">Expenses</span>
+                        <v-avatar color="rose-lighten-5" rounded="lg" size="44">
+                            <span class="text-h5">💸</span>
+                        </v-avatar>
+                    </div>
+                    <div class="text-h4 font-weight-black"
+                        :class="categoriesStore.searchFilter === 'expense' ? 'text-error' : ''">
+                        {{ categoriesStore.categoryStats.expenses }}
+                    </div>
+                </v-card>
+            </v-col>
+
+            <v-col cols="12" sm="6" md="3">
+                <v-card @click="categoriesStore.searchFilter = 'income'"
+                    class="premium-glass-card pa-6 h-100 cursor-pointer" rounded="xl"
+                    :class="{ 'border-success': categoriesStore.searchFilter === 'income' }">
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <span class="text-overline font-weight-black opacity-60 letter-spacing-1">Income</span>
+                        <v-avatar color="emerald-lighten-5" rounded="lg" size="44">
+                            <span class="text-h5">💰</span>
+                        </v-avatar>
+                    </div>
+                    <div class="text-h4 font-weight-black"
+                        :class="categoriesStore.searchFilter === 'income' ? 'text-success' : ''">
+                        {{ categoriesStore.categoryStats.income }}
+                    </div>
+                </v-card>
+            </v-col>
+
+            <v-col cols="12" sm="6" md="3">
+                <v-card @click="categoriesStore.searchFilter = 'transfer'"
+                    class="premium-glass-card pa-6 h-100 cursor-pointer" rounded="xl"
+                    :class="{ 'border-info': categoriesStore.searchFilter === 'transfer' }">
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <span class="text-overline font-weight-black opacity-60 letter-spacing-1">Transfers</span>
+                        <v-avatar color="cyan-lighten-5" rounded="lg" size="44">
+                            <span class="text-h5">🔄</span>
+                        </v-avatar>
+                    </div>
+                    <div class="text-h4 font-weight-black"
+                        :class="categoriesStore.searchFilter === 'transfer' ? 'text-info' : ''">
+                        {{ categoriesStore.categoryStats.transfer }}
+                    </div>
+                </v-card>
+            </v-col>
+        </v-row>
+
+        <!-- Tool Bar (Glass Box) -->
+        <v-card class="premium-glass-card pa-4 mb-8 no-hover" rounded="xl">
+            <v-row align="center">
+                <v-col cols="12" md="4">
+                    <v-text-field v-model="categoriesStore.searchQuery" placeholder="Search categories..." hide-details
+                        density="comfortable" variant="plain" class="font-weight-bold px-2">
+                        <template v-slot:prepend-inner>
+                            <Search :size="20" class="text-slate-400" />
+                        </template>
+                    </v-text-field>
+                </v-col>
+
+                <v-spacer />
+
+                <v-col cols="12" md="auto" class="d-flex align-center gap-3">
+                    <div class="glass-card border rounded-pill d-flex align-center pa-1"
+                        style="background: rgba(var(--v-theme-surface), 0.5)">
+                        <v-btn variant="text" size="small" rounded="pill" color="primary"
+                            class="text-none font-weight-black" @click="categoriesStore.exportCategories">
+                            <template v-slot:prepend>
+                                <Download :size="16" />
+                            </template>
+                            Export
+                        </v-btn>
+                        <v-divider vertical class="mx-1 my-1 opacity-20" />
+                        <v-btn variant="text" size="small" rounded="pill" color="primary"
+                            class="text-none font-weight-black" @click="triggerImport">
+                            <template v-slot:prepend>
+                                <Upload :size="16" />
+                            </template>
+                            Import
+                        </v-btn>
+                    </div>
+                </v-col>
+            </v-row>
+        </v-card>
+
+        <!-- Invisible file input for import -->
+        <input type="file" ref="fileInput" accept=".json" style="display: none" @change="handleImportCategories" />
+
+        <!-- Categories Grid -->
+        <div v-if="categoriesStore.loading" class="d-flex justify-center py-12">
+            <v-skeleton-loader type="card" width="100%" height="200" v-for="i in 4" :key="i" class="ma-2"
+                rounded="xl" />
         </div>
 
-        <!-- Toolbar -->
-        <div
-            class="flex flex-col md:flex-row gap-4 mb-6 sticky top-0 bg-white/50 backdrop-blur-md p-2 rounded-xl z-20 border border-white/20 shadow-sm">
-            <div class="relative flex-1 max-w-sm">
-                <Search class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" :size="18" />
-                <input type="text" v-model="categoriesStore.searchQuery" placeholder="Search categories..."
-                    class="w-full bg-white border border-gray-200 pl-10 pr-4 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm">
-            </div>
+        <v-row v-else class="pb-16">
+            <!-- Add New Card -->
+            <v-col cols="12" sm="6" md="4" lg="3">
+                <v-card @click="startAddCategory"
+                    class="premium-glass-card d-flex flex-column align-center justify-center h-100 cursor-pointer border-dashed border-primary group"
+                    style="border-width: 2px !important; min-height: 258px; background: rgba(var(--v-theme-primary), 0.05)"
+                    rounded="xl">
+                    <v-avatar color="primary" size="64" class="mb-4 elevation-8 group-on-hover-scale"
+                        style="box-shadow: 0 0 20px rgba(var(--v-theme-primary), 0.3)">
+                        <Plus :size="36" color="white" stroke-width="3" />
+                    </v-avatar>
+                    <span class="text-h6 font-weight-black text-primary">Add New Category</span>
+                    <span class="text-caption font-weight-bold opacity-60 text-slate-500">Create a root folder</span>
+                </v-card>
+            </v-col>
 
-            <div class="flex items-center gap-2 overflow-x-auto pb-1 hide-scrollbar ml-auto">
-                <button class="btn-secondary-premium btn-sm flex items-center gap-2"
-                    @click="categoriesStore.exportCategories" title="Export to JSON">
-                    <Download :size="16" /> Export
-                </button>
-                <button class="btn-secondary-premium btn-sm flex items-center gap-2" @click="triggerImport"
-                    title="Import from JSON">
-                    <Upload :size="16" /> Import
-                </button>
-                <div class="h-6 w-px bg-gray-200 mx-1"></div>
-                <button class="btn-primary-glow flex items-center gap-2 px-4 py-2" @click="startAddCategory">
-                    <div class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs">+</div>
-                    <span>New Category</span>
-                </button>
-
-                <!-- Invisible file input for import, moved from parent -->
-                <input type="file" ref="fileInput" accept=".json" style="display: none"
-                    @change="handleImportCategories" />
-            </div>
-        </div>
-
-        <!-- Categories Grid (Tree View) -->
-        <div v-if="categoriesStore.loading" class="flex justify-center py-12">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-        </div>
-
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
-            <!-- Add New Card (Inline) -->
-            <div class="glass-card hover:bg-gray-50 transition-colors border-dashed border-2 border-gray-200 cursor-pointer flex flex-col items-center justify-center min-h-[160px] gap-3 group"
-                @click="startAddCategory">
-                <div
-                    class="w-12 h-12 rounded-full bg-indigo-50 group-hover:bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl transition-colors">
-                    +</div>
-                <span class="font-bold text-gray-600 group-hover:text-indigo-700">Add Category</span>
-            </div>
-
-            <!-- Render Root Categories -->
-            <div v-for="cat in categoriesStore.rootCategories" :key="cat.id"
-                class="glass-card p-0 overflow-hidden flex flex-col h-full hover:shadow-md transition-all duration-300">
-                <div class="p-4 flex items-start gap-3 cursor-pointer relative group" @click="editCategory(cat)"
-                    :style="{ background: `linear-gradient(to right, ${cat.color}10, transparent)` }">
-
-                    <div class="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 shadow-sm"
-                        :style="{ backgroundColor: cat.color + '25', color: cat.color }">
-                        {{ cat.icon || '🏷️' }}
-                    </div>
-
-                    <div class="flex-1 min-w-0">
-                        <h3 class="font-bold text-gray-800 truncate">{{ cat.name }}</h3>
-                        <div class="flex items-center gap-2 mt-1">
-                            <span
-                                class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-gray-500 bg-white/50 border border-gray-100">
-                                {{ (cat.type || 'expense').toUpperCase() }}
-                            </span>
-                            <span v-if="categoriesStore.getChildren(cat.id).length > 0" class="text-[10px] text-muted">
-                                {{ categoriesStore.getChildren(cat.id).length }} sub
-                            </span>
+            <!-- Categories -->
+            <v-col v-for="cat in categoriesStore.rootCategories" :key="cat.id" cols="12" sm="6" md="4" lg="3">
+                <v-card class="premium-glass-card h-100 d-flex flex-column overflow-hidden" rounded="xl">
+                    <div class="pa-6 d-flex align-start relative-pos z-10">
+                        <v-avatar :color="cat.color + '25'" rounded="lg" size="52" border class="elevation-2 me-4">
+                            <span class="text-h4" :style="{ color: cat.color }">{{ cat.icon || '🏷️' }}</span>
+                        </v-avatar>
+                        <div class="min-w-0 flex-grow-1">
+                            <div class="text-h6 font-weight-black truncate mb-1">{{ cat.name }}</div>
+                            <v-chip density="comfortable" size="x-small"
+                                class="text-uppercase font-weight-black letter-spacing-1" variant="tonal"
+                                :color="cat.type === 'income' ? 'success' : (cat.type === 'transfer' ? 'info' : 'primary')"
+                                label>
+                                {{ cat.type || 'expense' }}
+                            </v-chip>
                         </div>
                     </div>
 
-                    <div
-                        class="hidden group-hover:flex absolute right-2 top-2 bg-white rounded-lg shadow-sm border border-gray-100 p-1 gap-1">
-                        <button class="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-indigo-600"
-                            @click.stop="editCategory(cat)">
-                            <Edit2 :size="14" />
-                        </button>
-                        <button class="p-1.5 hover:bg-rose-50 rounded text-gray-400 hover:text-rose-600"
-                            @click.stop="startDeleteCategory(cat)">
-                            <Trash2 :size="14" />
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Subcategories List -->
-                <div v-if="categoriesStore.getChildren(cat.id).length > 0"
-                    class="bg-gray-50/50 flex-1 border-t border-gray-100 p-2 space-y-1">
-                    <div v-for="child in categoriesStore.getChildren(cat.id)" :key="child.id"
-                        class="flex items-center gap-2 p-2 rounded-lg hover:bg-white hover:shadow-sm cursor-pointer transition-all group"
-                        @click.stop="editCategory(child)">
-
-                        <div class="w-1.5 h-1.5 rounded-full bg-gray-300 group-hover:bg-indigo-400 ml-1"></div>
-                        <span class="text-sm shrink-0">{{ child.icon || '🏷️' }}</span>
-                        <span class="text-sm font-medium text-gray-600 group-hover:text-gray-900 truncate flex-1">{{
-                            child.name }}</span>
-
-                        <div
-                            class="hidden group-hover:flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button class="p-1 text-gray-400 hover:text-indigo-600" @click.stop="editCategory(child)">
-                                <Edit2 :size="12" />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Add/Edit Category Modal -->
-        <div v-if="showCategoryModal"
-            class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div
-                class="bg-white rounded-2xl shadow-xl w-full max-w-md border border-gray-100 flex flex-col max-h-[90vh]">
-                <div class="flex items-center justify-between p-6 border-b border-gray-100">
-                    <h2 class="text-xl font-bold text-gray-900">{{ modalTitle }}</h2>
-                    <button
-                        class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"
-                        @click="showCategoryModal = false">✕</button>
-                </div>
-
-                <form @submit.prevent="saveCategory" class="overflow-y-auto p-6 flex flex-col gap-5">
-                    <!-- Preview Section -->
-                    <div class="flex items-center gap-4 p-4 rounded-xl border border-gray-100"
-                        :style="{ background: `${categoryForm.color}10` }">
-                        <div class="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-sm"
-                            :style="{ background: `${categoryForm.color}20`, color: categoryForm.color }">
-                            {{ categoryForm.icon || '🏷️' }}
-                        </div>
-                        <div class="flex flex-col text-left">
-                            <div class="font-bold text-lg text-gray-900 truncate">{{ previewName }}</div>
-                            <div class="text-[10px] font-bold uppercase tracking-widest text-gray-500">{{
-                                categoryForm.type }}</div>
-                        </div>
-                    </div>
-
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-1">Icon (Emoji)</label>
-                            <div class="flex items-center gap-2">
-                                <input v-model="categoryForm.icon"
-                                    class="w-12 h-12 text-center text-2xl border border-gray-200 rounded-xl outline-none focus:border-indigo-500"
-                                    required maxlength="2" />
-                                <div
-                                    class="flex flex-wrap gap-2 flex-1 items-center bg-gray-50 p-2 rounded-xl border border-gray-100">
-                                    <span
-                                        v-for="e in ['💰', '🛒', '🚗', '🏠', '🍔', '🎮', '🏥', '✈️', '🎓', '👔', '🛍️', '🍿']"
-                                        :key="e" @click="categoryForm.icon = e"
-                                        class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:shadow-sm cursor-pointer transition-all text-lg">
-                                        {{ e }}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-1">Category Name</label>
-                            <input v-model="categoryForm.name"
-                                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 font-medium"
-                                required placeholder="e.g. Subscriptions" />
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-1">Parent Category (Optional)</label>
-                            <CustomSelect v-model="categoryForm.parent_id"
-                                :options="[{ label: 'None (Root)', value: null }, ...categoriesStore.categories.filter(c => c.id !== editingCategoryId).map(c => ({ label: `${c.icon} ${c.name}`, value: c.id }))]"
-                                placeholder="Select Parent" />
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-4 text-left">
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">Type</label>
-                                <CustomSelect v-model="categoryForm.type" :options="[
-                                    { label: '🔴 Expense', value: 'expense' },
-                                    { label: '🟢 Income', value: 'income' },
-                                    { label: '🔄 Transfer', value: 'transfer' }
-                                ]" />
-                            </div>
-                            <div class="flex flex-col">
-                                <label class="block text-sm font-bold text-gray-700 mb-1">Theme Color</label>
-                                <div class="flex items-center gap-2 p-1 bg-white border border-gray-200 rounded-xl">
-                                    <input type="color" v-model="categoryForm.color"
-                                        class="w-8 h-8 rounded-lg cursor-pointer border-none p-0 overflow-hidden" />
-                                    <div class="flex flex-wrap gap-1">
-                                        <div v-for="c in colorPresets.slice(0, 5)" :key="c"
-                                            @click="categoryForm.color = c"
-                                            class="w-4 h-4 rounded-full cursor-pointer hover:scale-110 transition-transform ring-1 ring-black/5"
-                                            :style="{ background: c }">
-                                        </div>
+                    <!-- Subcategories -->
+                    <div class="px-4 pb-4 flex-grow-1">
+                        <div v-if="categoriesStore.getChildren(cat.id).length > 0"
+                            class="d-flex flex-column gap-2 mt-2">
+                            <div v-for="child in categoriesStore.getChildren(cat.id)" :key="child.id"
+                                class="inset-glass-metric pa-2 px-3 border-thin group cursor-pointer rounded-lg relative-pos overflow-hidden"
+                                style="background: rgba(var(--v-theme-surface), 0.4)" @click.stop="editCategory(child)">
+                                <div class="d-flex justify-space-between align-center relative-pos z-2">
+                                    <div class="d-flex align-center gap-2">
+                                        <span class="text-body-2">{{ child.icon }}</span>
+                                        <span class="text-body-2 font-weight-black truncate">{{ child.name }}</span>
+                                    </div>
+                                    <div class="d-flex gap-1 transition-all duration-200">
+                                        <v-btn variant="outlined" size="x-small"
+                                            class="rounded-lg border-thin bg-surface-light opacity-60 hover-opacity-100"
+                                            style="min-width: 28px; width: 28px; height: 28px; padding: 0"
+                                            @click.stop="editCategory(child)">
+                                            <Pencil :size="12" />
+                                            <v-tooltip activator="parent" location="top">Edit Sub</v-tooltip>
+                                        </v-btn>
+                                        <v-btn variant="outlined" color="error" size="x-small"
+                                            class="rounded-lg border-thin bg-surface-light opacity-60 hover-opacity-100"
+                                            style="min-width: 28px; width: 28px; height: 28px; padding: 0"
+                                            @click.stop="startDeleteCategory(child)">
+                                            <Trash2 :size="12" />
+                                            <v-tooltip activator="parent" location="top">Delete Sub</v-tooltip>
+                                        </v-btn>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                        <div v-else class="d-flex flex-column align-center justify-center py-6 opacity-30 mt-4">
+                            <Layers :size="32" class="mb-2" />
+                            <span class="text-caption font-weight-bold">No Sub-categories</span>
+                        </div>
                     </div>
 
-                    <div class="mt-4 flex gap-3">
-                        <button type="button" @click="showCategoryModal = false"
-                            class="flex-1 py-2.5 rounded-xl border border-gray-200 font-bold text-gray-600 hover:bg-gray-50">Cancel</button>
-                        <button type="submit"
-                            class="flex-1 py-2.5 rounded-xl bg-indigo-600 font-bold text-white hover:bg-indigo-700 shadow-md">Save
-                            Category</button>
+                    <v-divider class="opacity-10" :thickness="1" />
+
+                    <!-- Bottom Toolbar (Refined Aesthetics) -->
+                    <div class="pa-4 d-flex align-center justify-space-between bg-transparent">
+                        <v-btn variant="outlined" color="primary"
+                            class="rounded-lg border-thin font-weight-black text-none"
+                            style="height: 36px; min-width: 36px; padding: 0" @click.stop="startAddSubCategory(cat)">
+                            <Plus :size="18" />
+                            <v-tooltip activator="parent" location="top">Add Sub</v-tooltip>
+                        </v-btn>
+                        <div class="d-flex gap-2">
+                            <v-btn variant="outlined" color="slate-600" class="rounded-lg border-thin"
+                                style="height: 36px; min-width: 36px; padding: 0" @click.stop="editCategory(cat)">
+                                <Pencil :size="18" />
+                                <v-tooltip activator="parent" location="top">Edit</v-tooltip>
+                            </v-btn>
+                            <v-btn variant="outlined" color="error" class="rounded-lg border-thin"
+                                style="height: 36px; min-width: 36px; padding: 0"
+                                @click.stop="startDeleteCategory(cat)">
+                                <Trash2 :size="18" />
+                                <v-tooltip activator="parent" location="top">Delete</v-tooltip>
+                            </v-btn>
+                        </div>
                     </div>
-                </form>
-            </div>
-        </div>
+
+                    <!-- Subtle background icon -->
+                    <div class="card-bg-icon-standard">
+                        <Folder :size="120" />
+                    </div>
+                </v-card>
+            </v-col>
+        </v-row>
+
+        <!-- Add/Edit Category Modal -->
+        <v-dialog v-model="showCategoryModal" max-width="500px" persistent>
+            <v-card class="premium-glass-card no-hover" rounded="xl">
+                <v-card-title class="pa-6 border-b d-flex align-center">
+                    <div class="d-flex align-center gap-3 flex-grow-1">
+                        <v-avatar :color="categoryForm.color" rounded="lg" size="44" class="elevation-4">
+                            <span class="text-h4 text-white">{{ categoryForm.icon || '🏷️' }}</span>
+                        </v-avatar>
+                        <div>
+                            <div class="text-overline font-weight-black opacity-60 line-height-1 mb-1">
+                                {{ isEditingCategory ? 'Update' : 'Configure' }}
+                            </div>
+                            <div class="text-h6 font-weight-black line-height-1 truncate" style="max-width: 250px;">
+                                {{ previewName }}
+                            </div>
+                        </div>
+                    </div>
+                    <v-btn icon variant="text" size="small" @click="showCategoryModal = false" color="slate-400">
+                        <X :size="20" />
+                    </v-btn>
+                </v-card-title>
+
+                <v-card-text class="pa-6">
+                    <v-form @submit.prevent="saveCategory">
+                        <v-row>
+                            <v-col cols="4">
+                                <v-text-field v-model="categoryForm.icon" label="Icon" variant="outlined" rounded="lg"
+                                    placeholder="Emoji" hide-details class="font-weight-black text-h5"
+                                    density="comfortable" />
+                            </v-col>
+                            <v-col cols="8">
+                                <v-text-field v-model="categoryForm.name" label="Name" variant="outlined" rounded="lg"
+                                    required placeholder="e.g. Subscriptions" hide-details
+                                    class="font-weight-black text-h6" density="comfortable" />
+                            </v-col>
+
+                            <v-col cols="12">
+                                <v-select v-model="categoryForm.parent_id" label="Parent Category (Optional)"
+                                    variant="outlined" rounded="lg" :items="parentOptions" item-title="title"
+                                    item-value="value" hide-details density="comfortable" class="font-weight-bold" />
+                            </v-col>
+
+                            <v-col cols="12">
+                                <v-select v-model="categoryForm.type" label="Financial Type" variant="outlined"
+                                    rounded="lg" :items="[
+                                        { title: '🔴 Expense', value: 'expense' },
+                                        { title: '🟢 Income', value: 'income' },
+                                        { title: '🔄 Transfer', value: 'transfer' }
+                                    ]" hide-details density="comfortable" class="font-weight-bold" />
+                            </v-col>
+
+                            <v-col cols="12">
+                                <div class="text-subtitle-2 font-weight-black mb-3 opacity-60">THEME COLOR</div>
+                                <div class="glass-card pa-4 border d-flex flex-wrap gap-3 align-center">
+                                    <v-btn v-for="c in colorPresets" :key="c" :color="c" icon size="x-small"
+                                        @click="categoryForm.color = c" :elevation="categoryForm.color === c ? 8 : 0"
+                                        :class="{ 'border-xl border-white': categoryForm.color === c }"
+                                        style="width: 28px; height: 28px;" />
+                                    <v-divider vertical class="mx-2" height="24" />
+                                    <div class="relative-pos">
+                                        <input type="color" v-model="categoryForm.color" class="custom-color-input" />
+                                    </div>
+                                </div>
+                            </v-col>
+                        </v-row>
+                    </v-form>
+                </v-card-text>
+
+                <v-card-actions class="pa-6 pt-0">
+                    <v-spacer />
+                    <v-btn variant="text" @click="showCategoryModal = false" class="text-none px-8 font-weight-black"
+                        rounded="pill">Cancel</v-btn>
+                    <v-btn color="primary" rounded="pill" class="text-none px-10 btn-primary-glow font-weight-black"
+                        @click="saveCategory" size="large">
+                        {{ isEditingCategory ? 'Save Changes' : 'Create Category' }}
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
 
         <!-- Delete Confirmation Modal -->
-        <div v-if="showDeleteCategoryConfirm"
-            class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col items-center text-center">
-                <div
-                    class="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-3xl mb-4 text-rose-500">
-                    🗑️</div>
-                <h2 class="text-xl font-bold text-gray-900 mb-2">Delete Category?</h2>
-                <p class="text-gray-500 mb-6 text-sm">Existing transactions in this category will become uncategorized.
-                    Sub-categories will be unlinked.</p>
+        <v-dialog v-model="showDeleteCategoryConfirm" max-width="450px" persistent>
+            <v-card class="premium-glass-card no-hover text-center pa-8" rounded="xl">
+                <v-avatar color="error" variant="tonal" size="80" class="mb-6 mx-auto">
+                    <AlertCircle :size="48" />
+                </v-avatar>
+                <h3 class="text-h5 font-weight-black mb-2">Delete Category?</h3>
+                <p class="text-subtitle-1 font-weight-medium opacity-60 mb-8">
+                    Existing transactions will become uncategorized. This action is permanent and affects your financial
+                    history.
+                </p>
+                <v-row>
+                    <v-col cols="6">
+                        <v-btn block variant="text" rounded="pill" class="text-none font-weight-black" height="48"
+                            @click="showDeleteCategoryConfirm = false">No, Keep</v-btn>
+                    </v-col>
+                    <v-col cols="6">
+                        <v-btn block color="error" rounded="pill" class="text-none font-weight-black elevation-4"
+                            height="48" @click="confirmDeleteCategory">Yes, Delete</v-btn>
+                    </v-col>
+                </v-row>
+            </v-card>
+        </v-dialog>
 
-                <div class="flex gap-3 w-full">
-                    <button @click="showDeleteCategoryConfirm = false"
-                        class="flex-1 py-2.5 rounded-xl border border-gray-200 font-bold text-gray-600">Cancel</button>
-                    <button @click="confirmDeleteCategory"
-                        class="flex-1 py-2.5 rounded-xl bg-rose-500 font-bold text-white hover:bg-rose-600">Delete</button>
-                </div>
-            </div>
-        </div>
-    </div>
+        <!-- Delete Restricted Modal -->
+        <v-dialog v-model="showDeleteRestrictedModal" max-width="450px" persistent>
+            <v-card class="premium-glass-card no-hover text-center pa-8" rounded="xl">
+                <v-avatar color="warning" variant="tonal" size="80" class="mb-6 mx-auto">
+                    <AlertCircle :size="48" />
+                </v-avatar>
+                <h3 class="text-h5 font-weight-black mb-2">Notice</h3>
+                <p class="text-subtitle-1 font-weight-medium opacity-60 mb-8">
+                    This category contains active sub-categories. You need to delete or move all children before you can
+                    remove this parent folder.
+                </p>
+                <v-btn block color="primary" rounded="pill" class="text-none font-weight-black" height="48"
+                    @click="showDeleteRestrictedModal = false">Understand</v-btn>
+            </v-card>
+        </v-dialog>
+    </v-container>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Search, Edit2, Trash2, Download, Upload } from 'lucide-vue-next'
-import CustomSelect from '@/components/CustomSelect.vue'
 import { useCategoriesStore } from '@/stores/finance/categories'
+import {
+    Search,
+    Plus,
+    Pencil,
+    Trash2,
+    Download,
+    Upload,
+    Folder,
+    X,
+    AlertCircle,
+    Layers
+} from 'lucide-vue-next'
 
 const categoriesStore = useCategoriesStore()
 
@@ -278,6 +364,7 @@ const showCategoryModal = ref(false)
 const isEditingCategory = ref(false)
 const editingCategoryId = ref<string | null>(null)
 const showDeleteCategoryConfirm = ref(false)
+const showDeleteRestrictedModal = ref(false)
 const categoryToDelete = ref<any>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
@@ -301,12 +388,20 @@ const categoryForm = ref({
     parent_id: null as string | null
 })
 
-const modalTitle = computed(() => isEditingCategory.value ? 'Edit Category' : 'New Category')
 const previewName = computed(() => categoryForm.value.name || 'New Category')
 
+const parentOptions = computed(() => {
+    return [
+        { title: 'None (Root Category)', value: null },
+        ...categoriesStore.categories
+            .filter(c => c.id !== editingCategoryId.value && !c.parent_id)
+            .map(c => ({ title: `${c.icon} ${c.name}`, value: c.id }))
+    ]
+})
+
 const colorPresets = [
-    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
-    '#EC4899', '#06B6D4', '#F97316', '#6366F1', '#64748B'
+    '#4F46E5', '#10B981', '#F59E0B', '#F43F5E', '#8B5CF6',
+    '#EC4899', '#06B6D4', '#F97316', '#6366F1', '#1e293b'
 ]
 
 onMounted(() => {
@@ -319,9 +414,22 @@ function startAddCategory() {
     categoryForm.value = {
         name: '',
         icon: '🏷️',
-        color: '#3B82F6',
+        color: '#4F46E5',
         type: 'expense',
         parent_id: null
+    }
+    showCategoryModal.value = true
+}
+
+function startAddSubCategory(parent: any) {
+    isEditingCategory.value = false
+    editingCategoryId.value = null
+    categoryForm.value = {
+        name: '',
+        icon: '🏷️',
+        color: parent.color,
+        type: parent.type,
+        parent_id: parent.id
     }
     showCategoryModal.value = true
 }
@@ -347,8 +455,12 @@ async function saveCategory() {
 }
 
 function startDeleteCategory(cat: any) {
-    categoryToDelete.value = cat
-    showDeleteCategoryConfirm.value = true
+    if (categoriesStore.getChildren(cat.id).length > 0) {
+        showDeleteRestrictedModal.value = true
+    } else {
+        categoryToDelete.value = cat
+        showDeleteCategoryConfirm.value = true
+    }
 }
 
 async function confirmDeleteCategory() {
@@ -360,46 +472,107 @@ async function confirmDeleteCategory() {
     }
 }
 
-// Expose open modal method if parent wants to trigger it (e.g. from header)
+// Expose open modal method
 defineExpose({
     startAddCategory
 })
 </script>
 
 <style scoped>
-/* Reused styles from original file */
-.stat-card-premium {
-    background: white;
-    border: 1px solid var(--color-border);
-    border-radius: 1rem;
-    padding: 1.25rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    box-shadow: var(--shadow-sm);
+.custom-color-input {
+    width: 32px;
+    height: 32px;
+    padding: 2px;
+    border: 1px solid rgba(var(--v-border-color), 0.2);
+    border-radius: 8px;
+    cursor: pointer;
+    background: rgba(var(--v-theme-surface), 0.5);
 }
 
-.glass-card {
-    background: white;
-    border: 1px solid var(--color-border);
-    border-radius: 1rem;
-    box-shadow: var(--shadow-sm);
-    transition: all 0.2s ease;
+.custom-color-input::-webkit-color-swatch-wrapper {
+    padding: 0;
 }
 
-.btn-primary-glow {
-    background: var(--color-primary);
-    color: white;
-    border-radius: 0.5rem;
-    transition: all 0.2s;
+.custom-color-input::-webkit-color-swatch {
+    border: none;
+    border-radius: 6px;
 }
 
-.btn-primary-glow:hover {
-    background: var(--color-primary-dark);
-    box-shadow: 0 0 15px var(--color-primary-light);
+.card-bg-icon-standard {
+    position: absolute;
+    bottom: -1.5rem;
+    right: -1rem;
+    font-size: 8rem;
+    opacity: 0.03;
+    pointer-events: none;
+    line-height: 1;
+    transform: rotate(-12deg);
+    transition: all 0.5s ease;
+    z-index: 0;
 }
 
-.hide-scrollbar::-webkit-scrollbar {
-    display: none;
+.premium-glass-card:hover .card-bg-icon-standard {
+    transform: rotate(0deg) scale(1.1);
+    opacity: 0.05;
+}
+
+.group:hover .opacity-0 {
+    opacity: 1 !important;
+}
+
+.border-dashed {
+    border-style: dashed !important;
+}
+
+.border-primary {
+    border-color: rgba(var(--v-theme-primary), 0.5) !important;
+    border-width: 2px !important;
+}
+
+.border-error {
+    border-color: rgba(var(--v-theme-error), 0.5) !important;
+    border-width: 2px !important;
+}
+
+.border-success {
+    border-color: rgba(var(--v-theme-success), 0.5) !important;
+    border-width: 2px !important;
+}
+
+.border-info {
+    border-color: rgba(var(--v-theme-info), 0.5) !important;
+    border-width: 2px !important;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.group-on-hover-scale {
+    transition: transform 0.3s ease;
+}
+
+.group:hover .group-on-hover-scale {
+    transform: scale(1.1);
+}
+
+.hover-opacity-100:hover {
+    opacity: 1 !important;
+}
+
+.border-thin {
+    border: 1px solid rgba(var(--v-border-color), 0.15) !important;
+}
+
+.transition-all {
+    transition: all 0.3s ease;
 }
 </style>

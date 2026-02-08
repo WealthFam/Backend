@@ -254,3 +254,53 @@ class CategoryService:
             })
             
         return suggestions
+
+    @staticmethod
+    def export_category_rules(db: Session, tenant_id: str) -> List[dict]:
+        rules = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id).all()
+        return [
+            {
+                "name": r.name,
+                "category": r.category,
+                "keywords": json.loads(r.keywords) if isinstance(r.keywords, str) else r.keywords,
+                "priority": int(r.priority),
+                "exclude_from_reports": r.exclude_from_reports,
+                "is_transfer": r.is_transfer,
+                "to_account_id": r.to_account_id
+            }
+            for r in rules
+        ]
+
+    @staticmethod
+    def import_category_rules(db: Session, rules_data: List[dict], tenant_id: str):
+        for r_data in rules_data:
+            existing = db.query(models.CategoryRule).filter(
+                models.CategoryRule.tenant_id == tenant_id,
+                models.CategoryRule.name == r_data["name"]
+            ).first()
+            
+            keywords = r_data.get("keywords", [])
+            if isinstance(keywords, list):
+                keywords = json.dumps(keywords)
+
+            if not existing:
+                rule = models.CategoryRule(
+                    tenant_id=tenant_id,
+                    name=r_data["name"],
+                    category=r_data["category"],
+                    keywords=keywords,
+                    priority=r_data.get("priority", 0),
+                    exclude_from_reports=r_data.get("exclude_from_reports", False),
+                    is_transfer=r_data.get("is_transfer", False),
+                    to_account_id=r_data.get("to_account_id")
+                )
+                db.add(rule)
+            else:
+                existing.category = r_data["category"]
+                existing.keywords = keywords
+                existing.priority = r_data.get("priority", existing.priority)
+                existing.exclude_from_reports = r_data.get("exclude_from_reports", existing.exclude_from_reports)
+                existing.is_transfer = r_data.get("is_transfer", existing.is_transfer)
+                existing.to_account_id = r_data.get("to_account_id", existing.to_account_id)
+        
+        db.commit()

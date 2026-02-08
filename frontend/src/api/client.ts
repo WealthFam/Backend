@@ -71,8 +71,8 @@ export const financeApi = {
     updateAccount: (id: string, data: AccountUpdate) => apiClient.put(`/finance/accounts/${id}`, data),
     deleteAccount: (id: string) => apiClient.delete(`/finance/accounts/${id}`),
     getAccountTransactionCount: (id: string) => apiClient.get(`/finance/accounts/${id}/transaction-count`),
-    getTransactions: (accountId?: string, page: number = 1, limit: number = 50, startDate?: string, endDate?: string, search?: string, category?: string, sortBy: string = 'date', sortOrder: string = 'desc') =>
-        apiClient.get('/finance/transactions', { params: { account_id: accountId, page, limit, start_date: startDate, end_date: endDate, search, category, sort_by: sortBy, sort_order: sortOrder } }),
+    getTransactions: (accountId?: string, page: number = 1, limit: number = 50, startDate?: string, endDate?: string, search?: string, category?: string, sortBy: string = 'date', sortOrder: string = 'desc', userId?: string) =>
+        apiClient.get('/finance/transactions', { params: { account_id: accountId, page, limit, start_date: startDate, end_date: endDate, search, category, sort_by: sortBy, sort_order: sortOrder, user_id: userId } }),
     createTransaction: (data: any) => apiClient.post('/finance/transactions', data),
     updateTransaction: (id: string, data: TransactionUpdate) => apiClient.put(`/finance/transactions/${id}`, data),
     smartCategorize: (data: { transaction_id: string, category: string, create_rule: boolean, apply_to_similar: boolean, exclude_from_reports?: boolean }) =>
@@ -85,10 +85,12 @@ export const financeApi = {
     createRule: (data: any) => apiClient.post('/finance/rules', data),
     ignoreSuggestion: (data: { pattern: string }) => apiClient.post('/finance/rules/suggestions/ignore', data),
     updateRule: (id: string, data: any) => apiClient.put(`/finance/rules/${id}`, data),
-    deleteRule: (id: string) => apiClient.delete(`/finance/rules/${id}`),
-    applyRuleRetrospectively: (id: string) => apiClient.post(`/finance/transactions/rules/${id}/apply-retrospective`),
+    applyRuleRetrospectively: (id: string, override: boolean = false) => apiClient.post(`/finance/transactions/rules/${id}/apply-retrospective`, null, { params: { override } }),
     getMatchCount: (keywords: string[], onlyUncategorized: boolean = true) => apiClient.post('/finance/transactions/match-count', { keywords, only_uncategorized: onlyUncategorized }),
+    getMatchPreview: (keywords: string[], onlyUncategorized: boolean = true, page: number = 1, limit: number = 5) => apiClient.post('/finance/transactions/match-preview', { keywords, only_uncategorized: onlyUncategorized }, { params: { page, limit } }),
     bulkRename: (old_name: string, new_name: string, sync_to_parser: boolean) => apiClient.post('/finance/transactions/bulk-rename', { old_name, new_name, sync_to_parser }),
+    importRules: (data: any[]) => apiClient.post('/finance/rules/import', data),
+    exportRules: () => apiClient.get<any[]>('/finance/rules/export'),
 
     getCategories: (tree: boolean = false) => apiClient.get('/finance/categories', { params: { tree } }),
     createCategory: (data: any) => apiClient.post('/finance/categories', data),
@@ -102,8 +104,9 @@ export const financeApi = {
     updateExpenseGroup: (id: string, data: any) => apiClient.put(`/finance/expense-groups/${id}`, data),
     deleteExpenseGroup: (id: string) => apiClient.delete(`/finance/expense-groups/${id}`),
 
-    getBudgets: (year?: number, month?: number) => apiClient.get('/finance/budgets', { params: { year, month } }),
-    getBudgetsInsights: (year?: number, month?: number) => apiClient.get('/finance/budgets/insights', { params: { year, month } }),
+    getBudgets: (year?: number, month?: number, userId?: string) => apiClient.get('/finance/budgets', { params: { year, month, user_id: userId } }),
+    getBudgetOverview: (year?: number, month?: number, userId?: string) => apiClient.get('/finance/budgets/overview', { params: { year, month, user_id: userId } }),
+    getBudgetsInsights: (year?: number, month?: number, userId?: string) => apiClient.get('/finance/budgets/insights', { params: { year, month, user_id: userId } }),
     setBudget: (data: any) => apiClient.post('/finance/budgets', data),
     deleteBudget: (id: string) => apiClient.delete(`/finance/budgets/${id}`),
 
@@ -113,14 +116,14 @@ export const financeApi = {
     updateRecurring: (id: string, data: any) => apiClient.put(`/finance/recurring/${id}`, data),
     deleteRecurring: (id: string) => apiClient.delete(`/finance/recurring/${id}`),
     processRecurring: () => apiClient.post('/finance/recurring/process'),
-    getForecast: (accountId?: string, days: number = 30) =>
-        apiClient.get('/finance/forecast', { params: { account_id: accountId, days } }),
+    getForecast: (accountId?: string, days: number = 30, userId?: string) =>
+        apiClient.get('/finance/forecast', { params: { account_id: accountId, days, user_id: userId } }),
     getNetWorthTimeline: (days: number = 30, userId?: string) =>
         apiClient.get('/finance/net-worth-timeline', { params: { days, user_id: userId } }),
     getSpendingTrend: (userId?: string) =>
         apiClient.get('/finance/spending-trend', { params: { user_id: userId } }),
-    getBudgetHistory: (months: number = 6) =>
-        apiClient.get('/finance/budget-history', { params: { months } }),
+    getBudgetHistory: (months: number = 6, userId?: string) =>
+        apiClient.get('/finance/budget-history', { params: { months, user_id: userId } }),
     getHeatmapData: (startDate?: string, endDate?: string, userId?: string) =>
         apiClient.get('/finance/heatmap', { params: { start_date: startDate, end_date: endDate, user_id: userId } }),
 
@@ -198,15 +201,15 @@ export const financeApi = {
         params: { user_id: userId }
     }),
     getNav: (schemeCode: string) => apiClient.get(`/finance/mutual-funds/${schemeCode}/nav`),
-    getLoans: () => apiClient.get('/finance/loans'),
+    getLoans: (userId?: string) => apiClient.get('/finance/loans', { params: { user_id: userId } }),
     getLoanDetails: (id: string) => apiClient.get(`/finance/loans/${id}`),
     getLoanInsights: (id: string) => apiClient.post(`/finance/loans/${id}/insights`, {}),
-    getPortfolioInsights: () => apiClient.post('/finance/loans/portfolio/insights', {}),
+    getPortfolioInsights: (userId?: string) => apiClient.post('/finance/loans/portfolio/insights', {}, { params: { user_id: userId } }),
     createLoan: (data: any) => apiClient.post('/finance/loans', data),
     recordLoanRepayment: (loanId: string, data: any) => apiClient.post(`/finance/loans/${loanId}/repayment`, data),
 
     // Investment Goals
-    getInvestmentGoals: () => apiClient.get('/finance/investment-goals'),
+    getInvestmentGoals: (userId?: string) => apiClient.get('/finance/investment-goals', { params: { user_id: userId } }),
     createInvestmentGoal: (data: any) => apiClient.post('/finance/investment-goals', data),
     updateInvestmentGoal: (id: string, data: any) => apiClient.put(`/finance/investment-goals/${id}`, data),
     deleteInvestmentGoal: (id: string) => apiClient.delete(`/finance/investment-goals/${id}`),

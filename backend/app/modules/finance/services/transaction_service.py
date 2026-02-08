@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 import uuid
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 import logging
 from backend.app.modules.finance import models, schemas
 
@@ -619,7 +620,7 @@ class TransactionService:
         }
 
     @staticmethod
-    def apply_rule_retrospectively(db: Session, rule_id: str, tenant_id: str) -> dict:
+    def apply_rule_retrospectively(db: Session, rule_id: str, tenant_id: str, override: bool = False) -> dict:
         rule = db.query(models.CategoryRule).filter(
             models.CategoryRule.id == rule_id,
             models.CategoryRule.tenant_id == tenant_id
@@ -632,12 +633,14 @@ class TransactionService:
         if not keywords:
             return {"success": True, "affected": 0}
             
-        # Find transactions that match keywords AND are uncategorized
-        from sqlalchemy import or_
+        # Find transactions that match keywords
         query = db.query(models.Transaction).filter(
-            models.Transaction.tenant_id == tenant_id,
-            (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)
+            models.Transaction.tenant_id == tenant_id
         )
+
+        # If not overriding, only search for uncategorized
+        if not override:
+            query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
         
         # Build OR clause for keywords
         filters = []
@@ -667,7 +670,6 @@ class TransactionService:
     @staticmethod
     def get_matching_count(db: Session, keywords: List[str], tenant_id: str, only_uncategorized: bool = True) -> int:
         if not keywords: return 0
-        from sqlalchemy import or_
         query = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id
         )
@@ -681,6 +683,24 @@ class TransactionService:
             filters.append(models.Transaction.recipient.ilike(pattern))
         query = query.filter(or_(*filters))
         return query.count()
+
+    @staticmethod
+    def get_matching_preview(db: Session, keywords: List[str], tenant_id: str, skip: int = 0, limit: int = 5, only_uncategorized: bool = True) -> List[models.Transaction]:
+        if not keywords: return []
+        query = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id
+        )
+        if only_uncategorized:
+            query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
+            
+        filters = []
+        for k in keywords:
+            pattern = f"%{k}%"
+            filters.append(models.Transaction.description.ilike(pattern))
+            filters.append(models.Transaction.recipient.ilike(pattern))
+        
+        query = query.filter(or_(*filters)).order_by(models.Transaction.date.desc())
+        return query.offset(skip).limit(limit).all()
 
     @staticmethod
     def bulk_rename(db: Session, old_name: str, new_name: str, tenant_id: str, sync_to_parser: bool = False) -> int:
