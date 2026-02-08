@@ -357,7 +357,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
 import Sparkline from '@/components/Sparkline.vue'
 import {
-    ChevronDown, Users, Wallet, PieChart, CreditCard, Landmark, Sparkles, Activity, CalendarDays
+    Wallet, PieChart, Landmark, Sparkles
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -412,7 +412,6 @@ const metrics = ref({
     currency: 'INR'
 })
 
-const selectedMemberName = computed(() => auth.selectedMemberName)
 
 const budgetPulse = computed(() => {
     return budgets.value

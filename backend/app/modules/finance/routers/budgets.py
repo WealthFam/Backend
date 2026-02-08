@@ -1,3 +1,4 @@
+
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -13,10 +14,21 @@ router = APIRouter()
 def get_budgets(
     year: int = None,
     month: int = None,
+    user_id: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return BudgetService.get_budgets(db, str(current_user.tenant_id), year=year, month=month)
+    return BudgetService.get_budgets(db, str(current_user.tenant_id), year=year, month=month, user_id=user_id)
+
+@router.get("/budgets/overview", response_model=schemas.BudgetOverview)
+def get_budget_overview(
+    year: int = None,
+    month: int = None,
+    user_id: str = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return BudgetService.get_budget_overview(db, str(current_user.tenant_id), year=year, month=month, user_id=user_id)
 
 @router.post("/budgets", response_model=schemas.BudgetRead)
 def set_budget(
@@ -41,7 +53,8 @@ def delete_budget(
 def get_ai_insights(
     year: int = None,
     month: int = None,
+    user_id: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return BudgetService.get_ai_insights(db, str(current_user.tenant_id), year=year, month=month)
+    return BudgetService.get_ai_insights(db, str(current_user.tenant_id), year=year, month=month, user_id=user_id)

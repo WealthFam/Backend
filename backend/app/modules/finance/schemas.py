@@ -236,8 +236,15 @@ class BudgetUpdate(BaseModel):
 class BudgetRead(BudgetBase):
     id: Union[UUID, str]
     tenant_id: Union[UUID, str]
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     
+    # UI Helpers
+    type: str = "expense"
+    icon: str = "🏷️"
+    color: str = "#3B82F6"
+    parent_id: Optional[str] = None
+    category_id: Optional[str] = None
+
     class Config:
         from_attributes = True
 
@@ -259,11 +266,26 @@ class CategoryBudgetProgress(BaseModel):
     period: str = "MONTHLY"
     updated_at: Optional[datetime] = None
     total_excluded: Optional[Decimal] = Decimal('0.0')
-    excluded: Optional[Decimal] = Decimal('0.0')
     excluded_income: Optional[Decimal] = Decimal('0.0')
     type: str = "expense"
     icon: Optional[str] = "🏷️"
     color: Optional[str] = "#3B82F6"
+    parent_id: Optional[str] = None
+    category_id: Optional[str] = None
+
+class BudgetOverview(BaseModel):
+    category: str = "OVERALL"
+    amount_limit: Optional[Decimal] = None
+    spent: Decimal
+    income: Decimal = Decimal('0.0')
+    remaining: Optional[Decimal] = None
+    percentage: Optional[float] = None
+    total_excluded: Optional[Decimal] = Decimal('0.0')
+    excluded: Optional[Decimal] = Decimal('0.0') # For backward compatibility
+    excluded_income: Optional[Decimal] = Decimal('0.0')
+    updated_at: Optional[datetime] = None
+    icon: str = "🏁"
+    color: str = "#10B981"
 
 class SmartCategorizeRequest(BaseModel):
     transaction_id: str

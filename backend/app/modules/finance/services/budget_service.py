@@ -7,14 +7,112 @@ from backend.app.modules.finance import models, schemas
 
 class BudgetService:
     @staticmethod
-    def get_budgets(db: Session, tenant_id: str, year: int = None, month: int = None) -> List[dict]:
+    def get_budget_overview(db: Session, tenant_id: str, year: int = None, month: int = None, user_id: str = None) -> dict:
+        """
+        Get global budget overview data (OVERALL stats).
+        """
+        now = datetime.utcnow()
+        if not year: year = now.year
+        if not month: month = now.month
+        
+        start_of_period = datetime(year, month, 1)
+        if month == 12:
+            end_of_period = datetime(year + 1, 1, 1)
+        else:
+            end_of_period = datetime(year, month + 1, 1)
+            
+        # 1. Spending
+        # Separate expenses (negative) and income (positive)
+        # Note: SQL sum would mix them. We need to sum conditionally or fetch all.
+        
+        total_expense = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= start_of_period,
+            models.Transaction.date < end_of_period,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False,
+            models.Transaction.amount < 0
+        )
+        if user_id:
+             total_expense = total_expense.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        total_expense = abs(total_expense.scalar() or 0)
+        
+        total_income = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= start_of_period,
+            models.Transaction.date < end_of_period,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False,
+            models.Transaction.amount > 0
+        )
+        if user_id:
+            total_income = total_income.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        total_income = total_income.scalar() or 0
+
+        # 2. Excluded
+        excluded_query = db.query(func.sum(func.abs(models.Transaction.amount))).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= start_of_period,
+            models.Transaction.date < end_of_period,
+            or_(models.Transaction.exclude_from_reports == True, models.Transaction.is_transfer == True)
+        )
+        if user_id:
+             excluded_query = excluded_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        total_excluded = excluded_query.scalar() or 0
+        
+        excluded_income_query = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= start_of_period,
+            models.Transaction.date < end_of_period,
+            or_(models.Transaction.exclude_from_reports == True, models.Transaction.is_transfer == True),
+            models.Transaction.amount > 0
+        )
+        if user_id:
+             excluded_income_query = excluded_income_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        excluded_income = excluded_income_query.scalar() or 0
+        
+
+        # 3. Budget Limit
+        overall_b = db.query(models.Budget).filter(
+            models.Budget.tenant_id == tenant_id,
+            models.Budget.category == 'OVERALL'
+        ).first()
+        
+        limit = overall_b.amount_limit if overall_b else None
+        
+        return {
+            "category": "OVERALL",
+            "amount_limit": limit,
+            "spent": total_expense,
+            "income": total_income,
+            "remaining": limit - total_expense if limit else None,
+            "percentage": (float(total_expense) / float(limit)) * 100 if limit and limit > 0 else 0,
+            "total_excluded": total_excluded,
+            "excluded": total_excluded,
+            "excluded_income": excluded_income,
+            "updated_at": overall_b.updated_at if overall_b else None,
+            "icon": "🏁",
+            "color": "#10B981"
+        }
+
+    @staticmethod
+    def get_budgets(db: Session, tenant_id: str, year: int = None, month: int = None, user_id: str = None) -> List[dict]:
         """
         Get all budgets and calculate progress based on target month's spending.
-        Includes all defined categories so we can see activity even without a limit.
+        Supports hierarchical rollup (children to parents) and user/member filtering.
         """
         budgets = db.query(models.Budget).filter(models.Budget.tenant_id == tenant_id).all()
-        categories = db.query(models.Category).filter(models.Category.tenant_id == tenant_id).all()
+        all_categories = db.query(models.Category).filter(models.Category.tenant_id == tenant_id).all()
         
+        # Build category hierarchy maps
+        cat_map = {c.name: c for c in all_categories}
+        children_map = {} # parent_id -> list of child names
+        for c in all_categories:
+            if c.parent_id:
+                if c.parent_id not in children_map:
+                    children_map[c.parent_id] = []
+                children_map[c.parent_id].append(c.name)
+
         # Determine period
         now = datetime.utcnow()
         if not year: year = now.year
@@ -26,8 +124,8 @@ class BudgetService:
         else:
             end_of_period = datetime(year, month + 1, 1)
         
-        # Helper to get spending for categories
-        spending_rows = db.query(
+        # 1. Fetch raw transaction aggregates
+        spending_query = db.query(
             models.Transaction.category, 
             func.sum(models.Transaction.amount).label("sum")
         ).filter(
@@ -36,15 +134,20 @@ class BudgetService:
             models.Transaction.date < end_of_period,
             models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False
-        ).group_by(models.Transaction.category).all()
+        )
         
-        spending_map = {}
-        for row in spending_rows:
-            name = row.category or 'Uncategorized'
-            spending_map[name] = spending_map.get(name, Decimal(0)) + (row.sum or Decimal(0))
+        if user_id:
+            spending_query = spending_query.join(
+                models.Account, models.Transaction.account_id == models.Account.id
+            ).filter(
+                or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+            )
+
+        spending_rows = spending_query.group_by(models.Transaction.category).all()
+        raw_spending_map = { (row.category or 'Uncategorized'): Decimal(row.sum or 0) for row in spending_rows }
         
-        # 2b. Helper to get excluded spending per category (for per-category display)
-        excluded_rows = db.query(
+        # 2. Helper for excluded spending (needed for rollups)
+        excluded_query = db.query(
             models.Transaction.category,
             func.sum(models.Transaction.amount).label("sum")
         ).filter(
@@ -52,77 +155,55 @@ class BudgetService:
             models.Transaction.date >= start_of_period,
             models.Transaction.date < end_of_period,
             or_(models.Transaction.exclude_from_reports == True, models.Transaction.is_transfer == True)
-        ).group_by(models.Transaction.category).all()
-        
-        excluded_map = { (row.category or 'Uncategorized'): row.sum for row in excluded_rows }
-        
-        # Calculate total volume by polarity (not grouped) to catch transfers
-        excluded_spending = db.query(func.sum(models.Transaction.amount)).filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.date >= start_of_period,
-            models.Transaction.date < end_of_period,
-            or_(models.Transaction.exclude_from_reports == True, models.Transaction.is_transfer == True),
-            models.Transaction.amount < 0
-        ).scalar() or Decimal(0)
-        
-        excluded_income = db.query(func.sum(models.Transaction.amount)).filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.date >= start_of_period,
-            models.Transaction.date < end_of_period,
-            or_(models.Transaction.exclude_from_reports == True, models.Transaction.is_transfer == True),
-            models.Transaction.amount > 0
-        ).scalar() or Decimal(0)
+        )
 
-        excluded_spending = abs(excluded_spending)
+        if user_id:
+            excluded_query = excluded_query.join(
+                models.Account, models.Transaction.account_id == models.Account.id
+            ).filter(
+                or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+            )
+
+        excluded_rows = excluded_query.group_by(models.Transaction.category).all()
+        raw_excluded_map = { (row.category or 'Uncategorized'): Decimal(row.sum or 0) for row in excluded_rows }
         
-        # 2c.
-        
+        # 3. Recursive Rollup Logic
+        memo = {}
+        def get_all_spending(cat_name):
+            if cat_name in memo: return memo[cat_name]
+            
+            # Start with direct spending
+            total_val = raw_spending_map.get(cat_name, Decimal(0))
+            total_ex = raw_excluded_map.get(cat_name, Decimal(0))
+            
+            # Add child spending
+            cat_obj = cat_map.get(cat_name)
+            if cat_obj and cat_obj.id in children_map:
+                for child_name in children_map[cat_obj.id]:
+                    child_val, child_ex = get_all_spending(child_name)
+                    total_val += child_val
+                    total_ex += child_ex
+            
+            memo[cat_name] = (total_val, total_ex)
+            return total_val, total_ex
+
+        # 4. Prepare Results
         budget_map = {b.category: b for b in budgets}
-        category_map = {c.name: c for c in categories}
-        
-        # Also track overall
-        total_expense = sum(abs(v) for v in spending_map.values() if v < 0)
-        total_income = sum(v for v in spending_map.values() if v > 0)
-        
         results = []
         
-        # 1. Start with OVERALL if it exists
-        overall_b = budget_map.get('OVERALL')
-        if overall_b or total_expense > 0 or total_income > 0 or excluded_spending != 0 or excluded_income != 0:
-            limit = overall_b.amount_limit if overall_b else None
-            spent = total_expense
-            results.append({
-                "category": "OVERALL",
-                "amount_limit": limit,
-                "spent": spent,
-                "income": total_income,
-                "total_excluded": excluded_spending,
-                "excluded_income": excluded_income,
-                "remaining": limit - spent if limit else None,
-                "percentage": (float(spent) / float(limit)) * 100 if limit and limit > 0 else 0,
-                "id": overall_b.id if overall_b else None,
-                "budget_id": overall_b.id if overall_b else None,
-                "tenant_id": tenant_id,
-                "period": "MONTHLY",
-                "updated_at": overall_b.updated_at if overall_b else None,
-                "type": "expense",
-                "icon": "🏁",
-                "color": "#10B981"
-            })
-
-        # 2. Iterate through all categories to show progress
-        # We want to include categories that have a budget OR have spending (regular or excluded)
-        active_cat_names = set(category_map.keys()) | set(spending_map.keys()) | set(budget_map.keys()) | set(excluded_map.keys())
+        # Process all categories
+        active_cat_names = set(cat_map.keys()) | set(raw_spending_map.keys())
         active_cat_names.discard('OVERALL')
         
         for name in sorted(list(active_cat_names)):
             b = budget_map.get(name)
-            c = category_map.get(name)
-            value = spending_map.get(name, Decimal(0))
-            ex_value = excluded_map.get(name, Decimal(0))
+            c = cat_map.get(name)
             
-            spent = abs(value) if value < 0 else Decimal(0)
-            income = value if value > 0 else Decimal(0)
+            # Use rolled-up figures for parent categories
+            rolled_val, rolled_ex = get_all_spending(name)
+            
+            spent = abs(rolled_val) if rolled_val < 0 else Decimal(0)
+            income = rolled_val if rolled_val > 0 else Decimal(0)
             
             limit = b.amount_limit if b else None
             remaining = limit - spent if limit else None
@@ -133,17 +214,16 @@ class BudgetService:
                 "amount_limit": limit,
                 "spent": spent,
                 "income": income,
-                "excluded": abs(ex_value),
+                "excluded": abs(rolled_ex),
                 "remaining": remaining,
                 "percentage": percentage,
-                "id": b.id if b else None,
                 "budget_id": b.id if b else None,
                 "tenant_id": tenant_id,
-                "period": "MONTHLY",
-                "updated_at": b.updated_at if b else None,
                 "type": c.type if c else "expense",
                 "icon": c.icon if c else "🏷️",
-                "color": c.color if c else "#3B82F6"
+                "color": c.color if c else "#3B82F6",
+                "parent_id": c.parent_id if c else None,
+                "category_id": c.id if c else None
             })
             
         return results
@@ -181,23 +261,97 @@ class BudgetService:
         return True
 
     @staticmethod
-    def get_ai_insights(db: Session, tenant_id: str, year: int = None, month: int = None) -> List[dict]:
+    def get_ai_insights(db: Session, tenant_id: str, year: int = None, month: int = None, user_id: str = None) -> List[dict]:
         """
         Gathers financial data and generates AI-driven insights/tips.
         """
-        data = BudgetService.get_budgets(db, tenant_id, year, month)
+        tenant_id = str(tenant_id)
         
-        # Try Gemini integration first
+        # 0. Determine Periods
+        now = datetime.utcnow()
+        if not year: year = now.year
+        if not month: month = now.month
+        
+        # Current Month
+        start_of_current = datetime(year, month, 1)
+        if month == 12:
+            end_of_current = datetime(year + 1, 1, 1)
+            last_month_dt = datetime(year, 11, 1)
+        else:
+            end_of_current = datetime(year, month + 1, 1)
+            # Last Month Logic
+            if month == 1:
+                last_month_dt = datetime(year - 1, 12, 1)
+            else:
+                last_month_dt = datetime(year, month - 1, 1)
+
+        # 1. Fetch Current Data
+        overview = BudgetService.get_budget_overview(db, tenant_id, year, month, user_id)
+        data = BudgetService.get_budgets(db, tenant_id, year, month, user_id=user_id)
+        
+        # 2. Fetch Last Month Data (for comparison)
+        last_month_overview = BudgetService.get_budget_overview(db, tenant_id, last_month_dt.year, last_month_dt.month, user_id)
+        
+        # 3. Fetch YTD Totals (Simple aggregation)
+        start_of_year = datetime(year, 1, 1)
+        
+        ytd_query = db.query(
+            func.sum(models.Transaction.amount).label("total")
+        ).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= start_of_year,
+            models.Transaction.date < end_of_current, # Up to end of current month
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False
+        )
+        
+        if user_id:
+             ytd_query = ytd_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        
+        ytd_expense = abs(ytd_query.filter(models.Transaction.amount < 0).scalar() or 0)
+        ytd_income = ytd_query.filter(models.Transaction.amount > 0).scalar() or 0
+
+        ytd_stats = {
+            "spent": float(ytd_expense),
+            "income": float(ytd_income),
+            "savings_rate": ((float(ytd_income) - float(ytd_expense)) / float(ytd_income) * 100) if ytd_income > 0 else 0
+        }
+
+        # Try Gemini integration
+        from backend.app.modules.ingestion.ai_service import AIService
+        
+        # Check if AI is configured
+        ai_settings = AIService.get_settings(db, tenant_id)
+        if not ai_settings or not ai_settings.get("is_enabled") or not ai_settings.get("has_api_key"):
+             return [{
+                "id": "setup_ai",
+                "type": "info",
+                "title": "Enable AI Insights",
+                "content": "Configure Gemini AI in Settings to unlock personalized financial analysis.",
+                "icon": "⚙️",
+                "action": "settings" 
+            }]
+
         try:
-            from backend.app.modules.ingestion.ai_service import AIService
-            ai_insights = AIService.generate_structured_insights(db, tenant_id, {"budgets": data})
+            ai_context = {
+                "current_month": {
+                    "overview": overview,
+                    "categories": data
+                },
+                "last_month": {
+                    "overview": last_month_overview
+                },
+                "ytd_stats": ytd_stats
+            }
+            ai_insights = AIService.generate_structured_insights(db, tenant_id, ai_context)
             if ai_insights:
                 return ai_insights
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG: AI Insight Generation Failed: {e}")
             pass
 
         # Fallback to hardcoded rules if AI is disabled or fails
-        if not data:
+        if not data and not overview.get("spent"):
             return [{
                 "id": "intro",
                 "type": "info",
@@ -207,8 +361,9 @@ class BudgetService:
             }]
 
         insights = []
-        overall = next((b for b in data if b["category"] == "OVERALL"), None)
-        categories = [b for b in data if b["category"] != "OVERALL"]
+        overall = overview # Use the fetched overview directly
+        categories = data # data is already filtered for categories
+
 
         # 1. Overall Health
         if overall and overall["amount_limit"]:
@@ -216,40 +371,80 @@ class BudgetService:
                 insights.append({
                     "id": "overall_over",
                     "type": "danger",
-                    "title": "Action Required: Over Budget",
-                    "content": f"You are {overall['percentage']-100:.1f}% over your total limit. Consider cutting non-essentials.",
+                    "title": "Budget Breach Alert",
+                    "content": f"Total spending is {overall['percentage']:.0f}% of the limit. Immediate freeze on discretionary spending recommended.",
                     "icon": "🚨"
                 })
-            elif overall["percentage"] > 80:
+            elif overall["percentage"] > 85:
                 insights.append({
                     "id": "overall_warn",
                     "type": "warning",
-                    "title": "Caution: Budget Ceiling",
-                    "content": f"You've used {overall['percentage']:.1f}% of your budget. Slow down spending for the rest of the month.",
+                    "title": "Approaching Limit",
+                    "content": f"You've used {overall['percentage']:.0f}% of your total budget. Proceed with caution for the remaining days.",
                     "icon": "⚠️"
                 })
-            elif overall["percentage"] > 0:
+            elif overall["percentage"] > 0 and overall["percentage"] < 50 and datetime.utcnow().day > 15:
                 insights.append({
                     "id": "overall_good",
                     "type": "success",
-                    "title": "Healthy Trajectory",
-                    "content": "Your overall spending is well within limits. Good job maintaining a buffer!",
+                    "title": "Excellent Control",
+                    "content": "Halfway through the month and less than 50% spent. You are on track for significant savings!",
                     "icon": "💎"
                 })
+            elif overall["percentage"] > 0:
+                 insights.append({
+                    "id": "overall_track",
+                    "type": "info",
+                    "title": "Spending on Track",
+                    "content": f"Your spending is steady at {overall['percentage']:.0f}% of your budget.",
+                    "icon": "👍"
+                })
 
-        # 2. Specific Category Pain Points
-        overspent_cats = [c for c in categories if c["amount_limit"] and c["percentage"] > 100]
-        if overspent_cats:
-            top_offender = max(overspent_cats, key=lambda x: x["spent"])
+        # 2. Specific Category Pain Points (Top 2 Overspent)
+        overspent_cats = sorted([c for c in categories if c["amount_limit"] and c["percentage"] > 100], key=lambda x: x["percentage"], reverse=True)
+        for cat in overspent_cats[:2]:
             insights.append({
-                "id": "cat_over",
+                "id": f"cat_over_{cat['category']}",
                 "type": "danger",
-                "title": f"Drain in {top_offender['category']}",
-                "content": f"Spending in {top_offender['category']} is uncontrolled. Try setting a stricter limit next month.",
+                "title": f"Drain in {cat['category']}",
+                "content": f"Spending in {cat['category']} is {cat['percentage']:.0f}% of limit. Try setting a stricter limit or investigating transactions.",
                 "icon": "💸"
             })
 
-        # 3. High Income Performance
+        # 3. Top Expense (if not overspent)
+        if not overspent_cats:
+            top_expense = max([c for c in categories if c["spent"] > 0], key=lambda x: x["spent"], default=None)
+            if top_expense:
+                 insights.append({
+                    "id": f"top_exp_{top_expense['category']}",
+                    "type": "warning",
+                    "title": f"Highest Expense: {top_expense['category']}",
+                    "content": f"{top_expense['category']} accounts for the largest chunk of your spending this month.",
+                    "icon": "📉"
+                })
+
+        # 4. Under-utilized Budgets (Efficiency)
+        efficient_cats = [c for c in categories if c["amount_limit"] and c["percentage"] < 50 and c["percentage"] > 0]
+        if efficient_cats:
+            best_saver = min(efficient_cats, key=lambda x: x["percentage"])
+            insights.append({
+                "id": "efficient_cat",
+                "type": "success",
+                "title": f"Under Budget: {best_saver['category']}",
+                "content": f"Great job! You've only used {best_saver['percentage']:.0f}% of your {best_saver['category']} budget.",
+                "icon": "📉"
+            })
+
+        # 5. Income/Savings
+        if ytd_stats["savings_rate"] > 20:
+             insights.append({
+                "id": "ytd_save",
+                "type": "success",
+                "title": "Strong Savings Rate",
+                "content": f"Year-to-date, you're saving {ytd_stats['savings_rate']:.1f}% of your income. Keep it up!",
+                "icon": "💰"
+            })
+        
         top_income = [c for c in categories if c["income"] > 0]
         if top_income:
             best_income = max(top_income, key=lambda x: x["income"])
@@ -257,12 +452,12 @@ class BudgetService:
                 "id": "income_boost",
                 "type": "success",
                 "title": "Positive Inflow",
-                "content": f"The {best_income['category']} category contributed significantly to your cash flow this month.",
+                "content": f"The {best_income['category']} category contributed significantly to your cash flow.",
                 "icon": "📈"
             })
 
-        # 4. Seasonal/General Tip (Fallback)
-        if not insights:
+        # 6. Seasonal/General Tip (Fallback)
+        if len(insights) < 3:
             insights.append({
                 "id": "general_tip",
                 "type": "info",
@@ -271,4 +466,4 @@ class BudgetService:
                 "icon": "🛡️"
             })
 
-        return insights[:3] # Keep it snappy
+        return insights[:5] # Increased to 5
