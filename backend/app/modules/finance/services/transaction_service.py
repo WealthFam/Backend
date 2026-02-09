@@ -127,6 +127,8 @@ class TransactionService:
         sort_by: str = "date",
         sort_order: str = "desc"
     ) -> List[models.Transaction]:
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
         
         if user_role == "CHILD":

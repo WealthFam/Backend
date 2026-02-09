@@ -8,6 +8,8 @@ from backend.app.modules.finance import models, schemas
 class BudgetService:
     @staticmethod
     def get_budget_overview(db: Session, tenant_id: str, year: int = None, month: int = None, user_id: str = None) -> dict:
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         """
         Get global budget overview data (OVERALL stats).
         """
@@ -97,6 +99,8 @@ class BudgetService:
 
     @staticmethod
     def get_budgets(db: Session, tenant_id: str, year: int = None, month: int = None, user_id: str = None) -> List[dict]:
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         """
         Get all budgets and calculate progress based on target month's spending.
         Supports hierarchical rollup (children to parents) and user/member filtering.
@@ -262,6 +266,8 @@ class BudgetService:
 
     @staticmethod
     def get_ai_insights(db: Session, tenant_id: str, year: int = None, month: int = None, user_id: str = None) -> List[dict]:
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         """
         Gathers financial data and generates AI-driven insights/tips.
         """

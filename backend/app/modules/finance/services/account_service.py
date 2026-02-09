@@ -23,6 +23,8 @@ class AccountService:
 
     @staticmethod
     def get_accounts(db: Session, tenant_id: str, owner_id: Optional[str] = None, user_role: str = "ADULT") -> List[models.Account]:
+        if owner_id in [None, "null", "undefined", ""]:
+            owner_id = None
         query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
         if owner_id:
             query = query.filter((models.Account.owner_id == owner_id) | (models.Account.owner_id == None))
