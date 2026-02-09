@@ -66,7 +66,7 @@
 body {
   min-height: 100vh;
   color: var(--color-text-main);
-  background: var(--color-background);
+  background: transparent;
   font-family: var(--font-family-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -251,14 +251,40 @@ body {
   }
 }
 
-/* Premium Design Tokens */
+/* Glass Effect & Mesh Gradient */
 .glass-card {
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(var(--v-theme-surface), 0.7);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(var(--v-border-color), 0.5);
   border-radius: 1rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.dashboard-page {
+  background: linear-gradient(-45deg, #f1f5f9, #e2e8f0, #f8fafc, #f1f5f9);
+  background-size: 400% 400%;
+  animation: meshGradient 20s ease infinite;
+  min-height: 100vh;
+}
+
+/* Hardened Dark Mode Selectors */
+:where(.v-theme--dark, .v-theme--wealthFamDark) .dashboard-page {
+  background: linear-gradient(-45deg, #0f172a, #1e293b, #020617, #1e293b) !important;
+}
+
+@keyframes meshGradient {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 .h-glow-primary {
@@ -301,102 +327,56 @@ body {
   box-shadow: 0 6px 16px rgba(79, 70, 229, 0.4);
 }
 
-/* Premium Design Tokens */
-.glass-card {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 1rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+/* Global Premium Styling */
+.premium-glass-card {
+  background: rgb(var(--v-theme-surface), 0.9) !important;
+  color: rgb(var(--v-theme-on-surface)) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(var(--v-border-color), 0.15) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
-.h-glow-primary {
-  position: relative;
-  overflow: hidden;
+.premium-glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.15) !important;
 }
 
-.h-glow-primary::after {
-  content: '';
+.premium-glass-card.no-hover:hover {
+  transform: none !important;
+}
+
+/* Midnight Premium Highlight (Hero Card) - Theme Aware */
+.midnight-premium-card {
+  background: linear-gradient(135deg, #4f46e5 0%, #312e81 100%) !important;
+  /* Vibrant Indigo in Light Mode */
+  color: white !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+:where(.v-theme--dark, .v-theme--wealthFamDark) .midnight-premium-card {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+  /* Deep Midnight in Dark Mode */
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.midnight-premium-card .v-card-text,
+.midnight-premium-card .v-card-title,
+.midnight-premium-card span,
+.midnight-premium-card div:not(.glass-card) {
+  color: white !important;
+}
+
+
+
+.mesh-blob {
   position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 60%);
-  opacity: 0;
-  transform: rotate(45deg);
-  transition: opacity 0.3s;
+  filter: blur(80px);
+  opacity: 0.15;
+  border-radius: 50%;
+  z-index: 0;
   pointer-events: none;
-}
-
-.h-glow-primary:hover::after {
-  opacity: 1;
-}
-
-.btn-primary-glow {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-  color: white;
-  padding: 0.75rem 1.5rem;
-  border-radius: 0.75rem;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
-  transition: all 0.2s;
-}
-
-.btn-primary-glow:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.4);
-}
-
-/* Premium Design Tokens */
-.glass-card {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 1rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-}
-
-.h-glow-primary {
-  position: relative;
-  overflow: hidden;
-}
-
-.h-glow-primary::after {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 60%);
-  opacity: 0;
-  transform: rotate(45deg);
-  transition: opacity 0.3s;
-  pointer-events: none;
-}
-
-.h-glow-primary:hover::after {
-  opacity: 1;
-}
-
-.btn-primary-glow {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-  color: white;
-  padding: 0.75rem 1.5rem;
-  border-radius: 0.75rem;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
-  transition: all 0.2s;
-}
-
-.btn-primary-glow:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.4);
 }

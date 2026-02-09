@@ -15,14 +15,14 @@ export const useFinanceStore = defineStore('finance', () => {
     const error = ref<string | null>(null)
 
     // Actions
-    async function fetchAll() {
+    async function fetchAll(userId?: string) {
         loading.value = true
         error.value = null
         try {
             const [cats, accs, recs] = await Promise.all([
                 financeApi.getCategories(),
                 financeApi.getAccounts(),
-                financeApi.getRecurringTransactions()
+                financeApi.getRecurringTransactions(userId)
             ])
             categories.value = cats.data
             accounts.value = accs.data
@@ -57,9 +57,9 @@ export const useFinanceStore = defineStore('finance', () => {
         }
     }
 
-    async function fetchRecurring() {
+    async function fetchRecurring(userId?: string) {
         try {
-            const res = await financeApi.getRecurringTransactions()
+            const res = await financeApi.getRecurringTransactions(userId)
             recurringTransactions.value = res.data
         } catch (e) {
             console.error("Failed to fetch recurring", e)

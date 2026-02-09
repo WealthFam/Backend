@@ -3,13 +3,9 @@ import { ref, onMounted, watch } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { useRoute } from 'vue-router'
 import CustomSelect from '@/components/CustomSelect.vue'
-import { useNotificationStore } from '@/stores/notification'
 import ImportModal from '@/components/ImportModal.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import SpendingHeatmap from '@/components/SpendingHeatmap.vue'
-import TransactionList from '@/views/transactions/TransactionList.vue'
-import TransactionTriage from '@/views/transactions/TransactionTriage.vue'
-import TransactionHeatmap from '@/views/transactions/TransactionHeatmap.vue'
 
 // Composables
 import { useTransactionHelpers } from '@/composables/useTransactionHelpers'
@@ -19,7 +15,7 @@ import { useTransactionModals } from '@/composables/useTransactionModals'
 
 // Global State
 const route = useRoute()
-const notify = useNotificationStore()
+
 const { formatAmount } = useCurrency()
 
 // Master Data (shared across composables)
@@ -56,7 +52,6 @@ const {
     getAccountName,
     getCategoryDisplay,
     getExpenseGroupName,
-    sortArray,
     accountOptions,
     categoryOptions,
     expenseGroupOptions
@@ -109,12 +104,10 @@ const {
     showDiscardConfirm,
     showTrainingDiscardConfirm,
     createIgnoreRule,
-    triageIdToDiscard,
     trainingIdToDiscard,
     selectedMessage,
     showLabelForm,
     labelForm,
-    isProcessingBulk,
     fetchTriage,
     approveTriage,
     rejectTriage,
@@ -123,7 +116,6 @@ const {
     startLabeling,
     handleLabelSubmit,
     dismissTraining,
-    confirmTrainingDiscard,
     handleBulkDismissTraining,
     handleConfirmGlobalTrainingDismiss,
     toggleSelectAllTriage,
@@ -135,17 +127,12 @@ const {
 const {
     showModal,
     isEditing,
-    editingTxnId,
-    originalCategory,
-    originalExclude,
-    originalDescription,
     potentialMatches,
     isSearchingMatches,
     matchesSearched,
     showRenamePrompt,
     renamePromptData,
     form,
-    defaultForm,
     currentCategoryBudget,
     openAddModal,
     openEditModal,

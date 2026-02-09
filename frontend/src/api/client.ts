@@ -85,6 +85,7 @@ export const financeApi = {
     createRule: (data: any) => apiClient.post('/finance/rules', data),
     ignoreSuggestion: (data: { pattern: string }) => apiClient.post('/finance/rules/suggestions/ignore', data),
     updateRule: (id: string, data: any) => apiClient.put(`/finance/rules/${id}`, data),
+    deleteRule: (id: string) => apiClient.delete(`/finance/rules/${id}`),
     applyRuleRetrospectively: (id: string, override: boolean = false) => apiClient.post(`/finance/transactions/rules/${id}/apply-retrospective`, null, { params: { override } }),
     getMatchCount: (keywords: string[], onlyUncategorized: boolean = true) => apiClient.post('/finance/transactions/match-count', { keywords, only_uncategorized: onlyUncategorized }),
     getMatchPreview: (keywords: string[], onlyUncategorized: boolean = true, page: number = 1, limit: number = 5) => apiClient.post('/finance/transactions/match-preview', { keywords, only_uncategorized: onlyUncategorized }, { params: { page, limit } }),
@@ -111,7 +112,7 @@ export const financeApi = {
     deleteBudget: (id: string) => apiClient.delete(`/finance/budgets/${id}`),
 
     // Recurring Transactions
-    getRecurringTransactions: () => apiClient.get('/finance/recurring'),
+    getRecurringTransactions: (userId?: string) => apiClient.get('/finance/recurring', { params: { user_id: userId } }),
     createRecurringTransaction: (data: any) => apiClient.post('/finance/recurring', data),
     updateRecurring: (id: string, data: any) => apiClient.put(`/finance/recurring/${id}`, data),
     deleteRecurring: (id: string) => apiClient.delete(`/finance/recurring/${id}`),
