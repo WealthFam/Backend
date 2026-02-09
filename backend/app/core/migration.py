@@ -216,10 +216,14 @@ def run_auto_migrations(engine: Engine):
                 icon VARCHAR DEFAULT '🎯',
                 color VARCHAR DEFAULT '#3b82f6',
                 is_completed BOOLEAN DEFAULT FALSE,
+                owner_id VARCHAR,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+                FOREIGN KEY(owner_id) REFERENCES users (id)
             );
             """))
+
+            safe_add_column("investment_goals", "owner_id", "VARCHAR")
 
             # 16. Link Holdings to Goals
             safe_add_column("mutual_fund_holdings", "goal_id", "VARCHAR")

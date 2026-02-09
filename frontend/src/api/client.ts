@@ -66,7 +66,7 @@ export interface TransactionUpdate {
 }
 
 export const financeApi = {
-    getAccounts: () => apiClient.get('/finance/accounts'),
+    getAccounts: (userId?: string) => apiClient.get('/finance/accounts', { params: { user_id: userId } }),
     createAccount: (data: AccountCreate) => apiClient.post('/finance/accounts', data),
     updateAccount: (id: string, data: AccountUpdate) => apiClient.put(`/finance/accounts/${id}`, data),
     deleteAccount: (id: string) => apiClient.delete(`/finance/accounts/${id}`),

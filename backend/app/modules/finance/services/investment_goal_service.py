@@ -6,14 +6,25 @@ from decimal import Decimal
 
 class InvestmentGoalService:
     @staticmethod
-    def get_goals(db: Session, tenant_id: str) -> List[schemas.InvestmentGoalProgress]:
+    def get_goals(db: Session, tenant_id: str, user_id: Optional[str] = None) -> List[schemas.InvestmentGoalProgress]:
+        # Sanitization
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+            
         from sqlalchemy.orm import joinedload
-        goals = db.query(models.InvestmentGoal).options(
+        from sqlalchemy import or_
+        
+        query = db.query(models.InvestmentGoal).options(
             joinedload(models.InvestmentGoal.assets).joinedload(models.GoalAsset.linked_account),
             joinedload(models.InvestmentGoal.holdings).joinedload(models.MutualFundHolding.meta)
         ).filter(
             models.InvestmentGoal.tenant_id == tenant_id
-        ).all()
+        )
+        
+        if user_id:
+            query = query.filter(or_(models.InvestmentGoal.owner_id == user_id, models.InvestmentGoal.owner_id == None))
+            
+        goals = query.all()
         
         results = []
         for goal in goals:
@@ -100,8 +111,12 @@ class InvestmentGoalService:
 
     @staticmethod
     def create_goal(db: Session, goal: schemas.InvestmentGoalCreate, tenant_id: str) -> models.InvestmentGoal:
+        data = goal.model_dump()
+        if data.get('owner_id') in [None, "null", "undefined", ""]:
+            data['owner_id'] = None
+            
         db_goal = models.InvestmentGoal(
-            **goal.model_dump(),
+            **data,
             tenant_id=tenant_id
         )
         db.add(db_goal)

@@ -395,6 +395,7 @@ class InvestmentGoalBase(BaseModel):
     icon: str = "🎯"
     color: str = "#3b82f6"
     is_completed: bool = False
+    owner_id: Optional[str] = None
 
 class InvestmentGoalCreate(InvestmentGoalBase):
     pass
@@ -406,6 +407,7 @@ class InvestmentGoalUpdate(BaseModel):
     icon: Optional[str] = None
     color: Optional[str] = None
     is_completed: Optional[bool] = None
+    owner_id: Optional[str] = None
 
 class GoalAssetBase(BaseModel):
     type: str  # MUTUAL_FUND, BANK_ACCOUNT, MANUAL
@@ -439,6 +441,7 @@ class GoalHoldingRead(BaseModel):
 class InvestmentGoalRead(InvestmentGoalBase):
     id: str
     tenant_id: str
+    owner_id: Optional[str] = None
     created_at: datetime
     assets: List[GoalAssetRead] = []
 

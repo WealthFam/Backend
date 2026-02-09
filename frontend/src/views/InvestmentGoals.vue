@@ -1,24 +1,25 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
 import { useNotificationStore } from '@/stores/notification'
-import CustomSelect from '@/components/CustomSelect.vue'
+import { useAuthStore } from '@/stores/auth'
 import {
     Plus,
     Calendar,
     Trash2,
     Pencil,
     TrendingUp,
-    Coins,
     Building2,
     X,
-    ChevronDown,
-    ChevronUp
+    Target,
+    Activity,
+    Wallet
 } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
+const authStore = useAuthStore()
 const { formatAmount } = useCurrency()
 
 const goals = ref<any[]>([])
@@ -32,18 +33,14 @@ const showAssetModal = ref(false)
 const isEditing = ref(false)
 const editingId = ref<string | null>(null)
 const selectedGoalId = ref<string | null>(null)
-const expandedGoals = ref<Record<string, boolean>>({})
-
-const toggleExpand = (goalId: string) => {
-    expandedGoals.value[goalId] = !expandedGoals.value[goalId]
-}
 
 const goalForm = ref({
     name: '',
     target_amount: 0,
     target_date: '',
     icon: '🎯',
-    color: '#3b82f6'
+    color: '#3b82f6',
+    owner_id: null as string | null
 })
 
 const assetForm = ref({
@@ -58,7 +55,7 @@ const assetForm = ref({
 const fetchGoals = async () => {
     loading.value = true
     try {
-        const res = await financeApi.getInvestmentGoals()
+        const res = await financeApi.getInvestmentGoals(authStore.selectedMemberId || undefined)
         goals.value = res.data
     } catch (e) {
         notify.error("Failed to load goals")
@@ -69,7 +66,8 @@ const fetchGoals = async () => {
 
 const fetchAccounts = async () => {
     try {
-        const res = await financeApi.getAccounts()
+        // Accounts are filtered by owner_id in the service now, but it's good to be consistent
+        const res = await financeApi.getAccounts(authStore.selectedMemberId || undefined)
         accounts.value = res.data.filter((a: any) => a.type === 'BANK' || a.type === 'INVESTMENT')
     } catch (e) {
         console.error("Failed to fetch accounts")
@@ -93,7 +91,8 @@ const openAddModal = () => {
         target_amount: 0,
         target_date: '',
         icon: '🎯',
-        color: '#3b82f6'
+        color: '#3b82f6',
+        owner_id: authStore.selectedMemberId
     }
     showModal.value = true
 }
@@ -106,7 +105,8 @@ const openEditModal = (goal: any) => {
         target_amount: Number(goal.target_amount),
         target_date: goal.target_date ? goal.target_date.split('T')[0] : '',
         icon: goal.icon || '🎯',
-        color: goal.color || '#3b82f6'
+        color: goal.color || '#3b82f6',
+        owner_id: goal.owner_id
     }
     showModal.value = true
 }
@@ -206,7 +206,8 @@ const unlinkHolding = async (goalId: string, holdingId: string) => {
 const accountOptions = computed(() => {
     return accounts.value.map(acc => ({
         label: `${acc.name} (${formatAmount(acc.balance)})`,
-        value: acc.id
+        value: acc.id,
+        type: acc.type // Ensure type is passed for icon logic
     }))
 })
 
@@ -218,949 +219,712 @@ const portfolioOptions = computed(() => {
     }))
 })
 
+// Asset Summary Calculation
+const calculateGoalSummary = (goal: any) => {
+    const assetTotal = (goal.assets || []).reduce((sum: number, a: any) => sum + Number(a.current_value || 0), 0)
+    const holdingTotal = (goal.holdings || []).reduce((sum: number, h: any) => sum + Number(h.current_value || 0), 0)
+    const total = assetTotal + holdingTotal
+    const count = (goal.assets?.length || 0) + (goal.holdings?.length || 0)
+    return { total, count }
+}
+
+const memberOptions = computed(() => {
+    const members = authStore.familyMembers.map(m => ({
+        title: m.full_name || m.email,
+        value: m.id,
+        initials: (m.full_name || m.email).substring(0, 2).toUpperCase()
+    }))
+    return [{ title: 'Shared (Everyone)', value: null, initials: 'ALL' }, ...members]
+})
+
+// Lifecycle and Watchers
 onMounted(() => {
     fetchGoals()
     fetchAccounts()
-    fetchPortfolio()
+})
+
+watch(() => authStore.selectedMemberId, () => {
+    fetchGoals()
+    fetchAccounts()
 })
 </script>
 
 <template>
     <MainLayout>
-        <div class="goals-container">
-            <header class="page-header">
-                <div class="header-left">
-                    <h1 class="page-title">Financial Goals</h1>
-                    <span class="transaction-count ml-4">{{ goals.length }} goals</span>
-                </div>
-                <div class="header-actions">
-                    <button @click="openAddModal" class="btn-premium-primary">
-                        <div class="btn-glow"></div>
-                        <Plus :size="16" />
-                        <span>New Goal</span>
-                    </button>
-                </div>
-            </header>
-
-            <div v-if="loading" class="flex justify-center items-center py-20">
-                <div class="loader"></div>
+        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
+            <!-- Animated Mesh Background (Consistent with Categories.vue) -->
+            <div class="mesh-blob blob-1"
+                style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
+            </div>
+            <div class="mesh-blob blob-2"
+                style="background: rgba(var(--v-theme-secondary), 0.05); width: 400px; height: 400px; bottom: -100px; left: -100px;">
             </div>
 
-            <div v-else-if="goals.length === 0" class="empty-state glass">
-                <div class="empty-icon">🎯</div>
-                <h3>No Goals Set</h3>
-                <p>Start by creating your first financial goal.</p>
-                <button @click="openAddModal" class="btn-clean-primary mt-4">Create Goal</button>
-            </div>
+            <div class="relative-pos z-10">
+                <!-- Header (Title left, Actions right) -->
+                <v-row class="mb-10 align-center">
+                    <v-col cols="12" md="6">
+                        <h1 class="text-h4 font-weight-black mb-1">Financial Goals</h1>
+                        <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold d-flex align-center">
+                            Track and achieve your aspirations
+                            <v-chip v-if="authStore.selectedMemberId" size="x-small" color="primary" variant="flat"
+                                class="ml-3 font-weight-black letter-spacing-1">
+                                MEMBER FILTER ACTIVE
+                            </v-chip>
+                        </p>
+                    </v-col>
 
-            <div v-else class="goals-grid">
-                <div v-for="goal in goals" :key="goal.id" class="goal-card glass"
-                    :style="{ borderTopColor: goal.color }">
-                    <div class="goal-card-header">
-                        <div class="goal-icon-bg" :style="{ backgroundColor: goal.color + '15' }">
-                            <span class="goal-emoji" :style="{ color: goal.color }">{{ goal.icon }}</span>
-                        </div>
-                        <div class="goal-title-area">
-                            <h3>{{ goal.name }}</h3>
-                            <div class="goal-date" v-if="goal.target_date">
-                                <Calendar :size="14" />
-                                <span>{{ new Date(goal.target_date).toLocaleDateString() }}</span>
+                    <v-col cols="12" md="6" class="d-flex justify-md-end align-center gap-3">
+                        <v-chip color="primary" variant="tonal" size="small" rounded="pill"
+                            class="font-weight-black px-4 bg-surface elevation-0 border">
+                            <Target :size="14" class="mr-2" />
+                            {{ goals.length }} Active Goals
+                        </v-chip>
+                    </v-col>
+                </v-row>
+
+                <!-- Loading State -->
+                <div v-if="loading" class="d-flex justify-center align-center py-16">
+                    <v-progress-circular indeterminate color="primary" size="64" width="6" />
+                </div>
+
+                <!-- Empty State -->
+                <div v-else-if="goals.length === 0"
+                    class="premium-glass-card d-flex flex-column align-center justify-center py-16 px-10 text-center mx-auto"
+                    style="max-width: 600px; margin-top: 50px;">
+                    <v-avatar color="primary" variant="tonal" size="100" class="mb-8">
+                        <Target :size="50" class="text-primary" />
+                    </v-avatar>
+                    <h3 class="text-h4 font-weight-black mb-1">No Goals Set Yet</h3>
+                    <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold mb-8">
+                        Define your financial aspirations and link your assets to track your progress in real-time.
+                    </p>
+                    <v-btn color="primary" variant="flat" rounded="pill" height="52"
+                        class="px-10 font-weight-black elevation-2" @click="openAddModal">
+                        Set Your First Goal
+                    </v-btn>
+                </div>
+
+                <!-- Goals Grid -->
+                <v-row v-else class="pb-16">
+                    <!-- Add New Goal Card (New Pattern) -->
+                    <v-col cols="12" sm="6" md="4" lg="4">
+                        <v-card @click="openAddModal"
+                            class="premium-glass-card d-flex flex-column align-center justify-center h-100 cursor-pointer border-dashed border-primary group"
+                            style="border-width: 2px !important; min-height: 380px; background: rgba(var(--v-theme-primary), 0.05)"
+                            rounded="xl">
+                            <v-avatar color="primary" size="64" class="mb-4 elevation-8 group-on-hover-scale"
+                                style="box-shadow: 0 0 20px rgba(var(--v-theme-primary), 0.3)">
+                                <Plus :size="36" color="white" stroke-width="3" />
+                            </v-avatar>
+                            <span class="text-h6 font-weight-black text-primary">Add New Goal</span>
+                            <span class="text-caption font-weight-bold opacity-60 text-slate-500">Define your next
+                                aspiration</span>
+                        </v-card>
+                    </v-col>
+
+                    <v-col v-for="goal in goals" :key="goal.id" cols="12" sm="6" md="4" lg="4">
+                        <v-card rounded="xl" class="premium-glass-card group h-100 d-flex flex-column overflow-hidden"
+                            elevation="0">
+                            <div class="pa-5 d-flex justify-space-between align-center">
+                                <v-avatar :style="{ background: goal.color + '15' }" rounded="lg" size="48"
+                                    class="elevation-0 border" :class="`border-${goal.color}`">
+                                    <span class="text-h6" :style="{ color: goal.color }">{{ goal.icon }}</span>
+                                </v-avatar>
+
+                                <div class="goal-card-actions d-flex gap-1">
+                                    <v-btn icon variant="text" size="x-small" color="medium-emphasis"
+                                        @click="openEditModal(goal)">
+                                        <Pencil :size="14" />
+                                        <v-tooltip activator="parent" location="top">Edit Goal</v-tooltip>
+                                    </v-btn>
+                                    <v-btn icon variant="text" size="x-small" color="error"
+                                        @click="confirmDelete(goal.id)">
+                                        <Trash2 :size="14" />
+                                        <v-tooltip activator="parent" location="top">Delete Goal</v-tooltip>
+                                    </v-btn>
+                                </div>
                             </div>
-                        </div>
-                        <div class="goal-actions">
-                            <button @click="openEditModal(goal)" class="action-btn">
-                                <Pencil :size="16" />
-                            </button>
-                            <button @click="confirmDelete(goal.id)" class="action-btn danger">
-                                <Trash2 :size="16" />
-                            </button>
-                        </div>
-                    </div>
 
-                    <div class="goal-progress-section">
-                        <div class="progress-stats">
-                            <span class="amount-current">{{ formatAmount(goal.current_amount) }}</span>
-                            <span class="amount-target">of {{ formatAmount(goal.target_amount) }}</span>
-                        </div>
-                        <div class="progress-bar-container">
-                            <div class="progress-bar-fill"
-                                :style="{ width: goal.progress_percentage + '%', background: `linear-gradient(90deg, ${goal.color}, ${goal.color}dd)` }">
-                            </div>
-                        </div>
-                        <div class="progress-percentage" :style="{ color: goal.color }">
-                            {{ Math.round(goal.progress_percentage) }}% achieved
-                            <span class="remaining" v-if="goal.remaining_amount > 0">
-                                • {{ formatAmount(goal.remaining_amount) }} to go
-                            </span>
-                        </div>
-                    </div>
+                            <div class="px-5 pb-5">
+                                <h3 class="text-subtitle-1 font-weight-black text-truncate mb-0">{{ goal.name }}</h3>
+                                <div class="d-flex align-center text-tiny font-weight-bold text-medium-emphasis">
+                                    <Calendar :size="12" class="mr-1" />
+                                    {{ goal.target_date ? new Date(goal.target_date).toLocaleDateString() :
+                                        'No Target Date' }}
+                                </div>
 
-                    <div class="goal-assets-section">
-                        <div class="assets-header">
-                            <h4>Linked Assets</h4>
-                            <button @click="openAssetModal(goal.id)" class="add-asset-link"
-                                :style="{ color: goal.color, backgroundColor: goal.color + '10' }">
-                                <Plus :size="14" /> Add Asset
-                            </button>
-                        </div>
-                        <div class="assets-list">
-                            <!-- Linked Mutual Funds (Automatic) -->
-                            <template v-if="goal.holdings && goal.holdings.length > 0">
-                                <div v-for="(holding, index) in goal.holdings" :key="holding.id" class="asset-item"
-                                    v-show="expandedGoals[goal.id] || (index as number) < 2">
-                                    <div class="asset-info">
-                                        <TrendingUp :size="16" class="text-blue-500" />
-                                        <span class="truncate max-w-[200px]" :title="holding.scheme_name">
-                                            <span class="text-xs text-gray-400 mr-1">Fund:</span>
-                                            {{ holding.scheme_name || holding.id }}
-                                        </span>
+                                <div class="mt-4">
+                                    <div class="d-flex justify-space-between align-end mb-1">
+                                        <div>
+                                            <span class="text-h6 font-weight-black">{{ formatAmount(goal.current_amount)
+                                                }}</span>
+                                            <span class="text-tiny font-weight-bold text-medium-emphasis ml-1">of {{
+                                                formatAmount(goal.target_amount) }}</span>
+                                        </div>
+                                        <span class="text-caption font-weight-black" :style="{ color: goal.color }">{{
+                                            Math.round(goal.progress_percentage) }}%</span>
                                     </div>
-                                    <div class="asset-right">
-                                        <span class="asset-value">{{ formatAmount(holding.current_value) }}</span>
-                                        <button @click="unlinkHolding(goal.id, holding.id)" class="remove-asset">
-                                            <X :size="14" />
-                                        </button>
+                                    <v-progress-linear :model-value="goal.progress_percentage" :color="goal.color"
+                                        height="8" rounded="pill" class="goal-progress-bar elevation-1" />
+                                </div>
+                            </div>
+
+                            <div v-if="goal.remaining_amount > 0" class="mt-4">
+                                <div
+                                    class="d-inline-flex align-center text-caption font-weight-bold text-medium-emphasis bg-surface-variant bg-opacity-10 px-3 py-1 rounded-pill blur-backdrop">
+                                    <Activity :size="12" class="mr-2 text-primary" />
+                                    <span>{{ formatAmount(goal.remaining_amount) }} left to reach goal</span>
+                                </div>
+                            </div>
+
+                            <v-divider :color="goal.color" class="opacity-10" />
+
+                            <!-- Linked Assets Overhaul -->
+                            <div class="pa-4 bg-surface bg-opacity-1">
+                                <div class="d-flex justify-space-between align-center mb-1">
+                                    <h4 class="text-overline font-weight-black text-medium-emphasis letter-spacing-1">
+                                        Linked Assets</h4>
+                                    <v-btn variant="text" size="x-small" color="primary" density="compact"
+                                        class="text-none font-weight-bold" @click="openAssetModal(goal.id)">
+                                        <Plus :size="14" class="mr-1" /> Add Asset
+                                    </v-btn>
+                                </div>
+
+                                <!-- Asset Summary Bar -->
+                                <div class="d-flex align-center mb-4 opacity-70">
+                                    <Activity :size="12" class="mr-1 text-primary" />
+                                    <span class="text-tiny font-weight-black">
+                                        Total Linked: {{ formatAmount(calculateGoalSummary(goal).total) }}
+                                        <span class="mx-1 text-medium-emphasis">•</span>
+                                        {{ calculateGoalSummary(goal).count }} {{ calculateGoalSummary(goal).count === 1
+                                            ? 'source' : 'sources' }}
+                                    </span>
+                                </div>
+
+                                <div class="assets-scroll-area">
+                                    <!-- Empty State -->
+                                    <div v-if="!goal.assets?.length && !goal.holdings?.length"
+                                        class="text-center py-6 bg-surface-variant bg-opacity-5 rounded-xl border border-dashed border-opacity-20 d-flex flex-column align-center">
+                                        <Wallet :size="32" class="text-medium-emphasis mb-2 opacity-20" />
+                                        <span class="text-caption font-weight-bold text-medium-emphasis opacity-60">No
+                                            assets linked yet</span>
+                                    </div>
+
+                                    <div v-else class="asset-rows">
+                                        <!-- Section: Mutual Funds -->
+                                        <template v-if="goal.holdings?.length">
+                                            <div
+                                                class="text-tiny font-weight-black text-uppercase text-medium-emphasis mb-3 letter-spacing-1 d-flex align-center">
+                                                <TrendingUp :size="10" class="mr-1" /> Mutual Funds
+                                            </div>
+                                            <div v-for="(h, index) in goal.holdings" :key="h.id" class="asset-row-item">
+                                                <v-divider v-if="index > 0" class="my-2 border-opacity-5" />
+                                                <div class="d-flex align-center justify-space-between py-2">
+                                                    <div class="d-flex align-center overflow-hidden">
+                                                        <div class="d-flex flex-column">
+                                                            <div class="text-caption font-weight-black text-truncate">
+                                                                {{ h.scheme_name }}</div>
+                                                            <div
+                                                                class="text-tiny font-weight-bold text-medium-emphasis text-truncate opacity-70">
+                                                                Folio: {{ h.folio_number }}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="d-flex align-center pl-4">
+                                                        <div class="text-right mr-4">
+                                                            <div class="text-caption font-weight-black">{{
+                                                                formatAmount(h.current_value) }}</div>
+                                                        </div>
+                                                        <v-btn icon variant="text" size="x-small" color="error"
+                                                            class="opacity-30 hover-opacity-100"
+                                                            @click="unlinkHolding(goal.id, h.id)">
+                                                            <X :size="14" />
+                                                        </v-btn>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </template>
+
+                                        <!-- Section: Other Assets -->
+                                        <template v-if="goal.assets?.length">
+                                            <div
+                                                class="text-tiny font-weight-black text-uppercase text-medium-emphasis mb-3 mt-4 letter-spacing-1 d-flex align-center">
+                                                <Building2 :size="10" class="mr-1" /> Accounts & Other Assets
+                                            </div>
+                                            <div v-for="(a, index) in goal.assets" :key="a.id" class="asset-row-item">
+                                                <v-divider v-if="index > 0" class="my-2 border-opacity-5" />
+                                                <div class="d-flex align-center justify-space-between py-2">
+                                                    <div class="d-flex align-center overflow-hidden">
+                                                        <div class="d-flex flex-column">
+                                                            <div class="text-caption font-weight-black text-truncate">
+                                                                {{ a.display_name }}</div>
+                                                            <div
+                                                                class="text-tiny font-weight-bold text-medium-emphasis opacity-70">
+                                                                {{ a.type.split('_').join(' ') }}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="d-flex align-center pl-4">
+                                                        <div class="text-right mr-4">
+                                                            <div class="text-caption font-weight-black">{{
+                                                                formatAmount(a.current_value) }}</div>
+                                                        </div>
+                                                        <v-btn icon variant="text" size="x-small" color="error"
+                                                            class="opacity-30 hover-opacity-100"
+                                                            @click="removeAsset(a.id)">
+                                                            <X :size="14" />
+                                                        </v-btn>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </template>
                                     </div>
                                 </div>
-                            </template>
+                            </div>
+                        </v-card>
+                    </v-col>
+                </v-row>
+            </div>
+            <!-- Goal Create/Edit Dialog -->
+            <v-dialog v-model="showModal" max-width="500" persistent transition="dialog-bottom-transition">
+                <v-card rounded="xl" class="premium-glass-modal elevation-24">
+                    <div class="px-6 pt-6 pb-2 d-flex justify-space-between align-start">
+                        <div>
+                            <div class="text-overline font-weight-black text-primary mb-1 letter-spacing-2">
+                                {{ isEditing ? 'Edit Goal' : 'New Goal' }}
+                            </div>
+                            <h2 class="text-h4 font-weight-black text-content">
+                                {{ isEditing ? 'Refine Strategy' : 'Define Target' }}
+                            </h2>
+                        </div>
+                        <v-btn icon variant="text" @click="showModal = false" density="comfortable"
+                            class="bg-surface-variant bg-opacity-10 opacity-70 hover:opacity-100">
+                            <X :size="20" />
+                        </v-btn>
+                    </div>
 
-                            <!-- Individual Assets -->
-                            <div v-for="(asset, index) in goal.assets" :key="asset.id" class="asset-item"
-                                v-show="expandedGoals[goal.id] || (index + (goal.holdings ? goal.holdings?.length : 0)) < 2">
-                                <div class="asset-info">
-                                    <Building2 v-if="asset.type === 'BANK_ACCOUNT' || asset.type === 'bank_account'"
-                                        :size="16" class="text-green-500" />
-                                    <Coins v-else :size="16" class="text-orange-500" />
-                                    <span class="truncate max-w-[150px]" :title="asset.display_name || asset.name">
-                                        <span class="text-xs text-gray-400 mr-1">{{ (asset.type === 'BANK_ACCOUNT'
-                                            ||
-                                            asset.type === 'bank_account') ?
-                                            'Bank:' : 'Asset:' }}</span>
-                                        {{ asset.display_name || asset.name || asset.type || 'Unnamed Account' }}
-                                    </span>
+                    <v-card-text class="px-6 py-4">
+                        <v-row dense>
+                            <v-col cols="12" class="mb-4">
+                                <div class="d-flex gap-4">
+                                    <div style="width: 80px">
+                                        <label
+                                            class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">ICON</label>
+                                        <v-text-field v-model="goalForm.icon" variant="outlined" density="comfortable"
+                                            hide-details rounded="lg" class="icon-picker-field centered-input"
+                                            bg-color="surface" />
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <label
+                                            class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">GOAL
+                                            NAME</label>
+                                        <v-text-field v-model="goalForm.name" placeholder="e.g. Dream Home"
+                                            variant="outlined" density="comfortable" hide-details rounded="lg"
+                                            bg-color="surface" color="primary" class="font-weight-bold" />
+                                    </div>
                                 </div>
-                                <div class="asset-right">
-                                    <span class="asset-value">{{
-                                        formatAmount(asset.current_value || asset.manual_amount || 0) }}</span>
-                                    <button @click="removeAsset(asset.id)" class="remove-asset">
-                                        <X :size="14" />
-                                    </button>
+                            </v-col>
+
+                            <v-col cols="12" sm="6">
+                                <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">TARGET
+                                    AMOUNT</label>
+                                <v-text-field v-model.number="goalForm.target_amount" type="number" prefix="₹"
+                                    variant="outlined" density="comfortable" hide-details rounded="lg"
+                                    bg-color="surface" color="primary" class="font-weight-black" />
+                            </v-col>
+
+                            <v-col cols="12" sm="6">
+                                <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">TARGET
+                                    DATE</label>
+                                <v-text-field v-model="goalForm.target_date" type="date" variant="outlined"
+                                    density="comfortable" hide-details rounded="lg" bg-color="surface" color="primary"
+                                    class="font-weight-bold" />
+                            </v-col>
+
+                            <v-col cols="12" class="mt-4">
+                                <label
+                                    class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">OWNERSHIP</label>
+                                <v-select v-model="goalForm.owner_id" :items="memberOptions" item-title="title"
+                                    item-value="value" variant="outlined" density="comfortable" hide-details
+                                    rounded="lg" bg-color="surface" placeholder="Assign Owner" color="primary"
+                                    append-inner-icon="mdi-chevron-down">
+                                    <template v-slot:item="{ props, item }">
+                                        <v-list-item v-bind="props" :title="item.raw.title" class="rounded-lg ma-1">
+                                            <template v-slot:prepend>
+                                                <v-avatar size="28" color="primary" variant="tonal" class="mr-2">
+                                                    <span class="text-caption font-weight-black">{{ item.raw.initials
+                                                    }}</span>
+                                                </v-avatar>
+                                            </template>
+                                        </v-list-item>
+                                    </template>
+                                    <template v-slot:selection="{ item }">
+                                        <div class="d-flex align-center">
+                                            <v-avatar size="24" color="primary" variant="tonal" class="mr-2">
+                                                <span class="text-tiny font-weight-black">{{ item.raw.initials }}</span>
+                                            </v-avatar>
+                                            <span class="text-body-2 font-weight-bold">{{ item.raw.title }}</span>
+                                        </div>
+                                    </template>
+                                </v-select>
+                            </v-col>
+
+                            <v-col cols="12" class="mt-4">
+                                <label class="text-caption font-weight-bold text-medium-emphasis mb-3 d-block">THEME
+                                    COLOR</label>
+                                <div class="d-flex flex-wrap justify-space-between align-center px-2">
+                                    <div v-for="c in ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']"
+                                        :key="c" class="color-dot-premium" :style="{ background: c }"
+                                        :class="{ active: goalForm.color === c }" @click="goalForm.color = c">
+                                        <div v-if="goalForm.color === c" class="color-dot-ring"></div>
+                                    </div>
                                 </div>
+                            </v-col>
+                        </v-row>
+                    </v-card-text>
+
+                    <v-card-actions class="px-6 pb-6 pt-2">
+                        <v-btn variant="text" @click="showModal = false" height="48" rounded="lg"
+                            class="px-6 font-weight-bold text-none text-medium-emphasis">
+                            Cancel
+                        </v-btn>
+                        <v-spacer />
+                        <v-btn color="primary" variant="flat" rounded="lg" height="48"
+                            class="px-8 font-weight-black text-none elevation-4" @click="handleGoalSubmit">
+                            <span class="text-white">{{ isEditing ? 'Save Changes' : 'Create Goal' }}</span>
+                        </v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+
+            <!-- Asset Linking Dialog -->
+            <v-dialog v-model="showAssetModal" max-width="450" transition="dialog-bottom-transition">
+                <v-card rounded="xl" class="premium-glass-modal elevation-24">
+                    <div class="px-6 pt-6 pb-2 d-flex justify-space-between align-center">
+                        <div>
+                            <div class="text-overline font-weight-black text-primary mb-1 letter-spacing-2">Link Assets
                             </div>
-
-                            <div v-if="goal.holdings_count === 0 && (!goal.assets || goal.assets.length === 0)"
-                                class="no-assets">
-                                No assets linked yet.
-                            </div>
-
-                            <!-- Expand/Collapse Button -->
-                            <div v-if="(goal.holdings.length + goal.assets.length) > 2" class="expand-section">
-                                <button @click="toggleExpand(goal.id)" class="btn-expand">
-                                    <span v-if="!expandedGoals[goal.id]">
-                                        Show {{ (goal.holdings.length + goal.assets.length) - 2 }} more
-                                        <ChevronDown :size="14" />
-                                    </span>
-                                    <span v-else>
-                                        Show less
-                                        <ChevronUp :size="14" />
-                                    </span>
-                                </button>
-                            </div>
+                            <h2 class="text-h5 font-weight-black text-content">Connect Wealth</h2>
                         </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Goal Create/Edit Modal -->
-        <div v-if="showModal" class="modal-overlay-global">
-            <div class="modal-global glass premium-modal animate-in">
-                <div class="modal-header">
-                    <h2 class="text-2xl font-bold text-slate-800">{{ isEditing ? 'Edit Goal' : 'New Goal' }}</h2>
-                    <button @click="showModal = false" class="close-btn">
-                        <X :size="20" />
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <form @submit.prevent="handleGoalSubmit" class="premium-form">
-                        <div class="form-row mb-6">
-                            <div class="form-group" style="flex: 0 0 100px;">
-                                <label class="field-label">Icon</label>
-                                <div class="icon-input-wrapper">
-                                    <input v-model="goalForm.icon" class="icon-input-clean" maxlength="2" />
-                                </div>
-                            </div>
-                            <div class="form-group flex-1">
-                                <label class="field-label">Goal Name</label>
-                                <input v-model="goalForm.name" class="premium-input" placeholder="e.g. Dream House"
-                                    required />
-                            </div>
-                        </div>
-
-                        <div class="form-group mb-6">
-                            <label class="field-label">Target Amount</label>
-                            <input type="number" v-model.number="goalForm.target_amount" class="premium-input"
-                                placeholder="Amount" required />
-                        </div>
-
-                        <div class="form-group mb-6">
-                            <label class="field-label">Target Date (Optional)</label>
-                            <input type="date" v-model="goalForm.target_date" class="premium-input" />
-                        </div>
-
-                        <div class="form-group mb-8">
-                            <label class="field-label">Goal Color</label>
-                            <div class="color-presets">
-                                <button type="button"
-                                    v-for="c in ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']"
-                                    :key="c" :style="{ backgroundColor: c }" class="color-box"
-                                    :class="{ active: goalForm.color === c }" @click="goalForm.color = c"></button>
-                            </div>
-                        </div>
-
-                        <div class="modal-footer">
-                            <button type="button" @click="showModal = false" class="btn btn-text">Cancel</button>
-                            <button type="submit" class="btn-primary-large">Save Goal</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Asset Linking Modal -->
-        <div v-if="showAssetModal" class="modal-overlay-global" @click.self="showAssetModal = false">
-            <div class="modal-global glass premium-modal animate-in compact-modal">
-                <div class="modal-header">
-                    <h2 class="text-xl font-bold text-slate-800">Add Asset</h2>
-                    <button @click="showAssetModal = false" class="close-btn">
-                        <X :size="20" />
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <div class="asset-type-tabs mb-8">
-                        <button @click="assetForm.type = 'MANUAL'"
-                            :class="{ active: assetForm.type === 'MANUAL' }">Manual
-                            Entry</button>
-                        <button @click="assetForm.type = 'BANK_ACCOUNT'"
-                            :class="{ active: assetForm.type === 'BANK_ACCOUNT' }">Linked Bank</button>
-                        <button @click="assetForm.type = 'MUTUAL_FUND'"
-                            :class="{ active: assetForm.type === 'MUTUAL_FUND' }">Mutual Fund</button>
+                        <v-btn icon variant="text" @click="showAssetModal = false" density="comfortable"
+                            class="bg-surface-variant bg-opacity-10 opacity-70 hover:opacity-100">
+                            <X :size="20" />
+                        </v-btn>
                     </div>
 
-                    <form @submit.prevent="handleAssetSubmit" class="premium-form">
-                        <div v-if="assetForm.type === 'MANUAL'">
-                            <div class="form-group mb-6">
-                                <label class="field-label">Asset Name</label>
-                                <input v-model="assetForm.name" class="premium-input" placeholder="e.g. EPF, RD"
-                                    required />
-                            </div>
-                            <div class="form-group mb-6">
-                                <label class="field-label">Current Amount</label>
-                                <input type="number" v-model.number="assetForm.manual_amount" class="premium-input"
-                                    required />
-                            </div>
-                            <div class="form-group mb-8">
-                                <label class="field-label">Expected Interest Rate (%)</label>
-                                <input type="number" step="0.1" v-model.number="assetForm.interest_rate"
-                                    class="premium-input" />
-                            </div>
+                    <v-card-text class="px-6 py-4">
+                        <div class="d-flex mb-6 pa-1 bg-surface rounded-lg border border-opacity-10 elevation-0">
+                            <v-btn v-for="t in ['MANUAL', 'BANK_ACCOUNT', 'MUTUAL_FUND']" :key="t" variant="flat"
+                                rounded="md" size="small"
+                                class="flex-grow-1 text-none font-weight-black h-36 letter-spacing-0"
+                                :color="assetForm.type === t ? 'primary' : 'transparent'"
+                                :class="assetForm.type === t ? 'elevation-2' : 'text-medium-emphasis opacity-60 hover:opacity-100'"
+                                @click="assetForm.type = t">
+                                <component
+                                    :is="t === 'MANUAL' ? Activity : (t === 'BANK_ACCOUNT' ? Building2 : TrendingUp)"
+                                    :size="14" class="mr-2" />
+                                {{ t === 'BANK_ACCOUNT' ? 'Bank' : (t === 'MUTUAL_FUND' ? 'Funds' : 'Manual') }}
+                            </v-btn>
                         </div>
 
-                        <div v-else-if="assetForm.type === 'BANK_ACCOUNT'">
-                            <div class="form-group mb-8">
-                                <label class="field-label">Select Bank Account</label>
-                                <CustomSelect v-model="assetForm.linked_account_id" :options="accountOptions"
-                                    placeholder="Choose an account" />
+                        <v-form @submit.prevent="handleAssetSubmit">
+                            <div v-if="assetForm.type === 'MANUAL'">
+                                <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">ASSET
+                                    NAME</label>
+                                <v-text-field v-model="assetForm.name" label="Asset Name" placeholder="e.g. EPF, Gold"
+                                    variant="outlined" density="comfortable" hide-details rounded="lg"
+                                    bg-color="surface" class="mb-4" />
+                                <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">CURRENT
+                                    VALUE</label>
+                                <v-text-field v-model.number="assetForm.manual_amount" type="number" margin-top="8"
+                                    prefix="₹" variant="outlined" density="comfortable" hide-details rounded="lg"
+                                    bg-color="surface" class="mb-4" />
+                                <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">INTEREST
+                                    RATE</label>
+                                <v-text-field v-model.number="assetForm.interest_rate" type="number" suffix="%"
+                                    variant="outlined" density="comfortable" hide-details rounded="lg"
+                                    bg-color="surface" />
                             </div>
-                        </div>
 
-                        <div v-else>
-                            <div class="form-group mb-8">
-                                <label class="field-label">Select Mutual Fund</label>
-                                <CustomSelect v-model="assetForm.holding_id" :options="portfolioOptions"
-                                    placeholder="Choose a fund" />
+                            <div v-else-if="assetForm.type === 'BANK_ACCOUNT'">
+                                <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">SELECT
+                                    ACCOUNT</label>
+                                <v-select v-model="assetForm.linked_account_id" :items="accountOptions"
+                                    label="Select Account" variant="outlined" density="comfortable" hide-details
+                                    rounded="lg" bg-color="surface" append-inner-icon="mdi-chevron-down">
+                                    <template v-slot:item="{ props, item }">
+                                        <v-list-item v-bind="props" :title="item.raw.label" class="rounded-lg ma-1">
+                                            <template v-slot:prepend>
+                                                <v-avatar size="28" color="success" variant="tonal" class="mr-2">
+                                                    <Building2 :size="14" />
+                                                </v-avatar>
+                                            </template>
+                                        </v-list-item>
+                                    </template>
+                                    <template v-slot:selection="{ item }">
+                                        <div class="d-flex align-center">
+                                            <Building2 :size="16" class="mr-2 text-success" />
+                                            <span class="text-body-2 font-weight-bold">{{ item.raw.label }}</span>
+                                        </div>
+                                    </template>
+                                </v-select>
                             </div>
-                        </div>
 
-                        <div class="modal-footer">
-                            <button type="button" @click="showAssetModal = false" class="btn btn-text">Cancel</button>
-                            <button type="submit" class="btn-primary-large">Attach Asset</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
+                            <div v-else>
+                                <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">SELECT
+                                    FUND</label>
+                                <v-autocomplete v-model="assetForm.holding_id" :items="portfolioOptions"
+                                    label="Search Mutual Fund" variant="outlined" density="comfortable" hide-details
+                                    rounded="lg" bg-color="surface" append-inner-icon="mdi-chevron-down"
+                                    auto-select-first>
+                                    <template v-slot:item="{ props, item }">
+                                        <v-list-item v-bind="props" :title="item.raw.label" class="rounded-lg ma-1">
+                                            <template v-slot:prepend>
+                                                <v-avatar size="28" color="info" variant="tonal" class="mr-2">
+                                                    <TrendingUp :size="14" />
+                                                </v-avatar>
+                                            </template>
+                                        </v-list-item>
+                                    </template>
+                                </v-autocomplete>
+                            </div>
+                        </v-form>
+                    </v-card-text>
 
-        <!-- DELETE CONFIRMATION MODAL -->
-        <div v-if="showDeleteModal" class="modal-overlay-global" @click.self="showDeleteModal = false">
-            <div class="modal-global glass premium-modal animate-in compact-modal">
-                <div class="modal-header">
-                    <h2 class="text-xl font-bold text-slate-800">Delete Goal?</h2>
-                    <button @click="showDeleteModal = false" class="close-btn">
-                        <X :size="20" />
-                    </button>
-                </div>
-                <div class="modal-body text-center">
-                    <div class="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                        <Trash2 :size="32" class="text-rose-500" />
+                    <v-card-actions class="px-6 pb-6 pt-2">
+                        <v-btn variant="text" @click="showAssetModal = false" height="48" rounded="lg"
+                            class="px-6 font-weight-bold text-none text-medium-emphasis">
+                            Cancel
+                        </v-btn>
+                        <v-spacer />
+                        <v-btn color="primary" variant="flat" rounded="lg" height="48"
+                            class="px-8 font-weight-black text-none elevation-4" @click="handleAssetSubmit">
+                            Link Asset
+                        </v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+
+            <!-- Delete confirmation -->
+            <v-dialog v-model="showDeleteModal" max-width="400">
+                <v-card rounded="xl" class="pa-6 text-center premium-glass-modal">
+                    <div class="d-flex justify-center mb-6">
+                        <div class="error-glow pa-4 rounded-circle">
+                            <Trash2 :size="32" class="text-error" />
+                        </div>
                     </div>
-                    <p class="text-slate-600 mb-8 px-4">Are you sure you want to delete this goal? This action cannot be
-                        undone.</p>
-
-                    <div class="flex gap-4">
-                        <button @click="showDeleteModal = false" class="btn btn-text flex-1">Keep it</button>
-                        <button @click="deleteGoal"
-                            class="flex-1 bg-rose-500 hover:bg-rose-600 text-white font-bold py-3 px-6 rounded-2xl transition-all shadow-lg shadow-rose-200">
-                            Delete Goal
-                        </button>
+                    <h3 class="text-h5 font-weight-black mb-2">Delete Goal?</h3>
+                    <p class="text-medium-emphasis mb-8 px-4">This will permanently remove the goal and all its
+                        asset links.
+                        This
+                        action cannot be undone.</p>
+                    <div class="d-flex gap-4">
+                        <v-btn variant="text" rounded="lg" class="flex-grow-1 font-weight-bold text-none"
+                            @click="showDeleteModal = false">Cancel</v-btn>
+                        <v-btn color="error" variant="flat" rounded="lg" class="flex-grow-1 font-weight-black text-none"
+                            @click="deleteGoal">Delete
+                            Permanently</v-btn>
                     </div>
-                </div>
-            </div>
-        </div>
-
+                </v-card>
+            </v-dialog>
+        </v-container>
     </MainLayout>
 </template>
 
 <style scoped>
-.goals-container {
-    padding-bottom: 5rem;
-}
-
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #e5e7eb;
-}
-
-.header-left {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.transaction-count {
-    font-size: 0.875rem;
-    color: #64748b;
-    font-weight: 600;
-    background: #f1f5f9;
-    padding: 0.375rem 0.75rem;
-    border-radius: 2rem;
-}
-
-.page-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #111827;
-    margin: 0;
-    letter-spacing: -0.01em;
-}
-
-.header-actions {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.btn-premium-primary {
+.dashboard-page {
     position: relative;
-    background: #4f46e5;
-    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-    color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: 1rem;
-    font-weight: 700;
-    font-size: 0.9375rem;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    border: none;
-    cursor: pointer;
-    overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
+    min-height: calc(100vh - 64px);
 }
 
-.btn-premium-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.4);
-}
-
-.btn-glow {
+.mesh-blob {
     position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.6s ease-in-out;
+    filter: blur(80px);
+    opacity: 0.15;
+    border-radius: 50%;
 }
 
-.btn-premium-primary:hover .btn-glow {
-    left: 100%;
+.relative-pos {
+    position: relative;
 }
 
-.goals-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-    gap: 2rem;
+.z-10 {
+    z-index: 10;
 }
 
-.goal-card.glass {
-    background: white;
-    padding: 1.5rem;
-    border-radius: 1.5rem;
-    border: 1px solid #f1f5f9;
-    border-top-width: 5px;
-    border-top-style: solid;
-    border-top-color: transparent;
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+.gap-3 {
+    gap: 12px;
 }
 
-.goal-card.glass:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 25px 30px -10px rgba(0, 0, 0, 0.08);
-    border-color: #e2e8f0;
+.premium-glass-card {
+    background: rgba(var(--v-theme-surface), 0.7) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(128, 128, 128, 0.15) !important;
+    box-shadow: none !important;
 }
 
-.goal-card-header {
-    display: flex;
-    align-items: center;
-    gap: 1.25rem;
+.premium-glass-card:not(.border-dashed) {
+    border-color: rgba(var(--v-border-color), 0.15) !important;
 }
 
-.goal-icon-bg {
-    width: 3rem;
-    height: 3rem;
-    border-radius: 1.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.3s ease;
+.card-actions-overlay {
+    transition: opacity 0.2s ease;
 }
 
-.goal-card.glass:hover .goal-icon-bg {
-    transform: scale(1.1) rotate(-5deg);
+.goal-progress-bar :deep(.v-progress-linear__background) {
+    opacity: 0.1;
 }
 
-.goal-emoji {
+.assets-scroll-area {
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.hover-lift {
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hover-lift:hover {
+    transform: translateY(-2px);
+    background: rgba(var(--v-theme-surface), 1) !important;
+    border-color: rgba(var(--v-theme-primary), 0.3) !important;
+    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1);
+}
+
+.hover-opacity-100 {
+    transition: opacity 0.2s ease;
+}
+
+.hover-opacity-100:hover {
+    opacity: 1 !important;
+}
+
+.leading-tight {
+    line-height: 1.25;
+}
+
+.text-tiny {
+    font-size: 0.65rem;
+}
+
+.assets-scroll-area {
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.assets-scroll-area::-webkit-scrollbar {
+    width: 4px;
+}
+
+.assets-scroll-area::-webkit-scrollbar-thumb {
+    background: rgba(var(--v-theme-primary), 0.2);
+    border-radius: 10px;
+}
+
+.icon-picker-field :deep(input) {
+    text-align: center;
     font-size: 1.5rem;
 }
 
-.goal-title-area {
-    flex: 1;
-}
-
-.goal-title-area h3 {
-    font-size: 1.35rem;
-    font-weight: 800;
-    color: #1e293b;
-    margin: 0;
-    letter-spacing: -0.01em;
-}
-
-.goal-date {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    color: #64748b;
-    margin-top: 0.4rem;
-    font-weight: 500;
-}
-
-.goal-actions {
-    display: flex;
-    gap: 0.625rem;
-}
-
-.action-btn {
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #94a3b8;
-    background: #f8fafc;
-    transition: all 0.2s;
-    border: 1px solid #f1f5f9;
-}
-
-.action-btn:hover {
-    background: #f1f5f9;
-    color: #4f46e5;
-    border-color: #e2e8f0;
-    transform: scale(1.05);
-}
-
-.action-btn.danger:hover {
-    background: #fef2f2;
-    color: #ef4444;
-    border-color: #fee2e2;
-}
-
-.goal-progress-section {
-    background: #f8fafc;
-    padding: 1rem;
-    border-radius: 1rem;
-    border: 1px solid #f1f5f9;
-}
-
-.progress-stats {
-    display: flex;
-    align-items: baseline;
-    gap: 0.625rem;
-    margin-bottom: 1rem;
-}
-
-.amount-current {
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: #0f172a;
-    letter-spacing: -0.02em;
-}
-
-.amount-target {
-    font-size: 0.875rem;
-    color: #64748b;
-    font-weight: 500;
-}
-
-.progress-bar-container {
-    height: 10px;
-    background: #e2e8f0;
-    border-radius: 100px;
-    overflow: hidden;
-    margin-bottom: 0.75rem;
-}
-
-.progress-bar-fill {
-    height: 100%;
-    border-radius: 100px;
-    transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.progress-percentage {
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: #475569;
-}
-
-.remaining {
-    color: #94a3b8;
-    font-weight: 500;
-}
-
-.goal-assets-section h4 {
-    font-size: 0.9375rem;
-    font-weight: 800;
-    color: #334155;
-    margin-bottom: 1rem;
-}
-
-.assets-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-}
-
-.add-asset-link {
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: #4f46e5;
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    background: #f5f3ff;
-    padding: 0.4rem 0.75rem;
-    border-radius: 0.75rem;
-    transition: all 0.2s;
-}
-
-.add-asset-link:hover {
-    background: #4f46e5;
-    color: white;
-    transform: translateY(-1px);
-}
-
-.assets-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-.asset-item {
-    padding: 0.875rem 1rem;
-    background: white;
-    border: 1px solid #f1f5f9;
-    border-radius: 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    transition: all 0.2s;
-}
-
-.asset-item:hover {
-    border-color: #e2e8f0;
-    background: #fafafa;
-}
-
-.asset-info {
-    display: flex;
-    align-items: center;
-    gap: 0.875rem;
-    font-size: 0.875rem;
-    color: #475569;
-    font-weight: 600;
-}
-
-.asset-right {
-    display: flex;
-    align-items: center;
-    gap: 0.875rem;
-}
-
-.asset-value {
-    font-weight: 800;
-    color: #1e293b;
-}
-
-.remove-asset {
-    color: #cbd5e1;
-    transition: all 0.2s;
-    padding: 0.25rem;
-    border-radius: 0.5rem;
-}
-
-.remove-asset:hover {
-    color: #ef4444;
-    background: #fef2f2;
-}
-
-.no-assets {
-    text-align: center;
-    padding: 1.5rem;
-    font-size: 0.875rem;
-    color: #94a3b8;
-    border: 2px dashed #f1f5f9;
-    border-radius: 1.25rem;
-    font-weight: 500;
-}
-
-.expand-section {
-    display: flex;
-    justify-content: center;
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px dashed #f1f5f9;
-}
-
-.btn-expand {
-    background: none;
-    border: none;
-    color: #64748b;
-    font-size: 0.75rem;
-    font-weight: 600;
+.color-dot-premium {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
     cursor: pointer;
-    transition: all 0.2s;
-    padding: 4px 8px;
-    border-radius: 6px;
+    position: relative;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 2px solid transparent;
 }
 
-.btn-expand span {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.btn-expand:hover {
-    color: #4f46e5;
-    background: #f1f5f9;
-}
-
-.form-group-row {
-    display: flex;
-    gap: 1.25rem;
-}
-
-.icon-input-wrapper {
-    background: #f8fafc;
-    border: 2px solid #f1f5f9;
-    border-radius: 1rem;
-    height: 52px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-}
-
-.icon-input-wrapper:focus-within {
-    border-color: #4f46e5;
-    background: white;
-}
-
-.icon-input-clean {
-    background: transparent;
-    border: none;
-    text-align: center;
-    width: 3.5rem;
-    font-size: 1.75rem;
-    outline: none;
-}
-
-.color-presets {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-}
-
-.color-box {
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.75rem;
-    border: 3px solid transparent;
-    cursor: pointer;
-    transition: all 0.2s;
-    padding: 0;
-}
-
-.color-box.active {
-    border-color: #0f172a;
+.color-dot-premium:hover {
     transform: scale(1.1);
 }
 
-.asset-type-tabs {
-    display: flex;
-    background: #f8fafc;
-    padding: 0.375rem;
-    border-radius: 1rem;
-    gap: 0.375rem;
-    border: 1px solid #f1f5f9;
+.color-dot-premium.active {
+    border-color: rgba(var(--v-theme-surface), 1);
+    box-shadow: 0 0 0 2px rgb(var(--v-theme-primary));
 }
 
-.asset-type-tabs button {
-    flex: 1;
-    padding: 0.625rem;
-    font-size: 0.875rem;
-    font-weight: 700;
-    border-radius: 0.75rem;
-    transition: all 0.2s;
-    color: #64748b;
-    border: none;
-}
-
-.asset-type-tabs button.active {
-    background: #ffffff;
-    color: #4f46e5;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-}
-
-.empty-state {
-    text-align: center;
-    padding: 6rem 2rem;
-    background: white;
-    border-radius: 3rem;
-    border: 1px solid #f1f5f9;
-}
-
-.empty-icon {
-    font-size: 5rem;
-    margin-bottom: 1.5rem;
-    filter: drop-shadow(0 10px 15px rgba(0, 0, 0, 0.1));
-}
-
-.empty-state h3 {
-    font-size: 1.75rem;
-    font-weight: 800;
-    color: #1e293b;
-    margin-bottom: 0.75rem;
-}
-
-.loader {
-    width: 48px;
-    height: 48px;
-    border: 4px solid #f1f5f9;
-    border-top: 4px solid #4f46e5;
+.color-dot-ring {
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    border: 2px solid rgba(var(--v-theme-primary), 0.3);
+    animation: pulse-ring 1.5s infinite;
 }
 
-@keyframes spin {
+@keyframes pulse-ring {
     0% {
-        transform: rotate(0deg);
+        transform: scale(0.8);
+        opacity: 1;
     }
 
     100% {
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes animate-in {
-    from {
+        transform: scale(1.2);
         opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
     }
 }
 
-.animate-in {
-    animation: animate-in 0.4s ease-out forwards;
+.centered-input :deep(input) {
+    text-align: center;
+    font-size: 1.25rem;
 }
 
-/* Modal and Form Styles */
-.modal-overlay-global {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(15, 23, 42, 0.4);
-    backdrop-filter: blur(8px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
+.premium-glass-modal {
+    background: rgba(var(--v-theme-surface), 0.85) !important;
+    backdrop-filter: blur(24px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
 }
 
-.modal-global {
-    background: white;
-    border-radius: 2rem;
-    width: 100%;
-    max-width: 550px;
-    box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    /* Removed overflow: hidden to prevent dropdown clipping */
+.color-dot.active {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.5);
+    transform: scale(1.1);
 }
 
-.modal-global.compact-modal {
-    max-width: 480px;
+.premium-glass-modal {
+    background: rgba(var(--v-theme-surface), 0.9) !important;
+    backdrop-filter: blur(30px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.5) !important;
 }
 
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 2rem 2.5rem 1.5rem;
+.error-glow {
+    background: rgba(var(--v-theme-error), 0.1);
+    box-shadow: 0 0 20px rgba(var(--v-theme-error), 0.2);
 }
 
-.close-btn {
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #94a3b8;
-    transition: all 0.2s;
-    background: #f8fafc;
+.h-32 {
+    height: 32px !important;
 }
 
-.close-btn:hover {
-    background: #f1f5f9;
-    color: #475569;
+.letter-spacing-1 {
+    letter-spacing: 1px;
 }
 
-.modal-body {
-    padding: 0 2.5rem 2.5rem;
-    overflow: visible;
-    /* Ensure dropdowns pop out */
+.group-on-hover-scale {
+    transition: transform 0.3s ease;
 }
 
-.field-label {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 700;
-    color: #334155;
-    margin-bottom: 0.75rem;
+.group:hover .group-on-hover-scale {
+    transform: scale(1.1);
 }
 
-.premium-input {
-    width: 100%;
-    padding: 0.875rem 1.25rem;
-    background: #f8fafc;
-    border: 2px solid #f1f5f9;
-    border-radius: 1rem;
-    font-size: 1rem;
-    font-weight: 500;
-    color: #1e293b;
-    transition: all 0.2s;
-    outline: none;
+.border-dashed {
+    border-style: dashed !important;
 }
 
-.premium-input:focus {
-    background: white;
-    border-color: #4f46e5;
-    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+.border-primary {
+    border-color: rgba(var(--v-theme-primary), 0.5) !important;
 }
 
-.form-row {
-    display: flex;
-    gap: 1.5rem;
-}
-
-.modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-    margin-top: 1rem;
-}
-
-.btn-primary-large {
-    background: #4f46e5;
-    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-    color: white;
-    padding: 0.875rem 1.75rem;
-    border-radius: 1rem;
-    font-weight: 700;
-    font-size: 1rem;
-    border: none;
-    cursor: pointer;
-    box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
-    transition: all 0.3s;
-}
-
-.btn-primary-large:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.4);
-}
-
-.btn-text {
-    padding: 0.875rem 1.5rem;
-    border-radius: 1rem;
-    font-weight: 700;
-    color: #64748b;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.btn-text:hover {
-    background: #f1f5f9;
-    color: #1e293b;
-}
-
-@media (max-width: 640px) {
-    .modal-global {
-        width: 95%;
-        margin: 0 auto;
-    }
-
-    .modal-header,
-    .modal-body {
-        padding: 1.5rem;
+@media (max-width: 960px) {
+    .gap-3 {
+        flex-wrap: wrap;
     }
 }
 </style>

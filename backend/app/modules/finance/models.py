@@ -247,6 +247,7 @@ class InvestmentGoal(Base):
     icon = Column(String, default="🎯")
     color = Column(String, default="#3b82f6")
     is_completed = Column(Boolean, default=False)
+    owner_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     holdings = relationship("MutualFundHolding", back_populates="goal")
