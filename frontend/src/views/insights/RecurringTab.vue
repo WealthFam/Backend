@@ -137,7 +137,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
 import { financeApi } from '@/api/client'
-import { Plus, Bell, X, Trash2, Calendar, CreditCard, ChevronDown, CalendarClock, XCircle } from 'lucide-vue-next'
+import { Plus, X, ChevronDown, CalendarClock, XCircle } from 'lucide-vue-next'
 
 const store = useFinanceStore()
 const authStore = useAuthStore()

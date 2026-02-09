@@ -379,8 +379,8 @@ import BaseChart from '@/components/BaseChart.vue'
 import BudgetHistoryChart from '@/components/BudgetHistoryChart.vue'
 import { marked } from 'marked'
 import {
-    Sparkles, Brain, TrendingUp, TrendingDown, Scale,
-    ShieldAlert, CalendarRange, ArrowRight, RefreshCcw, ChevronDown
+    TrendingUp, TrendingDown, Scale,
+    CalendarRange, ArrowRight, RefreshCcw
 } from 'lucide-vue-next'
 
 interface Props {
