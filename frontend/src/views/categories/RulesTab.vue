@@ -28,7 +28,7 @@
                         </v-btn>
                         <v-divider vertical class="mx-1 my-1 opacity-20" />
                         <v-btn variant="text" size="small" rounded="pill" color="primary"
-                            class="text-none font-weight-black px-4" @click="$refs.ruleFileInput.click()">
+                            class="text-none font-weight-black px-4" @click="ruleFileInput?.click()">
                             <template v-slot:prepend>
                                 <Upload :size="16" />
                             </template>

@@ -258,7 +258,13 @@
                             <v-col cols="12">
                                 <v-select v-model="categoryForm.parent_id" label="Parent Category (Optional)"
                                     variant="outlined" rounded="lg" :items="parentOptions" item-title="title"
-                                    item-value="value" hide-details density="comfortable" class="font-weight-bold" />
+                                    item-value="value" hide-details density="comfortable"
+                                    class="font-weight-bold premium-modal-select"
+                                    style="background: rgba(var(--v-theme-surface), 0.7);">
+                                    <template v-slot:append-inner>
+                                        <ChevronDown :size="16" class="text-primary opacity-70" />
+                                    </template>
+                                </v-select>
                             </v-col>
 
                             <v-col cols="12">
@@ -267,7 +273,12 @@
                                         { title: '🔴 Expense', value: 'expense' },
                                         { title: '🟢 Income', value: 'income' },
                                         { title: '🔄 Transfer', value: 'transfer' }
-                                    ]" hide-details density="comfortable" class="font-weight-bold" />
+                                    ]" hide-details density="comfortable" class="font-weight-bold premium-modal-select"
+                                    style="background: rgba(var(--v-theme-surface), 0.7);">
+                                    <template v-slot:append-inner>
+                                        <ChevronDown :size="16" class="text-primary opacity-70" />
+                                    </template>
+                                </v-select>
                             </v-col>
 
                             <v-col cols="12">
@@ -345,16 +356,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useCategoriesStore } from '@/stores/finance/categories'
 import {
-    Search,
-    Plus,
-    Pencil,
-    Trash2,
-    Download,
-    Upload,
-    Folder,
-    X,
-    AlertCircle,
-    Layers
+    Search, Plus, Pencil, Trash2, Folder, Layers,
+    Download, Upload, AlertCircle, X, ChevronDown
 } from 'lucide-vue-next'
 
 const categoriesStore = useCategoriesStore()
@@ -570,6 +573,16 @@ defineExpose({
 
 .border-thin {
     border: 1px solid rgba(var(--v-border-color), 0.15) !important;
+}
+
+.premium-modal-select :deep(.v-field__outline) {
+    --v-field-border-opacity: 0.1;
+    transition: border-color 0.3s ease;
+}
+
+.premium-modal-select:hover :deep(.v-field__outline) {
+    --v-field-border-opacity: 0.4;
+    border-color: rgb(var(--v-theme-primary)) !important;
 }
 
 .transition-all {
