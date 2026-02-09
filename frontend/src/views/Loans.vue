@@ -1,202 +1,295 @@
 <template>
     <MainLayout>
-        <div class="loans-container animate-in">
-            <div class="page-header">
-                <div class="header-left">
-                    <h1 class="page-title">Loans</h1>
-                </div>
-                <div class="header-actions">
-                    <button @click="generatePortfolioInsights" class="btn-compact btn-secondary"
-                        :disabled="insightLoading">
-                        <Sparkles :size="14" />
-                        {{ insightLoading ? 'Analyzing...' : 'AI Analysis' }}
-                    </button>
-                    <button @click="openAddModal" class="btn-compact btn-primary">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M12 5v14M5 12h14" />
-                        </svg>
-                        Add Loan
-                    </button>
-                </div>
+        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
+            <!-- Animated Mesh Background -->
+            <div class="mesh-blob blob-1"
+                style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
+            </div>
+            <div class="mesh-blob blob-2"
+                style="background: rgba(var(--v-theme-secondary), 0.05); width: 400px; height: 400px; bottom: -100px; left: -100px;">
             </div>
 
-            <!-- Summary Stats -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="stat-card">
-                    <h3 class="stat-label">Total Outstanding</h3>
-                    <p class="stat-value">
-                        {{ formatCurrency(totalOutstanding) }}
+            <div class="relative-pos z-10">
+                <!-- Header -->
+                <div class="d-flex flex-column flex-md-row justify-space-between align-md-center mb-8">
+                    <div class="mb-4 mb-md-0">
+                        <h1 class="text-h4 font-weight-black text-content mb-1">Loans</h1>
+                        <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold d-flex align-center">
+                            Manage your debts and repayment schedules
+                        </p>
+                    </div>
+                    <div class="d-flex gap-3 align-center">
+                        <v-btn color="primary" variant="tonal" rounded="pill" height="44" class="px-6 font-weight-bold"
+                            @click="generatePortfolioInsights" :loading="insightLoading">
+                            <Sparkles :size="18" class="mr-2" />
+                            AI Analysis
+                        </v-btn>
+                        <v-btn color="primary" variant="flat" rounded="pill" height="44" class="px-6 font-weight-bold"
+                            @click="openAddModal">
+                            <Plus :size="18" class="mr-2" />
+                            Add Loan
+                        </v-btn>
+                    </div>
+                </div>
+
+                <!-- Summary Stats -->
+                <v-row class="mb-8">
+                    <v-col cols="12" md="4">
+                        <v-card class="premium-glass-card pa-6 h-100" elevation="0">
+                            <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-2">Total
+                                Outstanding</div>
+                            <div class="text-h4 font-weight-black text-content">{{ formatCurrency(totalOutstanding) }}
+                            </div>
+                        </v-card>
+                    </v-col>
+                    <v-col cols="12" md="4">
+                        <v-card class="premium-glass-card pa-6 h-100" elevation="0">
+                            <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-2">Monthly
+                                Commitment</div>
+                            <div class="text-h4 font-weight-black text-content">{{ formatCurrency(totalMonthlyEmi) }}
+                            </div>
+                        </v-card>
+                    </v-col>
+                    <v-col cols="12" md="4">
+                        <v-card class="premium-glass-card pa-6 h-100" elevation="0">
+                            <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-2">Active
+                                Loans</div>
+                            <div class="text-h4 font-weight-black text-content">{{ loans.length }}</div>
+                        </v-card>
+                    </v-col>
+                </v-row>
+
+                <!-- Loading State -->
+                <div v-if="loading" class="d-flex justify-center align-center py-16">
+                    <v-progress-circular indeterminate color="primary" size="64" width="6" />
+                </div>
+
+                <!-- Empty State -->
+                <div v-else-if="loans.length === 0"
+                    class="premium-glass-card d-flex flex-column align-center justify-center py-16 px-10 text-center mx-auto"
+                    style="max-width: 600px; margin-top: 50px;">
+                    <v-avatar color="primary" variant="tonal" size="100" class="mb-8">
+                        <Landmark :size="50" class="text-primary" />
+                    </v-avatar>
+                    <h3 class="text-h4 font-weight-black mb-1">No Active Loans</h3>
+                    <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold mb-8">
+                        Add a loan to start tracking your repayment progress.
                     </p>
+                    <v-btn color="primary" variant="flat" rounded="pill" height="52"
+                        class="px-10 font-weight-black elevation-2" @click="openAddModal">
+                        Add Your First Loan
+                    </v-btn>
                 </div>
-                <div class="stat-card">
-                    <h3 class="stat-label">Monthly EMI Commitment</h3>
-                    <p class="stat-value">
-                        {{ formatCurrency(totalMonthlyEmi) }}
-                    </p>
-                </div>
-                <div class="stat-card">
-                    <h3 class="stat-label">Active Loans</h3>
-                    <p class="stat-value">
-                        {{ loans.length }}
-                    </p>
-                </div>
-            </div>
 
-            <!-- Loans Grid -->
-            <div v-if="loading" class="text-center py-12">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            </div>
+                <!-- Loans Grid -->
+                <v-row v-else class="pb-16">
+                    <!-- Add New Loan Card -->
+                    <v-col cols="12" sm="6" lg="4">
+                        <v-card @click="openAddModal"
+                            class="premium-glass-card h-100 d-flex flex-column justify-center align-center border-dashed border-primary hover-lift group cursor-pointer"
+                            style="border-width: 2px !important; min-height: 240px; background: rgba(var(--v-theme-primary), 0.05)"
+                            rounded="xl">
+                            <v-avatar color="primary" size="64" class="mb-4 elevation-8 group-on-hover-scale"
+                                style="box-shadow: 0 0 20px rgba(var(--v-theme-primary), 0.3)">
+                                <Plus :size="36" color="white" stroke-width="3" />
+                            </v-avatar>
+                            <span class="text-h6 font-weight-black text-primary">Add Loan</span>
+                            <span class="text-caption font-weight-bold opacity-60 text-medium-emphasis">Track a new
+                                debt</span>
+                        </v-card>
+                    </v-col>
 
-            <div v-else-if="loans.length === 0"
-                class="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700">
-                <p class="text-gray-500 dark:text-gray-400 text-lg">No active loans found.</p>
-                <button @click="openAddModal" class="mt-4 text-blue-600 hover:text-blue-700 font-medium">
-                    Add your first loan
-                </button>
-            </div>
+                    <!-- Existing Loans -->
+                    <v-col v-for="loan in loans" :key="loan.id" cols="12" sm="6" lg="4">
+                        <v-card class="premium-glass-card h-100 d-flex flex-column group overflow-hidden hover-lift"
+                            elevation="0" @click="viewDetails(loan.id)" rounded="xl">
+                            <div class="pa-5 flex-grow-1">
+                                <div class="d-flex justify-space-between align-start mb-4">
+                                    <div class="d-flex align-center gap-3">
+                                        <v-avatar size="48" variant="tonal" color="primary" rounded="lg">
+                                            <span class="text-h5">{{ getLoanIcon(loan.loan_type) }}</span>
+                                        </v-avatar>
+                                        <div>
+                                            <div class="text-h6 font-weight-black text-content line-clamp-1">{{
+                                                loan.name }}</div>
+                                            <div class="text-caption font-weight-bold text-medium-emphasis">
+                                                {{ loan.loan_type?.replace('_', ' ') || 'LOAN' }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <v-chip size="small" color="primary" variant="tonal" class="font-weight-bold">
+                                        {{ loan.interest_rate }}% APR
+                                    </v-chip>
+                                </div>
 
-            <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div v-for="loan in loans" :key="loan.id" @click="viewDetails(loan.id)" class="loan-card">
-                    <div class="loan-accent"></div>
+                                <div class="mb-4">
+                                    <div class="d-flex justify-space-between text-caption font-weight-bold mb-1">
+                                        <span class="text-medium-emphasis">Progress</span>
+                                        <span class="text-primary">{{ loan.progress_percentage }}%</span>
+                                    </div>
+                                    <v-progress-linear :model-value="loan.progress_percentage" color="primary"
+                                        height="8" rounded="pill" class="opacity-90"></v-progress-linear>
+                                </div>
 
-                    <div class="loan-card-header">
-                        <div>
-                            <h3 class="loan-name">{{ loan.name }}</h3>
-                            <p class="loan-meta">Due: {{ getNextDueDate(loan.next_emi_date) }}</p>
-                        </div>
-                        <span class="loan-badge">
-                            {{ loan.interest_rate }}% APR
-                        </span>
-                    </div>
-
-                    <div class="loan-type-tag">
-                        <span class="mr-1">{{ getLoanIcon(loan.loan_type) }}</span>
-                        {{ loan.loan_type?.replace('_', ' ') || 'LOAN' }}
-                    </div>
-
-                    <div class="progress-container">
-                        <div class="progress-label-row">
-                            <span class="text-gray-500">Progress</span>
-                            <span class="font-medium text-gray-700">{{ loan.progress_percentage }}%</span>
-                        </div>
-                        <div class="progress-bar-bg">
-                            <div class="progress-bar-fill" :style="{ width: loan.progress_percentage + '%' }"></div>
-                        </div>
-                    </div>
-
-                    <div class="loan-stats-footer">
-                        <div>
-                            <p class="footer-stat-label">Outstanding</p>
-                            <p class="footer-stat-value">{{ formatCurrency(loan.outstanding_balance) }}</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="footer-stat-label">EMI Amount</p>
-                            <p class="footer-stat-value">{{ formatCurrency(loan.emi_amount) }}</p>
-                        </div>
-                    </div>
-                </div>
+                                <v-row dense class="mt-2">
+                                    <v-col cols="6">
+                                        <div class="text-caption text-medium-emphasis font-weight-bold">OUTSTANDING
+                                        </div>
+                                        <div class="text-body-1 font-weight-black text-content">
+                                            {{ formatCurrency(loan.outstanding_balance) }}
+                                        </div>
+                                    </v-col>
+                                    <v-col cols="6" class="text-right">
+                                        <div class="text-caption text-medium-emphasis font-weight-bold">EMI AMOUNT</div>
+                                        <div class="text-body-1 font-weight-black text-content">
+                                            {{ formatCurrency(loan.emi_amount) }}
+                                        </div>
+                                    </v-col>
+                                </v-row>
+                            </div>
+                            <v-divider class="border-opacity-10"></v-divider>
+                            <div class="px-5 py-3 bg-surface-variant bg-opacity-5 d-flex align-center">
+                                <Calendar :size="14" class="text-medium-emphasis mr-2" />
+                                <span class="text-caption font-weight-bold text-medium-emphasis">
+                                    Next Due: {{ getNextDueDate(loan.next_emi_date) }}
+                                </span>
+                            </div>
+                        </v-card>
+                    </v-col>
+                </v-row>
             </div>
 
             <!-- Add Loan Modal -->
-            <div v-if="showModal" class="modal-overlay-global">
-                <div class="modal-global" style="max-width: 550px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title">Add New Loan</h2>
-                        <button class="btn-icon" @click="closeModal">✕</button>
+            <v-dialog v-model="showModal" max-width="600" transition="dialog-bottom-transition">
+                <v-card rounded="xl" class="premium-glass-modal elevation-24">
+                    <div class="px-6 pt-6 pb-2 d-flex justify-space-between align-center">
+                        <div>
+                            <div class="text-overline font-weight-black text-primary mb-1 letter-spacing-2">NEW LOAN
+                            </div>
+                            <h2 class="text-h5 font-weight-black text-content">Add Liability</h2>
+                        </div>
+                        <v-btn icon variant="text" @click="showModal = false" density="comfortable"
+                            class="bg-surface-variant bg-opacity-10 opacity-70 hover:opacity-100">
+                            <X :size="20" />
+                        </v-btn>
                     </div>
 
-                    <form @submit.prevent="submitLoan" style="padding-top: 1rem;">
-                        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                            <div class="form-group">
-                                <label class="form-label">Loan Name</label>
-                                <input v-model="form.name" type="text" required class="form-input"
-                                    placeholder="e.g. Home Loan">
-                            </div>
+                    <v-card-text class="px-6 py-4">
+                        <v-form @submit.prevent="submitLoan">
+                            <v-text-field v-model="form.name" label="Loan Name" placeholder="e.g. Home Loan"
+                                variant="outlined" density="comfortable" hide-details rounded="lg" bg-color="surface"
+                                class="mb-4 font-weight-bold" autofocus>
+                            </v-text-field>
 
-                            <div class="form-group">
-                                <label class="form-label">Loan Type</label>
-                                <CustomSelect v-model="form.loan_type" :options="loanTypeOptions"
-                                    placeholder="Select Loan Type" />
-                            </div>
+                            <v-select v-model="form.loan_type" :items="loanTypeOptions" item-title="label"
+                                item-value="value" label="Loan Type" variant="outlined" density="comfortable"
+                                hide-details rounded="lg" bg-color="surface" class="mb-4"
+                                append-inner-icon="mdi-chevron-down">
+                                <template v-slot:item="{ props, item }">
+                                    <v-list-item v-bind="props" :prepend-icon="undefined">
+                                        <template v-slot:prepend>
+                                            <span class="mr-2 text-h6">{{ item.raw.icon }}</span>
+                                        </template>
+                                    </v-list-item>
+                                </template>
+                                <template v-slot:selection="{ item }">
+                                    <span class="mr-2">{{ item.raw.icon }}</span>
+                                    {{ item.title }}
+                                </template>
+                            </v-select>
 
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                                <div class="form-group">
-                                    <label class="form-label">Principal Amount</label>
-                                    <input v-model.number="form.principal_amount" @input="calculateEmi" type="number"
-                                        required class="form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Interest Rate (%)</label>
-                                    <input v-model.number="form.interest_rate" @input="calculateEmi" type="number"
-                                        step="0.01" required class="form-input">
-                                </div>
-                            </div>
+                            <v-row>
+                                <v-col cols="12" sm="6">
+                                    <v-text-field v-model.number="form.principal_amount" label="Principal Amount"
+                                        type="number" prefix="₹" variant="outlined" density="comfortable" hide-details
+                                        rounded="lg" bg-color="surface" class="font-weight-black"
+                                        @update:model-value="calculateEmi">
+                                    </v-text-field>
+                                </v-col>
+                                <v-col cols="12" sm="6">
+                                    <v-text-field v-model.number="form.interest_rate" label="Interest Rate (%)"
+                                        type="number" suffix="%" variant="outlined" density="comfortable" hide-details
+                                        rounded="lg" bg-color="surface" class="font-weight-bold" step="0.01"
+                                        @update:model-value="calculateEmi">
+                                    </v-text-field>
+                                </v-col>
+                            </v-row>
 
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                                <div class="form-group">
-                                    <label class="form-label">Tenure (Months)</label>
-                                    <input v-model.number="form.tenure_months" @input="calculateEmi" type="number"
-                                        required class="form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Start Date</label>
-                                    <input v-model="form.start_date" type="date" required class="form-input">
-                                </div>
-                            </div>
+                            <v-row class="mt-2">
+                                <v-col cols="12" sm="6">
+                                    <v-text-field v-model.number="form.tenure_months" label="Tenure (Months)"
+                                        type="number" variant="outlined" density="comfortable" hide-details rounded="lg"
+                                        bg-color="surface" @update:model-value="calculateEmi">
+                                    </v-text-field>
+                                </v-col>
+                                <v-col cols="12" sm="6">
+                                    <v-text-field v-model="form.start_date" label="Start Date" type="date"
+                                        variant="outlined" density="comfortable" hide-details rounded="lg"
+                                        bg-color="surface">
+                                    </v-text-field>
+                                </v-col>
+                            </v-row>
 
-                            <div class="form-group">
-                                <label class="form-label">EMI Due Day (1-31)</label>
-                                <input v-model.number="form.emi_date" type="number" min="1" max="31" required
-                                    class="form-input">
-                            </div>
+                            <v-text-field v-model.number="form.emi_date" label="EMI Due Day (1-31)" type="number"
+                                variant="outlined" density="comfortable" hide-details rounded="lg" bg-color="surface"
+                                class="mt-4" min="1" max="31">
+                            </v-text-field>
 
+                            <!-- Calculated EMI Box -->
                             <div
-                                style="background: #eff6ff; padding: 1rem; border-radius: 0.75rem; border: 1px solid #dbeafe;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.875rem; color: #1e40af; font-weight: 600;">Calculated
-                                        EMI</span>
-                                    <span style="font-size: 1.125rem; color: #1e40af; font-weight: 800;">{{
-                                        formatCurrency(form.emi_amount) }}</span>
-                                </div>
+                                class="mt-6 pa-4 bg-primary bg-opacity-10 rounded-lg border border-primary border-opacity-20 d-flex justify-space-between align-center">
+                                <span class="text-subtitle-2 font-weight-bold text-primary">Calculated EMI</span>
+                                <span class="text-h5 font-weight-black text-primary">{{ formatCurrency(form.emi_amount)
+                                }}</span>
                             </div>
-                        </div>
+                        </v-form>
+                    </v-card-text>
 
-                        <div class="modal-footer">
-                            <button type="button" @click="closeModal" class="btn btn-outline"
-                                style="min-width: 100px;">Cancel</button>
-                            <button type="submit" class="btn btn-primary" style="min-width: 140px;">Create Loan</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+                    <v-card-actions class="px-6 pb-6 pt-2">
+                        <v-btn variant="text" @click="showModal = false" height="48" rounded="lg"
+                            class="px-6 font-weight-bold text-none text-medium-emphasis">
+                            Cancel
+                        </v-btn>
+                        <v-spacer />
+                        <v-btn color="primary" variant="flat" rounded="lg" height="48"
+                            class="px-8 font-weight-black text-none elevation-4" @click="submitLoan">
+                            Create Loan
+                        </v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
 
             <!-- AI Insights Modal -->
-            <div v-if="showInsightModal" class="modal-overlay-global">
-                <div class="modal-global" style="max-width: 700px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
-                            <Sparkles class="text-blue-500" />
-                            Debt Portfolio Strategy
-                        </h2>
-                        <button class="btn-icon" @click="showInsightModal = false">✕</button>
+            <v-dialog v-model="showInsightModal" max-width="700">
+                <v-card rounded="xl" class="premium-glass-modal elevation-24">
+                    <div class="px-6 pt-6 pb-2 d-flex justify-space-between align-center">
+                        <div class="d-flex align-center gap-2">
+                            <Sparkles :size="24" class="text-primary" />
+                            <h2 class="text-h5 font-weight-black text-content">Debt Strategy</h2>
+                        </div>
+                        <v-btn icon variant="text" @click="showInsightModal = false" density="comfortable"
+                            class="bg-surface-variant bg-opacity-10 opacity-70 hover:opacity-100">
+                            <X :size="20" />
+                        </v-btn>
                     </div>
 
-                    <div v-if="insightLoading" class="text-center py-12">
-                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                        <p class="mt-4 text-gray-500">Consulting AI advisor...</p>
-                    </div>
+                    <v-card-text class="px-6 py-4" style="max-height: 60vh; overflow-y: auto;">
+                        <div v-if="insightLoading" class="text-center py-12">
+                            <v-progress-circular indeterminate color="primary" size="48" />
+                            <p class="mt-4 text-medium-emphasis font-weight-bold">Analyzing debt portfolio...</p>
+                        </div>
+                        <div v-else class="markdown-body premium-markdown" v-html="renderedInsights"></div>
+                    </v-card-text>
 
-                    <div v-else class="portfolio-insight-content markdown-body" v-html="renderedInsights"
-                        style="max-height: 60vh; overflow-y: auto; padding-right: 1rem;">
-                    </div>
-
-                    <div class="modal-footer" style="margin-top: 1.5rem;">
-                        <button @click="showInsightModal = false" class="btn btn-primary">Got it, thanks!</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+                    <v-card-actions class="px-6 pb-6 pt-2 justify-end">
+                        <v-btn color="primary" variant="flat" rounded="lg" height="48" class="px-8 font-weight-bold"
+                            @click="showInsightModal = false">
+                            Done
+                        </v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+        </v-container>
     </MainLayout>
 </template>
 
@@ -204,11 +297,10 @@
 import { ref, onMounted, computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
-import CustomSelect from '@/components/CustomSelect.vue'
 import { financeApi as api } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useCurrency } from '@/composables/useCurrency'
-import { Sparkles } from 'lucide-vue-next'
+import { Sparkles, Plus, Landmark, Calendar, X } from 'lucide-vue-next'
 import { marked } from 'marked'
 
 const router = useRouter()
@@ -295,30 +387,22 @@ const fetchLoans = async () => {
 }
 
 const openAddModal = () => {
-    // Reset form
     form.name = ''
     form.principal_amount = 0
     form.interest_rate = 0
     form.tenure_months = 12
     form.start_date = new Date().toISOString().split('T')[0]
     form.emi_date = 5
-    form.emi_date = 5
     form.emi_amount = 0
     form.loan_type = 'HOME_LOAN'
     showModal.value = true
 }
 
-const closeModal = () => {
-    showModal.value = false
-}
-
 const submitLoan = async () => {
     try {
-        // We might need to add createLoan to financeApi if not there, but let's use direct post for now or assume it exists
-        // Actually, let's use the explicit endpoint to be safe
         await api.createLoan(form)
         notificationStore.success("Loan created successfully!")
-        closeModal()
+        showModal.value = false
         fetchLoans()
     } catch (e) {
         console.error("Failed to create loan", e)
@@ -335,7 +419,6 @@ const generatePortfolioInsights = async () => {
     showInsightModal.value = true
     insightLoading.value = true
     try {
-        // We'll call the explicit endpoint
         const res = await api.getPortfolioInsights()
         portfolioInsights.value = res.data.insights
     } catch (e) {
@@ -357,266 +440,99 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.loans-container {
-    width: 100%;
-    margin: 0 auto;
-    padding-bottom: 3rem;
-}
-
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-}
-
-.page-title {
-    font-size: 1.75rem;
-    font-weight: 800;
-    color: var(--color-text-main);
-    margin: 0;
-}
-
-.header-actions {
-    display: flex;
-    gap: 1rem;
-}
-
-/* Reuse dashboard styles if possible, else define here */
-.grid {
-    display: grid;
-}
-
-.grid-cols-1 {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
-}
-
-@media (min-width: 768px) {
-    .md\:grid-cols-2 {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .md\:grid-cols-3 {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-@media (min-width: 1024px) {
-    .lg\:grid-cols-3 {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-.gap-6 {
-    gap: 1.5rem;
-}
-
-.mb-8 {
-    margin-bottom: 2rem;
-}
-
-.stat-card {
-    background: white;
-    border-radius: 1rem;
-    padding: 1.5rem;
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--color-border);
-}
-
-.stat-label {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-text-muted);
-}
-
-.stat-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-text-main);
-    margin-top: 0.5rem;
-}
-
-/* Loan Card Styles */
-.loan-card {
-    background: white;
-    border-radius: 1rem;
-    padding: 1.5rem;
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--color-border);
-    cursor: pointer;
-    transition: all 0.2s;
+.dashboard-page {
     position: relative;
-    overflow: hidden;
+    min-height: calc(100vh - 64px);
 }
 
-.loan-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-.loan-accent {
+.mesh-blob {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 4px;
-    height: 100%;
-    background: var(--color-primary);
+    filter: blur(80px);
+    opacity: 0.15;
+    border-radius: 50%;
 }
 
-.loan-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 1rem;
+.relative-pos {
+    position: relative;
 }
 
-.loan-name {
-    font-weight: 700;
-    font-size: 1.125rem;
-    color: var(--color-text-main);
+.z-10 {
+    z-index: 10;
 }
 
-.loan-meta {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-    margin-top: 0.25rem;
+
+.gap-3 {
+    gap: 12px;
 }
 
-.loan-badge {
-    background: var(--color-primary-light);
-    color: var(--color-primary);
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.25rem 0.625rem;
-    border-radius: 2rem;
+.premium-glass-card {
+    background: rgba(var(--v-theme-surface), 0.7) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(128, 128, 128, 0.15) !important;
+    box-shadow: none !important;
 }
 
-.loan-type-tag {
-    display: inline-block;
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    background: var(--color-background);
-    padding: 0.125rem 0.5rem;
-    border-radius: 0.25rem;
-    margin-bottom: 1rem;
+.premium-glass-card:not(.border-dashed) {
+    border-color: rgba(var(--v-border-color), 0.15) !important;
 }
 
-.progress-container {
-    margin-bottom: 1.5rem;
+.hover-lift {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.progress-label-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.75rem;
-    margin-bottom: 0.375rem;
+.hover-lift:hover {
+    transform: translateY(-4px);
+    border-color: rgba(var(--v-theme-primary), 0.3) !important;
+    background: rgba(var(--v-theme-surface), 0.85) !important;
+    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1) !important;
 }
 
-.progress-bar-bg {
-    height: 8px;
-    background: var(--color-background);
-    border-radius: 2rem;
+.border-dashed {
+    border-style: dashed !important;
+}
+
+.group-on-hover-scale {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.group:hover .group-on-hover-scale {
+    transform: scale(1.1);
+}
+
+.premium-glass-modal {
+    background: rgba(var(--v-theme-surface), 0.95) !important;
+    backdrop-filter: blur(24px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.progress-bar-fill {
-    height: 100%;
-    background: var(--color-primary);
-    border-radius: 2rem;
-    transition: width 1s ease-out;
-}
-
-.loan-stats-footer {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--color-border);
-}
-
-.footer-stat-label {
-    font-size: 0.65rem;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    font-weight: 700;
-    letter-spacing: 0.025em;
-}
-
-.footer-stat-value {
-    font-weight: 700;
-    color: var(--color-text-main);
-    font-size: 0.95rem;
-}
-
-/* Modal form adjustments */
-.btn-compact {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid transparent;
-    transition: all 0.2s;
-}
-
-.btn-primary {
-    background: var(--color-primary);
-    color: white;
-}
-
-.btn-primary:hover {
-    background: var(--color-primary-dark);
-}
-
-.btn-secondary {
-    background: white;
-    color: var(--color-primary);
-    border: 1px solid var(--color-primary-light);
-}
-
-.btn-secondary:hover {
-    background: var(--color-primary-light);
-}
-
-.portfolio-insight-content {
-    line-height: 1.6;
-}
-
-.portfolio-insight-content :deep(h1),
-.portfolio-insight-content :deep(h2),
-.portfolio-insight-content :deep(h3) {
+.premium-markdown :deep(h1),
+.premium-markdown :deep(h2),
+.premium-markdown :deep(h3) {
     margin-top: 1.5rem;
     margin-bottom: 0.75rem;
-    font-weight: 700;
+    font-weight: 800;
+    line-height: 1.2;
 }
 
-.portfolio-insight-content :deep(p) {
+.premium-markdown :deep(p) {
     margin-bottom: 1rem;
+    line-height: 1.6;
+    opacity: 0.9;
 }
 
-.portfolio-insight-content :deep(ul) {
+.premium-markdown :deep(ul) {
     padding-left: 1.5rem;
     margin-bottom: 1rem;
 }
 
-.animate-in {
-    animation: fadeIn 0.4s ease-out;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.premium-markdown :deep(li) {
+    margin-bottom: 0.5rem;
 }
 </style>
