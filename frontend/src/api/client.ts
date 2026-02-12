@@ -179,8 +179,8 @@ export const financeApi = {
     getSchemeDetails: (schemeCode: string) => apiClient.get(`/finance/mutual-funds/schemes/${schemeCode}/details`),
     updateHolding: (id: string, data: any) => apiClient.patch(`/finance/mutual-funds/holdings/${id}`, data),
     getAnalytics: (userId?: string) => apiClient.get('/finance/mutual-funds/analytics', { params: { user_id: userId } }),
-    getPerformanceTimeline: (period: string = '1y', granularity: string = '1w', userId?: string) =>
-        apiClient.get('/finance/mutual-funds/analytics/performance-timeline', { params: { period, granularity, user_id: userId } }),
+    getPerformanceTimeline: (period: string = '1y', granularity: string = '1w', userId?: string, schemeCode?: string, holdingId?: string) =>
+        apiClient.get('/finance/mutual-funds/analytics/performance-timeline', { params: { period, granularity, user_id: userId, scheme_code: schemeCode, holding_id: holdingId } }),
     deleteCacheTimeline: () => apiClient.delete('/finance/mutual-funds/analytics/cache'),
     cleanupDuplicateOrders: () => apiClient.post('/finance/mutual-funds/cleanup-duplicates'),
     createFundTransaction: (data: any) => apiClient.post('/finance/mutual-funds/transaction', data),

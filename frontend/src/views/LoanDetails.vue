@@ -64,7 +64,7 @@
                                 <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-1">EMI
                                     Amount</div>
                                 <div class="text-h6 font-weight-black text-content">{{ formatCurrency(loan.emi_amount)
-                                    }}</div>
+                                }}</div>
                             </v-card>
                         </v-col>
                         <v-col cols="6" md="3">
@@ -120,14 +120,14 @@
                             <v-card class="premium-glass-card pa-6 h-100" elevation="0">
                                 <h3 class="text-h6 font-weight-black text-content mb-6">Principal vs Interest</h3>
                                 <div style="height: 300px; position: relative;">
-                                    <Pie v-if="chartData" :data="chartData" :options="chartOptions" />
+                                    <Pie v-if="chartData" :data="chartData as any" :options="chartOptions as any" />
                                 </div>
                                 <div
                                     class="mt-6 text-center pa-4 bg-surface-variant bg-opacity-5 rounded-lg border border-dashed">
                                     <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase">Total
                                         Interest Payable</div>
                                     <div class="text-h5 font-weight-black text-error">{{ formatCurrency(totalInterest)
-                                        }}</div>
+                                    }}</div>
                                 </div>
                             </v-card>
                         </v-col>
@@ -173,7 +173,7 @@
                                                 class="hover-row">
                                                 <td class="font-weight-bold text-caption">{{ item.installment_no }}</td>
                                                 <td class="font-weight-bold text-caption">{{ formatDate(item.due_date)
-                                                    }}</td>
+                                                }}</td>
                                                 <td class="text-right font-weight-black text-body-2">{{
                                                     formatCurrency(item.emi) }}</td>
                                                 <td class="text-right font-weight-bold text-caption text-success">{{
@@ -213,7 +213,7 @@
                                 <div class="text-overline font-weight-black text-primary mb-1 letter-spacing-2">RECORD
                                     PAYMENT</div>
                                 <h2 class="text-h5 font-weight-black text-content">EMI #{{ repaymentForm.installment_no
-                                    }}</h2>
+                                }}</h2>
                             </div>
                             <v-btn icon variant="text" @click="showRepaymentModal = false" density="comfortable"
                                 class="bg-surface-variant bg-opacity-10 opacity-70 hover:opacity-100">
@@ -266,7 +266,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi as api } from '@/api/client'
