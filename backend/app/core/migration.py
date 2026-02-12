@@ -249,6 +249,9 @@ def run_auto_migrations(engine: Engine):
             );
             """))
 
+            # 19. Benchmark Simulation (Absolute Corpus)
+            safe_add_column("portfolio_timeline_cache", "benchmark_value", "NUMERIC(15, 2)")
+
 
             # Explicitly commit the transaction!
             connection.commit()

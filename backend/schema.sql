@@ -276,6 +276,7 @@ CREATE TABLE portfolio_timeline_cache (
 	portfolio_hash VARCHAR NOT NULL, 
 	portfolio_value NUMERIC(15, 2) NOT NULL, 
 	invested_value NUMERIC(15, 2) NOT NULL, 
+	benchmark_value NUMERIC(15, 2), 
 	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
 	PRIMARY KEY (id), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (id)
