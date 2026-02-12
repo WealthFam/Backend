@@ -352,6 +352,7 @@ class PortfolioTimelineCache(Base):
     portfolio_hash = Column(String, nullable=False, index=True)  # Hash of scheme_codes to detect changes
     portfolio_value = Column(Numeric(15, 2), nullable=False)
     invested_value = Column(Numeric(15, 2), nullable=False)
+    benchmark_value = Column(Numeric(15, 2), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Composite index for fast lookups

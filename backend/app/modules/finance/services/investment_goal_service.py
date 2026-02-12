@@ -161,8 +161,27 @@ class InvestmentGoalService:
 
     @staticmethod
     def link_holding_to_goal(db: Session, holding_id: str, goal_id: Optional[str], tenant_id: str) -> bool:
+        # Check for aggregate ID (e.g. group_123456)
+        actual_id = holding_id
+        if holding_id.startswith("group_"):
+            actual_id = holding_id.replace("group_", "")
+        
+        # If actual_id is numeric, it's a scheme_code (aggregate view)
+        if actual_id.isdigit():
+            holdings = db.query(models.MutualFundHolding).filter(
+                models.MutualFundHolding.scheme_code == actual_id,
+                models.MutualFundHolding.tenant_id == tenant_id
+            ).all()
+            if not holdings:
+                return False
+            for h in holdings:
+                h.goal_id = goal_id
+            db.commit()
+            return True
+
+        # Otherwise treat as standard holding ID
         holding = db.query(models.MutualFundHolding).filter(
-            models.MutualFundHolding.id == holding_id,
+            models.MutualFundHolding.id == actual_id,
             models.MutualFundHolding.tenant_id == tenant_id
         ).first()
         if not holding:

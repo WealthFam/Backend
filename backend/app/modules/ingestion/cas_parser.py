@@ -50,7 +50,8 @@ class CASParser:
                         "units": meta.get("units", 0),
                         "nav": meta.get("nav", 0),
                         "amfi": meta.get("amfi"),
-                        "isin": meta.get("isin")
+                        "isin": meta.get("isin"),
+                        "is_synthesized": meta.get("is_synthesized", False)
                     })
 
             return transactions
@@ -101,14 +102,16 @@ class CASParser:
                             f.write(part.get_payload(decode=True))
                             temp_path = f.name
                             
-                            try:
-                                transactions = CASParser.parse_pdf(temp_path, password)
-                                all_found_transactions.extend(transactions)
-                            except Exception:
-                                pass
-                            finally:
-                                if os.path.exists(temp_path):
+                        try:
+                            transactions = CASParser.parse_pdf(temp_path, password)
+                            all_found_transactions.extend(transactions)
+                        except Exception:
+                            pass
+                        finally:
+                            if os.path.exists(temp_path):
+                                try:
                                     os.remove(temp_path)
+                                except: pass
 
             mail.close()
             mail.logout()
