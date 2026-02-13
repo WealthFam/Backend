@@ -66,7 +66,7 @@ export interface TransactionUpdate {
 }
 
 export const financeApi = {
-    getAccounts: (userId?: string) => apiClient.get('/finance/accounts', { params: { user_id: userId } }),
+    getAccounts: (userId?: string, includeUnverified?: boolean) => apiClient.get('/finance/accounts', { params: { user_id: userId, include_unverified: includeUnverified } }),
     createAccount: (data: AccountCreate) => apiClient.post('/finance/accounts', data),
     updateAccount: (id: string, data: AccountUpdate) => apiClient.put(`/finance/accounts/${id}`, data),
     deleteAccount: (id: string) => apiClient.delete(`/finance/accounts/${id}`),
@@ -100,7 +100,7 @@ export const financeApi = {
     importCategories: (data: any[]) => apiClient.post('/finance/categories/import', data),
     exportCategories: () => apiClient.get<any[]>('/finance/categories/export'),
 
-    getExpenseGroups: () => apiClient.get('/finance/expense-groups'),
+    getExpenseGroups: (userId?: string) => apiClient.get('/finance/expense-groups', { params: { user_id: userId } }),
     createExpenseGroup: (data: any) => apiClient.post('/finance/expense-groups', data),
     updateExpenseGroup: (id: string, data: any) => apiClient.put(`/finance/expense-groups/${id}`, data),
     deleteExpenseGroup: (id: string) => apiClient.delete(`/finance/expense-groups/${id}`),

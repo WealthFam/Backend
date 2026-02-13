@@ -1,6 +1,7 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
+import { useAuthStore } from '@/stores/auth'
 import type { RouteLocationNormalized } from 'vue-router'
 
 /**
@@ -16,6 +17,7 @@ export function useTransactionState(
     expenseGroups: Ref<any[]>
 ) {
     const notify = useNotificationStore()
+    const auth = useAuthStore()
 
     // Core State
     const transactions = ref<any[]>([])
@@ -28,15 +30,15 @@ export function useTransactionState(
     const categoryFilter = ref('')
     const startDate = ref<string>('')
     const endDate = ref<string>('')
-    const selectedTimeRange = ref<string>('all')
+    const selectedTimeRange = ref<string>('this-month')
 
     const timeRangeOptions = [
-        { label: 'All Time', value: 'all' },
-        { label: 'Today', value: 'today' },
-        { label: 'This Week', value: 'this-week' },
-        { label: 'This Month', value: 'this-month' },
-        { label: 'Last Month', value: 'last-month' },
-        { label: 'Custom Range', value: 'custom' }
+        { title: 'All Time', value: 'all' },
+        { title: 'Today', value: 'today' },
+        { title: 'This Week', value: 'this-week' },
+        { title: 'This Month', value: 'this-month' },
+        { title: 'Last Month', value: 'last-month' },
+        { title: 'Custom Range', value: 'custom' }
     ]
 
     // Pagination State
@@ -60,14 +62,16 @@ export function useTransactionState(
     async function fetchData() {
         loading.value = true
         try {
-            // Load master data if not already loaded
+            // Load master data if not already loaded OR if we need to refresh based on member
+            // We'll re-fetch accounts if the member changed (handled by watcher in component usually, 
+            // but here we force fetch if empty or we want to be safe)
             if (accounts.value.length === 0) {
                 const [accRes, catRes, budgetRes, loanRes, groupRes] = await Promise.all([
-                    financeApi.getAccounts(),
+                    financeApi.getAccounts(auth.selectedMemberId || undefined),
                     financeApi.getCategories(true),
-                    financeApi.getBudgets(),
-                    financeApi.getLoans(),
-                    financeApi.getExpenseGroups()
+                    financeApi.getBudgets(undefined, undefined, auth.selectedMemberId || undefined),
+                    financeApi.getLoans(auth.selectedMemberId || undefined),
+                    financeApi.getExpenseGroups(auth.selectedMemberId || undefined)
                 ])
                 accounts.value = accRes.data
                 categories.value = catRes.data
@@ -81,6 +85,14 @@ export function useTransactionState(
                 selectedAccount.value = route.query.account_id as string
             }
 
+            // If selectedAccount is NOT in the current accounts list (due to filter), reset it
+            if (selectedAccount.value && accounts.value.length > 0) {
+                const exists = accounts.value.some(a => a.id === selectedAccount.value)
+                if (!exists) {
+                    selectedAccount.value = ''
+                }
+            }
+
             const res = await financeApi.getTransactions(
                 selectedAccount.value || undefined,
                 page.value,
@@ -90,7 +102,8 @@ export function useTransactionState(
                 searchQuery.value || undefined,
                 categoryFilter.value || undefined,
                 txnSortKey.value,
-                txnSortOrder.value
+                txnSortOrder.value,
+                auth.selectedMemberId || undefined
             )
 
             transactions.value = res.data.items

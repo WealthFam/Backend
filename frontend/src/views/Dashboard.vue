@@ -121,7 +121,7 @@
                                     <div class="d-flex align-center gap-2">
                                         <v-avatar size="32" color="surface-variant" variant="tonal">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(b.category).icon
-                                            }}</span>
+                                                }}</span>
                                         </v-avatar>
                                         <span class="text-subtitle-2 font-weight-black text-slate-700">
                                             {{ b.category }}
@@ -171,7 +171,7 @@
                                 </template>
                                 <v-list-item-title class="font-weight-bold text-subtitle-1">{{ txn.description ||
                                     'Transaction'
-                                }}</v-list-item-title>
+                                    }}</v-list-item-title>
                                 <v-list-item-subtitle class="text-caption font-weight-bold text-slate-500 mt-1">
                                     {{ formatDate(txn.date).day }} • {{ txn.account_owner_name || 'Personal' }}
                                 </v-list-item-subtitle>
@@ -201,11 +201,11 @@
                                     <template v-slot:prepend>
                                         <v-avatar size="40" color="surface-variant" variant="tonal" class="mr-4">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(bill.category).icon
-                                            }}</span>
+                                                }}</span>
                                         </v-avatar>
                                     </template>
                                     <v-list-item-title class="font-weight-bold">{{ bill.description
-                                    }}</v-list-item-title>
+                                        }}</v-list-item-title>
                                     <v-list-item-subtitle class="text-caption font-weight-bold text-error">Due {{
                                         formatDate(bill.next_date).day }}</v-list-item-subtitle>
                                     <template v-slot:append>
@@ -540,12 +540,13 @@ async function fetchAllData() {
 }
 
 async function fetchMetadata() {
+    const userId = auth.selectedMemberId || undefined
     try {
         const [catRes, budgetRes, accRes, expRes] = await Promise.all([
             financeApi.getCategories(),
-            financeApi.getBudgets(),
-            financeApi.getAccounts(),
-            financeApi.getExpenseGroups()
+            financeApi.getBudgets(undefined, undefined, userId),
+            financeApi.getAccounts(userId),
+            financeApi.getExpenseGroups(userId)
         ])
         categories.value = catRes.data
         budgets.value = budgetRes.data
@@ -561,7 +562,10 @@ onMounted(async () => {
     await fetchAllData()
 })
 
-watch(() => auth.selectedMemberId, () => fetchAllData())
+watch(() => auth.selectedMemberId, async () => {
+    await fetchMetadata()
+    await fetchAllData()
+})
 </script>
 
 <style scoped>
