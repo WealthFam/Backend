@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
@@ -22,10 +22,18 @@ def create_account(
 
 @router.get("/accounts", response_model=List[schemas.AccountRead])
 def read_accounts(
+    user_id: Optional[str] = None,
+    include_unverified: bool = False,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return AccountService.get_accounts(db, str(current_user.tenant_id), user_role=current_user.role)
+    return AccountService.get_accounts(
+        db, 
+        str(current_user.tenant_id), 
+        owner_id=user_id, 
+        user_role=current_user.role,
+        include_unverified=include_unverified
+    )
 
 @router.put("/accounts/{account_id}", response_model=schemas.AccountRead)
 def update_account(

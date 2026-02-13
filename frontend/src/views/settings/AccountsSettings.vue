@@ -440,7 +440,7 @@ async function fetchData() {
     loading.value = true
     try {
         const [accRes, goalsRes, tenantsRes, usersRes] = await Promise.all([
-            financeApi.getAccounts(),
+            financeApi.getAccounts(undefined, true), // Include unverified accounts for management
             financeApi.getInvestmentGoals(),
             financeApi.getTenants(),
             financeApi.getUsers()
