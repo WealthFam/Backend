@@ -7,7 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import FundPerformanceChart from './mutual-funds/components/FundPerformanceChart.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import {
-    History, Shield, Edit2, ChevronLeft, Check, TrendingUp, TrendingDown,
+    History, Shield, Edit2, ChevronLeft, Check, TrendingUp,
     Target, Briefcase, Globe, Fingerprint, AlertCircle
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
@@ -299,7 +299,7 @@ function isImageUrl(url: string) {
                                             <td class="text-right font-weight-medium text-body-2">{{
                                                 Number(t.units).toFixed(3) }}</td>
                                             <td class="text-right font-weight-medium text-body-2">{{ formatAmount(t.nav)
-                                            }}</td>
+                                                }}</td>
                                             <td class="text-right font-weight-black text-body-2">{{
                                                 formatAmount(t.amount) }}</td>
                                         </tr>
@@ -337,7 +337,7 @@ function isImageUrl(url: string) {
                                     </v-avatar>
                                     <div>
                                         <div class="text-subtitle-1 font-weight-black text-content">{{ holding.goal.name
-                                            }}</div>
+                                        }}</div>
                                         <div class="text-caption font-weight-bold opacity-60">TARGET: {{
                                             formatAmount(holding.goal.target_amount) }}</div>
                                     </div>
@@ -380,7 +380,7 @@ function isImageUrl(url: string) {
                                 <v-avatar color="primary" size="48" variant="tonal" rounded="lg">
                                     <img v-if="isImageUrl(holding.user_avatar)" :src="holding.user_avatar" alt="User" />
                                     <span v-else class="text-h6 font-weight-bold">{{ holding.user_name?.charAt(0)
-                                        }}</span>
+                                    }}</span>
                                 </v-avatar>
                                 <div>
                                     <div class="text-subtitle-1 font-weight-black text-content">{{ holding.user_name ||
@@ -432,7 +432,7 @@ function isImageUrl(url: string) {
                                     <span class="text-caption font-weight-bold text-medium-emphasis">Current
                                         Units</span>
                                     <span class="text-caption font-weight-bold text-content">{{ holding.units.toFixed(3)
-                                    }}</span>
+                                        }}</span>
                                 </div>
                             </div>
                         </v-card>

@@ -33,7 +33,7 @@
 
             <!-- Hover columns (for easier tooltip triggering) -->
             <g class="hover-columns">
-                <rect v-for="(point, index) in dataPoints" :key="`hover-${index}`"
+                <rect v-for="(_point, index) in dataPoints" :key="`hover-${index}`"
                     :x="index === 0 ? padding.left : padding.left + xScale(index) - (chartWidth / (dataPoints.length - 1)) / 2"
                     :y="padding.top" :width="chartWidth / (dataPoints.length - 1)" :height="chartHeight"
                     fill="transparent" style="cursor: pointer;" @mouseenter="showTooltip(index, $event)"

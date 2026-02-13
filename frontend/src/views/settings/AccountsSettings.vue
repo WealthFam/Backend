@@ -1,306 +1,311 @@
 <template>
-    <div class="tab-content animate-in">
+    <div class="animate-in">
         <!-- Account Summary Widgets -->
-        <div class="summary-widgets">
-            <div class="mini-stat-card glass h-glow-primary">
-                <div class="stat-top">
-                    <span class="stat-label">Total Liquid Wealth</span>
-                    <span class="stat-icon-bg gray">⚖️</span>
-                </div>
-                <div class="stat-value">{{ formatAmount(accountMetrics.total) }}</div>
+        <v-row class="mb-6">
+            <v-col cols="12" sm="6" md="3">
+                <v-card class="glass-card h-100 pa-4" elevation="0">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <span class="text-subtitle-2 text-medium-emphasis font-weight-bold text-uppercase ls-1">Total
+                            Liquid</span>
+                        <div class="stat-icon-bg gray">⚖️</div>
+                    </div>
+                    <div class="text-h4 font-weight-black">{{ formatAmount(accountMetrics.total) }}</div>
+                </v-card>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+                <v-card class="glass-card h-100 pa-4" elevation="0">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <span class="text-subtitle-2 text-medium-emphasis font-weight-bold text-uppercase ls-1">Bank
+                            Balance</span>
+                        <div class="stat-icon-bg green">🏦</div>
+                    </div>
+                    <div class="text-h4 font-weight-black">{{ formatAmount(accountMetrics.bank) }}</div>
+                </v-card>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+                <v-card class="glass-card h-100 pa-4" elevation="0">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <span class="text-subtitle-2 text-medium-emphasis font-weight-bold text-uppercase ls-1">Cash on
+                            Hand</span>
+                        <div class="stat-icon-bg yellow">💵</div>
+                    </div>
+                    <div class="text-h4 font-weight-black">{{ formatAmount(accountMetrics.cash) }}</div>
+                </v-card>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+                <v-card class="glass-card h-100 pa-4" elevation="0">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <span class="text-subtitle-2 text-medium-emphasis font-weight-bold text-uppercase ls-1">Credit
+                            Used</span>
+                        <div class="stat-icon-bg red">💳</div>
+                    </div>
+                    <div class="text-h4 font-weight-black">{{ formatAmount(accountMetrics.credit) }}</div>
+                </v-card>
+            </v-col>
+        </v-row>
+
+        <!-- Untrusted Accounts -->
+        <div v-if="untrustedAccounts.length > 0" class="mb-8">
+            <div class="d-flex align-center gap-3 mb-4">
+                <h3 class="text-h6 font-weight-bold text-warning">⚠️ New Detected Accounts</h3>
+                <v-chip color="warning" size="small" variant="flat" class="font-weight-bold">
+                    {{ untrustedAccounts.length }} Action Needed
+                </v-chip>
             </div>
-            <div class="mini-stat-card glass h-glow-success">
-                <div class="stat-top">
-                    <span class="stat-label">Bank Balance</span>
-                    <span class="stat-icon-bg green">🏦</span>
-                </div>
-                <div class="stat-value">{{ formatAmount(accountMetrics.bank) }}</div>
-            </div>
-            <div class="mini-stat-card glass h-glow-warning">
-                <div class="stat-top">
-                    <span class="stat-label">Cash on Hand</span>
-                    <span class="stat-icon-bg yellow">💵</span>
-                </div>
-                <div class="stat-value">{{ formatAmount(accountMetrics.cash) }}</div>
-            </div>
-            <div class="mini-stat-card glass h-glow-danger">
-                <div class="stat-top">
-                    <span class="stat-label">Credit Consumed</span>
-                    <span class="stat-icon-bg red">💳</span>
-                </div>
-                <div class="stat-value">{{ formatAmount(accountMetrics.credit) }}</div>
-            </div>
+
+            <v-row>
+                <v-col v-for="acc in untrustedAccounts" :key="acc.id" cols="12" md="6" lg="4">
+                    <v-card class="glass-card untrusted-border" elevation="0">
+                        <v-card-text>
+                            <div class="d-flex justify-space-between align-start mb-4">
+                                <div class="acc-icon-wrapper" :class="acc.type.toLowerCase()">
+                                    {{ getAccountTypeIcon(acc.type) }}
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <v-btn icon density="comfortable" variant="tonal" color="success"
+                                        @click="openEditAccountModal(acc, true)" title="Verify Account">
+                                        <Check :size="18" />
+                                    </v-btn>
+                                    <v-btn icon density="comfortable" variant="tonal" color="error"
+                                        @click="deleteAccountRequest(acc)" title="Reject / Remove">
+                                        <X :size="18" />
+                                    </v-btn>
+                                </div>
+                            </div>
+
+                            <div class="d-flex align-center gap-2 mb-1">
+                                <span class="text-caption font-weight-bold text-uppercase text-medium-emphasis">{{
+                                    getAccountTypeLabel(acc.type) }}</span>
+                                <v-chip size="x-small" color="grey" variant="flat">Untrusted</v-chip>
+                            </div>
+                            <div class="text-h6 font-weight-bold mb-4 text-truncate">{{ acc.name }}</div>
+
+                            <div class="d-flex justify-space-between align-end">
+                                <div>
+                                    <div class="text-caption font-weight-bold text-medium-emphasis">Balance</div>
+                                    <div class="text-h6 font-weight-black">{{ formatAmount(acc.balance || 0) }}</div>
+                                </div>
+                            </div>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
         </div>
 
-        <!-- Untrusted Accounts (Premium Style) -->
-        <div v-if="untrustedAccounts.length > 0" class="alert-section mb-8">
-            <div class="header-with-badge match-header mb-4">
-                <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: #b45309;">⚠️ New Detected
-                    Accounts</h3>
-                <span class="pulse-status-badge" style="background: #fffbeb; color: #b45309;">{{
-                    untrustedAccounts.length }} Action Needed</span>
-            </div>
+        <!-- Verified Accounts Control Bar -->
+        <div class="d-flex flex-column flex-sm-row align-center justify-space-between gap-4 mb-6">
+            <v-text-field v-model="searchQuery" prepend-inner-icon="mdi-magnify" placeholder="Search accounts..."
+                variant="outlined" density="comfortable" hide-details class="flex-grow-1"
+                style="max-width: 400px; width: 100%;" bg-color="surface"></v-text-field>
 
-            <div class="settings-grid">
-                <div v-for="acc in untrustedAccounts" :key="acc.id"
-                    class="glass-card account-card-premium untrusted-card">
-                    <div class="acc-card-top">
-                        <div class="acc-icon-wrapper" :class="acc.type.toLowerCase()">
-                            {{ getAccountTypeIcon(acc.type) }}
-                        </div>
-                        <div class="acc-actions" style="gap: 0.5rem;">
-                            <button @click="openEditAccountModal(acc, true)" class="btn-icon-subtle success"
-                                title="Verify Account">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2.5">
-                                    <path d="M20 6L9 17l-5-5" />
-                                </svg>
-                            </button>
-                            <button @click="deleteAccountRequest(acc)" class="btn-icon-subtle danger"
-                                title="Reject / Remove">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <path d="M18 6L6 18M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="acc-card-main">
-                        <div class="acc-label-row">
-                            <span class="acc-type">{{ getAccountTypeLabel(acc.type) }}</span>
-                            <span class="status-badge-mini inactive">Untrusted</span>
-                        </div>
-                        <h3 class="acc-name">{{ acc.name }}</h3>
-                    </div>
-
-                    <div class="acc-card-footer">
-                        <div class="acc-balance-group">
-                            <span class="acc-balance-label">Balance</span>
-                            <span class="acc-balance-val">{{ formatAmount(acc.balance || 0) }}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Verified Accounts Control Bar (Search Left, Title Right) -->
-        <div class="account-control-bar mt-8 mb-6">
-            <!-- Search on Left -->
-            <div class="search-bar-premium no-margin" style="flex: 1; max-width: 300px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    class="search-icon">
-                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input type="text" v-model="searchQuery" placeholder="Search accounts..." class="search-input">
-            </div>
-
-            <!-- Title on Right -->
-            <div class="header-with-badge" style="margin-left: auto; display: flex; align-items: center; gap: 0.75rem;">
-                <h3
-                    style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--color-text-main); white-space: nowrap;">
-                    Tracked Accounts</h3>
-                <span class="pulse-status-badge" style="background: #ecfdf5; color: #047857;">{{
-                    verifiedAccounts.length }} Active</span>
+            <div class="d-flex align-center gap-3">
+                <h3 class="text-subtitle-1 font-weight-bold">Tracked Accounts</h3>
+                <v-chip color="success" size="small" variant="flat" class="font-weight-bold">
+                    {{ verifiedAccounts.length }} Active
+                </v-chip>
             </div>
         </div>
 
         <!-- Verified Accounts Grid -->
-        <div class="settings-grid">
-            <div v-for="acc in verifiedAccounts" :key="acc.id" class="glass-card account-card-premium"
-                :class="{ 'verified-highlight': acc.is_verified }" @click="openEditAccountModal(acc)">
-                <div class="acc-card-top">
-                    <div class="acc-icon-wrapper" :class="acc.type.toLowerCase()">
-                        {{ getAccountTypeIcon(acc.type) }}
-                    </div>
-                    <div class="acc-actions">
-                        <!-- Edit Icon replaced button -->
-                        <button class="btn-icon-subtle" title="Edit Options">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2">
-                                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="acc-card-main">
-                    <h3 class="acc-name">{{ acc.name }}</h3>
-                    <div class="acc-meta">
-                        <span class="acc-type">{{ getAccountTypeLabel(acc.type) }}</span>
-                        <span v-if="acc.account_mask" class="acc-mask">••{{ acc.account_mask }}</span>
-
-                        <!-- Goal Linked Badge -->
-                        <span v-if="acc.linked_goals && acc.linked_goals.length > 0" class="goal-linked-badge"
-                            :title="'Linked to: ' + acc.linked_goals.join(', ')">
-                            🎯 {{ acc.linked_goals[0] }}
-                            <span v-if="acc.linked_goals.length > 1">+{{ acc.linked_goals.length - 1
-                                }}</span>
-                        </span>
-                        <span v-else-if="accountGoalMap[acc.id]" class="goal-linked-badge"
-                            :title="'Linked to: ' + accountGoalMap[acc.id].join(', ')">
-                            🎯 {{ accountGoalMap[acc.id][0] }}
-                            <span v-if="accountGoalMap[acc.id].length > 1">+{{ accountGoalMap[acc.id].length
-                                - 1 }}</span>
-                        </span>
-                    </div>
-                    <div class="acc-owner-row mt-3">
-                        <div class="owner-pill">
-                            <span class="owner-avatar-xs">{{ resolveOwnerAvatar(acc) }}</span>
-                            <span class="owner-name-xs">{{ resolveOwnerName(acc) }}</span>
+        <v-row>
+            <v-col v-for="acc in verifiedAccounts" :key="acc.id" cols="12" md="6" lg="4">
+                <v-card class="glass-card account-card h-100" elevation="0"
+                    :class="{ 'verified-highlight': acc.is_verified }" @click="openEditAccountModal(acc)">
+                    <v-card-text class="h-100 d-flex flex-column">
+                        <div class="d-flex justify-space-between align-start mb-4">
+                            <div class="acc-icon-wrapper" :class="acc.type.toLowerCase()">
+                                {{ getAccountTypeIcon(acc.type) }}
+                            </div>
+                            <v-btn icon density="compact" variant="text" color="medium-emphasis">
+                                <Edit2 :size="16" />
+                            </v-btn>
                         </div>
-                    </div>
-                </div>
 
-                <div class="acc-card-footer">
-                    <div class="acc-balance-group">
-                        <span class="acc-balance-label">Current Balance</span>
-                        <span class="acc-balance-val"
-                            :class="{ 'text-red': Number(acc.balance) < 0 && acc.type !== 'CREDIT_CARD' }">
-                            {{ formatAmount(Math.abs(Number(acc.balance || 0)), acc.currency) }}
-                            <span v-if="acc.type === 'CREDIT_CARD'" class="balance-tag">used</span>
-                        </span>
-                    </div>
+                        <div class="mb-auto">
+                            <div class="text-h6 font-weight-bold mb-1 line-clamp-1">{{ acc.name }}</div>
+                            <div class="d-flex align-center gap-2 flex-wrap mb-2">
+                                <span class="text-caption font-weight-bold text-uppercase text-medium-emphasis">{{
+                                    getAccountTypeLabel(acc.type) }}</span>
+                                <v-chip v-if="acc.account_mask" size="x-small" color="grey-lighten-3" variant="flat"
+                                    class="font-weight-bold">
+                                    ••{{ acc.account_mask }}
+                                </v-chip>
+                            </div>
 
-                    <div v-if="acc.type === 'CREDIT_CARD' && acc.credit_limit" class="acc-limit-group">
-                        <div class="limit-bar-bg">
-                            <div class="limit-bar-fill"
-                                :style="{ width: Math.min(((Math.abs(Number(acc.balance || 0))) / Number(acc.credit_limit)) * 100, 100) + '%' }">
+                            <!-- Linked Goals -->
+                            <div v-if="acc.linked_goals?.length || accountGoalMap[acc.id]" class="d-flex gap-1 mb-2">
+                                <v-chip size="x-small" color="indigo-lighten-5"
+                                    class="text-indigo-darken-1 border-indigo">
+                                    🎯 {{ (acc.linked_goals?.[0]) || (accountGoalMap[acc.id]?.[0]) }}
+                                    <span v-if="(acc.linked_goals?.length > 1) || (accountGoalMap[acc.id]?.length > 1)"
+                                        class="ml-1">
+                                        +{{ (acc.linked_goals?.length || accountGoalMap[acc.id]?.length) - 1 }}
+                                    </span>
+                                </v-chip>
+                            </div>
+
+                            <!-- Owner -->
+                            <div class="d-flex align-center gap-2 mt-2">
+                                <v-chip size="small" variant="flat" color="grey-lighten-4" class="px-2">
+                                    <span class="mr-2">{{ resolveOwnerAvatar(acc) }}</span>
+                                    <span class="text-caption font-weight-bold">{{ resolveOwnerName(acc) }}</span>
+                                </v-chip>
                             </div>
                         </div>
-                        <span class="limit-text">{{ Math.round((Math.abs(Number(acc.balance || 0)) /
-                            Number(acc.credit_limit)) * 100) }}% utilized</span>
+
+                        <div class="mt-4 pt-4 border-t">
+                            <div class="d-flex justify-space-between align-end">
+                                <div>
+                                    <div class="text-caption font-weight-bold text-medium-emphasis mb-1">Current Balance
+                                    </div>
+                                    <div class="text-h5 font-weight-black"
+                                        :class="{ 'text-error': Number(acc.balance) < 0 && acc.type !== 'CREDIT_CARD' }">
+                                        {{ formatAmount(Math.abs(Number(acc.balance || 0)), acc.currency) }}
+                                        <span v-if="acc.type === 'CREDIT_CARD'"
+                                            class="text-caption text-medium-emphasis font-weight-bold ml-1">USED</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Credit Limit Bar -->
+                            <div v-if="acc.type === 'CREDIT_CARD' && acc.credit_limit" class="mt-2">
+                                <v-progress-linear
+                                    :model-value="(Math.abs(Number(acc.balance || 0)) / Number(acc.credit_limit)) * 100"
+                                    color="indigo" bg-color="grey-lighten-3" height="6" rounded></v-progress-linear>
+                                <div class="text-caption text-medium-emphasis mt-1 text-right">
+                                    {{ Math.round((Math.abs(Number(acc.balance || 0)) / Number(acc.credit_limit)) * 100)
+                                    }}% utilized
+                                </div>
+                            </div>
+                        </div>
+                    </v-card-text>
+                </v-card>
+            </v-col>
+
+            <!-- Add New Account Card -->
+            <v-col v-if="!searchQuery" cols="12" md="6" lg="4">
+                <v-card class="add-account-card h-100 d-flex flex-column align-center justify-center" elevation="0"
+                    @click="openCreateAccountModal">
+                    <div class="add-icon-circle mb-3">
+                        <Plus :size="32" />
                     </div>
-                </div>
-            </div>
+                    <div class="font-weight-bold">Add New Account</div>
+                </v-card>
+            </v-col>
+        </v-row>
 
-            <!-- Add New Card (Empty State) -->
-            <div v-if="!searchQuery" class="glass-card add-account-card" @click="openCreateAccountModal">
-                <div class="add-icon-circle">+</div>
-                <span>Add New Account</span>
-            </div>
-        </div>
-
-        <div v-if="verifiedAccounts.length === 0 && searchQuery" class="empty-placeholder">
+        <div v-if="verifiedAccounts.length === 0 && searchQuery" class="text-center py-12 text-medium-emphasis">
             <p>No accounts match "{{ searchQuery }}"</p>
         </div>
 
         <!-- Account Modal -->
-        <div v-if="showAccountModal" class="modal-overlay-global">
-            <div class="modal-global glass">
-                <div class="modal-header">
-                    <h2 class="modal-title">{{ editingAccountId ? 'Edit Account' : 'New Account' }}</h2>
-                    <button class="btn-icon-circle" @click="showAccountModal = false">✕</button>
-                </div>
+        <v-dialog v-model="showAccountModal" max-width="600">
+            <v-card class="rounded-xl">
+                <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
+                    <span class="text-h6 font-weight-bold">{{ editingAccountId ? 'Edit Account' : 'New Account'
+                    }}</span>
+                    <v-btn icon="mdi-close" variant="text" density="comfortable"
+                        @click="showAccountModal = false"></v-btn>
+                </v-card-title>
 
-                <form @submit.prevent="handleAccountSubmit" class="form-compact">
-                    <div class="form-group">
-                        <label class="form-label">Account Name</label>
-                        <input v-model="newAccount.name" class="form-input" required placeholder="e.g. HDFC Savings" />
-                    </div>
+                <v-card-text class="pa-4">
+                    <v-form @submit.prevent="handleAccountSubmit">
+                        <v-text-field v-model="newAccount.name" label="Account Name" placeholder="e.g. HDFC Savings"
+                            variant="outlined" class="mb-2" required></v-text-field>
 
+                        <v-row>
+                            <v-col cols="12" sm="6">
+                                <v-select v-model="newAccount.type" label="Type" :items="[
+                                    { title: '🏦 Bank Account', value: 'BANK' },
+                                    { title: '💳 Credit Card', value: 'CREDIT_CARD' },
+                                    { title: '💸 Loan / EMIs', value: 'LOAN' },
+                                    { title: '👛 Wallet / Cash', value: 'WALLET' },
+                                    { title: '📈 Investment', value: 'INVESTMENT' }
+                                ]" variant="outlined"></v-select>
+                            </v-col>
+                            <v-col cols="12" sm="6">
+                                <v-select v-model="newAccount.currency" label="Currency" :items="[
+                                    { title: 'INR - Indian Rupee', value: 'INR' },
+                                    { title: 'USD - US Dollar', value: 'USD' }
+                                ]" variant="outlined"></v-select>
+                            </v-col>
+                        </v-row>
 
-                    <div class="form-row">
-                        <div class="form-group half">
-                            <label class="form-label">Type</label>
-                            <CustomSelect v-model="newAccount.type" :options="[
-                                { label: '🏦 Bank Account', value: 'BANK' },
-                                { label: '💳 Credit Card', value: 'CREDIT_CARD' },
-                                { label: '💸 Loan / EMIs', value: 'LOAN' },
-                                { label: '👛 Wallet / Cash', value: 'WALLET' },
-                                { label: '📈 Investment', value: 'INVESTMENT' }
-                            ]" />
+                        <v-text-field v-model="newAccount.account_mask" label="Account Mask (Last 4 Digits)"
+                            placeholder="e.g. 1234" maxlength="4" variant="outlined" class="mb-2"></v-text-field>
+
+                        <v-select v-model="newAccount.owner_id" label="Account Owner"
+                            :items="familyMembers.map(m => ({ title: m.full_name || m.email, value: m.id }))"
+                            variant="outlined" class="mb-2"></v-select>
+
+                        <v-row>
+                            <v-col :cols="newAccount.type === 'CREDIT_CARD' ? 6 : 12">
+                                <v-text-field v-model.number="newAccount.balance" :label="consumedLimitMsg"
+                                    type="number" step="0.01" variant="outlined"></v-text-field>
+                            </v-col>
+                            <v-col v-if="newAccount.type === 'CREDIT_CARD'" cols="6">
+                                <v-text-field v-model.number="newAccount.credit_limit" label="Total Credit Limit"
+                                    type="number" step="0.01" variant="outlined"></v-text-field>
+                            </v-col>
+                        </v-row>
+
+                        <v-row v-if="newAccount.type === 'CREDIT_CARD'">
+                            <v-col cols="6">
+                                <v-text-field v-model.number="newAccount.billing_day" label="Billing Day (1-31)"
+                                    type="number" min="1" max="31" variant="outlined"></v-text-field>
+                            </v-col>
+                            <v-col cols="6">
+                                <v-text-field v-model.number="newAccount.due_day" label="Due Day (1-31)" type="number"
+                                    min="1" max="31" variant="outlined"></v-text-field>
+                            </v-col>
+                        </v-row>
+
+                        <div class="d-flex justify-space-between align-center py-2 px-1">
+                            <div>
+                                <div class="font-weight-bold">Verified Account</div>
+                                <div class="text-caption text-medium-emphasis">Trust transactions from this source</div>
+                            </div>
+                            <v-switch v-model="newAccount.is_verified" color="success" hide-details></v-switch>
                         </div>
-                        <div class="form-group half">
-                            <label class="form-label">Currency</label>
-                            <CustomSelect v-model="newAccount.currency" :options="[
-                                { label: 'INR - Indian Rupee', value: 'INR' },
-                                { label: 'USD - US Dollar', value: 'USD' }
-                            ]" />
+
+                        <div class="d-flex gap-3 mt-6">
+                            <v-btn variant="text" @click="showAccountModal = false" class="flex-grow-1">Cancel</v-btn>
+                            <v-btn type="submit" color="primary" class="flex-grow-1">Save Changes</v-btn>
                         </div>
-                    </div>
+                    </v-form>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
 
-                    <div class="form-group">
-                        <label class="form-label">Account Mask (Last 4 Digits)</label>
-                        <input v-model="newAccount.account_mask" class="form-input" placeholder="e.g. 1234"
-                            maxlength="4" />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Account Owner</label>
-                        <CustomSelect v-model="newAccount.owner_id"
-                            :options="familyMembers.map(m => ({ label: m.full_name || m.email, value: m.id }))"
-                            placeholder="Select Owner" />
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group" :class="newAccount.type === 'CREDIT_CARD' ? 'half' : 'full'">
-                            <label class="form-label">{{ consumedLimitMsg }}</label>
-                            <input type="number" v-model.number="newAccount.balance" class="form-input" step="0.01" />
-                        </div>
-                        <div v-if="newAccount.type === 'CREDIT_CARD'" class="form-group half">
-                            <label class="form-label">Total Credit Limit</label>
-                            <input type="number" v-model.number="newAccount.credit_limit" class="form-input" step="0.01"
-                                placeholder="e.g. 100000" />
-                        </div>
-                    </div>
-
-                    <div v-if="newAccount.type === 'CREDIT_CARD'" class="form-row">
-                        <div class="form-group half">
-                            <label class="form-label">Billing Day (1-31)</label>
-                            <input type="number" v-model.number="newAccount.billing_day" class="form-input" min="1"
-                                max="31" placeholder="e.g. 15" />
-                        </div>
-                        <div v-if="newAccount.type === 'CREDIT_CARD'" class="form-group half">
-                            <label class="form-label">Due Day (1-31)</label>
-                            <input type="number" v-model.number="newAccount.due_day" class="form-input" min="1" max="31"
-                                placeholder="e.g. 5" />
-                        </div>
-                    </div>
-
-                    <div class="setting-toggle-row">
-                        <div class="toggle-label">
-                            <span class="font-medium">Verified Account</span>
-                            <span class="text-xs text-muted">Trust transactions from this source</span>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" v-model="newAccount.is_verified">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" @click="showAccountModal = false" class="btn-secondary">Cancel</button>
-                        <button type="submit" class="btn-primary-glow">Save Changes</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Delete Account Confirmation -->
-        <div v-if="showAccountDeleteConfirm" class="modal-overlay-global">
-            <div class="modal-global glass alert max-w-md">
-                <div class="modal-icon-header danger">🗑️</div>
-                <h2 class="modal-title">Delete Account?</h2>
-                <div class="alert-info-box mb-6">
-                    <p class="mb-2">You are about to delete <strong>{{ accountToDelete?.name }}</strong>.</p>
-                    <p class="text-danger font-bold" v-if="accountTxCount > 0">
-                        ⚠️ This will also permanently delete {{ accountTxCount }} transactions.
+        <!-- Delete Confirmation -->
+        <v-dialog v-model="showAccountDeleteConfirm" max-width="450">
+            <v-card class="rounded-xl">
+                <v-card-text class="text-center pa-6">
+                    <div class="text-h2 mb-4">🗑️</div>
+                    <div class="text-h5 font-weight-bold mb-2">Delete Account?</div>
+                    <p class="text-body-2 text-medium-emphasis mb-4">
+                        You are about to delete <strong>{{ accountToDelete?.name }}</strong>.
                     </p>
-                    <p v-else class="text-muted">No transactions are currently linked to this account.</p>
-                </div>
-                <p class="text-xs text-muted mb-6">This action cannot be undone. Are you absolutely sure?</p>
+                    <v-alert v-if="accountTxCount > 0" type="warning" variant="tonal" class="mb-4 text-left"
+                        density="compact">
+                        This will also permanently delete {{ accountTxCount }} transactions.
+                    </v-alert>
+                    <p v-else class="text-caption text-medium-emphasis mb-4">No transactions are currently linked to
+                        this account.</p>
 
-                <div class="modal-footer">
-                    <button @click="showAccountDeleteConfirm = false" class="btn-secondary"
-                        :disabled="isDeletingAccount">Cancel</button>
-                    <button @click="confirmAccountDelete" class="btn-danger-glow" :disabled="isDeletingAccount">
-                        {{ isDeletingAccount ? 'Deleting...' : 'Yes, Delete Everything' }}
-                    </button>
-                </div>
-            </div>
-        </div>
+                    <div class="d-flex gap-3">
+                        <v-btn variant="text" @click="showAccountDeleteConfirm = false" class="flex-grow-1"
+                            :disabled="isDeletingAccount">
+                            Cancel
+                        </v-btn>
+                        <v-btn color="error" class="flex-grow-1" @click="confirmAccountDelete"
+                            :loading="isDeletingAccount">
+                            Delete
+                        </v-btn>
+                    </div>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
     </div>
 </template>
 
@@ -309,7 +314,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import CustomSelect from '@/components/CustomSelect.vue'
+import { Check, X, Edit2, Plus } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 const { formatAmount } = useCurrency()
@@ -544,112 +549,55 @@ async function confirmAccountDelete() {
 </script>
 
 <style scoped>
-/* --- Premium Accounts Tab CSS --- */
-.summary-widgets {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.25rem;
-    margin-bottom: 2.5rem;
-}
-
-.mini-stat-card {
-    padding: 1.25rem;
-    border-radius: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+.glass-card {
+    background: rgba(var(--v-theme-surface), 0.8) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(var(--v-border-color), 0.2);
+    border-radius: 16px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.mini-stat-card:hover {
-    transform: translateY(-4px);
-}
-
-.stat-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.stat-label {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.stat-value {
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: #1e293b;
-    letter-spacing: -0.02em;
-}
-
-.stat-icon-bg {
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-}
-
-.stat-icon-bg.gray {
-    background: #f1f5f9;
-}
-
-.stat-icon-bg.green {
-    background: #ecfdf5;
-}
-
-.stat-icon-bg.yellow {
-    background: #fffbeb;
-}
-
-.stat-icon-bg.red {
-    background: #fef2f2;
-}
-
-.h-glow-primary:hover {
-    box-shadow: 0 15px 30px -10px rgba(99, 102, 241, 0.2);
-    border-color: #6366f1;
-}
-
-.h-glow-success:hover {
-    box-shadow: 0 15px 30px -10px rgba(16, 185, 129, 0.2);
-    border-color: #10b981;
-}
-
-.h-glow-warning:hover {
-    box-shadow: 0 15px 30px -10px rgba(245, 158, 11, 0.2);
-    border-color: #f59e0b;
-}
-
-.h-glow-danger:hover {
-    box-shadow: 0 15px 30px -10px rgba(239, 68, 68, 0.2);
-    border-color: #ef4444;
-}
-
-.account-card-premium {
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.account-card {
     cursor: pointer;
 }
 
-.account-card-premium:hover {
-    border-color: #6366f1;
-    transform: translateY(-2px);
+.account-card:hover {
+    border-color: rgb(var(--v-theme-primary));
+    transform: translateY(-4px);
+    box-shadow: 0 10px 20px -10px rgba(var(--v-theme-primary), 0.2);
 }
 
-.acc-card-top {
+.untrusted-border {
+    border-top: 3px solid rgb(var(--v-theme-warning)) !important;
+}
+
+.verified-highlight {
+    border-top: 3px solid rgb(var(--v-theme-success)) !important;
+}
+
+.add-account-card {
+    border: 2px dashed rgba(var(--v-border-color), 0.3);
+    background: transparent !important;
+    transition: all 0.2s;
+    cursor: pointer;
+    min-height: 200px;
+}
+
+.add-account-card:hover {
+    border-color: rgb(var(--v-theme-primary));
+    background: rgba(var(--v-theme-primary), 0.05) !important;
+    color: rgb(var(--v-theme-primary));
+}
+
+.add-icon-circle {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: white;
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .acc-icon-wrapper {
@@ -679,249 +627,60 @@ async function confirmAccountDelete() {
     color: #059669;
 }
 
-.acc-name {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #1e293b;
-    margin: 0;
-}
-
-.acc-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.acc-type {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #64748b;
-    text-transform: uppercase;
-}
-
-.acc-mask {
-    padding: 2px 6px;
-    background: #f1f5f9;
-    border-radius: 6px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    color: #64748b;
-}
-
-.goal-linked-badge {
-    padding: 2px 8px;
-    background: #f5f3ff;
-    color: #6366f1;
-    border-radius: 99px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    border: 1px solid #ddd6fe;
-}
-
-.owner-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 2px 8px 2px 4px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 99px;
-}
-
-.owner-avatar-xs {
-    font-size: 0.75rem;
-}
-
-.owner-name-xs {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #475569;
-}
-
-.acc-balance-group {
-    display: flex;
-    flex-direction: column;
-}
-
-.acc-balance-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #64748b;
-    margin-bottom: 0.125rem;
-}
-
-.acc-balance-val {
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: #0f172a;
-}
-
-.acc-balance-val.text-red {
-    color: #ef4444;
-}
-
-.balance-tag {
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: #94a3b8;
-    text-transform: uppercase;
-    margin-left: 0.25rem;
-}
-
-.acc-limit-group {
-    margin-top: 0.5rem;
-}
-
-.limit-bar-bg {
-    height: 6px;
-    background: #f1f5f9;
-    border-radius: 3px;
-    overflow: hidden;
-    margin-bottom: 0.25rem;
-}
-
-.limit-bar-fill {
-    height: 100%;
-    background: linear-gradient(to right, #6366f1, #ef4444);
-    border-radius: 3px;
-}
-
-.limit-text {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #94a3b8;
-}
-
-.verified-highlight {
-    border-top: 3px solid #10b981 !important;
-}
-
-.untrusted-card {
-    border-top: 3px solid #f59e0b !important;
-}
-
-.btn-icon-subtle {
+.stat-icon-bg {
     width: 32px;
     height: 32px;
-    border-radius: 8px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    cursor: pointer;
-    transition: all 0.2s;
+    font-size: 1rem;
 }
 
-.btn-icon-subtle:hover {
+.stat-icon-bg.gray {
     background: #f1f5f9;
-    color: #6366f1;
 }
 
-.btn-icon-subtle.success {
-    color: #10b981;
+.stat-icon-bg.green {
+    background: #ecfdf5;
 }
 
-.btn-icon-subtle.danger {
-    color: #ef4444;
+.stat-icon-bg.yellow {
+    background: #fffbeb;
 }
 
-.glass-card {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 1rem;
+.stat-icon-bg.red {
+    background: #fef2f2;
 }
 
-.settings-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 0.875rem;
+.ls-1 {
+    letter-spacing: 0.05em;
 }
 
-.add-account-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 150px;
-    border: 2px dashed #e5e7eb;
-    cursor: pointer;
-    transition: all 0.2s;
-    color: #6b7280;
-    gap: 0.75rem;
-    border-radius: 1rem;
+.gap-1 {
+    gap: 4px;
 }
 
-.add-account-card:hover {
-    border-color: #4f46e5;
-    color: #4f46e5;
-    background: #f5f3ff;
+.gap-2 {
+    gap: 8px;
 }
 
-.add-icon-circle {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+.gap-3 {
+    gap: 12px;
 }
 
-.animate-in {
-    animation: slideUp 0.4s ease-out forwards;
+.gap-4 {
+    gap: 16px;
 }
 
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
 }
 
-.account-control-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.search-bar-premium {
-    position: relative;
-}
-
-.search-icon {
-    position: absolute;
-    left: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #9ca3af;
-}
-
-.search-input {
-    width: 100%;
-    padding: 0.5rem 0.75rem 0.5rem 2.25rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: #4f46e5;
-}
-
-.pulse-status-badge {
-    font-size: 0.75rem;
-    padding: 2px 8px;
-    border-radius: 9999px;
-    font-weight: 700;
+.border-indigo {
+    border: 1px solid rgb(var(--v-theme-indigo-lighten-4));
 }
 </style>

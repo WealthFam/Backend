@@ -17,7 +17,7 @@ router = APIRouter(prefix="/v1/patterns", tags=["patterns"])
 class PatternBase(BaseModel):
     bank_name: str = Field(..., min_length=1, max_length=50)
     regex_pattern: str = Field(..., min_length=1)
-    field_mapping: Dict[str, int] = Field(default_factory=dict)
+    field_mapping: Dict[str, Any] = Field(default_factory=dict) # Allow int (group index) or str (static value)
     confidence: Optional[Any] = None
     
     @validator('regex_pattern')
@@ -35,7 +35,7 @@ class PatternCreate(PatternBase):
 
 class PatternUpdate(BaseModel):
     regex_pattern: Optional[str] = None
-    field_mapping: Optional[Dict[str, int]] = None
+    field_mapping: Optional[Dict[str, Any]] = None
     confidence: Optional[Any] = None
     
     @validator('regex_pattern')
@@ -59,7 +59,7 @@ class PatternResponse(PatternBase):
 
 class PatternTest(BaseModel):
     regex_pattern: str
-    field_mapping: Dict[str, int]
+    field_mapping: Dict[str, Any]
     test_text: str
 
 
@@ -223,10 +223,27 @@ async def test_pattern(test: PatternTest):
         
         if match:
             extracted = {}
-            for field_name, group_index in test.field_mapping.items():
-                try:
-                    extracted[field_name] = match.group(group_index)
-                except IndexError:
+            for field_name, value in test.field_mapping.items():
+                # 1. Try int index
+                if isinstance(value, int):
+                    try:
+                        extracted[field_name] = match.group(value)
+                    except IndexError:
+                        extracted[field_name] = None
+                # 2. Try string (named group or static)
+                elif isinstance(value, str):
+                    if value.isdigit():
+                        try:
+                            extracted[field_name] = match.group(int(value))
+                        except IndexError:
+                            extracted[field_name] = None
+                    else:
+                        # Try named group, fallback to static value
+                        try:
+                            extracted[field_name] = match.group(value)
+                        except (IndexError, KeyError):
+                            extracted[field_name] = value
+                else:
                     extracted[field_name] = None
             
             return PatternTestResult(

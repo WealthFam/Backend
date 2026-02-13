@@ -1,324 +1,356 @@
 <template>
-    <div class="tab-content animate-in">
+    <div class="animate-in">
         <!-- Search Bar -->
-        <div class="account-control-bar mb-6">
-            <div class="search-bar-premium no-margin" style="flex: 1; max-width: 300px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    class="search-icon">
-                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input type="text" v-model="searchQuery" placeholder="Search devices..." class="search-input">
-            </div>
-            <div class="header-with-badge" style="margin-left: auto; display: flex; align-items: center; gap: 0.75rem;">
-                <h3
-                    style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--color-text-main); white-space: nowrap;">
-                    Mobile Devices</h3>
-                <span class="pulse-status-badge" style="background: #ecfdf5; color: #047857;">{{
-                    devices.length }} Total</span>
+        <div class="d-flex flex-column flex-sm-row align-center justify-space-between gap-4 mb-6">
+            <v-text-field v-model="searchQuery" prepend-inner-icon="mdi-magnify" placeholder="Search devices..."
+                variant="outlined" density="comfortable" hide-details class="flex-grow-1"
+                style="max-width: 400px; width: 100%;" bg-color="surface"></v-text-field>
+
+            <div class="d-flex align-center gap-3">
+                <h3 class="text-subtitle-1 font-weight-bold">Mobile Devices</h3>
+                <v-chip color="success" size="small" variant="flat" class="font-weight-bold">
+                    {{ devices.length }} Total
+                </v-chip>
             </div>
         </div>
 
         <!-- PENDING DEVICES -->
         <div v-if="devices.some(d => !d.is_approved && !d.is_ignored)" class="mb-8">
-            <div class="device-section-header">
-                <div class="device-section-title">
-                    <span>🔔 Pending Approval</span>
-                    <span class="badge-count warning">{{devices.filter(d => !d.is_approved &&
-                        !d.is_ignored).length}}</span>
-                </div>
+            <div class="d-flex align-center gap-2 mb-4">
+                <h3 class="text-h6 font-weight-bold text-warning">🔔 Pending Approval</h3>
+                <v-chip color="warning" size="small" variant="flat" class="font-weight-bold">
+                    {{devices.filter(d => !d.is_approved && !d.is_ignored).length}}
+                </v-chip>
             </div>
-            <div class="devices-grid-premium">
-                <div v-for="device in devices.filter(d => !d.is_approved && !d.is_ignored)" :key="device.id"
-                    class="device-card-premium unapproved">
-                    <div class="dev-header">
-                        <div class="dev-icon-wrapper"
-                            :class="{ 'android': device.device_name.toLowerCase().includes('pixel') || device.device_name.toLowerCase().includes('samsung'), 'apple': device.device_name.toLowerCase().includes('iphone') || device.device_name.toLowerCase().includes('ipad') }">
-                            {{ (device.device_name.toLowerCase().includes('iphone') ||
-                                device.device_name.toLowerCase().includes('ipad')) ? '' : '📱' }}
-                        </div>
-                        <div class="dev-info-main">
-                            <h3 class="dev-name">{{ device.device_name }}</h3>
-                        </div>
-                    </div>
-                    <div class="dev-meta">
-                        <div class="meta-row">
-                            <div class="flex items-center gap-1">
-                                <span class="meta-val text-xs">
-                                    {{ (getDeviceUser(device.user_id)?.full_name ||
-                                        getDeviceUser(device.user_id)?.email || 'Unassigned').split('@')[0]
-                                    }}
-                                </span>
-                                <button @click="openAssignModal(device)" class="btn-icon-tiny">✎</button>
+            <v-row>
+                <v-col v-for="device in devices.filter(d => !d.is_approved && !d.is_ignored)" :key="device.id" cols="12"
+                    sm="6" md="4" lg="3">
+                    <v-card class="device-card-premium unapproved h-100" elevation="0">
+                        <v-card-text>
+                            <div class="d-flex align-center gap-3 mb-3">
+                                <div class="dev-icon-wrapper"
+                                    :class="{ 'android': device.device_name.toLowerCase().includes('pixel') || device.device_name.toLowerCase().includes('samsung'), 'apple': device.device_name.toLowerCase().includes('iphone') || device.device_name.toLowerCase().includes('ipad') }">
+                                    <Smartphone :size="20"
+                                        v-if="!(device.device_name.toLowerCase().includes('iphone') || device.device_name.toLowerCase().includes('ipad'))" />
+                                    <span v-else class="text-h6"></span>
+                                </div>
+                                <div class="flex-grow-1 overflow-hidden">
+                                    <div class="text-subtitle-2 font-weight-bold text-truncate"
+                                        :title="device.device_name">
+                                        {{ device.device_name }}
+                                    </div>
+                                </div>
                             </div>
-                            <span class="meta-val text-xs text-muted" title="First Seen">
-                                🕒 {{ formatDate(device.created_at).day }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="dev-id-footer">
-                        <div class="dev-id-row">
-                            <span class="dev-id-mono">{{ device.device_id }}</span>
-                            <button @click="copyToClipboard(device.device_id)" class="copy-small-btn"
-                                title="Copy Full ID">📋</button>
-                        </div>
-                    </div>
-                    <div class="dev-actions">
-                        <button @click="toggleDeviceApproval(device)" class="btn-dev primary">Approve</button>
-                        <button @click="toggleDeviceIgnored(device, true)" class="btn-dev secondary">Ignore</button>
-                    </div>
-                </div>
-            </div>
+
+                            <div class="bg-grey-lighten-4 rounded pa-2 mb-3">
+                                <div class="d-flex justify-space-between align-center mb-1">
+                                    <div class="d-flex align-center gap-1 text-caption font-weight-medium">
+                                        <User :size="12" class="text-medium-emphasis" />
+                                        {{ (getDeviceUser(device.user_id)?.full_name ||
+                                            getDeviceUser(device.user_id)?.email || 'Unassigned').split('@')[0] }}
+                                    </div>
+                                    <v-btn icon density="compact" variant="text" size="u-small" color="primary"
+                                        @click="openAssignModal(device)">
+                                        <Edit2 :size="12" />
+                                    </v-btn>
+                                </div>
+                                <div class="text-caption text-medium-emphasis d-flex align-center gap-1">
+                                    <Clock :size="12" /> {{ formatDate(device.created_at).day }}
+                                </div>
+                            </div>
+
+                            <div class="dev-id-footer mb-3">
+                                <div class="d-flex justify-space-between align-center">
+                                    <span class="text-caption font-mono text-medium-emphasis text-truncate">{{
+                                        device.device_id }}</span>
+                                    <v-btn icon density="compact" variant="text" size="small" color="medium-emphasis"
+                                        @click="copyToClipboard(device.device_id)">
+                                        <Copy :size="14" />
+                                    </v-btn>
+                                </div>
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                <v-btn color="primary" variant="flat" size="small" class="flex-grow-1"
+                                    @click="toggleDeviceApproval(device)">
+                                    Approve
+                                </v-btn>
+                                <v-btn color="grey-lighten-3" variant="flat" size="small" class="flex-grow-1"
+                                    @click="toggleDeviceIgnored(device, true)">
+                                    Ignore
+                                </v-btn>
+                            </div>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
         </div>
 
         <!-- ACTIVE DEVICES -->
-        <div class="device-section-header">
-            <div class="device-section-title">
-                <span>✅ Active Devices</span>
-                <span class="badge-count">{{devices.filter(d => d.is_approved).length}}</span>
-            </div>
+        <div class="d-flex align-center gap-2 mb-4">
+            <h3 class="text-h6 font-weight-bold display-1">✅ Active Devices</h3>
+            <v-chip color="grey-lighten-3" size="small" variant="flat" class="font-weight-bold">
+                {{devices.filter(d => d.is_approved).length}}
+            </v-chip>
         </div>
 
-        <div class="devices-grid-premium mb-12">
-            <div v-for="device in devices.filter(d => d.is_approved)" :key="device.id" class="device-card-premium"
-                :class="{
+        <v-row class="mb-12">
+            <v-col v-for="device in devices.filter(d => d.is_approved)" :key="device.id" cols="12" sm="6" md="4" lg="3">
+                <v-card class="device-card-premium h-100" elevation="0" :class="{
                     'ignored': device.is_ignored,
                     'online-accent': isOnline(device.last_seen_at),
                     'offline-accent': !isOnline(device.last_seen_at)
                 }">
-                <div class="dev-header">
-                    <div class="dev-icon-wrapper"
-                        :class="{ 'android': device.device_name.toLowerCase().includes('pixel') || device.device_name.toLowerCase().includes('samsung'), 'apple': device.device_name.toLowerCase().includes('iphone') || device.device_name.toLowerCase().includes('ipad') }">
-                        {{ (device.device_name.toLowerCase().includes('iphone') ||
-                            device.device_name.toLowerCase().includes('ipad')) ? '' : '📱' }}
-                    </div>
-                    <div class="dev-info-main">
-                        <h3 class="dev-name">{{ device.device_name }}</h3>
-                    </div>
-                </div>
-
-                <div class="dev-meta">
-                    <div class="meta-row">
-                        <div class="flex items-center gap-2">
-                            <span class="meta-val p-0 text-xs flex items-center gap-1">
-                                <img v-if="getDeviceUser(device.user_id)?.avatar?.length > 4"
-                                    :src="getDeviceUser(device.user_id)?.avatar" class="w-4 h-4 rounded-full" />
-                                {{ getDeviceUser(device.user_id)?.full_name ||
-                                    getDeviceUser(device.user_id)?.email || 'Unassigned' }}
-                            </span>
-                            <button @click="openAssignModal(device)" class="btn-icon-tiny">✎</button>
+                    <v-card-text>
+                        <div class="d-flex align-center gap-3 mb-3">
+                            <div class="dev-icon-wrapper"
+                                :class="{ 'android': device.device_name.toLowerCase().includes('pixel') || device.device_name.toLowerCase().includes('samsung'), 'apple': device.device_name.toLowerCase().includes('iphone') || device.device_name.toLowerCase().includes('ipad') }">
+                                <Smartphone :size="20"
+                                    v-if="!(device.device_name.toLowerCase().includes('iphone') || device.device_name.toLowerCase().includes('ipad'))" />
+                                <span v-else class="text-h6"></span>
+                            </div>
+                            <div class="flex-grow-1 overflow-hidden">
+                                <div class="text-subtitle-2 font-weight-bold text-truncate" :title="device.device_name">
+                                    {{ device.device_name }}
+                                </div>
+                            </div>
                         </div>
-                        <span class="meta-val text-xs text-muted" title="Last Synchronization">
-                            Sync: {{ formatDate(device.last_seen_at || device.created_at).meta }}
-                        </span>
-                    </div>
-                </div>
-                <div class="dev-id-footer">
-                    <div class="dev-id-row">
-                        <span class="dev-id-mono">{{ device.device_id }}</span>
-                        <button @click="copyToClipboard(device.device_id)" class="copy-small-btn"
-                            title="Copy Full ID">📋</button>
-                    </div>
-                </div>
 
-                <div class="dev-actions">
-                    <button @click="toggleDeviceEnabled(device)" class="btn-dev secondary">
-                        {{ device.is_enabled ? 'Pause' : 'Resume' }}
-                    </button>
-                    <button @click="deleteDeviceRequest(device)" class="btn-dev danger"
-                        style="flex: 0 0 2.25rem;">🗑️</button>
-                </div>
-            </div>
+                        <div class="bg-grey-lighten-5 rounded pa-2 mb-3 border">
+                            <div class="d-flex justify-space-between align-center mb-1">
+                                <div class="d-flex align-center gap-1 text-caption font-weight-medium">
+                                    <v-avatar size="16" class="mr-1">
+                                        <v-img v-if="getDeviceUser(device.user_id)?.avatar?.length > 4"
+                                            :src="getDeviceUser(device.user_id)?.avatar" cover></v-img>
+                                        <span v-else class="text-caption">👤</span>
+                                    </v-avatar>
+                                    {{ (getDeviceUser(device.user_id)?.full_name || getDeviceUser(device.user_id)?.email
+                                    || 'Unassigned').split('@')[0] }}
+                                </div>
+                                <v-btn icon density="compact" variant="text" size="x-small" color="primary"
+                                    @click="openAssignModal(device)">
+                                    <Edit2 :size="12" />
+                                </v-btn>
+                            </div>
+                            <div class="text-caption text-medium-emphasis d-flex align-center gap-1"
+                                :title="'Last Synchronization: ' + formatDate(device.last_seen_at || device.created_at).full">
+                                <RefreshCw :size="10" /> {{ formatDate(device.last_seen_at || device.created_at).meta }}
+                            </div>
+                        </div>
 
-            <div v-if="devices.filter(d => d.is_approved).length === 0" class="empty-placeholder col-span-full">
-                <div class="empty-state-content">
-                    <div class="empty-icon-large">📱</div>
-                    <h3>No Devices Connected</h3>
-                    <p>Login from the mobile app to see your devices here.</p>
+                        <div class="dev-id-footer mb-3">
+                            <div class="d-flex justify-space-between align-center">
+                                <span class="text-caption font-mono text-medium-emphasis text-truncate">{{
+                                    device.device_id }}</span>
+                                <v-btn icon density="compact" variant="text" size="small" color="medium-emphasis"
+                                    @click="copyToClipboard(device.device_id)">
+                                    <Copy :size="14" />
+                                </v-btn>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <v-btn :color="device.is_enabled ? 'grey-lighten-3' : 'success'" variant="flat" size="small"
+                                class="flex-grow-1" @click="toggleDeviceEnabled(device)">
+                                {{ device.is_enabled ? 'Pause' : 'Resume' }}
+                            </v-btn>
+                            <v-btn color="error" variant="tonal" size="small" style="min-width: 36px; padding: 0;"
+                                @click="deleteDeviceRequest(device)">
+                                <Trash2 :size="14" />
+                            </v-btn>
+                        </div>
+                    </v-card-text>
+                </v-card>
+            </v-col>
+
+            <v-col v-if="devices.filter(d => d.is_approved).length === 0" cols="12">
+                <div class="text-center py-12 text-medium-emphasis">
+                    <div class="text-h2 mb-2">📱</div>
+                    <h3 class="text-subtitle-1 font-weight-bold">No Devices Connected</h3>
+                    <p class="text-body-2">Login from the mobile app to see your devices here.</p>
                 </div>
-            </div>
-        </div>
+            </v-col>
+        </v-row>
 
         <!-- IGNORED DEVICES -->
         <div v-if="devices.some(d => d.is_ignored)" class="mt-8">
-            <div class="device-section-header">
-                <div class="device-section-title text-muted">
-                    <span>🚫 Ignored Devices</span>
-                </div>
+            <div class="d-flex align-center gap-2 mb-4 text-medium-emphasis opacity-70">
+                <h3 class="text-subtitle-2 font-weight-bold text-uppercase">🚫 Ignored Devices</h3>
             </div>
-            <div class="devices-grid-premium">
-                <div v-for="device in devices.filter(d => d.is_ignored)" :key="device.id"
-                    class="device-card-premium ignored">
-                    <div class="dev-header">
-                        <div class="dev-icon-wrapper">
-                            📱
-                        </div>
-                        <div class="dev-info-main">
-                            <h3 class="dev-name text-muted">{{ device.device_name }}</h3>
-                            <span class="dev-id-mono">{{ device.device_id }}</span>
-                        </div>
-                        <div class="status-indicator">Ignored</div>
-                    </div>
-                    <div class="dev-actions">
-                        <button @click="toggleDeviceIgnored(device, false)" class="btn-dev secondary">Restore</button>
-                        <button @click="deleteDeviceRequest(device)" class="btn-dev danger">Delete
-                            Forever</button>
-                    </div>
-                </div>
-            </div>
+            <v-row>
+                <v-col v-for="device in devices.filter(d => d.is_ignored)" :key="device.id" cols="12" sm="6" md="4"
+                    lg="3">
+                    <v-card class="device-card-premium ignored h-100" elevation="0">
+                        <v-card-text>
+                            <div class="d-flex align-center gap-3 mb-3">
+                                <div class="dev-icon-wrapper">
+                                    <Smartphone :size="20" class="text-medium-emphasis" />
+                                </div>
+                                <div class="flex-grow-1 overflow-hidden">
+                                    <div class="text-subtitle-2 font-weight-bold text-medium-emphasis text-truncate">{{
+                                        device.device_name }}</div>
+                                    <div class="text-caption font-mono text-disabled text-truncate">{{ device.device_id
+                                        }}</div>
+                                </div>
+                                <v-chip size="x-small" color="grey" variant="flat">Ignored</v-chip>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <v-btn color="grey-lighten-3" variant="flat" size="small" class="flex-grow-1"
+                                    @click="toggleDeviceIgnored(device, false)">
+                                    Restore
+                                </v-btn>
+                                <v-btn color="error" variant="tonal" size="small" class="flex-grow-1"
+                                    @click="deleteDeviceRequest(device)">
+                                    Delete
+                                </v-btn>
+                            </div>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
         </div>
 
         <!-- RECENT ACTIVITY LOG -->
-        <div
-            class="activity-log-section mt-12 bg-white/30 backdrop-blur-md rounded-2xl border border-white/20 p-6 overflow-hidden">
-            <div class="flex items-center justify-between mb-6">
-                <div class="flex items-center gap-4">
-                    <h3 class="text-lg font-bold flex items-center gap-2">
-                        <span class="bg-indigo-100 text-indigo-600 p-2 rounded-lg text-sm">📋</span>
-                        Recent Activity Log
-                    </h3>
-                    <button v-if="selectedEvents.length > 0" @click="handleBulkDeleteEvents"
-                        class="bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg text-xs font-bold border border-rose-100 transition-all hover:bg-rose-100 flex items-center gap-2 animate-in slide-in-from-left">
-                        🗑️ Delete {{ selectedEvents.length }} Selected
-                    </button>
+        <v-card class="mt-12 glass-card" elevation="0">
+            <v-card-title class="d-flex align-center justify-space-between py-4 px-6">
+                <div class="d-flex align-center gap-3">
+                    <v-avatar color="indigo-lighten-5" variant="flat" size="40" rounded>
+                        <ClipboardList :size="24" class="text-indigo" />
+                    </v-avatar>
+                    <div>
+                        <div class="text-subtitle-1 font-weight-bold">Recent Activity Log</div>
+                    </div>
+                    <v-btn v-if="selectedEvents.length > 0" color="error" variant="tonal" size="small" class="ml-4"
+                        @click="handleBulkDeleteEvents" :loading="isDeletingEvents">
+                        Delete {{ selectedEvents.length }} Selected
+                    </v-btn>
                 </div>
-                <div class="flex items-center gap-2">
-                    <span class="text-[10px] text-muted font-mono bg-gray-100 px-2 py-1 rounded">Total:
-                        {{ eventPagination.total }}</span>
-                    <button @click="fetchIngestionEvents(undefined, true)" class="btn-icon-circle"
-                        title="Refresh Log">🔄</button>
+                <div class="d-flex align-center gap-2">
+                    <v-chip size="small" variant="flat" color="grey-lighten-3" class="font-mono">
+                        Total: {{ eventPagination.total }}
+                    </v-chip>
+                    <v-btn icon variant="text" density="comfortable" @click="fetchIngestionEvents(undefined, true)">
+                        <RefreshCw :size="16" />
+                    </v-btn>
                 </div>
-            </div>
+            </v-card-title>
 
-            <div class="overflow-x-auto min-h-[300px]">
-                <table class="w-full text-left text-sm">
-                    <thead class="text-muted border-b border-gray-100">
-                        <tr>
-                            <th class="pb-3 w-8">
-                                <input type="checkbox" @change="toggleSelectAllEvents"
-                                    :checked="selectedEvents.length === ingestionEvents.length && ingestionEvents.length > 0"
-                                    class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                            </th>
-                            <th class="pb-3 pr-4 font-semibold">Timestamp</th>
-                            <th class="pb-3 pr-4 font-semibold">Event</th>
-                            <th class="pb-3 pr-4 font-semibold">Device</th>
-                            <th class="pb-3 pr-4 font-semibold">Status</th>
-                            <th class="pb-3 pr-4 font-semibold">Message</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-50">
-                        <tr v-for="event in ingestionEvents" :key="event.id"
-                            class="hover:bg-white/40 transition-colors group">
-                            <td class="py-3">
-                                <input type="checkbox" :value="event.id" :checked="selectedEvents.includes(event.id)"
-                                    @change="selectedEvents.includes(event.id) ? selectedEvents = selectedEvents.filter(id => id !== event.id) : selectedEvents.push(event.id)"
-                                    class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                            </td>
-                            <td class="py-3 pr-4 whitespace-nowrap text-xs">
-                                {{ formatDate(event.created_at).meta }}
-                            </td>
-                            <td class="py-3 pr-4">
-                                <span
-                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-100">
-                                    {{ event.event_type.replace('_', ' ') }}
-                                </span>
-                            </td>
-                            <td class="py-3 pr-4 text-xs font-mono text-muted">
-                                {{ event.device_id }}
-                            </td>
-                            <td class="py-3 pr-4">
-                                <span :class="{
-                                    'text-emerald-600 bg-emerald-50': event.status === 'success',
-                                    'text-amber-600 bg-amber-50': event.status === 'warning',
-                                    'text-rose-600 bg-rose-50': event.status === 'error',
-                                    'text-slate-600 bg-slate-50': event.status === 'skipped'
-                                }" class="px-2 py-0.5 rounded-full text-[10px] font-bold">
-                                    {{ event.status }}
-                                </span>
-                            </td>
-                            <td class="py-3 pr-4 max-w-xs truncate text-xs" :title="event.message">
-                                {{ event.message }}
-                            </td>
-                        </tr>
-                        <tr v-if="ingestionEvents.length === 0">
-                            <td colspan="6" class="py-12 text-center text-muted italic">
-                                <div class="flex flex-col items-center gap-2">
-                                    <span class="text-2xl">🔍</span>
-                                    No activity logs found.
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <v-divider></v-divider>
 
-            <!-- Pagination Controls -->
+            <v-table class="bg-transparent">
+                <thead>
+                    <tr>
+                        <th class="width-40 px-4">
+                            <v-checkbox-btn
+                                :model-value="selectedEvents.length === ingestionEvents.length && ingestionEvents.length > 0"
+                                @update:model-value="toggleSelectAllEvents" color="primary"></v-checkbox-btn>
+                        </th>
+                        <th class="text-caption font-weight-bold text-medium-emphasis text-uppercase">Timestamp</th>
+                        <th class="text-caption font-weight-bold text-medium-emphasis text-uppercase">Event</th>
+                        <th class="text-caption font-weight-bold text-medium-emphasis text-uppercase">Device</th>
+                        <th class="text-caption font-weight-bold text-medium-emphasis text-uppercase">Status</th>
+                        <th class="text-caption font-weight-bold text-medium-emphasis text-uppercase">Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="event in ingestionEvents" :key="event.id" class="hover-row">
+                        <td class="px-4">
+                            <v-checkbox-btn :model-value="selectedEvents.includes(event.id)"
+                                @update:model-value="selectedEvents.includes(event.id) ? selectedEvents = selectedEvents.filter(id => id !== event.id) : selectedEvents.push(event.id)"
+                                color="primary" density="compact"></v-checkbox-btn>
+                        </td>
+                        <td class="text-caption font-weight-medium">{{ formatDate(event.created_at).meta }}</td>
+                        <td>
+                            <v-chip size="x-small" variant="flat"
+                                class="font-weight-bold text-uppercase bg-grey-lighten-4">
+                                {{ event.event_type.replace('_', ' ') }}
+                            </v-chip>
+                        </td>
+                        <td class="text-caption font-mono text-medium-emphasis">{{ event.device_id }}</td>
+                        <td>
+                            <v-chip size="x-small"
+                                :color="event.status === 'success' ? 'success' : event.status === 'warning' ? 'warning' : 'error'"
+                                variant="flat" class="font-weight-bold text-uppercase">
+                                {{ event.status }}
+                            </v-chip>
+                        </td>
+                        <td class="text-caption text-truncate" style="max-width: 200px;" :title="event.message">
+                            {{ event.message }}
+                        </td>
+                    </tr>
+                    <tr v-if="ingestionEvents.length === 0">
+                        <td colspan="6" class="text-center py-8 text-medium-emphasis font-italic">
+                            <div class="d-flex flex-column align-center gap-2">
+                                <span class="text-h4">🔍</span>
+                                No activity logs found.
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </v-table>
             <div v-if="eventPagination.total > eventPagination.limit"
-                class="mt-6 flex items-center justify-between border-t border-gray-100 pt-6">
-                <span class="text-[10px] text-muted">
-                    Showing {{ eventPagination.skip + 1 }} to {{ Math.min(eventPagination.skip +
-                        eventPagination.limit, eventPagination.total) }} of {{ eventPagination.total }}
+                class="d-flex align-center justify-space-between pa-4 border-t">
+                <span class="text-caption text-medium-emphasis">
+                    Showing {{ eventPagination.skip + 1 }} - {{ Math.min(eventPagination.skip + eventPagination.limit,
+                    eventPagination.total) }}
                 </span>
-                <div class="flex items-center gap-1">
-                    <button @click="eventPagination.skip -= eventPagination.limit; fetchIngestionEvents()"
-                        :disabled="eventPagination.skip === 0"
-                        class="p-1 px-3 rounded-md bg-white border border-gray-200 text-xs font-bold disabled:opacity-50 hover:bg-gray-50 transition-all">
+                <div class="d-flex gap-2">
+                    <v-btn size="small" variant="outlined" :disabled="eventPagination.skip === 0"
+                        @click="eventPagination.skip -= eventPagination.limit; fetchIngestionEvents()">
                         Previous
-                    </button>
-                    <button @click="eventPagination.skip += eventPagination.limit; fetchIngestionEvents()"
+                    </v-btn>
+                    <v-btn size="small" variant="outlined"
                         :disabled="eventPagination.skip + eventPagination.limit >= eventPagination.total"
-                        class="p-1 px-3 rounded-md bg-white border border-gray-200 text-xs font-bold disabled:opacity-50 hover:bg-gray-50 transition-all">
+                        @click="eventPagination.skip += eventPagination.limit; fetchIngestionEvents()">
                         Next
-                    </button>
+                    </v-btn>
                 </div>
             </div>
-        </div>
+        </v-card>
 
         <!-- Device Assignment Modal -->
-        <div v-if="showDeviceAssignModal" class="modal-overlay-global">
-            <div class="modal-global glass">
-                <div class="modal-header">
-                    <h2 class="modal-title">Assign Device</h2>
-                    <button class="btn-icon-circle" @click="showDeviceAssignModal = false">✕</button>
-                </div>
-
-                <form @submit.prevent="confirmAssignUser" class="form-compact p-6">
-                    <div class="form-group mb-4">
-                        <label class="form-label">Display Name</label>
-                        <input v-model="editDeviceName" class="form-input" placeholder="e.g. iPhone 15 Pro" />
+        <v-dialog v-model="showDeviceAssignModal" max-width="450">
+            <v-card class="rounded-xl">
+                <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
+                    <div class="d-flex align-center gap-2">
+                        <Smartphone :size="20" class="text-primary" />
+                        <span class="text-h6 font-weight-bold">Assign Device</span>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Assign to Member</label>
-                        <CustomSelect v-model="selectedAssignUserId"
-                            :options="familyMembers.map(m => ({ label: m.full_name || m.email, value: m.id }))"
-                            placeholder="Select Owner" />
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" @click="showDeviceAssignModal = false"
-                            class="btn-secondary">Cancel</button>
-                        <button type="submit" class="btn-primary-glow">Save Changes</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                    <v-btn icon="mdi-close" variant="text" density="comfortable"
+                        @click="showDeviceAssignModal = false"></v-btn>
+                </v-card-title>
+                <v-card-text class="pa-4">
+                    <v-form @submit.prevent="confirmAssignUser">
+                        <v-text-field v-model="editDeviceName" label="Display Name" placeholder="e.g. iPhone 15 Pro"
+                            variant="outlined" class="mb-2"></v-text-field>
+                        <v-select v-model="selectedAssignUserId" label="Assign to Member"
+                            :items="familyMembers.map(m => ({ title: m.full_name || m.email, value: m.id }))"
+                            variant="outlined"></v-select>
+                        <div class="d-flex justify-end gap-3 mt-4">
+                            <v-btn variant="text" @click="showDeviceAssignModal = false">Cancel</v-btn>
+                            <v-btn type="submit" color="primary">Save Changes</v-btn>
+                        </div>
+                    </v-form>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
 
         <!-- Device Delete Confirmation -->
-        <div v-if="showDeviceDeleteConfirm" class="modal-overlay-global">
-            <div class="modal-global glass alert max-w-md">
-                <div class="modal-icon-header danger"
-                    style="font-size: 2rem; display: flex; justify-content: center; padding: 1rem;">🗑️</div>
-                <h2 class="modal-title text-center">Remove Device?</h2>
-                <div class="alert-info-box mb-6 p-4 bg-red-50 text-red-700 rounded-lg mx-6 text-center">
-                    <p>Permanently remove <strong>{{ deviceToDelete?.device_name }}</strong>?</p>
+        <v-dialog v-model="showDeviceDeleteConfirm" max-width="400">
+            <v-card class="rounded-xl text-center pa-6">
+                <div class="d-flex justify-center mb-4">
+                    <div class="text-h2">🗑️</div>
                 </div>
-                <div class="modal-footer">
-                    <button @click="showDeviceDeleteConfirm = false" class="btn-secondary">Cancel</button>
-                    <button @click="confirmDeleteDevice" class="btn-danger-glow"
-                        style="background: #ef4444; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; border: none; font-weight: 600;">Yes,
-                        Delete</button>
+                <h3 class="text-h5 font-weight-bold mb-2">Remove Device?</h3>
+                <p class="text-body-2 text-medium-emphasis mb-6">
+                    Permanently remove <strong>{{ deviceToDelete?.device_name }}</strong>? This action cannot be undone.
+                </p>
+                <div class="d-flex gap-3">
+                    <v-btn variant="text" class="flex-grow-1" @click="showDeviceDeleteConfirm = false">Cancel</v-btn>
+                    <v-btn color="error" class="flex-grow-1" @click="confirmDeleteDevice">Yes, Delete</v-btn>
                 </div>
-            </div>
-        </div>
+            </v-card>
+        </v-dialog>
     </div>
 </template>
 
@@ -326,7 +358,7 @@
 import { ref, onMounted } from 'vue'
 import { mobileApi, financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import CustomSelect from '@/components/CustomSelect.vue'
+import { Smartphone, Edit2, User, Clock, Copy, Trash2, RefreshCw, ClipboardList } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 
@@ -508,87 +540,54 @@ const copyToClipboard = (text: string) => {
 </script>
 
 <style scoped>
-/* ==================== PREMIUM DEVICE CARDS ==================== */
-.device-section-header {
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #f3f4f6;
-}
-
-.device-section-title {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.9375rem;
-    font-weight: 700;
-    color: #374151;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.badge-count {
-    font-size: 0.75rem;
-    padding: 2px 8px;
-    background: #e5e7eb;
-    color: #4b5563;
-    border-radius: 9999px;
-    font-weight: 700;
-}
-
-.badge-count.warning {
-    background: #fffbeb;
-    color: #d97706;
-}
-
-.devices-grid-premium {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 0.75rem;
+.glass-card {
+    background: rgba(var(--v-theme-surface), 0.8) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(var(--v-border-color), 0.2);
+    border-radius: 16px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .device-card-premium {
     background: white;
-    border: 1px solid #f1f5f9;
-    border-radius: 0.5rem;
-    padding: 0.625rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-    transition: all 0.2s ease;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(var(--v-border-color), 0.15);
+    border-radius: 12px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .device-card-premium:hover {
-    border-color: #4f46e5;
-    box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.08);
+    border-color: rgb(var(--v-theme-primary));
+    transform: translateY(-4px);
+    box-shadow: 0 10px 20px -10px rgba(var(--v-theme-primary), 0.2);
 }
 
 .device-card-premium.unapproved {
+    border-top: 3px solid rgb(var(--v-theme-warning));
     background: #fffbeb;
-    border-top: 3px solid #f59e0b;
 }
 
 .device-card-premium.ignored {
-    opacity: 0.6;
+    opacity: 0.7;
     background: #f8fafc;
 }
 
-.dev-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+.device-card-premium.online-accent {
+    border-top: 3px solid rgb(var(--v-theme-success));
+}
+
+.device-card-premium.offline-accent {
+    border-top: 3px solid rgb(var(--v-theme-error));
 }
 
 .dev-icon-wrapper {
-    width: 2rem;
-    height: 2rem;
-    border-radius: 0.5rem;
-    background: #f1f5f9;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1rem;
-    flex-shrink: 0;
+    background: #f1f5f9;
+    color: #475569;
 }
 
 .dev-icon-wrapper.apple {
@@ -601,213 +600,10 @@ const copyToClipboard = (text: string) => {
     color: #059669;
 }
 
-.dev-info-main {
-    flex: 1;
-    min-width: 0;
-}
-
-.dev-name {
-    font-size: 0.9375rem;
-    font-weight: 700;
-    color: #0f172a;
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.dev-id-mono {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.625rem;
-    color: #64748b;
-    background: white;
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid #e2e8f0;
-    word-break: break-all;
-    flex: 1;
-}
-
 .dev-id-footer {
-    padding: 0.375rem 0.5rem;
+    padding: 6px 8px;
     background: #f8fafc;
-    border-radius: 0.375rem;
+    border-radius: 6px;
     border: 1px solid #f1f5f9;
-}
-
-.dev-id-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-}
-
-.device-card-premium.online-accent {
-    border-top: 3px solid #10b981;
-}
-
-.device-card-premium.offline-accent {
-    border-top: 3px solid #ef4444;
-}
-
-.meta-val {
-    color: #1e293b;
-    font-weight: 500;
-}
-
-.meta-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.dev-actions {
-    display: flex;
-    gap: 0.375rem;
-    margin-top: 0.25rem;
-}
-
-.btn-dev {
-    flex: 1;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.375rem 0.5rem;
-    border-radius: 0.375rem;
-    border: 1px solid transparent;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.btn-dev.primary {
-    background: #4f46e5;
-    color: white;
-}
-
-.btn-dev.primary:hover {
-    background: #4338ca;
-}
-
-.btn-dev.secondary {
-    background: white;
-    color: #475569;
-    border-color: #e2e8f0;
-}
-
-.btn-dev.secondary:hover {
-    border-color: #cbd5e1;
-    background: #f8fafc;
-}
-
-.btn-dev.danger {
-    background: #fff1f2;
-    color: #e11d48;
-    border-color: #fecdd3;
-}
-
-.btn-dev.danger:hover {
-    background: #ffe4e6;
-}
-
-.copy-small-btn {
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    font-size: 0.8rem;
-    opacity: 0.6;
-    transition: opacity 0.2s;
-    padding: 2px;
-}
-
-.copy-small-btn:hover {
-    opacity: 1;
-    color: #4f46e5;
-}
-
-.btn-icon-tiny {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: 0.75rem;
-    color: #4f46e5;
-    padding: 2px;
-    line-height: 1;
-    opacity: 0.6;
-    transition: opacity 0.2s;
-}
-
-.btn-icon-tiny:hover {
-    opacity: 1;
-}
-
-.status-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #6b7280;
-    padding: 0.25rem 0.625rem;
-    border-radius: 9999px;
-    background: #f3f4f6;
-}
-
-.activity-log-section {
-    background: white;
-}
-
-.animate-in {
-    animation: slideUp 0.4s ease-out forwards;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.account-control-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.search-bar-premium {
-    position: relative;
-}
-
-.search-icon {
-    position: absolute;
-    left: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #9ca3af;
-}
-
-.search-input {
-    width: 100%;
-    padding: 0.5rem 0.75rem 0.5rem 2.25rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: #4f46e5;
-}
-
-.pulse-status-badge {
-    font-size: 0.75rem;
-    padding: 2px 8px;
-    border-radius: 9999px;
-    font-weight: 700;
 }
 </style>

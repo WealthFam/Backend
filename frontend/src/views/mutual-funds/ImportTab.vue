@@ -22,7 +22,7 @@
 
             <!-- Import Mode Toggles -->
             <div class="d-flex flex-wrap gap-4 mb-8 justify-center">
-                <v-btn v-for="mode in ['pdf', 'email']" :key="mode" :variant="importMode === mode ? 'flat' : 'tonal'"
+                <v-btn v-for="mode in importModes" :key="mode" :variant="importMode === mode ? 'flat' : 'tonal'"
                     :color="importMode === mode ? 'primary' : 'primary-lighten-4'" rounded="pill"
                     class="px-8 font-weight-black" @click="importMode = mode">
                     <component :is="mode === 'pdf' ? FileText : Lock" :size="18" class="mr-2" />
@@ -172,7 +172,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { Upload, FileText, Lock, CheckCircle, AlertCircle, ArrowRight } from 'lucide-vue-next'
+import { Upload, FileText, Lock, CheckCircle, ArrowRight } from 'lucide-vue-next'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'
@@ -181,7 +181,7 @@ const notify = useNotificationStore()
 const authStore = useAuthStore()
 
 const importMode = ref<'pdf' | 'email'>('pdf')
-const pdfMode = ref<'direct' | 'preview'>('preview')
+const importModes = ['pdf', 'email'] as const
 const selectedMemberId = ref<string | null>(authStore.selectedMemberId)
 const panNumber = ref('')
 const file = ref<File | null>(null)

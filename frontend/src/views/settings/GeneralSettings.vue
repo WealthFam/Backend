@@ -1,36 +1,41 @@
 <template>
-    <div class="tab-content animate-in">
-        <div class="privacy-card">
-            <div class="privacy-header">
-                <div class="privacy-icon">🛡️</div>
-                <h2 class="privacy-title">Privacy & Anonymity</h2>
-                <p class="privacy-subtitle">Adjust how sensitive financial data is displayed across the
-                    application.</p>
-            </div>
+    <div class="animate-in">
+        <v-row justify="center">
+            <v-col cols="12" md="8" lg="6">
+                <v-card class="glass-card pa-6" elevation="0">
+                    <div class="text-center mb-6">
+                        <div class="text-h2 mb-4">🛡️</div>
+                        <h2 class="text-h5 font-weight-bold mb-2">Privacy & Anonymity</h2>
+                        <p class="text-body-2 text-medium-emphasis">
+                            Adjust how sensitive financial data is displayed across the application.
+                        </p>
+                    </div>
 
-            <div class="form-group">
-                <label class="form-label">Masking Factor</label>
-                <div class="input-group-flex">
-                    <input type="number" v-model.number="localMaskingFactor" min="1" class="form-input"
-                        placeholder="1" />
-                    <button @click="handleSave" class="btn-primary-glow">Save</button>
-                </div>
-                <span class="input-hint">Divide all amounts by this number (e.g., 1, 10, 100)</span>
-            </div>
+                    <v-label class="mb-2 font-weight-bold">Masking Factor</v-label>
+                    <div class="d-flex gap-4 align-center mb-2">
+                        <v-text-field v-model.number="localMaskingFactor" type="number" min="1" variant="outlined"
+                            density="comfortable" hide-details class="flex-grow-1" bg-color="surface">
+                        </v-text-field>
+                        <v-btn color="primary" @click="handleSave" height="48" class="px-6 text-capitalize">
+                            Save
+                        </v-btn>
+                    </div>
+                    <div class="text-caption text-medium-emphasis mb-6">
+                        Divide all amounts by this number (e.g., 1, 10, 100)
+                    </div>
 
-            <div class="info-box">
-                <span class="info-icon">💡</span>
-                <div class="info-content">
-                    <h4 class="info-title">How it works</h4>
-                    <p class="info-text">
-                        If you set the factor to <strong>10</strong>, a transaction of
-                        <strong>₹10,000</strong> will be displayed as <strong>₹1,000</strong>.
-                        This allows you to share your screen or demo the app without revealing actual
-                        values.
-                    </p>
-                </div>
-            </div>
-        </div>
+                    <v-alert icon="mdi-lightbulb-on-outline" variant="tonal" color="info" border="start"
+                        class="info-box">
+                        <div class="text-subtitle-2 font-weight-bold mb-1">How it works</div>
+                        <div class="text-body-2">
+                            If you set the factor to <strong>10</strong>, a transaction of
+                            <strong>₹10,000</strong> will be displayed as <strong>₹1,000</strong>.
+                            This allows you to share your screen or demo the app without revealing actual values.
+                        </div>
+                    </v-alert>
+                </v-card>
+            </v-col>
+        </v-row>
     </div>
 </template>
 
@@ -56,104 +61,11 @@ function handleSave() {
 </script>
 
 <style scoped>
-.privacy-card {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 1rem;
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 2rem;
-}
-
-.privacy-header {
-    text-align: center;
-    margin-bottom: 2rem;
-}
-
-.privacy-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-}
-
-.privacy-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #111827;
-    margin-bottom: 0.5rem;
-}
-
-.privacy-subtitle {
-    color: #6b7280;
-}
-
-.form-group {
-    margin-bottom: 1.5rem;
-}
-
-.form-label {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #4b5563;
-    margin-bottom: 0.5rem;
-}
-
-.input-group-flex {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.form-input {
-    flex: 1;
-    padding: 0.625rem 0.875rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
-    font-size: 0.875rem;
-}
-
-.btn-primary-glow {
-    padding: 0.625rem 1.25rem;
-    background: #4f46e5;
-    color: white;
-    border: none;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
-}
-
-.input-hint {
-    display: block;
-    font-size: 0.75rem;
-    color: #6b7280;
-    margin-top: 0.5rem;
-}
-
-.info-box {
-    background: #f3f4f6;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin-top: 1.5rem;
-    display: flex;
-    align-items: start;
-    gap: 0.75rem;
-}
-
-.info-icon {
-    font-size: 1.25rem;
-}
-
-.info-title {
-    font-weight: 600;
-    color: #374151;
-    margin-bottom: 0.25rem;
-}
-
-.info-text {
-    font-size: 0.875rem;
-    color: #4b5563;
-    line-height: 1.5;
+.glass-card {
+    background: rgba(var(--v-theme-surface), 0.8) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(var(--v-border-color), 0.2);
+    border-radius: 16px;
 }
 
 .animate-in {
