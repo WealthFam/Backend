@@ -129,6 +129,11 @@ class TransactionService:
     ) -> List[models.Transaction]:
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
+        
+        # import logging
+        # logger = logging.getLogger(__name__)
+        # logger.info(f"get_transactions: tenant_id={tenant_id}, user_id={user_id}, account_id={account_id}")
+
         query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
         
         if user_role == "CHILD":
@@ -161,7 +166,7 @@ class TransactionService:
         if user_id:
             # Filter by account ownership: show user's accounts OR shared accounts
             from sqlalchemy import or_
-            query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+            query = query.outerjoin(models.Account, models.Transaction.account_id == models.Account.id)\
                          .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
             
         sort_column = models.Transaction.date
@@ -191,9 +196,12 @@ class TransactionService:
         search: Optional[str] = None,
         category: Optional[str] = None,
         user_role: str = "ADULT",
+        user_id: Optional[str] = None,
         exclude_from_reports: bool = False,
         exclude_transfers: bool = False
     ) -> int:
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
 
         if user_role == "CHILD":
@@ -202,6 +210,13 @@ class TransactionService:
 
         if account_id:
             query = query.filter(models.Transaction.account_id == account_id)
+        
+        if user_id:
+            # Filter by account ownership: show user's accounts OR shared accounts
+            from sqlalchemy import or_
+            query = query.outerjoin(models.Account, models.Transaction.account_id == models.Account.id)\
+                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+
         if start_date:
             query = query.filter(models.Transaction.date >= start_date)
         if end_date:
@@ -366,11 +381,21 @@ class TransactionService:
         sort_by: str = "date", 
         sort_order: str = "desc",
         search: Optional[str] = None,
-        source: Optional[str] = None
+        source: Optional[str] = None,
+        user_id: Optional[str] = None
     ):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         query = db.query(ingestion_models.PendingTransaction).filter(
             ingestion_models.PendingTransaction.tenant_id == tenant_id
         )
+
+        if user_id:
+            # Join with Account to filter by owner
+            from backend.app.modules.finance import models as finance_models
+            from sqlalchemy import or_
+            query = query.outerjoin(finance_models.Account, ingestion_models.PendingTransaction.account_id == finance_models.Account.id)\
+                         .filter(or_(finance_models.Account.owner_id == user_id, finance_models.Account.owner_id == None))
         
         # Filter by source (SMS, EMAIL, etc.)
         if source:
