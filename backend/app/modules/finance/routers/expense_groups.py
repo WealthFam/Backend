@@ -10,11 +10,13 @@ from backend.app.modules.finance.services.expense_group_service import ExpenseGr
 router = APIRouter()
 
 @router.get("/expense-groups", response_model=List[schemas.ExpenseGroupRead])
+@router.get("/expense-groups", response_model=List[schemas.ExpenseGroupRead])
 def get_expense_groups(
+    user_id: str | None = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return ExpenseGroupService.get_expense_groups(db, str(current_user.tenant_id))
+    return ExpenseGroupService.get_expense_groups(db, str(current_user.tenant_id), user_id)
 
 @router.post("/expense-groups", response_model=schemas.ExpenseGroupRead)
 def create_expense_group(
