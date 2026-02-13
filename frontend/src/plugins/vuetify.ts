@@ -10,9 +10,19 @@ import * as lucideIcons from 'lucide-vue-next'
  */
 const lucide: any = {
     component: (props: any) => {
-        const iconName = props.icon
-        const icon = (lucideIcons as any)[iconName]
-        return icon ? h(icon, { ...props }) : null
+        const { icon, tag, ...rest } = props
+        // Handle mdi- prefix by converting to PascalCase for Lucide
+        // e.g. mdi-pencil -> Pencil, mdi-chevron-down -> ChevronDown
+        let iconName = icon
+        if (typeof icon === 'string' && icon.startsWith('mdi-')) {
+            iconName = icon
+                .replace('mdi-', '')
+                .split('-')
+                .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+                .join('')
+        }
+        const iconComponent = (lucideIcons as any)[iconName]
+        return iconComponent ? h(iconComponent, { ...rest }) : h('span', { class: 'mdi ' + icon })
     }
 }
 
@@ -24,6 +34,45 @@ export default createVuetify({
         sets: {
             lucide,
         },
+        aliases: {
+            // Map standard Vuetify internal icons to Lucide icons
+            'collapse': 'ChevronUp',
+            'complete': 'Check',
+            'cancel': 'X',
+            'close': 'X',
+            'delete': 'Trash2',
+            'clear': 'XCircle',
+            'success': 'CheckCircle2',
+            'info': 'Info',
+            'warning': 'AlertTriangle',
+            'error': 'AlertCircle',
+            'prev': 'ChevronLeft',
+            'next': 'ChevronRight',
+            'checkboxOn': 'CheckSquare',
+            'checkboxOff': 'Square',
+            'checkboxIndeterminate': 'MinusSquare',
+            'delimiter': 'Circle',
+            'sort': 'ArrowUpDown',
+            'sortAsc': 'SortAsc',
+            'sortDesc': 'SortDesc',
+            'expand': 'ChevronDown',
+            'menu': 'Menu',
+            'subgroup': 'ChevronDown',
+            'dropdown': 'ChevronDown',
+            'radioOn': 'CircleDot',
+            'radioOff': 'Circle',
+            'edit': 'Pencil',
+            'ratingEmpty': 'Star',
+            'ratingFull': 'Star',
+            'ratingHalf': 'StarHalf',
+            'loading': 'Loader2',
+            'first': 'ChevronsLeft',
+            'last': 'ChevronsRight',
+            'unfold': 'ChevronsUpDown',
+            'file': 'FileText',
+            'plus': 'Plus',
+            'minus': 'Minus',
+        }
     },
     theme: {
         defaultTheme: 'wealthFamTheme',
