@@ -102,26 +102,26 @@ export function useTransactionHelpers(
      * Computed property for account dropdown options
      */
     const accountOptions = computed(() => {
-        return accounts.value.map(a => ({ label: a.name, value: a.id }))
+        return accounts.value.map(a => ({ title: a.name, value: a.id }))
     })
 
     /**
      * Computed property for category dropdown options (flattened hierarchy)
      */
     const categoryOptions = computed(() => {
-        const options: Array<{ label: string; value: string }> = []
+        const options: Array<{ title: string; value: string }> = []
 
         // Assuming categories.value is a flat list with parent_id/parent_name
         categories.value.forEach(cat => {
             if (!cat.parent_id) {
                 // Top-level category
-                options.push({ label: `${cat.icon || '🏷️'} ${cat.name}`, value: cat.name })
+                options.push({ title: `${cat.icon || '🏷️'} ${cat.name}`, value: cat.name })
 
                 // Add subcategories with parent prefix to ensure uniqueness in display
                 const subcats = categories.value.filter(c => c.parent_id === cat.id)
                 subcats.forEach(sub => {
                     options.push({
-                        label: `　└ ${sub.icon || '🏷️'} ${cat.name} › ${sub.name}`,
+                        title: `　└ ${sub.icon || '🏷️'} ${cat.name} › ${sub.name}`,
                         value: `${cat.name} › ${sub.name}` // Unique value for subcategories
                     })
                 })
@@ -136,7 +136,7 @@ export function useTransactionHelpers(
      * Computed property for expense group dropdown options
      */
     const expenseGroupOptions = computed(() => {
-        return expenseGroups.value.map(g => ({ label: g.name, value: g.id }))
+        return expenseGroups.value.map(g => ({ title: g.name, value: g.id }))
     })
 
     /**

@@ -99,6 +99,10 @@ export function useTransactionModals(
      * Open edit transaction modal
      */
     function openEditModal(txn: any) {
+        if (!txn) {
+            openAddModal()
+            return
+        }
         isEditing.value = true
         editingTxnId.value = txn.id
         originalCategory.value = txn.category

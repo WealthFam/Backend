@@ -45,10 +45,31 @@ const emit = defineEmits<{
 // Local State
 const selectedIds = defineModel<Set<string>>('selectedIds', { default: () => new Set() })
 
+// Headers for v-data-table
+const headers = [
+    { title: 'Date', key: 'date', sortable: true, width: '110px' },
+    { title: 'Recipient / Source', key: 'recipient', sortable: true, width: '250px' },
+    { title: 'Description', key: 'description', sortable: false },
+    { title: 'Amount', key: 'amount', sortable: true, align: 'end' as const, width: '130px' },
+    { title: '', key: 'actions', sortable: false, align: 'center' as const, width: '60px' },
+]
+
+// Adaptation for v-data-table selection (array based) vs parent's Set based
+const tableSelection = computed({
+    get: () => Array.from(selectedIds.value),
+    set: (val: any[]) => {
+        // This is handled by toggleSelection instead to maintain Set reactivity easily
+    }
+})
+
 // Computed
 const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
 const allSelected = computed(() => {
     return props.transactions.length > 0 && props.transactions.every(t => selectedIds.value.has(t.id))
+})
+
+const accountOptions = computed(() => {
+    return [{ title: 'All Accounts', value: '' }, ...props.accounts.map(a => ({ title: a.name, value: a.id }))]
 })
 
 const categoryOptions = computed(() => {
@@ -69,38 +90,39 @@ const categoryOptions = computed(() => {
     if (!list.find(o => o.value === 'Uncategorized')) {
         list.push({ label: '🏷️ Uncategorized', value: 'Uncategorized' })
     }
-    return list
+    return list.map(o => ({ title: o.label, value: o.value }))
 })
 
 const timeRangeOptions = [
-    { label: 'All Time', value: 'all' },
-    { label: 'Today', value: 'today' },
-    { label: 'This Week', value: 'this-week' },
-    { label: 'This Month', value: 'this-month' },
-    { label: 'Last Month', value: 'last-month' },
-    { label: 'Custom Range', value: 'custom' }
+    { title: 'All Time', value: 'all' },
+    { title: 'Today', value: 'today' },
+    { title: 'This Week', value: 'this-week' },
+    { title: 'This Month', value: 'this-month' },
+    { title: 'Last Month', value: 'last-month' },
+    { title: 'Custom Range', value: 'custom' }
 ]
 
 // Methods
-function toggleSelectAll() {
-    if (allSelected.value) {
-        selectedIds.value.clear()
-    } else {
-        props.transactions.forEach(t => selectedIds.value.add(t.id))
+function handleOptionsUpdate(options: any) {
+    if (options.sortBy && options.sortBy.length > 0) {
+        const field = options.sortBy[0].key
+        if (field !== props.txnSortKey) {
+            emit('sortChange', field)
+        }
+    }
+    if (options.page !== props.page) {
+        emit('update:page', options.page)
     }
 }
 
 function toggleSelection(id: string) {
-    if (selectedIds.value.has(id)) {
-        selectedIds.value.delete(id)
+    const newSet = new Set(selectedIds.value)
+    if (newSet.has(id)) {
+        newSet.delete(id)
     } else {
-        selectedIds.value.add(id)
+        newSet.add(id)
     }
-}
-
-function changePage(newPage: number) {
-    if (newPage < 1 || newPage > totalPages.value) return
-    emit('update:page', newPage)
+    selectedIds.value = newSet
 }
 
 function formatDate(dateStr: string) {
@@ -174,199 +196,374 @@ function handleReset() {
 }
 </script>
 
+<style scoped>
+.transaction-list-container {
+    animation: slide-up 0.4s ease-out;
+}
+
+@keyframes slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.premium-glass-card {
+    background: rgba(var(--v-theme-surface), 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+
+.account-select-premium,
+.time-range-select-premium,
+.category-select-premium,
+.date-input-premium,
+.search-input-premium {
+    min-width: 150px;
+}
+
+:deep(.v-field--variant-solo) {
+    background: rgba(var(--v-theme-surface), 0.5) !important;
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+    box-shadow: none !important;
+    font-weight: 600;
+}
+
+:deep(.v-field--variant-solo:hover) {
+    border-color: rgba(var(--v-theme-primary), 0.3);
+}
+
+:deep(.v-field--variant-solo.v-field--focused) {
+    border-color: rgb(var(--v-theme-primary));
+}
+
+.gap-2 {
+    gap: 8px;
+}
+
+.gap-3 {
+    gap: 12px;
+}
+
+.gap-4 {
+    gap: 16px;
+}
+
+.date-cell {
+    line-height: 1.2;
+}
+
+.source-icon-mini {
+    font-size: 0.9rem;
+}
+
+.premium-table {
+    background: transparent !important;
+}
+
+:deep(.v-data-table-header__content) {
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.7rem;
+    opacity: 0.6;
+}
+
+:deep(.v-data-table__tr:hover) {
+    background: rgba(var(--v-theme-primary), 0.03) !important;
+}
+
+.opacity-70 {
+    opacity: 0.7;
+}
+
+.opacity-60 {
+    opacity: 0.6;
+}
+
+.opacity-50 {
+    opacity: 0.5;
+}
+
+.text-content {
+    color: rgb(var(--v-theme-on-surface));
+}
+
+.animate-in {
+    animation: fade-in 0.3s ease-out;
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+</style>
+
 <template>
-    <!-- Filter Bar -->
-    <div class="filter-bar">
-        <div class="filter-main">
-            <div class="filter-group">
-                <span class="filter-label">Time Range:</span>
-                <div class="range-pill-group">
-                    <button v-for="opt in timeRangeOptions" :key="opt.value" class="range-pill"
-                        :class="{ active: selectedTimeRange === opt.value }" @click="handleTimeRangeChange(opt.value)">
-                        {{ opt.label }}
-                    </button>
-                </div>
+    <div class="transaction-list-container">
+        <!-- Filter Bar -->
+        <v-card class="premium-glass-card mb-6 pa-4">
+            <v-row align="center" no-gutters class="gap-4">
+                <v-col cols="12" lg="auto">
+                    <div class="d-flex align-center">
+                        <span class="text-caption font-weight-bold text-uppercase opacity-70 mr-3">Account:</span>
+                        <v-select :model-value="selectedAccount"
+                            @update:model-value="emit('update:selectedAccount', $event)" :items="accountOptions"
+                            placeholder="All Accounts" density="compact" hide-details variant="solo"
+                            class="account-select-premium" rounded="lg" />
+                    </div>
+                </v-col>
+
+                <v-col cols="12" sm="6" md="3" lg="auto">
+                    <div class="d-flex align-center">
+                        <span class="text-caption font-weight-bold text-uppercase opacity-70 mr-3">Time:</span>
+                        <v-select :model-value="selectedTimeRange" @update:model-value="handleTimeRangeChange"
+                            :items="timeRangeOptions" item-title="title" item-value="value" density="compact"
+                            hide-details variant="solo" class="time-range-select-premium" rounded="lg" />
+                    </div>
+                </v-col>
+
+                <v-col v-if="selectedTimeRange === 'custom'" cols="12" sm="6" md="3" lg="auto" class="animate-in">
+                    <div class="d-flex align-center gap-2">
+                        <v-text-field :model-value="startDate"
+                            @update:model-value="emit('update:startDate', $event); emit('fetchData')" type="date"
+                            density="compact" hide-details variant="solo" rounded="lg" class="date-input-premium" />
+                        <span class="text-caption opacity-50">to</span>
+                        <v-text-field :model-value="endDate"
+                            @update:model-value="emit('update:endDate', $event); emit('fetchData')" type="date"
+                            density="compact" hide-details variant="solo" rounded="lg" class="date-input-premium" />
+                    </div>
+                </v-col>
+
+                <v-divider vertical class="d-none d-lg-block mx-2" />
+
+                <v-col cols="12" md="4" lg="auto" class="flex-grow-1">
+                    <v-text-field :model-value="searchQuery" @update:model-value="emit('update:searchQuery', $event)"
+                        placeholder="Search description or recipient..." density="compact" hide-details variant="solo"
+                        rounded="lg" prepend-inner-icon="Search" class="search-input-premium" clearable />
+                </v-col>
+
+                <v-col cols="12" sm="6" md="3" lg="auto">
+                    <v-select :model-value="categoryFilter"
+                        @update:model-value="emit('update:categoryFilter', $event); emit('fetchData')"
+                        :items="[{ title: 'All Categories', value: '' }, ...categoryOptions]" item-title="title"
+                        item-value="value" placeholder="Category" density="compact" hide-details variant="solo"
+                        rounded="lg" class="category-select-premium" />
+                </v-col>
+
+                <v-col cols="auto" v-if="startDate || endDate || searchQuery || categoryFilter">
+                    <v-btn variant="text" size="small" color="primary" @click="handleReset" class="font-weight-bold">
+                        Reset
+                    </v-btn>
+                </v-col>
+            </v-row>
+        </v-card>
+
+        <!-- Bulk Actions & Info -->
+        <div class="d-flex align-center justify-space-between mb-4 px-2">
+            <div class="d-flex align-center gap-4">
+                <span class="text-h6 font-weight-black">{{ total }} <span
+                        class="text-subtitle-2 opacity-60">Transactions</span></span>
+
+                <v-fade-transition>
+                    <div v-if="selectedIds.size > 0" class="d-flex align-center gap-2">
+                        <v-divider vertical class="mx-2" />
+                        <span class="text-caption font-weight-bold text-primary">{{ selectedIds.size }} Selected</span>
+                        <v-btn color="error" variant="tonal" size="x-small" @click="emit('deleteSelected')"
+                            prepend-icon="Trash2" rounded="lg">
+                            Delete
+                        </v-btn>
+                    </div>
+                </v-fade-transition>
             </div>
 
-            <div class="filter-divider" v-if="selectedTimeRange === 'custom'"></div>
-
-            <div class="filter-group animate-in" v-if="selectedTimeRange === 'custom'">
-                <input type="date" :value="startDate"
-                    @input="emit('update:startDate', ($event.target as HTMLInputElement).value); emit('fetchData')"
-                    class="date-input" />
-                <span class="filter-separator">to</span>
-                <input type="date" :value="endDate"
-                    @input="emit('update:endDate', ($event.target as HTMLInputElement).value); emit('fetchData')"
-                    class="date-input" />
-            </div>
-
-            <div class="filter-divider"></div>
-
-            <div class="filter-group list-search-group">
-                <div class="list-search-container">
-                    <span class="search-icon-small">🔍</span>
-                    <input type="text" :value="searchQuery"
-                        @input="emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
-                        placeholder="Search description..." class="list-search-input">
-                </div>
-            </div>
-
-            <div class="filter-divider"></div>
-
-            <div class="filter-group">
-                <CustomSelect :modelValue="categoryFilter"
-                    @update:modelValue="emit('update:categoryFilter', $event); emit('fetchData')"
-                    :options="[{ label: 'All Categories', value: '' }, ...categoryOptions]" placeholder="All Categories"
-                    class="category-filter-select" />
+            <div class="d-flex align-center gap-2">
+                <v-btn color="secondary" variant="tonal" size="small" @click="emit('importCsv')" prepend-icon="Upload"
+                    rounded="lg">
+                    Import
+                </v-btn>
+                <v-btn color="primary" size="small" @click="emit('editTxn', null)" prepend-icon="Plus" rounded="lg">
+                    Add
+                </v-btn>
             </div>
         </div>
 
-        <button v-if="startDate || endDate || searchQuery || categoryFilter" class="btn-link" @click="handleReset">
-            Reset
-        </button>
-    </div>
+        <!-- Transaction Table -->
+        <v-card class="premium-glass-card overflow-hidden">
+            <v-data-table-server v-model="tableSelection" :headers="headers" :items="transactions" :items-length="total"
+                :loading="loading" :items-per-page="pageSize" :page="page" hover @update:options="handleOptionsUpdate"
+                class="premium-table" density="comfortable" show-select>
+                <!-- Selection Column Slot -->
+                <template #[`item.data-table-select`]="{ item }">
+                    <v-checkbox-btn :model-value="selectedIds.has(item.id)"
+                        @update:model-value="toggleSelection(item.id)" color="primary" />
+                </template>
 
-    <!-- Table -->
-    <div class="content-card">
-        <table class="modern-table">
-            <thead>
-                <tr>
-                    <th class="col-checkbox">
-                        <input type="checkbox" :checked="allSelected" @change="toggleSelectAll"
-                            :disabled="transactions.length === 0">
-                    </th>
-                    <th class="col-date cursor-pointer hover:bg-gray-50" @click="emit('sortChange', 'date')">
-                        Date
-                        <span v-if="txnSortKey === 'date'" class="text-indigo-600 ml-1">{{ txnSortOrder ===
-                            'asc' ? '↑' : '↓' }}</span>
-                    </th>
-                    <th class="col-recipient cursor-pointer hover:bg-gray-50"
-                        @click="emit('sortChange', 'description')">
-                        Recipient / Source
-                        <span v-if="txnSortKey === 'description'" class="text-indigo-600 ml-1">{{ txnSortOrder
-                            === 'asc' ? '↑' : '↓' }}</span>
-                    </th>
-                    <th class="col-description">Description</th>
-                    <th class="col-amount cursor-pointer hover:bg-gray-50" @click="emit('sortChange', 'amount')">
-                        Amount
-                        <span v-if="txnSortKey === 'amount'" class="text-indigo-600 ml-1">{{ txnSortOrder ===
-                            'asc' ? '↑' : '↓' }}</span>
-                    </th>
-                    <th class="col-actions"></th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="txn in transactions" :key="txn.id" :class="{ 'row-selected': selectedIds.has(txn.id) }">
-                    <td class="col-checkbox">
-                        <input type="checkbox" :checked="selectedIds.has(txn.id)" @change="toggleSelection(txn.id)">
-                    </td>
-                    <td class="col-date">
-                        <div class="date-cell">
-                            <div class="date-day">{{ formatDate(txn.date).day }}</div>
-                            <div class="date-meta">{{ formatDate(txn.date).meta }}</div>
-                        </div>
-                    </td>
-                    <td class="col-recipient">
-                        <div class="txn-recipient">
-                            <div class="txn-primary">{{ txn.recipient || txn.description }}</div>
-                            <div class="txn-source-meta" v-if="txn.source">
-                                <span class="source-icon-mini">{{ txn.source === 'SMS' ? '📱' : (txn.source ===
+                <!-- Date Column -->
+                <template #[`item.date`]="{ item }">
+                    <div class="date-cell">
+                        <div class="text-subtitle-2 font-weight-bold">{{ formatDate(item.date).day }}</div>
+                        <div class="text-caption opacity-50 font-weight-medium">{{ formatDate(item.date).meta }}</div>
+                    </div>
+                </template>
+
+                <!-- Recipient Column -->
+                <template #[`item.recipient`]="{ item }">
+                    <div class="d-flex align-center gap-3 py-2">
+                        <v-avatar size="36" :color="getCategoryDisplay(item.category).color + '20'" rounded="lg">
+                            <span class="text-h6 pb-1">{{ getCategoryDisplay(item.category).icon }}</span>
+                        </v-avatar>
+                        <div>
+                            <div class="text-subtitle-2 font-weight-bold text-truncate" style="max-width: 200px;">
+                                {{ item.recipient || item.description }}
+                            </div>
+                            <div class="text-caption opacity-50 d-flex align-center gap-1 font-weight-bold"
+                                v-if="item.source">
+                                <span class="source-icon-mini">{{ item.source === 'SMS' ? '📱' : (item.source ===
                                     'EMAIL' ? '📧' : '⌨️') }}</span>
-                                {{ txn.source }}
+                                {{ item.source }}
                             </div>
                         </div>
-                    </td>
-                    <td class="col-description">
-                        <div class="txn-description">
-                            <div class="txn-description-text">
-                                {{ txn.description }}
-                                <span v-if="txn.latitude || txn.location_name" class="location-trigger"
-                                    :title="txn.location_name || 'Location available'">
-                                    📍
-                                </span>
-                            </div>
-                            <div class="txn-meta-row">
-                                <span class="account-badge">{{ getAccountName(txn.account_id) }}</span>
+                    </div>
+                </template>
 
-                                <span v-if="txn.is_ai_parsed" class="ai-badge-mini" title="Extracted using Gemini AI">✨
-                                    AI</span>
-                                <span v-if="txn.is_transfer" class="ai-badge-mini active-transfer"
-                                    title="Auto-detected as internal transfer">🔄 Self-Transfer</span>
-                                <span v-if="txn.exclude_from_reports" class="ai-badge-mini active-hidden"
-                                    title="Excluded from reports and analytics">🚫 Hidden</span>
-                                <span v-if="txn.is_emi" class="ai-badge-mini active-emi" title="Linked to EMI Loan">🏦
-                                    EMI</span>
-
-                                <div class="category-pill-wrapper">
-                                    <span class="category-pill"
-                                        :style="{ borderLeft: '3px solid ' + getCategoryDisplay(txn.category).color }">
-                                        <span class="category-icon">{{ getCategoryDisplay(txn.category).icon
-                                        }}</span>
-                                        {{ getCategoryDisplay(txn.category).text }}
-                                    </span>
-                                </div>
-
-                                <span class="ref-id-pill" v-if="txn.expense_group_id">
-                                    <span class="ref-icon">📁</span> {{
-                                        getExpenseGroupName(txn.expense_group_id) }}
-                                </span>
-                                <span class="ref-id-pill" v-if="txn.external_id">
-                                    <span class="ref-icon">🆔</span> {{ txn.external_id }}
-                                </span>
-                            </div>
+                <!-- Description Column -->
+                <template #[`item.description`]="{ item }">
+                    <div class="py-2">
+                        <div class="text-body-2 text-medium-emphasis mb-1 d-flex align-center">
+                            {{ item.description }}
+                            <v-tooltip v-if="item.latitude || item.location_name"
+                                :text="item.location_name || 'Location available'">
+                                <template #activator="{ props }">
+                                    <v-icon v-bind="props" size="14" color="error" class="ml-1" icon="MapPin"></v-icon>
+                                </template>
+                            </v-tooltip>
                         </div>
-                    </td>
-                    <td class="col-amount">
-                        <div class="amount-cell"
-                            :class="{ 'is-income': Number(txn.amount) > 0 && !txn.is_transfer, 'is-expense': Number(txn.amount) < 0 && !txn.is_transfer, 'is-transfer': txn.is_transfer }">
-                            <span class="amount-icon">{{ txn.is_transfer ? '🔄' : (Number(txn.amount) > 0 ? '↓'
-                                : '↑') }}</span>
-                            <span class="amount-value">{{ formatAmount(Math.abs(Number(txn.amount))) }}</span>
+                        <div class="d-flex align-center flex-wrap gap-1">
+                            <v-chip size="x-small" variant="flat" color="surface-variant"
+                                class="text-uppercase font-weight-black opacity-70">
+                                {{ getAccountName(item.account_id) }}
+                            </v-chip>
+
+                            <v-chip v-if="item.is_ai_parsed" size="x-small" color="primary" variant="tonal"
+                                class="font-weight-bold">
+                                ✨ AI
+                            </v-chip>
+                            <v-chip v-if="item.is_transfer" size="x-small" color="success" variant="tonal"
+                                class="font-weight-bold">
+                                🔄 Transfer
+                            </v-chip>
+                            <v-chip v-if="item.exclude_from_reports" size="x-small" color="error" variant="tonal"
+                                class="font-weight-bold">
+                                🚫 Hidden
+                            </v-chip>
+                            <v-chip v-if="item.is_emi" size="x-small" color="info" variant="tonal"
+                                class="font-weight-bold">
+                                🏦 EMI
+                            </v-chip>
+
+                            <v-chip size="x-small" variant="outlined" :color="getCategoryDisplay(item.category).color"
+                                class="font-weight-bold">
+                                {{ getCategoryDisplay(item.category).text }}
+                            </v-chip>
+
+                            <v-chip v-if="item.expense_group_id" size="x-small" color="secondary" variant="tonal"
+                                class="font-weight-bold">
+                                📁 {{ getExpenseGroupName(item.expense_group_id) }}
+                            </v-chip>
                         </div>
-                    </td>
-                    <td class="col-actions">
-                        <button class="icon-btn-edit" @click="emit('editTxn', txn)" title="Edit">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2.5">
-                                <path
-                                    d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                        </button>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+                    </div>
+                </template>
 
-        <div v-if="transactions.length === 0" class="empty-state">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M3 9h18M9 21V9" />
-            </svg>
-            <p>No transactions found</p>
-        </div>
+                <!-- Amount Column -->
+                <template #[`item.amount`]="{ item }">
+                    <div class="text-right">
+                        <div :class="[
+                            'text-subtitle-1 font-weight-black',
+                            Number(item.amount) > 0 ? 'text-success' : 'text-error',
+                            item.is_transfer ? 'opacity-70 text-medium-emphasis grayscale' : ''
+                        ]">
+                            <span v-if="item.is_transfer">🔄</span>
+                            <span v-else-if="Number(item.amount) > 0">↓</span>
+                            <span v-else>↑</span>
+                            {{ formatAmount(Math.abs(Number(item.amount))) }}
+                        </div>
+                    </div>
+                </template>
 
-        <!-- Compact Pagination -->
-        <div class="pagination-bar" v-if="total > 0">
-            <span class="page-info">
-                {{ (page - 1) * pageSize + 1 }}–{{ Math.min(page * pageSize, total) }} of {{ total }}
-            </span>
-            <div class="pagination-controls">
-                <button class="page-btn" :disabled="page === 1" @click="changePage(page - 1)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M15 18l-6-6 6-6" />
-                    </svg>
-                </button>
-                <button class="page-btn" :disabled="page >= totalPages" @click="changePage(page + 1)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 18l6-6-6-6" />
-                    </svg>
-                </button>
-            </div>
-        </div>
+                <!-- Actions Column -->
+                <template #[`item.actions`]="{ item }">
+                    <div class="text-center">
+                        <v-btn icon="Pencil" size="x-small" variant="text" color="medium-emphasis"
+                            @click="emit('editTxn', item)" />
+                    </div>
+                </template>
+
+                <!-- Empty State -->
+                <template #no-data>
+                    <div class="d-flex flex-column align-center justify-center pa-10 text-center">
+                        <v-icon size="64" color="medium-emphasis" class="mb-4" icon="FileText"></v-icon>
+                        <h3 class="text-h6 font-weight-bold mb-1 opacity-70">No Transactions Found</h3>
+                        <p class="text-body-2 text-medium-emphasis">Adjust your filters or try a different search term.
+                        </p>
+                        <v-btn color="primary" variant="text" class="mt-4" @click="handleReset">Clear All
+                            Filters</v-btn>
+                    </div>
+                </template>
+
+                <!-- Loading State -->
+                <template #loading>
+                    <div class="d-flex flex-column align-center justify-center pa-10">
+                        <v-progress-circular indeterminate color="primary" size="48" width="4" class="mb-4" />
+                        <div class="text-subtitle-2 font-weight-bold opacity-60">Syncing with ledger...</div>
+                    </div>
+                </template>
+            </v-data-table-server>
+        </v-card>
     </div>
 </template>
 
 <style scoped>
+/* List Header */
+.list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    background: rgba(var(--v-theme-on-surface), 0.02);
+}
+
+.list-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+}
+
+.record-count {
+    font-size: 0.875rem;
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    font-weight: 600;
+    background: rgba(var(--v-theme-on-surface), 0.05);
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.5rem;
+}
+
 /* Filter Bar */
 .filter-bar {
     display: flex;
@@ -374,8 +571,8 @@ function handleReset() {
     justify-content: space-between;
     gap: 1.5rem;
     padding: 0.625rem 1rem;
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
+    background: rgba(var(--v-theme-on-surface), 0.02);
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
     border-radius: 0.75rem;
     margin-bottom: 1.25rem;
 }
@@ -408,9 +605,10 @@ function handleReset() {
 .list-search-input {
     padding: 0.45rem 0.75rem 0.45rem 2rem;
     font-size: 0.8125rem;
-    border: 1px solid #e5e7eb;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
     border-radius: 0.5rem;
-    background: white;
+    background: rgb(var(--v-theme-surface));
+    color: rgb(var(--v-theme-on-surface));
     width: 220px;
     outline: none;
     transition: all 0.2s;
@@ -434,6 +632,14 @@ function handleReset() {
     white-space: nowrap;
 }
 
+/* Toolbar Separator - vertical line */
+.toolbar-separator {
+    width: 1px;
+    height: 2rem;
+    background: rgba(var(--v-border-color), var(--v-border-opacity));
+    margin: 0 0.5rem;
+}
+
 .filter-divider {
     width: 1px;
     height: 24px;
@@ -444,7 +650,7 @@ function handleReset() {
 .range-pill-group {
     display: flex;
     gap: 0.375rem;
-    background: #f3f4f6;
+    background: rgba(var(--v-theme-on-surface), 0.05);
     padding: 2px;
     border-radius: 0.5rem;
     height: 36px;
@@ -474,8 +680,8 @@ function handleReset() {
 }
 
 .range-pill.active {
-    background: white;
-    color: #4f46e5;
+    background: rgb(var(--v-theme-surface));
+    color: rgb(var(--v-theme-primary));
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
@@ -536,11 +742,11 @@ function handleReset() {
 
 /* Content Card */
 .content-card {
-    background: white;
+    background: rgb(var(--v-theme-surface));
     border-radius: 0.75rem;
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
     overflow-x: auto;
-    border: 1px solid #e5e7eb;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
     margin-bottom: 1.5rem;
     position: relative;
 }
@@ -555,15 +761,15 @@ function handleReset() {
 }
 
 .modern-table thead th {
-    background: #f9fafb;
+    background: rgba(var(--v-theme-on-surface), 0.05);
     padding: 0.5rem 0.6rem;
     text-align: left;
     font-weight: 600;
     font-size: 0.7rem;
-    color: #6b7280;
+    color: rgb(var(--v-theme-on-surface), 0.6);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    border-bottom: 2px solid #e5e7eb;
+    border-bottom: 2px solid rgba(var(--v-border-color), 0.1);
     position: sticky;
     top: 0;
     z-index: 10;
@@ -571,8 +777,8 @@ function handleReset() {
 
 .modern-table tbody td {
     padding: 0.4rem 0.6rem;
-    border-bottom: 1px solid #f3f4f6;
-    color: #374151;
+    border-bottom: 1px solid rgba(var(--v-border-color), 0.05);
+    color: rgb(var(--v-theme-on-surface), 0.8);
     vertical-align: middle;
 }
 
@@ -581,11 +787,11 @@ function handleReset() {
 }
 
 .modern-table tbody tr:nth-child(even) {
-    background: #fafafa;
+    background: rgba(var(--v-theme-on-surface), 0.01);
 }
 
 .modern-table tbody tr:hover {
-    background: #f3f4f6;
+    background: rgba(var(--v-theme-on-surface), 0.05);
 }
 
 .modern-table tbody tr.row-selected {
@@ -891,14 +1097,16 @@ function handleReset() {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.75rem 1rem;
-    border-top: 1px solid #e5e7eb;
-    background: #fafafa;
+    padding: 0.875rem 1.25rem;
+    border-top: 2px solid #e5e7eb;
+    background: #ffffff;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .page-info {
     font-size: 0.875rem;
-    color: #6b7280;
+    color: #374151;
+    font-weight: 600;
 }
 
 .pagination-controls {

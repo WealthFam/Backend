@@ -4,14 +4,24 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import { useRoute } from 'vue-router'
 import CustomSelect from '@/components/CustomSelect.vue'
 import ImportModal from '@/components/ImportModal.vue'
+import SmartPromptModal from '@/components/SmartPromptModal.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import SpendingHeatmap from '@/components/SpendingHeatmap.vue'
+import TransactionList from './transactions/TransactionList.vue'
+import TransactionTriage from './transactions/TransactionTriage.vue'
+import TransactionModal from './transactions/TransactionModal.vue'
+import {
+    LayoutList,
+    Inbox,
+    Map as MapIcon
+} from 'lucide-vue-next'
 
 // Composables
 import { useTransactionHelpers } from '@/composables/useTransactionHelpers'
 import { useTransactionState } from '@/composables/useTransactionState'
 import { useTriageState } from '@/composables/useTriageState'
 import { useTransactionModals } from '@/composables/useTransactionModals'
+import { useAuthStore } from '@/stores/auth'
 
 // Global State
 const route = useRoute()
@@ -187,7 +197,15 @@ watch(searchQuery, () => {
     }, 400)
 })
 
-// findMatches and selectMatch are now provided by useTransactionModals composable
+// Watch for global member filter changes
+const auth = useAuthStore()
+watch(() => auth.selectedMemberId, () => {
+    // Reset data and re-fetch everything
+    accounts.value = [] // Force re-fetch of filtered accounts
+    page.value = 1
+    fetchData()
+    fetchTriage()
+})
 
 onMounted(() => {
     fetchData()
@@ -197,1053 +215,228 @@ onMounted(() => {
 
 <template>
     <MainLayout>
-        <!-- Compact Header -->
-        <div class="page-header">
-            <div class="header-left">
-                <h1 class="page-title">Transactions</h1>
-                <div class="header-tabs">
-                    <button class="tab-btn" :class="{ active: activeTab === 'list' }" @click="activeTab = 'list'">
-                        List
-                    </button>
-                    <button class="tab-btn" :class="{ active: activeTab === 'triage' }" @click="switchTab('triage')">
-                        Triage <span v-if="triageTransactions.length > 0" class="tab-badge">{{ triageTransactions.length
-                        }}</span>
-                    </button>
-                    <button class="tab-btn" :class="{ active: activeTab === 'heatmap' }" @click="switchTab('heatmap')">
-                        Heatmap 🗺️
-                    </button>
-                </div>
-                <span class="transaction-count">{{ total }} records</span>
-            </div>
+        <v-container fluid class="settings-page pa-6 pa-md-10 relative-pos overflow-hidden">
+            <!-- Animated Mesh Background -->
+            <div class="mesh-blob blob-1"></div>
+            <div class="mesh-blob blob-2"></div>
+            <div class="mesh-blob blob-3"></div>
 
-            <div class="header-actions">
-                <CustomSelect v-model="selectedAccount"
-                    :options="[{ label: 'All Accounts', value: '' }, ...accountOptions]" placeholder="All Accounts"
-                    @update:modelValue="page = 1; fetchData()" class="account-select" />
-
-                <button @click="showDeleteConfirm = true" :disabled="selectedIds.size === 0"
-                    class="btn-compact btn-danger">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                    </svg>
-                    Delete{{ selectedIds.size > 0 ? ` (${selectedIds.size})` : '' }}
-                </button>
-
-                <div class="header-divider"></div>
-
-                <button @click="showImportModal = true" class="btn-compact btn-secondary">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                    </svg>
-                    Import
-                </button>
-
-                <button v-if="activeTab !== 'triage'" @click="openAddModal" class="btn-compact btn-primary">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14M5 12h14" />
-                    </svg>
-                    Add
-                </button>
-
-                <ImportModal :isOpen="showImportModal" @close="showImportModal = false" @import-success="fetchData" />
-            </div>
-        </div>
-
-        <!-- Filter Bar -->
-        <div class="filter-bar" v-if="activeTab !== 'triage'">
-            <div class="filter-main">
-                <div class="filter-group">
-                    <span class="filter-label">Time Range:</span>
-                    <div class="range-pill-group">
-                        <button v-for="opt in timeRangeOptions" :key="opt.value" class="range-pill"
-                            :class="{ active: selectedTimeRange === opt.value }"
-                            @click="selectedTimeRange = opt.value; handleTimeRangeChange(opt.value)">
-                            {{ opt.label }}
-                        </button>
-                    </div>
-                </div>
-
-                <div class="filter-divider" v-if="selectedTimeRange === 'custom'"></div>
-
-                <div class="filter-group animate-in" v-if="selectedTimeRange === 'custom'">
-                    <input type="date" v-model="startDate" class="date-input" @change="page = 1; fetchData()" />
-                    <span class="filter-separator">to</span>
-                    <input type="date" v-model="endDate" class="date-input" @change="page = 1; fetchData()" />
-                </div>
-
-                <div class="filter-divider"></div>
-
-                <div class="filter-group list-search-group">
-                    <div class="list-search-container">
-                        <span class="search-icon-small">🔍</span>
-                        <input type="text" v-model="searchQuery" placeholder="Search description..."
-                            class="list-search-input">
-                    </div>
-                </div>
-
-                <div class="filter-divider"></div>
-
-                <div class="filter-group">
-                    <CustomSelect v-model="categoryFilter"
-                        :options="[{ label: 'All Categories', value: '' }, ...categoryOptions]"
-                        placeholder="All Categories" @update:modelValue="page = 1; fetchData()"
-                        class="category-filter-select" />
-                </div>
-            </div>
-
-            <button v-if="startDate || endDate || searchQuery || categoryFilter" class="btn-link"
-                @click="selectedTimeRange = 'all'; startDate = ''; endDate = ''; searchQuery = ''; categoryFilter = ''; fetchData()">
-                Reset
-            </button>
-        </div>
-
-        <div v-if="loading" class="loading-state">
-            <div class="spinner"></div>
-            Loading transactions...
-        </div>
-
-        <div v-else class="content-container animate-in">
-            <!-- List View -->
-            <div v-if="activeTab === 'list'" class="content-card">
-                <table class="modern-table">
-                    <thead>
-                        <tr>
-                            <th class="col-checkbox">
-                                <input type="checkbox" :checked="allSelected" @change="toggleSelectAll"
-                                    :disabled="transactions.length === 0">
-                            </th>
-                            <th class="col-date cursor-pointer hover:bg-gray-50" @click="toggleTxnSort('date')">
-                                Date
-                                <span v-if="txnSortKey === 'date'" class="text-indigo-600 ml-1">{{ txnSortOrder ===
-                                    'asc' ? '↑' : '↓' }}</span>
-                            </th>
-                            <th class="col-recipient cursor-pointer hover:bg-gray-50"
-                                @click="toggleTxnSort('description')">
-                                Recipient / Source
-                                <span v-if="txnSortKey === 'description'" class="text-indigo-600 ml-1">{{ txnSortOrder
-                                    === 'asc' ? '↑' : '↓' }}</span>
-                            </th>
-                            <th class="col-description">Description</th>
-                            <th class="col-amount cursor-pointer hover:bg-gray-50" @click="toggleTxnSort('amount')">
-                                Amount
-                                <span v-if="txnSortKey === 'amount'" class="text-indigo-600 ml-1">{{ txnSortOrder ===
-                                    'asc' ? '↑' : '↓' }}</span>
-                            </th>
-                            <th class="col-actions"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="txn in transactions" :key="txn.id"
-                            :class="{ 'row-selected': selectedIds.has(txn.id) }">
-                            <td class="col-checkbox">
-                                <input type="checkbox" :checked="selectedIds.has(txn.id)"
-                                    @change="toggleSelection(txn.id)">
-                            </td>
-                            <td class="col-date">
-                                <div class="date-cell">
-                                    <div class="date-day">{{ formatDate(txn.date).day }}</div>
-                                    <div class="date-meta">{{ formatDate(txn.date).meta }}</div>
-                                </div>
-                            </td>
-                            <td class="col-recipient">
-                                <div class="txn-recipient">
-                                    <div class="txn-primary">{{ txn.recipient || txn.description }}</div>
-                                    <div class="txn-source-meta" v-if="txn.source">
-                                        <span class="source-icon-mini">{{ txn.source === 'SMS' ? '📱' : (txn.source ===
-                                            'EMAIL' ? '📧' : '⌨️') }}</span>
-                                        {{ txn.source }}
-                                    </div>
-                                </div>
-                            </td>
-                            <td class="col-description">
-                                <div class="txn-description">
-                                    <div class="txn-description-text">
-                                        {{ txn.description }}
-                                        <span v-if="txn.latitude || txn.location_name" class="location-trigger"
-                                            :title="txn.location_name || 'Location available'">
-                                            📍
-                                        </span>
-                                    </div>
-                                    <div class="txn-meta-row">
-                                        <span class="account-badge">{{ getAccountName(txn.account_id) }}</span>
-
-                                        <span v-if="txn.is_ai_parsed" class="ai-badge-mini"
-                                            title="Extracted using Gemini AI">✨ AI</span>
-                                        <span v-if="txn.is_transfer" class="ai-badge-mini active-transfer"
-                                            title="Auto-detected as internal transfer">🔄 Self-Transfer</span>
-                                        <span v-if="txn.exclude_from_reports" class="ai-badge-mini active-hidden"
-                                            title="Excluded from reports and analytics">🚫 Hidden</span>
-                                        <span v-if="txn.is_emi" class="ai-badge-mini active-emi"
-                                            title="Linked to EMI Loan">🏦 EMI</span>
-
-                                        <div class="category-pill-wrapper">
-                                            <span class="category-pill"
-                                                :style="{ borderLeft: '3px solid ' + getCategoryDisplay(txn.category).color }">
-                                                <span class="category-icon">{{ getCategoryDisplay(txn.category).icon
-                                                }}</span>
-                                                {{ getCategoryDisplay(txn.category).text }}
-                                            </span>
-                                        </div>
-
-                                        <span class="ref-id-pill" v-if="txn.expense_group_id">
-                                            <span class="ref-icon">📁</span> {{
-                                                getExpenseGroupName(txn.expense_group_id) }}
-                                        </span>
-                                        <span class="ref-id-pill" v-if="txn.external_id">
-                                            <span class="ref-icon">🆔</span> {{ txn.external_id }}
-                                        </span>
-                                    </div>
-                                </div>
-                            </td>
-                            <td class="col-amount">
-                                <div class="amount-cell"
-                                    :class="{ 'is-income': Number(txn.amount) > 0 && !txn.is_transfer, 'is-expense': Number(txn.amount) < 0 && !txn.is_transfer, 'is-transfer': txn.is_transfer }">
-                                    <span class="amount-icon">{{ txn.is_transfer ? '🔄' : (Number(txn.amount) > 0 ? '↓'
-                                        : '↑') }}</span>
-                                    <span class="amount-value">{{ formatAmount(Math.abs(Number(txn.amount))) }}</span>
-                                </div>
-                            </td>
-                            <td class="col-actions">
-                                <button class="icon-btn-edit" @click="openEditModal(txn)" title="Edit">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                        stroke-width="2.5">
-                                        <path
-                                            d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                    </svg>
-                                </button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <div v-if="transactions.length === 0" class="empty-state">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="1.5">
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <path d="M3 9h18M9 21V9" />
-                    </svg>
-                    <p>No transactions found</p>
-                </div>
-
-                <!-- Compact Pagination -->
-                <div class="pagination-bar" v-if="total > 0">
-                    <span class="page-info">
-                        {{ (page - 1) * pageSize + 1 }}–{{ Math.min(page * pageSize, total) }} of {{ total }}
-                    </span>
-                    <div class="pagination-controls">
-                        <button class="page-btn" :disabled="page === 1" @click="changePage(page - 1)">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2">
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                        </button>
-                        <button class="page-btn" :disabled="page >= totalPages" @click="changePage(page + 1)">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2">
-                                <path d="M9 18l6-6-6-6" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-
-
-            <!-- Triage View -->
-            <div v-if="activeTab === 'triage'" class="triage-view animate-in">
-                <div class="triage-tabs mb-6">
-                    <button class="triage-tab-btn" :class="{ active: activeTriageSubTab === 'pending' }"
-                        @click="activeTriageSubTab = 'pending'">
-                        Pending Inbox ({{ triagePagination.total }})
-                    </button>
-                    <button class="triage-tab-btn" :class="{ active: activeTriageSubTab === 'training' }"
-                        @click="activeTriageSubTab = 'training'">
-                        Training Area ({{ trainingPagination.total }})
-                    </button>
-                </div>
-
-                <div v-if="activeTriageSubTab === 'pending'">
-                    <div class="alert-info-glass mb-4">
-                        <div class="alert-icon">🔒</div>
-                        <div class="alert-text">
-                            <strong>Review Intake</strong>: These transactions were auto-detected but require
-                            categorization or confirmation before affecting your balance.
+            <div class="relative-pos z-10">
+                <!-- Premium Header -->
+                <v-row class="mb-6 align-center">
+                    <v-col cols="12" md="4">
+                        <div class="d-flex align-center">
+                            <h1 class="text-h4 font-weight-black text-content">Transactions</h1>
                         </div>
-                    </div>
-
-                    <div class="triage-filter-bar mb-4">
-                        <div class="triage-search-box">
-                            <span class="search-icon-mini">🔍</span>
-                            <input type="text" v-model="triageSearchQuery"
-                                placeholder="Search by merchant, ID or amount..." class="triage-search-input-premium">
-                        </div>
-
-                        <div class="source-toggle-group">
-                            <button class="source-chip" :class="{ active: triageSourceFilter === 'ALL' }"
-                                @click="triageSourceFilter = 'ALL'">All Sources</button>
-                            <button class="source-chip" :class="{ active: triageSourceFilter === 'SMS' }"
-                                @click="triageSourceFilter = 'SMS'">SMS</button>
-                            <button class="source-chip" :class="{ active: triageSourceFilter === 'EMAIL' }"
-                                @click="triageSourceFilter = 'EMAIL'">Email</button>
-                        </div>
-
-                        <!-- Sort Controls Pending -->
-                        <div class="flex items-center gap-2 ml-auto">
-                            <CustomSelect v-model="triageSortKey"
-                                :options="[{ label: 'Date', value: 'date' }, { label: 'Amount', value: 'amount' }, { label: 'Description', value: 'description' }]"
-                                class="w-32 text-xs" />
-                            <button @click="triageSortOrder = triageSortOrder === 'asc' ? 'desc' : 'asc'"
-                                class="btn-icon-circle-small bg-white border border-gray-200" title="Toggle Order">
-                                {{ triageSortOrder === 'asc' ? '↑' : '↓' }}
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="bulk-action-bar-triage mb-4 flex items-center justify-between">
-                        <div class="flex items-center gap-4">
-                            <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-muted">
-                                <input type="checkbox" @change="toggleSelectAllTriage"
-                                    :checked="selectedTriageIds.length === triageTransactions.length && triageTransactions.length > 0"
-                                    class="rounded border-gray-300 text-indigo-600" />
-                                Select All Filtered
-                            </label>
-                            <button v-if="selectedTriageIds.length > 0" @click="handleBulkRejectTriage"
-                                class="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-2">
-                                🗑️ Discard {{ selectedTriageIds.length }}
-                            </button>
-                        </div>
-                        <button @click="fetchTriage(true)" class="btn-icon-circle-small">🔄</button>
-                    </div>
-
-                    <div class="triage-grid">
-                        <div v-for="txn in triageTransactions" :key="txn.id" class="glass-card triage-card"
-                            :class="[txn.amount < 0 ? 'debit-theme' : 'credit-theme', { 'is-transfer-active': txn.is_transfer, 'selected': selectedTriageIds.includes(txn.id) }]">
-                            <div class="triage-card-header">
-                                <div class="header-left">
-                                    <input type="checkbox" v-model="selectedTriageIds" :value="txn.id" class="mr-2" />
-                                    <span class="source-tag" :class="txn.source.toLowerCase()">{{ txn.source }}</span>
-                                    <span v-if="txn.is_ai_parsed" class="ai-badge-mini pulse"
-                                        title="Extracted using Gemini AI">✨ AI Verified</span>
-                                    <span v-if="txn.is_transfer" class="transfer-badge-mini"
-                                        title="Auto-detected as internal transfer">🔄 Self-Transfer</span>
-                                </div>
-                                <span class="triage-date">{{ formatDate(txn.date).day }} <span class="date-sep">•</span>
-                                    {{ formatDate(txn.date).meta }}</span>
-                            </div>
-
-                            <div class="triage-card-body">
-                                <div class="triage-main-content">
-                                    <div class="triage-amount-display" :class="txn.amount < 0 ? 'expense' : 'income'">
-                                        <!-- Symbol removed as formatAmount includes it -->
-                                        <div class="amount-val">{{ formatAmount(Math.abs(txn.amount)) }}</div>
-                                        <div class="amount-indicator">{{ txn.amount < 0 ? 'Debit' : 'Credit' }}</div>
-                                        </div>
-
-                                        <div class="triage-details-info">
-                                            <h3 class="triage-title">{{ txn.recipient || txn.description }}</h3>
-                                            <div class="triage-account-info">
-                                                <span class="acc-indicator"></span>
-                                                {{ getAccountName(txn.account_id) }}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="triage-meta-pills">
-                                        <div class="meta-pill" v-if="txn.description">
-                                            <span class="pill-icon">📝</span> {{ txn.description }}
-                                        </div>
-                                        <div class="meta-pill" v-if="txn.external_id">
-                                            <span class="pill-icon">🆔</span> {{ txn.external_id }}
-                                        </div>
-                                        <div class="meta-pill highlight" v-if="txn.balance">
-                                            <span class="pill-icon">💰</span> Bal: ₹{{ txn.balance.toFixed(2) }}
-                                        </div>
-                                    </div>
-
-                                    <div v-if="txn.raw_message" class="triage-raw-box">
-                                        <div class="raw-label">Origin Message</div>
-                                        <div class="raw-content-text">{{ txn.raw_message }}</div>
-                                    </div>
-                                </div>
-
-                                <div class="triage-card-actions">
-                                    <div class="action-top-row">
-                                        <div class="triage-input-group">
-                                            <div class="toggle-control">
-                                                <label class="premium-switch">
-                                                    <input type="checkbox" v-model="txn.is_transfer"
-                                                        @change="txn.exclude_from_reports = txn.is_transfer">
-                                                    <span class="premium-slider"></span>
-                                                </label>
-                                                <span class="toggle-text">{{ txn.is_transfer ? 'Internal Transfer' :
-                                                    'Expense/Income' }}</span>
-                                            </div>
-
-                                            <div class="toggle-control">
-                                                <label class="premium-switch">
-                                                    <input type="checkbox" v-model="txn.exclude_from_reports">
-                                                    <span class="premium-slider"
-                                                        style="background-color: #fee2e2;"></span>
-                                                </label>
-                                                <span class="toggle-text" style="color: #991b1b;">Exclude from
-                                                    Reports</span>
-                                            </div>
-
-                                            <div class="select-container">
-                                                <CustomSelect v-if="txn.is_transfer" v-model="txn.to_account_id"
-                                                    :options="accountOptions.filter(a => a.value !== txn.account_id)"
-                                                    :placeholder="txn.amount < 0 ? 'To Account (Tracked)' : 'From Account (Tracked)'"
-                                                    class="triage-select-premium" />
-                                                <CustomSelect v-else v-model="txn.category" :options="categoryOptions"
-                                                    placeholder="Assign Category" class="triage-select-premium" />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="action-bottom-row">
-                                        <button @click="rejectTriage(txn.id)"
-                                            class="btn-triage-secondary">Discard</button>
-
-                                        <div class="approval-cluster">
-                                            <button @click="approveTriage(txn)" class="btn-triage-primary">
-                                                Confirm Entry
-                                                <span class="btn-shimmer"></span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div v-if="triagePagination.total === 0" class="empty-state-triage">
-                            <div class="empty-glow-icon">✨</div>
-                            <h3>Inbox zero!</h3>
-                            <p>No new transactions waiting for review.</p>
-                        </div>
-
-                        <!-- Triage Pagination & Page Size -->
-                        <div v-if="triagePagination.total > 0"
-                            class="mt-6 flex items-center justify-between border-t border-gray-100 pt-6">
-                            <div class="flex items-center gap-4">
-                                <span class="text-[10px] text-muted font-mono">
-                                    {{ triagePagination.skip + 1 }}–{{ Math.min(triagePagination.skip +
-                                        triagePagination.limit,
-                                        triagePagination.total) }} of {{ triagePagination.total }}
-                                </span>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[10px] text-muted uppercase font-bold tracking-wider">Size:</span>
-                                    <select v-model="triagePagination.limit"
-                                        @change="triagePagination.skip = 0; fetchTriage()"
-                                        class="text-[10px] bg-white border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-700">
-                                        <option :value="10">10</option>
-                                        <option :value="20">20</option>
-                                        <option :value="50">50</option>
-                                        <option :value="100">100</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-1" v-if="triagePagination.total > triagePagination.limit">
-                                <button @click="triagePagination.skip -= triagePagination.limit; fetchTriage()"
-                                    :disabled="triagePagination.skip === 0" class="btn-pagination-compact">Prev</button>
-                                <button @click="triagePagination.skip += triagePagination.limit; fetchTriage()"
-                                    :disabled="triagePagination.skip + triagePagination.limit >= triagePagination.total"
-                                    class="btn-pagination-compact">Next</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Training Area -->
-                    <div v-if="activeTriageSubTab === 'training'">
-                        <div class="alert-info-glass mb-4 training-alert">
-                            <div class="alert-icon">🤖</div>
-                            <div class="alert-text">
-                                <strong>Interactive Training</strong>: These messages look like transactions but could
-                                not be parsed. Label them to help the system learn!
-                            </div>
-                        </div>
-
-                        <div class="bulk-action-bar-training mb-4 flex items-center justify-between">
-                            <div class="flex items-center gap-4">
-                                <label
-                                    class="flex items-center gap-2 cursor-pointer text-xs font-bold text-amber-800/60">
-                                    <input type="checkbox" @change="toggleSelectAllTraining"
-                                        :checked="selectedTrainingIds.length === unparsedMessages.length && unparsedMessages.length > 0"
-                                        class="rounded border-amber-300 text-amber-600" />
-                                    Select All Current
-                                </label>
-                                <button v-if="selectedTrainingIds.length > 0" @click="handleBulkDismissTraining"
-                                    class="bg-amber-100 text-amber-800 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-2">
-                                    🗑️ Dismiss {{ selectedTrainingIds.length }}
-                                </button>
-                            </div>
-                            <!-- Sort Controls Training -->
-                            <div class="flex items-center gap-2">
-                                <CustomSelect v-model="trainingSortKey"
-                                    :options="[{ label: 'Date', value: 'created_at' }, { label: 'Sender', value: 'sender' }]"
-                                    class="w-32 text-xs" />
-                                <button @click="trainingSortOrder = trainingSortOrder === 'asc' ? 'desc' : 'asc'"
-                                    class="btn-icon-circle-small bg-white border border-amber-200 text-amber-700"
-                                    title="Toggle Order">
-                                    {{ trainingSortOrder === 'asc' ? '↑' : '↓' }}
-                                </button>
-                                <button @click="fetchTriage(true)"
-                                    class="btn-icon-circle-small amber-themed">🔄</button>
-                            </div>
-                        </div>
-
-                        <div class="triage-grid">
-                            <div v-for="msg in unparsedMessages" :key="msg.id"
-                                class="glass-card triage-card training-theme"
-                                :class="{ 'selected': selectedTrainingIds.includes(msg.id) }">
-                                <div class="triage-card-header">
-                                    <div class="header-left">
-                                        <input type="checkbox" v-model="selectedTrainingIds" :value="msg.id"
-                                            class="mr-2" />
-                                        <span class="source-tag" :class="msg.source.toLowerCase()">{{ msg.source
-                                        }}</span>
-                                        <span class="ai-badge-mini"
-                                            style="background: #fef3c7; color: #92400e; border-color: #f59e0b;">🤖 Needs
-                                            Training</span>
-                                    </div>
-                                    <span class="triage-date">{{ formatDate(msg.created_at).day }}</span>
-                                </div>
-
-                                <div class="triage-card-body">
-                                    <div class="training-content-premium">
-                                        <div class="training-header">
-                                            <div class="training-sender" v-if="msg.sender">
-                                                <span class="label">Sender:</span> {{ msg.sender }}
-                                            </div>
-                                            <div class="training-subject" v-if="msg.subject">
-                                                <span class="label">Subject:</span> {{ msg.subject }}
-                                            </div>
-                                        </div>
-                                        <pre class="training-raw-preview-premium"
-                                            :class="{ 'expanded': expandedTrainingIds.has(msg.id) }">{{ msg.raw_content }}</pre>
-                                        <button v-if="msg.raw_content?.length > 150"
-                                            @click="toggleTrainingExpand(msg.id)" class="read-more-btn">
-                                            {{ expandedTrainingIds.has(msg.id) ? 'Collapse ▲' : 'Read More ▼' }}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div class="triage-card-actions">
-                                    <div class="action-bottom-row">
-                                        <button @click="dismissTraining(msg.id)"
-                                            class="btn-triage-secondary">Dismiss</button>
-                                        <button @click="startLabeling(msg)" class="btn-triage-primary">
-                                            Label Fields
-                                            <span class="btn-shimmer"></span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div v-if="trainingPagination.total === 0" class="empty-state-triage">
-                            <div class="empty-glow-icon">🛡️</div>
-                            <h3>All clear!</h3>
-                            <p>No unparsed messages waiting for training.</p>
-                        </div>
-
-                        <!-- Training Area Pagination & Page Size -->
-                        <div v-if="trainingPagination.total > 0"
-                            class="mt-6 flex items-center justify-between border-t border-gray-100 pt-6">
-                            <div class="flex items-center gap-4">
-                                <span class="text-[10px] text-muted font-mono">
-                                    {{ trainingPagination.skip + 1 }}–{{ Math.min(trainingPagination.skip +
-                                        trainingPagination.limit, trainingPagination.total) }} of {{
-                                        trainingPagination.total }}
-                                </span>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[10px] text-muted uppercase font-bold tracking-wider">Page
-                                        Size:</span>
-                                    <select v-model="trainingPagination.limit"
-                                        @change="trainingPagination.skip = 0; fetchTriage()"
-                                        class="text-[10px] bg-white border border-amber-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold text-amber-800">
-                                        <option :value="10">10</option>
-                                        <option :value="20">20</option>
-                                        <option :value="50">50</option>
-                                        <option :value="100">100</option>
-                                        <option :value="200">200</option>
-                                        <option :value="500">500</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-1"
-                                v-if="trainingPagination.total > trainingPagination.limit">
-                                <button @click="trainingPagination.skip -= trainingPagination.limit; fetchTriage()"
-                                    :disabled="trainingPagination.skip === 0"
-                                    class="btn-pagination-compact amber">Prev</button>
-                                <button @click="trainingPagination.skip += trainingPagination.limit; fetchTriage()"
-                                    :disabled="trainingPagination.skip + trainingPagination.limit >= trainingPagination.total"
-                                    class="btn-pagination-compact amber">Next</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Heatmap View -->
-            <div v-if="activeTab === 'heatmap'" class="heatmap-view animate-in">
-                <div v-if="loadingHeatmap" class="loading-overlay">
-                    <div class="spinner"></div>
-                    Loading Map Data...
-                </div>
-                <SpendingHeatmap :data="heatmapData" />
-                <div class="heatmap-footer mt-4">
-                    <p class="text-xs text-muted">Showing spending density based on transaction geolocation. Only
-                        transactions with coordinates are displayed.</p>
-                </div>
-            </div>
-
-            <!-- Global Styled Modal -->
-            <div v-if="showModal" class="modal-overlay-global">
-                <div class="modal-global">
-                    <div class="modal-header">
-                        <h2 class="modal-title">{{ isEditing ? 'Edit Transaction' : 'Add Transaction' }}</h2>
-                        <button class="btn-icon" @click="showModal = false">✕</button>
-                    </div>
-
-                    <form @submit.prevent="handleSubmit">
-
-                        <div class="form-group" v-if="!isEditing">
-                            <label class="form-label">Account</label>
-                            <CustomSelect v-model="form.account_id" :options="accountOptions"
-                                placeholder="Select Account" />
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label class="form-label">Amount</label>
-                                <input type="number" step="0.01" v-model="form.amount" class="form-input" required
-                                    placeholder="-50.00" />
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label class="form-label">Date</label>
-                                <input type="datetime-local" v-model="form.date" class="form-input" required />
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Description</label>
-                            <input v-model="form.description" class="form-input" required
-                                placeholder="e.g. Grocery shopping" />
-                        </div>
-
-                        <div class="form-group">
-                            <div
-                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                <label class="form-label" style="margin-bottom: 0;">Category & Options</label>
-                                <div v-if="currentCategoryBudget" class="budget-preview-tag"
-                                    :class="{ 'danger': currentCategoryBudget.remaining < 0 }">
-                                    <span class="dot"></span>
-                                    {{ formatAmount(currentCategoryBudget.remaining) }} left
-                                </div>
-                            </div>
-
-                            <!-- Options Panel -->
-                            <div
-                                style="display: flex; flex-direction: column; gap: 0.75rem; padding: 0.875rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; margin-bottom: 1rem;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.8125rem; font-weight: 600; color: #475569;">Is internal
-                                        transfer?</span>
-                                    <div class="toggle-control" style="min-width: unset;">
-                                        <label class="premium-switch">
-                                            <input type="checkbox" v-model="form.is_transfer">
-                                            <span class="premium-slider"></span>
-                                        </label>
-                                        <span class="toggle-text" style="min-width: 40px; text-align: right;">{{
-                                            form.is_transfer ? 'Yes' : 'No' }}</span>
-                                    </div>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.8125rem; font-weight: 600; color: #991b1b;">Exclude from
-                                        reports?</span>
-                                    <div class="toggle-control" style="min-width: unset;">
-                                        <label class="premium-switch">
-                                            <input type="checkbox" v-model="form.exclude_from_reports">
-                                            <span class="premium-slider"
-                                                style="background-color: #fee2e2; border: 1px solid #fecaca;"></span>
-                                        </label>
-                                        <span class="toggle-text"
-                                            style="color: #991b1b; min-width: 40px; text-align: right;">{{
-                                                form.exclude_from_reports ? 'Yes' : 'No' }}</span>
-                                    </div>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.8125rem; font-weight: 600; color: #0369a1;">Is EMI
-                                        Payment?</span>
-                                    <div class="toggle-control" style="min-width: unset;">
-                                        <label class="premium-switch">
-                                            <input type="checkbox" v-model="form.is_emi">
-                                            <span class="premium-slider"
-                                                style="background-color: #e0f2fe; border: 1px solid #bae6fd;"></span>
-                                        </label>
-                                        <span class="toggle-text"
-                                            style="color: #0369a1; min-width: 40px; text-align: right;">{{ form.is_emi ?
-                                                'Yes' : 'No' }}</span>
-                                    </div>
-                                </div>
-                                <div v-if="form.is_emi" class="mt-2">
-                                    <label class="text-xs font-bold text-gray-500 uppercase">Select Loan</label>
-                                    <CustomSelect v-model="form.loan_id" :options="loanOptions"
-                                        placeholder="Link to Loan" />
-                                </div>
-                            </div>
-
-                            <div v-if="form.is_transfer">
-                                <label class="form-label">Linked Account</label>
-                                <CustomSelect v-model="form.to_account_id"
-                                    :options="accountOptions.filter(a => a.value !== form.account_id)"
-                                    :placeholder="!form.amount || form.amount < 0 ? 'To Account' : 'From Account'" />
-
-                                <!-- Match Finder -->
-                                <div v-if="form.to_account_id && form.amount"
-                                    class="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                    <div class="flex justify-between items-center mb-2">
-                                        <span class="text-xs font-semibold uppercase text-gray-500">Transaction
-                                            Matcher</span>
-                                        <button type="button" @click="findMatches"
-                                            class="text-xs text-blue-600 hover:text-blue-800"
-                                            :disabled="isSearchingMatches">
-                                            {{ isSearchingMatches ? 'Searching...' : 'Find Matches 🔍' }}
-                                        </button>
-                                    </div>
-
-                                    <div v-if="potentialMatches.length > 0" class="space-y-2">
-                                        <div v-for="match in potentialMatches" :key="match.id"
-                                            class="p-2 border rounded cursor-pointer text-sm bg-white hover:bg-blue-50 transition-colors"
-                                            :class="form.linked_transaction_id === match.id ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200'"
-                                            @click="selectMatch(match)">
-                                            <div class="flex justify-between font-medium">
-                                                <span>{{ new Date(match.date).toLocaleDateString() }}</span>
-                                                <span :class="match.amount > 0 ? 'text-green-600' : 'text-red-600'">
-                                                    {{ formatAmount(match.amount) }}
-                                                </span>
-                                            </div>
-                                            <div class="text-gray-600 truncate">{{ match.description }}</div>
-                                        </div>
-                                    </div>
-                                    <div v-else-if="matchesSearched" class="text-xs text-center text-gray-500 py-2">
-                                        No matches found around this date.
-                                    </div>
-                                </div>
-                            </div>
-                            <div v-else>
-                                <label class="form-label">Category</label>
-                                <CustomSelect v-model="form.category" :options="categoryOptions"
-                                    placeholder="Select Category" allow-new />
-                            </div>
-                        </div>
-
-                        <div class="form-group" style="border-top: 1px solid #efefef; padding-top: 1rem;">
-                            <label class="form-label">Expense Group (Event/Project)</label>
-                            <CustomSelect v-model="form.expense_group_id"
-                                :options="[{ label: 'None', value: '' }, ...expenseGroupOptions]"
-                                placeholder="Link to Expense Group" />
-                            <p class="text-[10px] text-muted mt-1 italic">Groups help track spending for specific events
-                                like vacations or projects.</p>
-                        </div>
-
-                        <div class="modal-footer">
-                            <button type="button" @click="showModal = false" class="btn btn-outline">
-                                <span class="icon-spacer">✕</span> Cancel
-                            </button>
-                            <button type="submit" class="btn btn-primary">
-                                <span class="icon-spacer">💾</span> Save
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-
-            <!-- Smart Categorization / Exclusion Prompt -->
-            <div v-if="showSmartPrompt" class="modal-overlay-global">
-                <div class="modal-global" style="max-width: 450px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title">
-                            {{ smartPromptData.excludeFromReports ? 'Auto-Exclude Rule 🙈' : 'Smart Categorization 🧠'
-                            }}
-                        </h2>
-                        <button class="btn-icon" @click="showSmartPrompt = false">✕</button>
-                    </div>
-                    <div style="padding: 1.5rem;">
-                        <p v-if="smartPromptData.excludeFromReports"
-                            style="margin-bottom: 1.25rem; color: #4b5563; line-height: 1.5;">
-                            You marked <strong>{{ smartPromptData.pattern }}</strong> as <strong>Hidden</strong>
-                            <span v-if="smartPromptData.category && smartPromptData.category !== 'Uncategorized'">
-                                and categorized as <strong>{{ smartPromptData.category }}</strong></span>.
-                            Do you want to update the rule to always apply this?
+                        <p class="text-subtitle-1 text-medium-emphasis font-weight-bold mt-1 opacity-70">
+                            Track and manage your family's spending
                         </p>
-                        <p v-else style="margin-bottom: 1.25rem; color: #4b5563; line-height: 1.5;">
-                            You categorized <strong>{{ smartPromptData.pattern }}</strong> as <strong>{{
-                                smartPromptData.category }}</strong>.
-                        </p>
+                    </v-col>
 
-                        <div class="smart-options">
-                            <label class="smart-option-item" v-if="smartPromptData.count > 0">
-                                <input type="checkbox" v-model="smartPromptData.applyToSimilar" class="checkbox-input">
-                                <span>
-                                    {{ smartPromptData.excludeFromReports ? 'Exclude retrospectively' :
-                                        'Apply retrospectively to' }}
-                                    <strong>{{ smartPromptData.count }}</strong> similar
-                                    {{ smartPromptData.excludeFromReports ? '' : 'uncategorized' }}
-                                    transactions
-                                </span>
-                            </label>
-
-                            <label class="smart-option-item">
-                                <input type="checkbox" v-model="smartPromptData.createRule" class="checkbox-input">
-                                <span v-if="smartPromptData.excludeFromReports">
-                                    Always <strong>hide</strong>
-                                    <span
-                                        v-if="smartPromptData.category && smartPromptData.category !== 'Uncategorized'">
-                                        and categorize as <strong>{{ smartPromptData.category }}</strong>
-                                    </span>
-                                    transactions from <strong>{{ smartPromptData.pattern }}</strong> in future
-                                    (Update/Create Rule)
-                                </span>
-                                <span v-else>
-                                    Always categorize <strong>{{ smartPromptData.pattern }}</strong> as <strong>{{
-                                        smartPromptData.category }}</strong> in future
-                                </span>
-                            </label>
-                        </div>
-
-                        <div class="modal-footer" style="padding: 1.5rem 0 0 0; border: none; background: transparent;">
-                            <button class="btn btn-outline" @click="showSmartPrompt = false">Skip</button>
-                            <button class="btn btn-primary" @click="handleSmartCategorize">Confirm</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Smart Rename Modal -->
-            <div v-if="showRenamePrompt" class="modal-overlay-global">
-                <div class="modal-global" style="max-width: 450px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title">Bulk Rename ✏️</h2>
-                        <button class="btn-icon" @click="showRenamePrompt = false">✕</button>
-                    </div>
-                    <div style="padding: 1.5rem;">
-                        <p style="margin-bottom: 1.25rem; color: #4b5563; line-height: 1.5;">
-                            You renamed <strong>{{ renamePromptData.oldName }}</strong> to <strong>{{
-                                renamePromptData.newName }}</strong>.
-                            Found <strong>{{ renamePromptData.count }}</strong> other transactions with the same name.
-                        </p>
-
-                        <div class="smart-options">
-                            <label class="smart-option-item">
-                                <input type="checkbox" v-model="renamePromptData.syncToParser" class="checkbox-input">
-                                <span>
-                                    <strong>Save as permanent lookup</strong> (Auto-rename this merchant in future)
-                                </span>
-                            </label>
-                        </div>
-
-                        <div class="modal-footer" style="padding: 1.5rem 0 0 0; border: none; background: transparent;">
-                            <button class="btn btn-outline" @click="showRenamePrompt = false">Only this one</button>
-                            <button class="btn btn-primary" @click="handleBulkRename">Rename All {{
-                                renamePromptData.count }}</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Delete Confirmation Modal -->
-            <div v-if="showDeleteConfirm" class="modal-overlay-global">
-                <div class="modal-global" style="max-width: 400px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title">Delete Transactions</h2>
-                        <button class="btn-icon" @click="showDeleteConfirm = false">✕</button>
-                    </div>
-                    <div style="padding: 1.5rem; text-align: center;">
-                        <div style="font-size: 3rem; margin-bottom: 1rem;">🗑️</div>
-                        <p style="color: #4b5563; margin-bottom: 1.5rem;">
-                            Are you sure you want to delete <strong>{{ selectedIds.size }}</strong> selected
-                            transactions? This action cannot be undone.
-                        </p>
-                        <div class="modal-footer"
-                            style="padding: 0; border: none; background: transparent; justify-content: center; gap: 1rem;">
-                            <button class="btn btn-outline" @click="showDeleteConfirm = false">Cancel</button>
-                            <button class="btn btn-danger" @click="confirmDelete"
-                                style="background: #ef4444; color: white; border: none;">Delete</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Triage Discard Confirmation Modal -->
-            <div v-if="showDiscardConfirm" class="modal-overlay-global">
-                <div class="modal-global" style="max-width: 400px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title">Discard Transaction</h2>
-                        <button class="btn-icon"
-                            @click="showDiscardConfirm = false; createIgnoreRule = false">✕</button>
-                    </div>
-                    <div style="padding: 1.5rem; text-align: center;">
-                        <div style="font-size: 3rem; margin-bottom: 1rem;">♻️</div>
-                        <p style="color: #4b5563; margin-bottom: 1.5rem;">
-                            Discard this potential transaction? It will be removed from your review list.
-                        </p>
-
-                        <div
-                            style="margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-size: 0.875rem; color: #6b7280; background: #f9fafb; padding: 0.75rem; border-radius: 0.5rem;">
-                            <input type="checkbox" v-model="createIgnoreRule" id="ignoreFuture"
-                                class="rounded border-gray-300 text-rose-600 focus:ring-rose-500" />
-                            <label for="ignoreFuture" class="cursor-pointer font-medium text-gray-700">Don't show
-                                similar messages again</label>
-                        </div>
-
-                        <div class="modal-footer"
-                            style="padding: 0; border: none; background: transparent; justify-content: center; gap: 1rem;">
-                            <button class="btn btn-outline"
-                                @click="showDiscardConfirm = false; createIgnoreRule = false">Keep It</button>
-                            <button class="btn-danger" @click="confirmDiscard"
-                                style="background: #ef4444; color: white; border: none; padding: 0.625rem 1.5rem; border-radius: 0.5rem; cursor: pointer; font-weight: 600;">Discard</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Training Discard Confirmation Modal -->
-            <div v-if="showTrainingDiscardConfirm" class="modal-overlay-global">
-                <div class="modal-global" style="max-width: 400px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title">Dismiss Message</h2>
-                        <button class="btn-icon"
-                            @click="showTrainingDiscardConfirm = false; createIgnoreRule = false">✕</button>
-                    </div>
-                    <div style="padding: 1.5rem; text-align: center;">
-                        <div style="font-size: 3rem; margin-bottom: 1rem;">🛡️</div>
-                        <p style="color: #4b5563; margin-bottom: 1.5rem;">
-                            {{ trainingIdToDiscard ? 'Dismiss this unparsed message?' : `Dismiss
-                            ${selectedTrainingIds.length} unparsed messages?` }}
-                        </p>
-
-                        <div
-                            style="margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-size: 0.875rem; color: #6b7280; background: #f9fafb; padding: 0.75rem; border-radius: 0.5rem;">
-                            <input type="checkbox" v-model="createIgnoreRule" id="ignoreFutureTraining"
-                                class="rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
-                            <label for="ignoreFutureTraining" class="cursor-pointer font-medium text-gray-700">Don't
-                                show similar messages again</label>
-                        </div>
-
-                        <div class="modal-footer"
-                            style="padding: 0; border: none; background: transparent; justify-content: center; gap: 1rem;">
-                            <button class="btn btn-outline"
-                                @click="showTrainingDiscardConfirm = false; createIgnoreRule = false">Cancel</button>
-                            <button class="btn-primary" @click="handleConfirmGlobalTrainingDismiss"
-                                style="background: #f59e0b; color: white; border: none; padding: 0.625rem 1.5rem; border-radius: 0.5rem; cursor: pointer; font-weight: 600;">Dismiss</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Interactive Labeling Modal -->
-            <div v-if="showLabelForm" class="modal-overlay-global">
-                <div class="modal-global" style="max-width: 750px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title">Label Transaction 🏷️</h2>
-                        <button class="btn-icon" @click="showLabelForm = false">✕</button>
-                    </div>
-
-                    <div class="labeling-layout">
-                        <!-- Left: Raw Message -->
-                        <div class="labeling-raw">
-                            <h4 class="section-label">Raw Message</h4>
-                            <div class="raw-content-box">{{ selectedMessage?.raw_content }}</div>
-                            <div class="raw-meta" v-if="selectedMessage?.subject">
-                                <strong>Subject:</strong> {{ selectedMessage.subject }}
-                            </div>
-                        </div>
-
-                        <form @submit.prevent="handleLabelSubmit" class="labeling-form">
-                            <div class="form-grid-2">
-                                <div class="form-group">
-                                    <label class="form-label">Amount (₹)</label>
-                                    <input type="number" v-model="labelForm.amount" class="form-input" required
-                                        step="0.01">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Date</label>
-                                    <input type="datetime-local" v-model="labelForm.date" class="form-input" required>
-                                </div>
-                            </div>
-
-                            <div class="form-grid-2">
-                                <div class="form-group">
-                                    <label class="form-label">Type</label>
-                                    <div class="flex gap-4">
-                                        <label class="flex items-center gap-2 cursor-pointer">
-                                            <input type="radio" v-model="labelForm.type" value="DEBIT"
-                                                class="text-indigo-600 focus:ring-indigo-500">
-                                            <span class="text-xs font-semibold text-gray-700">Debit</span>
-                                        </label>
-                                        <label class="flex items-center gap-2 cursor-pointer">
-                                            <input type="radio" v-model="labelForm.type" value="CREDIT"
-                                                class="text-green-600 focus:ring-green-500">
-                                            <span class="text-xs font-semibold text-gray-700">Credit</span>
-                                        </label>
+                    <v-col cols="12" md="8" class="d-flex flex-column flex-md-row align-md-center justify-end gap-3">
+                        <!-- Navigation Tabs -->
+                        <div class="premium-pill-tabs flex-grow-1 flex-md-grow-0 d-flex overflow-x-auto">
+                            <v-tabs v-model="activeTab" color="primary" density="compact" hide-slider show-arrows
+                                class="rounded-xl">
+                                <v-tab value="list" class="premium-tab" rounded="xl" @click="fetchData">
+                                    <div class="d-flex align-center gap-2">
+                                        <LayoutList :size="16" />
+                                        <span>List</span>
                                     </div>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Account Mask</label>
-                                    <input type="text" v-model="labelForm.account_mask" class="form-input"
-                                        placeholder="e.g. 1234" required maxlength="4">
-                                </div>
-                            </div>
+                                </v-tab>
+                                <v-tab value="triage" class="premium-tab" rounded="xl" @click="fetchTriage">
+                                    <div class="d-flex align-center gap-2">
+                                        <Inbox :size="16" />
+                                        <span>Triage</span>
+                                        <v-chip v-if="triagePagination.total > 0" size="x-small" color="primary"
+                                            class="ml-1 font-weight-black">
+                                            {{ triageTransactions.length }}
+                                        </v-chip>
+                                    </div>
+                                </v-tab>
+                                <v-tab value="heatmap" class="premium-tab" rounded="xl">
+                                    <div class="d-flex align-center gap-2">
+                                        <MapIcon :size="16" />
+                                        <span>Heatmap</span>
+                                    </div>
+                                </v-tab>
+                            </v-tabs>
+                        </div>
+                    </v-col>
+                </v-row>
 
-                            <div class="form-grid-2">
-                                <div class="form-group">
-                                    <label class="form-label">Recipient / Merchant</label>
-                                    <input type="text" v-model="labelForm.recipient" class="form-input"
-                                        placeholder="e.g. Starbucks">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Reference ID (Optional)</label>
-                                    <input type="text" v-model="labelForm.ref_id" class="form-input"
-                                        placeholder="UTR / TXN ID">
-                                </div>
-                            </div>
+                <!-- CONTENT AREA -->
+                <v-window v-model="activeTab" class="overflow-visible">
+                    <v-window-item value="list">
+                        <TransactionList v-bind="{
+                            transactions, accounts, categories, expenseGroups,
+                            total, loading, selectedAccount, categoryFilter,
+                            searchQuery, startDate, endDate, selectedTimeRange,
+                            page, pageSize, txnSortKey, txnSortOrder
+                        }" v-model:selectedIds="selectedIds"
+                            @update:selectedAccount="selectedAccount = $event; page = 1; fetchData()"
+                            @update:categoryFilter="categoryFilter = $event; page = 1; fetchData()"
+                            @update:searchQuery="searchQuery = $event"
+                            @update:startDate="startDate = $event; page = 1; fetchData()"
+                            @update:endDate="endDate = $event; page = 1; fetchData()"
+                            @update:selectedTimeRange="selectedTimeRange = $event; handleTimeRangeChange($event)"
+                            @update:page="page = $event; fetchData()" @sortChange="toggleTxnSort"
+                            @editTxn="openEditModal" @deleteSelected="showDeleteConfirm = true"
+                            @importCsv="showImportModal = true" @fetchData="fetchData"
+                            @resetFilters="selectedTimeRange = 'all'; startDate = ''; endDate = ''; searchQuery = ''; categoryFilter = ''; fetchData()" />
+                    </v-window-item>
 
-                            <div class="form-group">
-                                <label class="form-label">Category</label>
-                                <CustomSelect v-model="labelForm.category" :options="categoryOptions"
-                                    placeholder="Assign Category" />
-                            </div>
+                    <v-window-item value="triage">
+                        <TransactionTriage v-bind="{
+                            activeSubTab: activeTriageSubTab, accounts, categories,
+                            triageTransactions, triagePagination, triageSearchQuery,
+                            triageSourceFilter, triageSortKey, triageSortOrder,
+                            unparsedMessages, trainingPagination, trainingSortKey,
+                            trainingSortOrder
+                        }" v-model:selectedTriageIds="selectedTriageIds"
+                            v-model:selectedTrainingIds="selectedTrainingIds"
+                            @update:activeSubTab="activeTriageSubTab = $event"
+                            @update:triageSearchQuery="triageSearchQuery = $event"
+                            @update:triageSourceFilter="triageSourceFilter = $event"
+                            @update:triageSortKey="triageSortKey = $event"
+                            @update:triageSortOrder="triageSortOrder = $event"
+                            @update:trainingSortKey="trainingSortKey = $event"
+                            @update:trainingSortOrder="trainingSortOrder = $event" @approveTriage="approveTriage"
+                            @rejectTriage="rejectTriage" @bulkRejectTriage="handleBulkRejectTriage"
+                            @startLabeling="startLabeling" @dismissTraining="dismissTraining"
+                            @bulkDismissTraining="handleBulkDismissTraining" @refreshTriage="fetchTriage" />
+                    </v-window-item>
 
-                            <div class="form-group check-group" style="margin-top: 0.5rem; background: #fef2f2;">
-                                <input type="checkbox" id="excludeReport" v-model="labelForm.exclude_from_reports">
-                                <label for="excludeReport" style="color: #991b1b;">Exclude from reports &
-                                    analytics</label>
-                            </div>
-
-                            <div class="form-group check-group" style="margin-top: 0.5rem;">
-                                <input type="checkbox" id="genPattern" v-model="labelForm.generate_pattern">
-                                <label for="genPattern">Learn this pattern for future messages</label>
-                            </div>
-
-                            <div class="modal-footer" style="padding: 1.5rem 0 0 0; background: transparent;">
-                                <button type="button" class="btn btn-outline"
-                                    @click="showLabelForm = false">Cancel</button>
-                                <button type="submit" class="btn btn-primary">Create Pending Transaction</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                    <v-window-item value="heatmap">
+                        <div class="content-card pa-6 glass-card">
+                            <SpendingHeatmap :data="heatmapData" />
+                        </div>
+                    </v-window-item>
+                </v-window>
             </div>
+        </v-container>
+
+        <!-- Modals -->
+        <ImportModal :isOpen="showImportModal" @close="showImportModal = false" @import-success="fetchData" />
+        <SmartPromptModal :isOpen="showSmartPrompt" :data="smartPromptData" @close="showSmartPrompt = false"
+            @confirm="handleSmartCategorize" />
+        <TransactionModal :isOpen="showModal" :isEditing="isEditing" :form="form" :accounts="accounts"
+            :categories="categories" :budgets="budgets" :expenseGroups="expenseGroups"
+            :potentialMatches="potentialMatches" :isSearchingMatches="isSearchingMatches"
+            :matchesSearched="matchesSearched" @close="showModal = false" @submit="handleSubmit"
+            @findMatches="findMatches" @selectMatch="selectMatch" />
     </MainLayout>
 </template>
 
 <style scoped>
+.settings-page {
+    min-height: calc(100vh - 64px);
+    background: rgb(var(--v-theme-background));
+    position: relative;
+    overflow: hidden;
+}
+
+.relative-pos {
+    position: relative;
+}
+
+.z-10 {
+    z-index: 10;
+}
+
+/* Mesh Background */
+.mesh-blob {
+    position: absolute;
+    filter: blur(80px);
+    opacity: 0.15;
+    z-index: 1;
+    border-radius: 50%;
+    animation: blob-float 20s infinite alternate;
+}
+
+.blob-1 {
+    background: rgb(var(--v-theme-primary));
+    width: 600px;
+    height: 600px;
+    top: -200px;
+    right: -100px;
+}
+
+.blob-2 {
+    background: rgb(var(--v-theme-secondary));
+    width: 400px;
+    height: 400px;
+    bottom: -100px;
+    left: -100px;
+    animation-delay: -5s;
+}
+
+.blob-3 {
+    background: rgb(var(--v-theme-success));
+    width: 300px;
+    height: 300px;
+    top: 40%;
+    left: 30%;
+    animation-delay: -8s;
+}
+
+@keyframes blob-float {
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    100% {
+        transform: translate(20px, -20px) scale(1.1);
+    }
+}
+
+/* Premium Tabs */
+.premium-pill-tabs {
+    background: rgba(var(--v-theme-surface), 0.6);
+    backdrop-filter: blur(10px);
+    padding: 6px;
+    border-radius: 24px;
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+}
+
+.premium-tab {
+    text-transform: none !important;
+    letter-spacing: 0;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    transition: all 0.3s ease;
+    min-width: 120px;
+}
+
+.premium-tab.v-tab--selected {
+    background: rgb(var(--v-theme-primary));
+    color: white !important;
+    box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.3);
+}
+
+.gap-2 {
+    gap: 8px;
+}
+
+.gap-3 {
+    gap: 12px;
+}
+
+.glass-card {
+    background: rgba(var(--v-theme-surface), 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+    border-radius: 24px;
+}
+
+
+
 /* Triage Sub-Tabs */
 .triage-tabs {
     display: flex;
     gap: 1rem;
-    border-bottom: 2px solid #f3f4f6;
+    border-bottom: 2px solid rgba(var(--v-border-color), 0.05);
     padding-bottom: 0.1rem;
 }
 
@@ -1251,7 +444,7 @@ onMounted(() => {
     padding: 0.75rem 1.5rem;
     font-size: 0.875rem;
     font-weight: 600;
-    color: #6b7280;
+    color: rgb(var(--v-theme-on-surface), 0.6);
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
@@ -1424,7 +617,7 @@ onMounted(() => {
     align-items: center;
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
 .header-left {
@@ -1436,7 +629,7 @@ onMounted(() => {
 .page-title {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #111827;
+    color: rgb(var(--v-theme-on-surface));
     margin: 0;
 }
 
@@ -1588,11 +781,11 @@ onMounted(() => {
 
 /* Content Card */
 .table-container {
-    background: white;
+    background: rgb(var(--v-theme-surface));
     border-radius: 0.75rem;
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
     overflow-x: auto;
-    border: 1px solid #e5e7eb;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
     margin-bottom: 1.5rem;
     position: relative;
 }
@@ -1899,8 +1092,8 @@ onMounted(() => {
     justify-content: space-between;
     gap: 1.5rem;
     padding: 0.625rem 1rem;
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
+    background: rgba(var(--v-theme-on-surface), 0.02);
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
     border-radius: 0.75rem;
     margin-bottom: 1.25rem;
 }
@@ -1985,7 +1178,7 @@ onMounted(() => {
     border-radius: 0.375rem;
     font-size: 0.8125rem;
     font-weight: 500;
-    color: #4b5563;
+    color: rgb(var(--v-theme-on-surface), 0.7);
     cursor: pointer;
     transition: all 0.2s ease;
     white-space: nowrap;
@@ -2123,8 +1316,8 @@ onMounted(() => {
     justify-content: space-between;
     align-items: center;
     padding: 0.75rem 1rem;
-    border-top: 1px solid #e5e7eb;
-    background: #fafafa;
+    border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    background: rgba(var(--v-theme-on-surface), 0.02);
 }
 
 .page-info {
@@ -2270,11 +1463,12 @@ onMounted(() => {
 .form-input {
     width: 100%;
     padding: 0.625rem 0.875rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
     border-radius: 0.375rem;
     font-size: 0.875rem;
     transition: all 0.15s;
-    background: white;
+    background: rgb(var(--v-theme-surface));
+    color: rgb(var(--v-theme-on-surface));
 }
 
 .form-input:focus {
@@ -2287,38 +1481,12 @@ onMounted(() => {
     margin-right: 0.5rem;
 }
 
-/* Smart Options */
-.smart-options {
-    background: #f9fafb;
-    border-radius: 0.5rem;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    border: 1px solid #e5e7eb;
-}
-
-.smart-option-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    cursor: pointer;
-    font-size: 0.875rem;
-    color: #374151;
-}
-
-.checkbox-input {
-    margin-top: 0.125rem;
-    width: 1rem;
-    height: 1rem;
-    cursor: pointer;
-}
 
 /* Tabs Styling */
 .header-tabs {
     display: flex;
     gap: 0.25rem;
-    background: #f3f4f6;
+    background: rgba(var(--v-theme-on-surface), 0.05);
     padding: 0.25rem;
     border-radius: 0.5rem;
     margin: 0 1rem;
@@ -2359,9 +1527,9 @@ onMounted(() => {
     align-items: center;
     gap: 1.25rem;
     padding: 1.5rem;
-    background: white;
+    background: rgb(var(--v-theme-surface));
     border-radius: 1rem;
-    border: 1px solid #e5e7eb;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     transition: transform 0.2s;
 }
@@ -2433,17 +1601,17 @@ onMounted(() => {
 }
 
 .analytics-card {
-    background: white;
+    background: rgb(var(--v-theme-surface));
     padding: 1.5rem;
     border-radius: 1rem;
-    border: 1px solid #e5e7eb;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .card-title {
     font-size: 1rem;
     font-weight: 700;
-    color: #111827;
+    color: rgb(var(--v-theme-on-surface));
     margin-bottom: 1.5rem;
 }
 
@@ -2463,18 +1631,18 @@ onMounted(() => {
 .cat-name {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #374151;
+    color: rgb(var(--v-theme-on-surface), 0.7);
 }
 
 .cat-value {
     font-size: 0.875rem;
     font-weight: 700;
-    color: #111827;
+    color: rgb(var(--v-theme-on-surface));
 }
 
 .progress-bar-bg {
     height: 0.5rem;
-    background: #f3f4f6;
+    background: rgba(var(--v-theme-on-surface), 0.05);
     border-radius: 9999px;
     overflow: hidden;
 }
@@ -2492,10 +1660,10 @@ onMounted(() => {
 
 /* Credit Utilization Box */
 .credit-preview-box {
-    background: #f8fafc;
+    background: rgba(var(--v-theme-on-surface), 0.02);
     padding: 1rem;
     border-radius: 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid rgba(var(--v-border-color), 0.1);
 }
 
 .credit-meta {
@@ -2515,12 +1683,12 @@ onMounted(() => {
 .credit-val {
     font-size: 0.8125rem;
     font-weight: 700;
-    color: #1e293b;
+    color: rgb(var(--v-theme-on-surface));
 }
 
 .credit-bar-container {
     height: 0.5rem;
-    background: #e2e8f0;
+    background: rgba(var(--v-theme-on-surface), 0.1);
     border-radius: 999px;
     margin-bottom: 0.75rem;
     overflow: hidden;
@@ -2590,7 +1758,7 @@ onMounted(() => {
 
 .trend-bar {
     width: 100%;
-    background: #e0e7ff;
+    background: rgba(var(--v-theme-primary), 0.2);
     border-radius: 0.25rem 0.25rem 0 0;
     min-height: 2px;
     transition: all 0.3s;
@@ -2631,7 +1799,7 @@ onMounted(() => {
     display: flex;
     justify-content: space-between;
     padding-bottom: 0.75rem;
-    border-bottom: 1px solid #f3f4f6;
+    border-bottom: 1px solid rgba(var(--v-border-color), 0.05);
 }
 
 .merchant-item:last-child {
@@ -2641,13 +1809,13 @@ onMounted(() => {
 .m-name {
     font-size: 0.875rem;
     font-weight: 500;
-    color: #374151;
+    color: rgb(var(--v-theme-on-surface), 0.7);
 }
 
 .m-value {
     font-size: 0.875rem;
     font-weight: 700;
-    color: #111827;
+    color: rgb(var(--v-theme-on-surface));
 }
 
 /* Spending Insights */
@@ -2688,7 +1856,7 @@ onMounted(() => {
 
 .mini-bar-bg {
     height: 4px;
-    background: #f3f4f6;
+    background: rgba(var(--v-theme-on-surface), 0.05);
     border-radius: 2px;
 }
 
@@ -2700,7 +1868,7 @@ onMounted(() => {
 
 .insight-divider {
     height: 1px;
-    background: #e5e7eb;
+    background: rgba(var(--v-border-color), 0.1);
 }
 
 .pattern-bars {
@@ -2719,7 +1887,7 @@ onMounted(() => {
 
 .pattern-bar-bg {
     height: 8px;
-    background: #f3f4f6;
+    background: rgba(var(--v-theme-on-surface), 0.05);
     border-radius: 4px;
     overflow: hidden;
 }
@@ -2764,8 +1932,8 @@ onMounted(() => {
     padding: 0 !important;
     overflow: visible;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+    background: rgba(var(--v-theme-surface), 0.7);
     backdrop-filter: blur(12px);
     z-index: 1;
     /* Establish base level */
@@ -2792,8 +1960,8 @@ onMounted(() => {
     justify-content: space-between;
     align-items: center;
     padding: 1rem 1.25rem;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
-    background: rgba(0, 0, 0, 0.01);
+    border-bottom: 1px solid rgba(var(--v-border-color), 0.05);
+    background: rgba(var(--v-theme-on-surface), 0.01);
     border-top-left-radius: 1.25rem;
     border-top-right-radius: 1.25rem;
 }
@@ -2877,7 +2045,7 @@ onMounted(() => {
     font-size: 1.125rem;
     font-weight: 700;
     margin-bottom: 0.35rem;
-    color: var(--color-text-primary);
+    color: rgb(var(--v-theme-on-surface));
 }
 
 .triage-account-info {
@@ -2886,7 +2054,7 @@ onMounted(() => {
     gap: 6px;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--color-text-muted);
+    color: rgb(var(--v-theme-on-surface), 0.6);
 }
 
 .acc-indicator {
@@ -2909,11 +2077,11 @@ onMounted(() => {
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    background: rgba(0, 0, 0, 0.04);
+    background: rgba(var(--v-theme-on-surface), 0.05);
     border-radius: 100px;
     font-size: 0.75rem;
     font-weight: 500;
-    color: var(--color-text-muted);
+    color: rgb(var(--v-theme-on-surface), 0.7);
 }
 
 .meta-pill.highlight {
@@ -2923,9 +2091,9 @@ onMounted(() => {
 
 .triage-raw-box {
     padding: 0.75rem;
-    background: rgba(0, 0, 0, 0.02);
+    background: rgba(var(--v-theme-on-surface), 0.02);
     border-radius: 10px;
-    border: 1px dashed rgba(0, 0, 0, 0.05);
+    border: 1px dashed rgba(var(--v-border-color), 0.1);
 }
 
 .raw-label {
@@ -2939,7 +2107,7 @@ onMounted(() => {
 .raw-content-text {
     font-size: 0.75rem;
     font-family: 'JetBrains Mono', monospace;
-    color: var(--color-text-muted);
+    color: rgb(var(--v-theme-on-surface), 0.6);
     line-height: 1.4;
     white-space: pre-wrap;
     word-break: break-all;
@@ -2947,8 +2115,8 @@ onMounted(() => {
 
 .triage-card-actions {
     padding: 1rem 1.25rem;
-    background: rgba(0, 0, 0, 0.015);
-    border-top: 1px solid rgba(0, 0, 0, 0.03);
+    background: rgba(var(--v-theme-on-surface), 0.015);
+    border-top: 1px solid rgba(var(--v-border-color), 0.05);
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -2990,8 +2158,8 @@ onMounted(() => {
 }
 
 .triage-select-premium :deep(.select-trigger) {
-    background: white;
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgb(var(--v-theme-surface));
+    border: 1px solid rgba(var(--v-border-color), 0.1);
     border-radius: 12px;
     padding: 0.625rem 1rem;
     font-size: 0.875rem;
@@ -3094,7 +2262,7 @@ onMounted(() => {
     width: 28px;
     height: 28px;
     border-radius: 8px;
-    background: rgba(0, 0, 0, 0.04);
+    background: rgba(var(--v-theme-on-surface), 0.05);
     display: flex;
     align-items: center;
     justify-content: center;
