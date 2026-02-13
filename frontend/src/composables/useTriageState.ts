@@ -1,6 +1,7 @@
 import { ref, watch, type Ref } from 'vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
+import { useAuthStore } from '@/stores/auth'
 
 /**
  * Triage and Training State Management Composable
@@ -14,6 +15,7 @@ export function useTriageState(
     fetchData: Function
 ) {
     const notify = useNotificationStore()
+    const auth = useAuthStore()
 
     // Triage State
     const triageTransactions = ref<any[]>([])
@@ -71,7 +73,7 @@ export function useTriageState(
             // Ensure we have accounts and categories for rendering
             if (accounts.value.length === 0 || categories.value.length === 0) {
                 const [accRes, catRes] = await Promise.all([
-                    financeApi.getAccounts(),
+                    financeApi.getAccounts(auth.selectedMemberId || undefined),
                     financeApi.getCategories(true)
                 ])
                 accounts.value = accRes.data
@@ -86,7 +88,8 @@ export function useTriageState(
                     sort_by: triageSortKey.value,
                     sort_order: triageSortOrder.value,
                     search: triageSearchQuery.value || undefined,
-                    source: triageSourceFilter.value !== 'ALL' ? triageSourceFilter.value : undefined
+                    source: triageSourceFilter.value !== 'ALL' ? triageSourceFilter.value : undefined,
+                    user_id: auth.selectedMemberId || undefined
                 } as any),
                 financeApi.getTraining({
                     limit: trainingPagination.value.limit,
