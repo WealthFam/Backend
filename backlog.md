@@ -7,6 +7,7 @@
 4. **Global Toast System**: Implement a standardized snackbar notification system to provide user feedback on API success/failure (e.g., "Transaction Saved", "Sync Failed").
 5. **Budget Progress Visualization**: Add high-fidelity progress bars to `Budgets.vue` showing actual spend vs. limit with color coding (Green -> Yellow -> Red).
 
+
 ## 🟡 Technical Debt & Architecture
 6. **Refactor `Transactions.vue`**: This file is currently >2.6k lines. Extract the "Transactions List", "Analytics", "Triage", and "Heatmap" into dedicated sub-components in `@/views/transactions/`.
 7. **Mutual Fund Auto-Sync**: Implement a "Background Sync" status indicator and a manual "Refresh All" button in the Top Bar for Mutual Fund NAV updates.
@@ -33,3 +34,8 @@
 24. **Session Security**: Implement automatic session timeout and a "Logout from all devices" feature in `Settings.vue`.
 25. **Automated Testing Suite**: Set up Vitest for unit testing core logic (e.g., currency formatting, portfolio aggregation) and Playwright for E2E testing of the "Add Transaction" flow.
 26. **Global Search (Cmd+K)**: Implement a spotlight-style global search to quickly jump to specific funds, goals, or transactions from anywhere in the app.
+
+27. Budgets page overhaul
+28. Goals page averhaul.
+29. Catgories page overhaul
+30.

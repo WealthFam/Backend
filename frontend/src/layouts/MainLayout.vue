@@ -104,15 +104,7 @@ function logout() {
 
             <v-spacer></v-spacer>
 
-            <!-- Global Search -->
-            <div class="search-container d-none d-md-flex flex-grow-1 justify-center">
-                <v-text-field placeholder="Type to search..." variant="solo" flat density="compact" hide-details
-                    class="global-search" rounded="pill">
-                    <template v-slot:prepend-inner>
-                        <Search :size="18" class="text-slate-400 mr-2" />
-                    </template>
-                </v-text-field>
-            </div>
+            <v-spacer></v-spacer>
 
             <v-spacer class="d-none d-md-flex"></v-spacer>
 
@@ -228,16 +220,32 @@ function logout() {
         <!-- Side Navigation -->
         <v-navigation-drawer v-model="drawer" :rail="rail" permanent class="premium-sidebar" width="280" border="0">
             <v-list nav class="mt-4" :class="rail ? 'px-2' : 'px-4'">
-                <v-list-item v-for="item in navItems" :key="item.title" :to="item.to" :active="route.path === item.to"
-                    rounded="xl" class="nav-list-item mb-2" color="primary" link>
-                    <template v-slot:prepend>
-                        <div class="nav-icon-wrapper" :class="{ 'mr-4': !rail }">
-                            <component :is="item.icon" :size="22" class="nav-icon"
-                                :class="{ 'active-icon': route.path === item.to }" />
-                        </div>
-                    </template>
-                    <v-list-item-title class="nav-title" v-if="!rail">{{ item.title }}</v-list-item-title>
-                </v-list-item>
+                <template v-for="item in navItems" :key="item.title">
+                    <v-tooltip :text="item.title" location="right" v-if="rail">
+                        <template v-slot:activator="{ props }">
+                            <v-list-item v-bind="props" :to="item.to" :active="route.path === item.to" rounded="xl"
+                                class="nav-list-item mb-2" color="primary" link>
+                                <template v-slot:prepend>
+                                    <div class="nav-icon-wrapper">
+                                        <component :is="item.icon" :size="22" class="nav-icon"
+                                            :class="{ 'active-icon': route.path === item.to }" />
+                                    </div>
+                                </template>
+                            </v-list-item>
+                        </template>
+                    </v-tooltip>
+
+                    <v-list-item v-else :to="item.to" :active="route.path === item.to" rounded="xl"
+                        class="nav-list-item mb-2" color="primary" link>
+                        <template v-slot:prepend>
+                            <div class="nav-icon-wrapper mr-4">
+                                <component :is="item.icon" :size="22" class="nav-icon"
+                                    :class="{ 'active-icon': route.path === item.to }" />
+                            </div>
+                        </template>
+                        <v-list-item-title class="nav-title">{{ item.title }}</v-list-item-title>
+                    </v-list-item>
+                </template>
             </v-list>
 
             <template v-slot:append>
@@ -358,16 +366,6 @@ function logout() {
     margin-top: 2px;
 }
 
-.global-search {
-    width: 100%;
-    max-width: 500px;
-}
-
-:deep(.global-search .v-field) {
-    background: rgb(var(--v-theme-surface), 0.8) !important;
-    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)) !important;
-    font-size: 0.875rem;
-}
 
 .profile-btn {
     background: rgb(var(--v-theme-surface)) !important;
