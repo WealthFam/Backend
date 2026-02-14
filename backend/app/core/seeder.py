@@ -6,7 +6,8 @@ from backend.app.core.database import SessionLocal
 from backend.app.modules.auth.models import User, Tenant, UserRole
 from backend.app.modules.finance.models import (
     Account, AccountType, Transaction, TransactionType, Category, 
-    Loan, LoanType, MutualFundsMeta, MutualFundHolding, MutualFundOrder
+    Loan, LoanType, MutualFundsMeta, MutualFundHolding, MutualFundOrder,
+    Budget, ExpenseGroup
 )
 from datetime import datetime, timedelta
 import random
@@ -147,8 +148,10 @@ def seed_data():
             logger.info("Seeding categories...")
             cat_map = {}
             for name in ["Food", "Transport", "Shopping", "Salary", "Investments", "Transfers"]:
-                ctype = "income" if name == "Salary" else "expense"
-                # Check Category model fields carefully: tenant_id, name, type.
+                ctype = "expense"
+                if name == "Salary": ctype = "income"
+                elif name == "Transfers": ctype = "transfer"
+                
                 cat = Category(tenant_id=tenant_id, name=name, type=ctype)
                 db.add(cat)
                 cat_map[name] = cat
@@ -225,6 +228,41 @@ def seed_data():
                     description=f"Purchase at Shop {i}",
                     category=shopping_cat_id
                 ))
+
+            # D. Budgets
+            existing_budgets = db.query(Budget).filter(Budget.tenant_id == tenant_id).all()
+            if not existing_budgets:
+                logger.info("Seeding budgets...")
+                db.add(Budget(tenant_id=tenant_id, category="Food", amount_limit=15000))
+                db.add(Budget(tenant_id=tenant_id, category="Transport", amount_limit=5000))
+                db.add(Budget(tenant_id=tenant_id, category="Shopping", amount_limit=10000))
+                db.commit()
+
+            # E. Expense Groups
+            existing_groups = db.query(ExpenseGroup).filter(ExpenseGroup.tenant_id == tenant_id).all()
+            if not existing_groups:
+                logger.info("Seeding expense groups...")
+                group = ExpenseGroup(
+                    tenant_id=tenant_id,
+                    name="Thailand Trip 2024",
+                    description="Personal vacation expenses",
+                    budget=120000,
+                    icon="🌴",
+                    is_active=True
+                )
+                db.add(group)
+                db.commit()
+                db.refresh(group)
+                
+                # Link last 3 transactions to this group
+                last_transactions = db.query(Transaction).filter(
+                    Transaction.tenant_id == tenant_id,
+                    Transaction.type == TransactionType.DEBIT
+                ).order_by(Transaction.date.desc()).limit(3).all()
+                
+                for t in last_transactions:
+                    t.expense_group_id = group.id
+                db.commit()
 
             db.commit()
             logger.info("Seeding complete!")
