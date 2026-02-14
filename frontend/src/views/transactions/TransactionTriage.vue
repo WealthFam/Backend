@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import CustomSelect from '@/components/CustomSelect.vue'
+import VendorAliasModal from '@/components/VendorAliasModal.vue'
 import { useCurrency } from '@/composables/useCurrency'
+import { ref, reactive } from 'vue'
 
 const { formatAmount } = useCurrency()
 
@@ -202,6 +204,23 @@ function handleTrainingPaginationPrev() {
 function handleTrainingPaginationNext() {
     emit('update:trainingPagination', { ...props.trainingPagination, skip: props.trainingPagination.skip + props.trainingPagination.limit })
 }
+
+// --- Vendor Alias Logic ---
+const showAliasModal = ref(false)
+// State for passing to component
+const aliasForm = reactive({
+    pattern: '',
+    alias: '',
+    update_past: false
+})
+
+function openAliasModal(txn: any) {
+    // Pre-fill pattern from description or recipient
+    // Prefer description as it's the raw text usually
+    aliasForm.pattern = txn.description || txn.recipient || ''
+    aliasForm.alias = txn.recipient || '' // Suggest current match if any
+    showAliasModal.value = true
+}
 </script>
 
 <template>
@@ -286,88 +305,107 @@ function handleTrainingPaginationNext() {
                 <!-- Transactions Grid -->
                 <v-row>
                     <v-col v-for="txn in filteredTriageTransactions" :key="txn.id" cols="12" md="6" lg="4">
-                        <v-card class="h-100 d-flex flex-column glass-card"
-                            :class="{ 'border-primary': selectedTriageIds.includes(txn.id) }" variant="flat"
-                            :ripple="false">
+                        <v-card class="triage-card h-100 d-flex flex-column"
+                            :class="{ 'is-selected': selectedTriageIds.includes(txn.id) }" variant="flat">
+                            
+                            <!-- Source Accent Bar -->
+                            <div class="source-accent" :class="txn.source.toLowerCase()"></div>
 
-                            <!-- Header -->
-                            <v-card-item class="pb-0">
-                                <template v-slot:prepend>
-                                    <v-checkbox-btn v-model="selectedTriageIds" :value="txn.id" density="compact"
-                                        hide-details></v-checkbox-btn>
-                                </template>
-                                <v-card-title class="text-subtitle-1 font-weight-bold">
-                                    {{ txn.recipient || txn.description }}
-                                </v-card-title>
-                                <v-card-subtitle class="d-flex align-center">
-                                    <v-chip size="x-small" label class="mr-2 text-caption">{{ txn.source }}</v-chip>
-                                    {{ formatDate(txn.date).day }} • {{ formatDate(txn.date).meta }}
-                                </v-card-subtitle>
-                                <template v-slot:append>
-                                    <div class="text-right">
-                                        <div class="text-h6 font-weight-black"
-                                            :class="txn.amount < 0 ? 'text-error' : 'text-success'">
-                                            {{ formatAmount(Math.abs(txn.amount)) }}
-                                        </div>
-                                        <div class="text-caption text-medium-emphasis">{{ txn.amount < 0 ? 'Debit'
-                                            : 'Credit' }}</div>
-                                        </div>
-                                </template>
-                            </v-card-item>
-
-                            <v-divider class="my-3 opacity-20"></v-divider>
-
-                            <!-- Body -->
-                            <v-card-text class="flex-grow-1 pt-0">
-                                <div class="d-flex flex-wrap gap-2 mb-3">
-                                    <v-chip v-if="txn.is_ai_parsed" size="x-small" color="purple" variant="flat"
-                                        prepend-icon="mdi-auto-fix">AI
-                                        Verified</v-chip>
-                                    <v-chip v-if="txn.is_transfer" size="x-small" color="info" variant="flat"
-                                        prepend-icon="mdi-bank-transfer">Self-Transfer</v-chip>
-                                    <v-chip v-if="txn.external_id" size="x-small" variant="outlined"
-                                        class="text-caption">ID: {{ txn.external_id
-                                        }}</v-chip>
-                                </div>
-
-                                <div class="text-body-2 mb-2">
-                                    <v-icon size="small" color="grey" start>mdi-bank</v-icon>
-                                    {{ getAccountName(txn.account_id) }}
-                                </div>
-                                <div v-if="txn.raw_message"
-                                    class="bg-grey-lighten-4 pa-2 rounded text-caption text-medium-emphasis mb-2 text-truncate">
-                                    "{{ txn.raw_message }}"
-                                </div>
-
-                                <!-- Controls -->
-                                <div class="d-flex flex-column gap-2 mt-4">
-                                    <div class="d-flex align-center justify-space-between">
-                                        <v-switch v-model="txn.is_transfer" color="info" label="Internal Transfer"
-                                            density="compact" hide-details inset
-                                            @change="txn.exclude_from_reports = txn.is_transfer"></v-switch>
-                                        <v-switch v-model="txn.exclude_from_reports" color="error"
-                                            label="Exclude from Reports" density="compact" hide-details
-                                            inset></v-switch>
+                            <!-- Header: Checkbox, Merchant/Date, Amount -->
+                            <div class="card-header pt-4 px-4 d-flex align-start gap-3">
+                                <v-checkbox-btn v-model="selectedTriageIds" :value="txn.id" color="primary"
+                                    density="compact" hide-details class="mt-n1"></v-checkbox-btn>
+                                
+                                <div class="flex-grow-1 min-width-0">
+                                    <div class="text-subtitle-1 font-weight-black text-truncate leading-tight mb-1" :title="txn.recipient || txn.description">
+                                        {{ txn.recipient || txn.description }}
                                     </div>
+                                    <div class="d-flex align-center text-caption text-medium-emphasis">
+                                        <span class="font-weight-bold mr-1">{{ formatDate(txn.date).day }}</span>
+                                        <span class="opacity-50 mr-2">•</span>
+                                        <span>{{ formatDate(txn.date).meta }}</span>
+                                    </div>
+                                </div>
 
+                                <div class="text-right flex-shrink-0">
+                                    <div class="amount-display" :class="txn.amount < 0 ? 'is-debit' : 'is-credit'">
+                                        <span class="currency-symbol mr-1">₹</span>
+                                        <span class="amount-value">{{ formatAmount(Math.abs(txn.amount)).replace('₹', '').trim() }}</span>
+                                    </div>
+                                    <div class="text-tiny text-uppercase font-weight-bold opacity-50 mt-1">
+                                        {{ txn.amount < 0 ? 'Debit' : 'Credit' }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <v-card-text class="flex-grow-1 pt-4">
+                                <!-- Insight Chips -->
+                                <div class="d-flex flex-wrap gap-2 mb-4">
+                                    <v-chip v-if="txn.is_ai_parsed" size="x-small" color="deep-purple-lighten-5" text-color="deep-purple" variant="flat"
+                                        class="font-weight-bold px-2">
+                                        <v-icon start size="14">mdi-auto-fix</v-icon>AI Verified
+                                    </v-chip>
+                                    <v-chip v-if="txn.is_transfer" size="x-small" color="blue-lighten-5" text-color="blue" variant="flat"
+                                        class="font-weight-bold px-2">
+                                        <v-icon start size="14">mdi-bank-transfer</v-icon>Transfer
+                                    </v-chip>
+                                    <v-chip size="x-small" color="grey-lighten-4" text-color="grey-darken-2" variant="flat"
+                                        class="font-weight-bold px-2">
+                                        {{ txn.source }}
+                                    </v-chip>
+                                </div>
+
+                                <!-- Raw Context -->
+                                <div v-if="txn.raw_message" class="raw-context mb-4">
+                                    <v-icon size="14" color="grey" class="mr-1">mdi-format-quote-open</v-icon>
+                                    <span class="text-caption italic">{{ txn.raw_message }}</span>
+                                </div>
+
+                                <!-- Selection Row: Account & Category -->
+                                <div class="selection-box pa-3 rounded-lg mb-4">
+                                    <div class="d-flex align-center mb-3">
+                                        <v-icon size="16" color="primary" class="mr-2">mdi-bank-outline</v-icon>
+                                        <span class="text-body-2 font-weight-bold text-medium-emphasis">
+                                            {{ getAccountName(txn.account_id) }}
+                                        </span>
+                                    </div>
 
                                     <v-select v-if="txn.is_transfer" v-model="txn.to_account_id"
                                         :items="accountOptions.filter(a => a.value !== txn.account_id)"
                                         item-title="label" item-value="value"
-                                        :label="txn.amount < 0 ? 'To Account' : 'From Account'" density="compact"
-                                        variant="outlined" hide-details></v-select>
+                                        :label="txn.amount < 0 ? 'Transfer To' : 'Transfer From'" density="compact"
+                                        variant="filled" hide-details class="transfer-select"></v-select>
+                                    
                                     <CustomSelect v-else v-model="txn.category" :options="categoryOptions"
-                                        placeholder="Assign Category" class="mt-2" />
+                                        placeholder="Select Category" />
+                                </div>
+
+                                <!-- Advanced Toggles -->
+                                <div class="d-flex flex-wrap align-center justify-space-between gap-x-4 border-t pt-3">
+                                    <v-switch v-model="txn.is_transfer" color="info" label="Internal Transfer"
+                                        density="compact" hide-details inset class="thin-switch"
+                                        @update:model-value="txn.exclude_from_reports = txn.is_transfer"></v-switch>
+                                    
+                                    <v-switch v-model="txn.exclude_from_reports" color="warning"
+                                        label="Hide in Reports" density="compact" hide-details
+                                        inset class="thin-switch"></v-switch>
                                 </div>
                             </v-card-text>
 
-                            <!-- Actions -->
-                            <v-card-actions class="pa-4 pt-0">
-                                <v-btn variant="text" color="grey" @click="emit('rejectTriage', txn.id)">Discard</v-btn>
+                            <!-- Actions Row -->
+                            <div class="d-flex align-center pa-3 bg-grey-lighten-5 rounded-b-lg border-t mt-auto">
+                                <v-btn v-if="!txn.is_transfer" variant="text" size="small" color="primary" 
+                                    prepend-icon="mdi-map-marker-path" class="text-none font-weight-bold"
+                                    @click="openAliasModal(txn)">
+                                    Map Vendor
+                                </v-btn>
+                                <v-btn variant="text" size="small" color="grey" class="text-none ml-n2" 
+                                    @click="emit('rejectTriage', txn.id)">Discard</v-btn>
                                 <v-spacer></v-spacer>
-                                <v-btn color="primary" variant="elevated"
-                                    @click="emit('approveTriage', txn)">Confirm</v-btn>
-                            </v-card-actions>
+                                <v-btn color="primary" elevation="0" size="small"
+                                    class="text-none font-weight-bold px-4 rounded-lg"
+                                    @click="approveTriage(txn)">Confirm</v-btn>
+                            </div>
                         </v-card>
                     </v-col>
                 </v-row>
@@ -513,6 +551,10 @@ function handleTrainingPaginationNext() {
                 </v-row>
             </v-window-item>
         </v-window>
+
+        <!-- Add Alias Modal -->
+        <VendorAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern" :initial-alias="aliasForm.alias"
+            @saved="emit('refreshTriage')" />
     </div>
 </template>
 
