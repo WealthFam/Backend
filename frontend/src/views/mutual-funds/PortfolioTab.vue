@@ -397,7 +397,7 @@ const headers = [
     { title: 'Trend', key: 'trend', align: 'end', sortable: false },
     { title: 'Returns', key: 'profit_loss', align: 'end' },
     { title: 'Actions', key: 'actions', align: 'end', sortable: false },
-]
+] as any[]
 
 // Modals
 const showLinkGoalModal = ref(false)
