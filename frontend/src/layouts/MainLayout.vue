@@ -18,7 +18,6 @@ import {
     Landmark,
     Tags,
     Menu,
-    Search,
     Moon,
     Sun,
     Users,
@@ -156,7 +155,7 @@ function logout() {
                             </template>
                             <v-list-item-title class="font-weight-bold">{{ user.full_name ||
                                 user.email.split('@')[0]
-                                }}</v-list-item-title>
+                            }}</v-list-item-title>
                         </v-list-item>
                     </v-list>
                 </v-card>
@@ -192,7 +191,7 @@ function logout() {
                                 </v-avatar>
                             </template>
                             <v-list-item-title class="text-h6 font-weight-bold">{{ auth.user.email.split('@')[0]
-                                }}</v-list-item-title>
+                            }}</v-list-item-title>
                             <v-list-item-subtitle class="text-primary font-weight-medium">Family
                                 Admin</v-list-item-subtitle>
                         </v-list-item>
