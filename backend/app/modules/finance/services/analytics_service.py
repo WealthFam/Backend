@@ -39,24 +39,20 @@ class AnalyticsService:
         for acc in accounts:
             bal = float(acc.balance or 0)
             if acc.type == 'CREDIT_CARD':
-                # For CC, negative balance means debt. so we take abs() or invert it for "debt amount"
-                # If balance is -200, debt is 200.
-                debt_amount = abs(bal) if bal < 0 else 0 
-                # If balance is positive, it means overpaid (credit), not debt.
+                # For CC, positive balance means debt (liability).
+                # If balance is 200, debt is 200.
+                debt_amount = bal if bal > 0 else 0 
                 
                 breakdown["credit_debt"] += debt_amount
-                # Net worth: debt reduces it. Since bal is negative (-200), adding it reduces net worth correctly?
-                # Actually net worth = Assets - Liabilities. 
-                # If we just sum everything: Bank(1000) + CC(-200) = 800. Correct.
-                breakdown["net_worth"] += bal 
+                # Net worth: debt reduces it.
+                breakdown["net_worth"] -= bal 
                 
                 limit = float(acc.credit_limit or 0)
                 breakdown["total_credit_limit"] += limit
                 
                 # Available credit: Limit - Debt. 
-                # If Limit 10000, Balance -200 (Debt 200): Available = 10000 - 200 = 9800.
-                # So Limit - abs(bal) or Limit + bal (if bal is negative)
-                breakdown["available_credit"] += (limit + bal)
+                # If Limit 10000, Balance 200 (Debt 200): Available = 10000 - 200 = 9800.
+                breakdown["available_credit"] += (limit - bal)
             
             elif acc.type == 'INVESTMENT':
                 breakdown["investment_value"] += bal
@@ -241,8 +237,8 @@ class AnalyticsService:
             }
             if intel["limit"] > 0:
                 # Calculate utilization percentage
-                # Balance is typically negative (debt). Use abs() to get debt amount.
-                current_debt = abs(intel["balance"]) if intel["balance"] < 0 else 0
+                # Balance is positive (debt). 
+                current_debt = intel["balance"] if intel["balance"] > 0 else 0
                 raw_util = (current_debt / intel["limit"]) * 100
                 intel["utilization"] = max(0, raw_util)
             
@@ -325,77 +321,90 @@ class AnalyticsService:
             user_id = None
         from .mutual_funds import MutualFundService
         
-        # 1. Get current static balances (Bank + Cash - Credit Debt - Loans)
+        # 1. Get all accounts to track
         accounts_query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
         if user_id:
             accounts_query = accounts_query.filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
-            
         accounts = accounts_query.all()
-        current_liquid_assets = 0
-        for acc in accounts:
-            bal = float(acc.balance or 0)
-            if acc.type in ['BANK', 'WALLET']:
-                current_liquid_assets += bal
-            elif acc.type in ['CREDIT_CARD', 'LOAN']:
-                current_liquid_assets -= bal
+        account_ids = [str(a.id) for a in accounts]
         
-        # 2. Get net transactions grouped by date
-        start_history = datetime.utcnow() - timedelta(days=days)
-        transactions_grouped_query = db.query(
-            func.date(models.Transaction.date).label('d'),
-            func.sum(models.Transaction.amount).label('total')
-        ).filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.date >= start_history
-        )
-        
-        if user_id:
-            # Filter by account ownership
-            transactions_grouped_query = transactions_grouped_query.join(
-                models.Account, models.Transaction.account_id == models.Account.id
-            ).filter(
-                or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
-            )
-            
-        transactions_grouped = transactions_grouped_query.group_by(func.date(models.Transaction.date)).all()
-        
-        # 3. Get MF timeline (which already handles historical valuation)
+        # 2. Get MF timeline (which already handles historical valuation)
         mf_res = MutualFundService.get_performance_timeline(db, tenant_id, period='1m', granularity='1d', user_id=user_id)
         mf_timeline = mf_res.get("timeline", [])
         mf_map = {datetime.fromisoformat(p["date"]).date(): p["value"] for p in mf_timeline}
         
-        # 4. Backtrack liquid balances
+        # 3. Reconstruct timeline day by day
         timeline = []
         now = datetime.utcnow()
-        cursor_balance = current_liquid_assets
+        start_history = now - timedelta(days=days)
         
-        # Group transactions by date
-        txn_by_date = {row.d: float(row.total) for row in transactions_grouped}
+        # Optimization: Pre-fetch all snapshots and transactions for the period
+        snapshots = db.query(models.BalanceSnapshot).filter(
+            models.BalanceSnapshot.account_id.in_(account_ids),
+            models.BalanceSnapshot.timestamp >= start_history - timedelta(days=1)
+        ).order_by(models.BalanceSnapshot.timestamp.desc()).all()
+        
+        transactions = db.query(
+            models.Transaction.account_id,
+            func.date(models.Transaction.date).label('d'),
+            func.sum(models.Transaction.amount).label('total')
+        ).filter(
+            models.Transaction.account_id.in_(account_ids),
+            models.Transaction.date >= start_history - timedelta(days=1)
+        ).group_by(models.Transaction.account_id, func.date(models.Transaction.date)).all()
+        
+        # {account_id: {date: total_amount}}
+        txn_map = {}
+        for row in transactions:
+            if row.account_id not in txn_map: txn_map[row.account_id] = {}
+            txn_map[row.account_id][row.d] = float(row.total)
             
         for i in range(days):
             target_date = (now - timedelta(days=i)).date()
+            total_liquid = 0
             
-            # Balance at end of target_date is cursor_balance
+            for acc in accounts:
+                acc_id = str(acc.id)
+                # Find latest snapshot ON OR BEFORE target_date
+                anchor_snap = next((s for s in snapshots if s.account_id == acc_id and s.timestamp.date() <= target_date), None)
+                
+                if anchor_snap:
+                    # Balance = Anchor + Sum(Transactions from AnchorDate+1 to TargetDate)
+                    # Note: Using float for simplicity here
+                    balance = float(anchor_snap.balance)
+                    snap_date = anchor_snap.timestamp.date()
+                    
+                    # Forward track if target_date > snap_date
+                    curr = snap_date + timedelta(days=1)
+                    while curr <= target_date:
+                        balance += txn_map.get(acc_id, {}).get(curr, 0)
+                        curr += timedelta(days=1)
+                else:
+                    # Fallback to current balance and backtrack (original logic)
+                    balance = float(acc.balance or 0)
+                    curr = now.date()
+                    while curr > target_date:
+                        balance -= txn_map.get(acc_id, {}).get(curr, 0)
+                        curr -= timedelta(days=1)
+                
+                if acc.type in ['BANK', 'WALLET']:
+                    total_liquid += balance
+                elif acc.type in ['CREDIT_CARD', 'LOAN']:
+                    total_liquid -= balance
+            
             mf_val = mf_map.get(target_date, 0)
             if not mf_val and mf_timeline:
-                # If no exact date, find closest previous
                 past_dates = [d for d in mf_map.keys() if d <= target_date]
-                if past_dates:
-                    mf_val = mf_map[max(past_dates)]
-                else:
-                    mf_val = mf_timeline[0]["value"] # Fallback to first known
+                mf_val = mf_map[max(past_dates)] if past_dates else (mf_timeline[0]["value"] if mf_timeline else 0)
 
             timeline.append({
                 "date": target_date.isoformat(),
-                "liquid": round(cursor_balance, 2),
+                "liquid": round(total_liquid, 2),
                 "investments": round(mf_val, 2),
-                "total": round(cursor_balance + mf_val, 2)
+                "total": round(total_liquid + mf_val, 2)
             })
             
-            # Step back: subtract todays net transactions to get yesterday's closing balance
-            cursor_balance -= txn_by_date.get(target_date, 0)
-            
-        return timeline[::-1] # Chronological
+        return timeline[::-1]
 
     @staticmethod
     def get_spending_trend(db: Session, tenant_id: str, user_id: str = None):

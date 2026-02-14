@@ -74,36 +74,41 @@ class RecurringService:
         
         count = 0
         
+        from backend.app.modules.finance.services.transaction_service import TransactionService
+        from backend.app.modules.finance import schemas
+        
         for item in due_items:
-            # Generate Transaction
-            txn = models.Transaction(
-                tenant_id=tenant_id,
+            # Generate Transaction using Service (handles balance anchoring automatically)
+            txn_create = schemas.TransactionCreate(
                 account_id=item.account_id,
                 amount=item.amount,
-                date=item.next_run_date, # Use the scheduled date, not "now"
+                date=item.next_run_date, # Use the scheduled date
                 description=item.name,
                 recipient=item.name,
                 category=item.category,
-                type=item.type,
                 source="RECURRING",
                 external_id=f"rec_{item.id}_{item.next_run_date.strftime('%Y%m%d')}", # De-dup key
                 exclude_from_reports=item.exclude_from_reports
             )
             
-            exists = db.query(models.Transaction).filter(
-                models.Transaction.tenant_id == tenant_id,
-                models.Transaction.external_id == txn.external_id
-            ).first()
-            
-            if not exists:
-                db.add(txn)
-                # Update Account Balance
-                acc = db.query(models.Account).filter(models.Account.id == item.account_id).first()
-                if acc:
-                     acc.balance = (acc.balance or 0) + item.amount
-                
+            try:
+                # We default update_balance=True, letting TransactionService handle the anchor check 
+                # (i.e. if date <= last_synced_at, it won't update balance)
+                TransactionService.create_transaction(db, txn_create, tenant_id)
                 count += 1
                 item.last_run_date = datetime.utcnow()
+            except ValueError as e:
+                # Duplicate transaction? Just move on and update next_run_date to avoid stuck loop
+                # checking if it was a dupe error from our service
+                if "Duplicate" in str(e):
+                    # It already exists, so we mark it as processed to advance the schedule
+                    item.last_run_date = datetime.utcnow()
+                else:
+                    print(f"Error creating recurring transaction {item.id}: {e}")
+            except Exception as e:
+                print(f"Unexpected error in recurring txn {item.id}: {e}")
+                # Don't crash the whole batch
+                pass
             
             # Update Next Run Date
             next_date = item.next_run_date

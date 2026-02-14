@@ -19,10 +19,24 @@ class LoanService:
             balance=loan_data.principal_amount, # Outstanding balance starts at Principal
             credit_limit=loan_data.principal_amount, # Max loan amount
             billing_day=loan_data.emi_date,
-            is_verified=True
+            is_verified=True,
+            # Anchor Logic
+            last_synced_balance=loan_data.principal_amount,
+            last_synced_limit=loan_data.principal_amount,
+            last_synced_at=loan_data.start_date or datetime.utcnow()
         )
         db.add(new_account)
         db.flush() # Generate ID
+        
+        # Initial Snapshot
+        db.add(models.BalanceSnapshot(
+            account_id=new_account.id,
+            tenant_id=tenant_id,
+            balance=loan_data.principal_amount,
+            credit_limit=loan_data.principal_amount,
+            timestamp=new_account.last_synced_at,
+            source="LOAN_CREATION"
+        ))
         
         # 2. Create the Loan details
         new_loan = Loan(

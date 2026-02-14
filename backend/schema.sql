@@ -34,8 +34,11 @@ CREATE TABLE accounts (
 	type VARCHAR NOT NULL, 
 	currency VARCHAR NOT NULL, 
 	account_mask VARCHAR,
-	balance NUMERIC(15, 2),
+	balance NUMERIC(15, 2) DEFAULT 0.0,
 	credit_limit NUMERIC(15, 2),
+	last_synced_balance NUMERIC(15, 2),
+	last_synced_at TIMESTAMP WITHOUT TIME ZONE,
+	last_synced_limit NUMERIC(15, 2),
 	billing_day NUMERIC(2, 0),
 	due_day NUMERIC(2, 0),
 	is_verified BOOLEAN DEFAULT TRUE NOT NULL,
@@ -331,8 +334,7 @@ CREATE TABLE pending_transactions (
 	external_id VARCHAR, 
 	is_transfer BOOLEAN DEFAULT FALSE NOT NULL,
 	to_account_id VARCHAR,
-	balance NUMERIC(15, 2),
-	credit_limit NUMERIC(15, 2),
+	balance_is_synced BOOLEAN DEFAULT FALSE NOT NULL,
 	latitude DECIMAL(10, 8),
 	longitude DECIMAL(11, 8),
 	location_name VARCHAR,
@@ -442,3 +444,16 @@ CREATE TABLE ignored_patterns (
 	FOREIGN KEY(tenant_id) REFERENCES tenants (id)
 );
 CREATE INDEX ix_ignored_patterns_tenant ON ignored_patterns (tenant_id);
+CREATE TABLE balance_snapshots (
+	id VARCHAR NOT NULL, 
+	account_id VARCHAR NOT NULL, 
+	tenant_id VARCHAR NOT NULL, 
+	balance NUMERIC(15, 2) NOT NULL, 
+	timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL, 
+	source VARCHAR DEFAULT 'MANUAL', 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(account_id) REFERENCES accounts (id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+);
+CREATE INDEX ix_balance_snapshots_account ON balance_snapshots (account_id);
+CREATE INDEX ix_balance_snapshots_tenant ON balance_snapshots (tenant_id);
