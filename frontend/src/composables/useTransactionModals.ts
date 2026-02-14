@@ -13,7 +13,8 @@ export function useTransactionModals(
     transactions: Ref<any[]>,
     fetchData: Function,
     showSmartPrompt: Ref<boolean>,
-    smartPromptData: Ref<any>
+    smartPromptData: Ref<any>,
+    refreshAccounts: Function
 ) {
     const notify = useNotificationStore()
 
@@ -224,6 +225,7 @@ export function useTransactionModals(
             }
             showModal.value = false
             fetchData()
+            refreshAccounts()
         } catch (e) {
             console.error(e)
             notify.error('Failed to save transaction')

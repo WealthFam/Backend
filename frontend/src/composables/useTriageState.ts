@@ -46,6 +46,8 @@ export function useTriageState(
     const showLabelForm = ref(false)
     const labelForm = ref({
         amount: 0,
+        balance: null as number | null,
+        credit_limit: null as number | null,
         date: new Date().toISOString().slice(0, 16),
         account_mask: '',
         recipient: '',
@@ -233,6 +235,8 @@ export function useTriageState(
 
         labelForm.value = {
             amount: suggestedAmt,
+            balance: null,
+            credit_limit: null,
             date: dateStr,
             account_mask: suggestedMask,
             recipient: '',

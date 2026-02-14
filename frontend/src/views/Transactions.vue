@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, reactive } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { useRoute } from 'vue-router'
 
@@ -10,6 +10,7 @@ import SpendingHeatmap from '@/components/SpendingHeatmap.vue'
 import TransactionList from './transactions/TransactionList.vue'
 import TransactionTriage from './transactions/TransactionTriage.vue'
 import TransactionModal from './transactions/TransactionModal.vue'
+import VendorAliasModal from '@/components/VendorAliasModal.vue'
 import {
     LayoutList,
     Inbox,
@@ -77,10 +78,11 @@ const {
     showDeleteConfirm,
     fetchData,
     handleTimeRangeChange,
-    toggleTxnSort
+    toggleTxnSort,
+    refreshAccounts,
+    confirmDelete
 } = useTransactionState(route, accounts, categories, budgets, loans, expenseGroups)
 
-// Initialize Triage State Composable
 const {
     triageTransactions,
     triagePagination,
@@ -101,6 +103,10 @@ const {
     startLabeling,
     dismissTraining,
     handleBulkDismissTraining,
+    showLabelForm,
+    labelForm,
+    handleLabelSubmit,
+    selectedMessage
 } = useTriageState(accounts, categories, showSmartPrompt, smartPromptData, fetchData)
 
 // Initialize Modals Composable
@@ -116,7 +122,7 @@ const {
     handleSmartCategorize,
     findMatches,
     selectMatch
-} = useTransactionModals(selectedAccount, accounts, budgets, transactions, fetchData, showSmartPrompt, smartPromptData)
+} = useTransactionModals(selectedAccount, accounts, budgets, transactions, fetchData, showSmartPrompt, smartPromptData, refreshAccounts)
 
 
 // Heatmap Data
@@ -154,6 +160,19 @@ watch(() => auth.selectedMemberId, () => {
     fetchTriage()
     fetchHeatmap()
 })
+
+// --- Vendor Alias Logic ---
+const showAliasModal = ref(false)
+const aliasForm = reactive({
+    pattern: '',
+    alias: ''
+})
+
+function openAliasModal(txn: any) {
+    aliasForm.pattern = txn.description || txn.recipient || ''
+    aliasForm.alias = txn.recipient || ''
+    showAliasModal.value = true
+}
 
 onMounted(() => {
     fetchData()
@@ -228,9 +247,11 @@ onMounted(() => {
                             @update:startDate="startDate = $event; page = 1; fetchData()"
                             @update:endDate="endDate = $event; page = 1; fetchData()"
                             @update:selectedTimeRange="selectedTimeRange = $event; handleTimeRangeChange($event)"
-                            @update:page="page = $event; fetchData()" @sortChange="toggleTxnSort"
-                            @editTxn="openEditModal" @deleteSelected="showDeleteConfirm = true"
-                            @importCsv="showImportModal = true" @fetchData="fetchData"
+                            @update:page="page = $event; fetchData()"
+                            @update:pageSize="pageSize = $event; page = 1; fetchData()" @sortChange="toggleTxnSort"
+                            @editTxn="openEditModal" @mapVendor="openAliasModal"
+                            @deleteSelected="showDeleteConfirm = true" @importCsv="showImportModal = true"
+                            @fetchData="fetchData"
                             @resetFilters="selectedTimeRange = 'all'; startDate = ''; endDate = ''; searchQuery = ''; categoryFilter = ''; fetchData()" />
                     </v-window-item>
 
@@ -276,6 +297,129 @@ onMounted(() => {
             :potentialMatches="potentialMatches" :isSearchingMatches="isSearchingMatches"
             :matchesSearched="matchesSearched" @close="showModal = false" @submit="handleSubmit"
             @findMatches="findMatches" @selectMatch="selectMatch" />
+
+        <VendorAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern" :initial-alias="aliasForm.alias"
+            @saved="fetchData" />
+
+        <!-- Labeling Message Modal (Interactive Training) -->
+        <v-dialog v-model="showLabelForm" persistent max-width="800">
+            <v-card class="glass-card overflow-hidden" rounded="xl">
+                <v-toolbar color="warning" density="compact">
+                    <v-icon start icon="mdi-robot-confused" class="ml-4"></v-icon>
+                    <v-toolbar-title class="text-subtitle-1 font-weight-bold">Train Transaction Parser</v-toolbar-title>
+                    <v-spacer></v-spacer>
+                    <v-btn icon="mdi-close" variant="text" @click="showLabelForm = false"></v-btn>
+                </v-toolbar>
+
+                <div class="labeling-layout pa-4">
+                    <!-- Left: Raw Message -->
+                    <div class="labeling-raw h-100">
+                        <div class="section-label mb-2">Message Content</div>
+                        <div class="raw-content-box flex-grow-1 mb-4">
+                            {{ selectedMessage?.raw_content || selectedMessage?.raw_message || 'N/A' }}
+                        </div>
+                        <div class="raw-meta">
+                            <div class="mb-1"><span class="font-weight-bold">Sender:</span> {{ selectedMessage?.sender
+                            }}
+                            </div>
+                            <div class="mb-1"><span class="font-weight-bold">Source:</span> {{ selectedMessage?.source
+                            }}
+                            </div>
+                            <div><span class="font-weight-bold">Received:</span> {{
+                                selectedMessage?.created_at ? new Date(selectedMessage.created_at).toLocaleString() :
+                                    'N/A' }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Form -->
+                    <div class="labeling-form">
+                        <div class="section-label mb-2">Extracted Information</div>
+                        <v-row dense>
+                            <v-col cols="12" md="6">
+                                <v-text-field v-model.number="labelForm.amount" label="Amount" prefix="₹" type="number"
+                                    density="compact" variant="outlined" hide-details class="mb-3"></v-text-field>
+                            </v-col>
+                            <v-col cols="12" md="6">
+                                <v-select v-model="labelForm.type" label="Type" :items="['DEBIT', 'CREDIT']"
+                                    density="compact" variant="outlined" hide-details class="mb-3"></v-select>
+                            </v-col>
+                            <v-col cols="12">
+                                <v-text-field v-model="labelForm.recipient" label="Merchant / Recipient"
+                                    placeholder="e.g. Amazon, Starbucks" density="compact" variant="outlined"
+                                    hide-details class="mb-3"></v-text-field>
+                            </v-col>
+                            <v-col cols="12" md="6">
+                                <v-text-field v-model="labelForm.account_mask" label="Account Mask"
+                                    placeholder="Last 4 digits" density="compact" variant="outlined" hide-details
+                                    class="mb-3"></v-text-field>
+                            </v-col>
+                            <v-col cols="12" md="6">
+                                <v-text-field v-model="labelForm.ref_id" label="Reference ID" placeholder="Txn ID"
+                                    density="compact" variant="outlined" hide-details class="mb-3"></v-text-field>
+                            </v-col>
+
+                            <v-divider class="my-2 w-100"></v-divider>
+                            <v-col cols="12">
+                                <p class="text-caption font-weight-bold text-warning mb-2">BALANCE ANCHORING (OPTIONAL)
+                                </p>
+                            </v-col>
+
+                            <v-col cols="12" md="6">
+                                <v-text-field v-model.number="labelForm.balance" label="Bank Balance"
+                                    placeholder="Balance after txn" prefix="₹" type="number" density="compact"
+                                    variant="outlined" hide-details class="mb-3"></v-text-field>
+                            </v-col>
+                            <v-col cols="12" md="6">
+                                <v-text-field v-model.number="labelForm.credit_limit" label="Credit Limit"
+                                    placeholder="If card txn" prefix="₹" type="number" density="compact"
+                                    variant="outlined" hide-details class="mb-3"></v-text-field>
+                            </v-col>
+
+                            <v-col cols="12">
+                                <v-divider class="my-2"></v-divider>
+                            </v-col>
+
+                            <v-col cols="12">
+                                <v-checkbox v-model="labelForm.generate_pattern" label="Create Auto-Categorization Rule"
+                                    density="compact" color="primary" hide-details></v-checkbox>
+                            </v-col>
+                        </v-row>
+
+                        <div class="d-flex justify-end gap-2 mt-4">
+                            <v-btn variant="text" @click="showLabelForm = false">Cancel</v-btn>
+                            <v-btn color="warning" @click="handleLabelSubmit" prepend-icon="mdi-brain">Train &
+                                Approve</v-btn>
+                        </div>
+                    </div>
+                </div>
+            </v-card>
+        </v-dialog>
+
+
+        <!-- Delete Confirmation Dialog -->
+        <v-dialog v-model="showDeleteConfirm" max-width="450">
+            <v-card class="glass-card" rounded="xl">
+                <v-card-text class="text-center pa-6">
+                    <div class="text-h2 mb-4">🗑️</div>
+                    <div class="text-h5 font-weight-bold mb-2">Delete Transactions?</div>
+                    <p class="text-body-2 text-medium-emphasis mb-6">
+                        Are you sure you want to delete <span class="font-weight-bold text-primary">{{
+                            selectedIds.size }}</span> selected
+                        transactions? This action cannot be undone.
+                    </p>
+
+                    <div class="d-flex gap-3 justify-center">
+                        <v-btn variant="text" @click="showDeleteConfirm = false" :disabled="loading" rounded="lg">
+                            Cancel
+                        </v-btn>
+                        <v-btn color="error" @click="async () => { await confirmDelete(); fetchData() }"
+                            :loading="loading" rounded="lg" prepend-icon="Trash2">
+                            Delete Forever
+                        </v-btn>
+                    </div>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
     </MainLayout>
 </template>
 

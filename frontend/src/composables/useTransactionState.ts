@@ -28,8 +28,9 @@ export function useTransactionState(
     const selectedAccount = ref<string>('')
     const searchQuery = ref('')
     const categoryFilter = ref('')
-    const startDate = ref<string>('')
-    const endDate = ref<string>('')
+    const today = new Date()
+    const startDate = ref<string>(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0])
+    const endDate = ref<string>(today.toISOString().split('T')[0])
     const selectedTimeRange = ref<string>('this-month')
 
     const timeRangeOptions = [
@@ -59,12 +60,22 @@ export function useTransactionState(
     /**
      * Fetch transactions with current filters
      */
+    async function refreshAccounts() {
+        try {
+            const res = await financeApi.getAccounts(auth.selectedMemberId || undefined)
+            accounts.value = res.data
+        } catch (e) {
+            console.error('Failed to refresh accounts', e)
+        }
+    }
+
+    /**
+     * Fetch transactions with current filters
+     */
     async function fetchData() {
         loading.value = true
         try {
             // Load master data if not already loaded OR if we need to refresh based on member
-            // We'll re-fetch accounts if the member changed (handled by watcher in component usually, 
-            // but here we force fetch if empty or we want to be safe)
             if (accounts.value.length === 0) {
                 const [accRes, catRes, budgetRes, loanRes, groupRes] = await Promise.all([
                     financeApi.getAccounts(auth.selectedMemberId || undefined),
@@ -267,6 +278,7 @@ export function useTransactionState(
         changePage,
         toggleSelectAll,
         toggleSelection,
-        confirmDelete
+        confirmDelete,
+        refreshAccounts
     }
 }
