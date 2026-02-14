@@ -57,8 +57,7 @@ class PendingTransaction(Base):
     external_id = Column(String, nullable=True) # Reference Number/UTR
     is_transfer = Column(Boolean, default=False, nullable=False)
     to_account_id = Column(String, nullable=True) # Destination Account ID for transfers
-    balance = Column(Numeric(15, 2), nullable=True)
-    credit_limit = Column(Numeric(15, 2), nullable=True)
+    balance_is_synced = Column(Boolean, default=False, nullable=False) # True if account balance was updated at ingestion
     latitude = Column(Numeric(10, 8), nullable=True)
     longitude = Column(Numeric(11, 8), nullable=True)
     location_name = Column(String, nullable=True)

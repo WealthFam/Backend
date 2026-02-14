@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 import json
 from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File, Form
@@ -552,10 +552,10 @@ class ImportItem(BaseModel):
     type: str # DEBIT/CREDIT
     external_id: Optional[str] = None
     ref_id: Optional[str] = None # Parser returns ref_id
-    balance: Optional[float] = None
-    credit_limit: Optional[float] = None
     is_transfer: bool = False
     to_account_id: Optional[str] = None
+    balance: Optional[float] = None
+    credit_limit: Optional[float] = None
 
 class ImportPayload(BaseModel):
     account_id: str
@@ -576,14 +576,60 @@ def import_csv(
     
     from datetime import datetime
     
+    # 1. Fetch Account once
+    account = db.query(finance_models.Account).filter(
+        finance_models.Account.id == payload.account_id,
+        finance_models.Account.tenant_id == str(current_user.tenant_id)
+    ).first()
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
     for idx, txn in enumerate(payload.transactions):
         try:
              # Convert to Finance Service format
              # Note: Parser already returns negative amounts for DEBIT, positive for CREDIT
+             txn_date = datetime.fromisoformat(txn.date)
+             
+             # --- BALANCE ANCHORING LOGIC ---
+             balance_synced = False
+             if txn.balance is not None:
+                 # Check if this transaction is newer than the current anchor
+                 is_newer = True
+                 if account.last_synced_at and txn_date < account.last_synced_at:
+                     is_newer = False
+                 
+                 if is_newer:
+                     # Update anchor fields
+                     account.last_synced_balance = txn.balance
+                     account.last_synced_at = txn_date
+                     if txn.credit_limit is not None:
+                         account.last_synced_limit = txn.credit_limit
+                     
+                     # Update current running balance
+                     account.balance = txn.balance
+                     if txn.credit_limit is not None:
+                         account.credit_limit = txn.credit_limit
+                     
+                     # Create snapshot
+                     snapshot = finance_models.BalanceSnapshot(
+                         account_id=str(account.id),
+                         tenant_id=str(current_user.tenant_id),
+                         balance=txn.balance,
+                         timestamp=txn_date,
+                         source=payload.source
+                     )
+                     db.add(snapshot)
+                     # We must commit intermediate updates so subseq txns see the new anchor
+                     db.commit() 
+                     db.refresh(account)
+                     
+                     balance_synced = True
+
              txn_create = finance_schemas.TransactionCreate(
                  account_id=payload.account_id,
                  amount=txn.amount,  # Use parsed amount as-is
-                 date=datetime.fromisoformat(txn.date),
+                 date=txn_date,
                  description=txn.description,
                  recipient=txn.recipient,  # Extracted merchant/payee
                  category="Uncategorized",
@@ -591,7 +637,12 @@ def import_csv(
                  source=payload.source,
                  external_id=txn.external_id or txn.ref_id
              )
-             TransactionService.create_transaction(db, txn_create, str(current_user.tenant_id))
+             
+             # Pass update_balance=False if we just anchored it
+             TransactionService.create_transaction(
+                 db, txn_create, str(current_user.tenant_id),
+                 update_balance=not balance_synced
+             )
              success_count += 1
         except Exception as e:
             errors.append(f"Row {idx+1}: {str(e)}")
@@ -625,8 +676,7 @@ class PendingTransactionRead(BaseModel):
     source: str
     raw_message: Optional[str] = None
     external_id: Optional[str] = None
-    balance: Optional[float] = None
-    credit_limit: Optional[float] = None
+    balance_is_synced: bool = False
     is_transfer: bool = False
     to_account_id: Optional[str] = None
     exclude_from_reports: bool = False
@@ -730,24 +780,176 @@ class UnparsedMessageRead(BaseModel):
         from_attributes = True
 
 @router.get("/training")
-def list_training_messages(
-    limit: int = 50,
+def get_unparsed_messages(
     skip: int = 0,
-    current_user: auth_models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    limit: int = 20,
+    source_filter: Optional[str] = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+    db: Session = Depends(get_db),
+    current_user: auth_models.User = Depends(get_current_user)
 ):
     query = db.query(ingestion_models.UnparsedMessage).filter(
-        ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
+        ingestion_models.UnparsedMessage.tenant_id == current_user.tenant_id
     )
+
+    if source_filter:
+        query = query.filter(ingestion_models.UnparsedMessage.source == source_filter)
+
     total = query.count()
-    items = query.order_by(ingestion_models.UnparsedMessage.created_at.desc()).offset(skip).limit(limit).all()
-    
+
+    # Sort
+    if hasattr(ingestion_models.UnparsedMessage, sort_by):
+        col = getattr(ingestion_models.UnparsedMessage, sort_by)
+        if sort_order == "desc":
+            query = query.order_by(col.desc())
+        else:
+            query = query.order_by(col.asc())
+    else:
+        query = query.order_by(ingestion_models.UnparsedMessage.created_at.desc())
+
+    items = query.offset(skip).limit(limit).all()
+
     return {
         "total": total,
         "items": items,
         "limit": limit,
         "skip": skip
     }
+# --- Vendor Alias Management ---
+
+class AliasCreate(BaseModel):
+    pattern: str
+    alias: str
+    update_past_transactions: bool = False
+
+class AliasRead(BaseModel):
+    id: str
+    pattern: str
+    alias: str
+    created_at: Optional[datetime] = None
+
+class AliasPreviewRequest(BaseModel):
+    pattern: str
+
+@router.get("/aliases", response_model=List[Dict[str, Any]])
+def list_aliases(
+    current_user: auth_models.User = Depends(get_current_user)
+):
+    """
+    Get all merchant aliases from external parser.
+    """
+    from backend.app.modules.ingestion.parser_service import ExternalParserService
+    return ExternalParserService.get_aliases()
+
+@router.post("/aliases")
+def create_alias(
+    payload: AliasCreate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new alias rule and optionally update past transactions.
+    """
+    from backend.app.modules.ingestion.parser_service import ExternalParserService
+    
+    # 1. Create Rule in Parser
+    success = ExternalParserService.create_alias(payload.pattern, payload.alias)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to create alias in parser service")
+
+    updated_count = 0
+    if payload.update_past_transactions:
+        # 2. Retroactive Update: Find transactions where description/raw_message contains pattern (case-insensitive)
+        # We search 'description' as that's usually the raw merchant text or 'recipient' if it was already partly cleaned 
+        # but we want to map it further.
+        # Actually better to search 'description' as that is closer to source truth.
+        
+        # SQLA ILIKE
+        pattern_wildcard = f"%{payload.pattern}%"
+        
+        txns_to_update = db.query(finance_models.Transaction).filter(
+            finance_models.Transaction.tenant_id == str(current_user.tenant_id),
+            finance_models.Transaction.description.ilike(pattern_wildcard)
+        ).all()
+        
+        for txn in txns_to_update:
+            txn.recipient = payload.alias
+            updated_count += 1
+            
+        db.commit()
+
+    return {"status": "created", "updated_past_transactions": updated_count}
+
+class AliasUpdate(BaseModel):
+    pattern: str
+    alias: str
+    update_past_transactions: bool = False
+
+@router.put("/aliases/{alias_id}")
+def update_alias(
+    alias_id: str,
+    payload: AliasUpdate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update an existing merchant alias.
+    """
+    from backend.app.modules.ingestion.parser_service import ExternalParserService
+    success = ExternalParserService.update_alias(alias_id, payload.pattern, payload.alias)
+    if not success:
+        raise HTTPException(status_code=404, detail="Alias not found or failed to update")
+
+    updated_count = 0
+    if payload.update_past_transactions:
+        # Retroactive Update
+        pattern_wildcard = f"%{payload.pattern}%"
+        
+        txns_to_update = db.query(finance_models.Transaction).filter(
+            finance_models.Transaction.tenant_id == str(current_user.tenant_id),
+            finance_models.Transaction.description.ilike(pattern_wildcard)
+        ).all()
+        
+        for txn in txns_to_update:
+            txn.recipient = payload.alias
+            updated_count += 1
+            
+        db.commit()
+
+    return {"status": "updated", "updated_past_transactions": updated_count}
+
+@router.post("/aliases/preview")
+def preview_alias_impact(
+    payload: AliasPreviewRequest,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Check how many past transactions would match this pattern.
+    """
+    pattern_wildcard = f"%{payload.pattern}%"
+    count = db.query(finance_models.Transaction).filter(
+        finance_models.Transaction.tenant_id == str(current_user.tenant_id),
+        finance_models.Transaction.description.ilike(pattern_wildcard)
+    ).count()
+    
+    return {"match_count": count}
+
+@router.delete("/aliases/{alias_id}")
+def delete_alias(
+    alias_id: str,
+    current_user: auth_models.User = Depends(get_current_user)
+):
+    """
+    Delete an alias rule.
+    """
+    from backend.app.modules.ingestion.parser_service import ExternalParserService
+    success = ExternalParserService.delete_alias(alias_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Alias not found or failed to delete")
+    return {"status": "deleted"}
+
 
 class LabelPayload(BaseModel):
     amount: float
@@ -756,8 +958,11 @@ class LabelPayload(BaseModel):
     recipient: Optional[str]
     category: Optional[str] = "Uncategorized"
     ref_id: Optional[str]
+    balance: Optional[float] = None
+    credit_limit: Optional[float] = None
     type: str = "DEBIT" # DEBIT or CREDIT
     generate_pattern: bool = True
+    exclude_from_reports: bool = False
 
 @router.post("/training/{message_id}/label")
 def label_message(
@@ -802,6 +1007,30 @@ def label_message(
     else:
         effective_amount = abs(payload.amount)
 
+    # If balance/limit provided in label, anchor it
+    if payload.balance is not None:
+        # Check if this is the "New Reality" (newer or same as current anchor)
+        is_newer = True
+        if account.last_synced_at and payload.date < account.last_synced_at:
+            is_newer = False
+            
+        if is_newer:
+            account.balance = payload.balance
+            account.last_synced_balance = payload.balance
+            account.last_synced_at = payload.date
+            if payload.credit_limit is not None:
+                account.credit_limit = payload.credit_limit
+                account.last_synced_limit = payload.credit_limit
+        
+        # Always create snapshot as it stores ground truth for the specific point in time
+        db.add(finance_models.BalanceSnapshot(
+            account_id=str(account.id),
+            tenant_id=str(current_user.tenant_id),
+            balance=payload.balance,
+            timestamp=payload.date,
+            source="MANUAL_TRAINING"
+        ))
+
     pending = ingestion_models.PendingTransaction(
         tenant_id=str(current_user.tenant_id),
         account_id=str(account.id),
@@ -812,7 +1041,9 @@ def label_message(
         category=payload.category or "Uncategorized",
         source=msg.source,
         raw_message=msg.raw_content,
-        external_id=effective_ref
+        external_id=effective_ref,
+        balance_is_synced=(payload.balance is not None),
+        exclude_from_reports=payload.exclude_from_reports
     )
     db.add(pending)
     

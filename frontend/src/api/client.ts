@@ -71,6 +71,8 @@ export const financeApi = {
     updateAccount: (id: string, data: AccountUpdate) => apiClient.put(`/finance/accounts/${id}`, data),
     deleteAccount: (id: string) => apiClient.delete(`/finance/accounts/${id}`),
     getAccountTransactionCount: (id: string) => apiClient.get(`/finance/accounts/${id}/transaction-count`),
+    overrideAccountBalance: (id: string, data: { balance: number, credit_limit?: number | null, timestamp: string, source?: string }) =>
+        apiClient.put(`/finance/accounts/${id}/balance`, { ...data, account_id: id }),
     getTransactions: (accountId?: string, page: number = 1, limit: number = 50, startDate?: string, endDate?: string, search?: string, category?: string, sortBy: string = 'date', sortOrder: string = 'desc', userId?: string) =>
         apiClient.get('/finance/transactions', { params: { account_id: accountId, page, limit, start_date: startDate, end_date: endDate, search, category, sort_by: sortBy, sort_order: sortOrder, user_id: userId } }),
     createTransaction: (data: any) => apiClient.post('/finance/transactions', data),
@@ -208,6 +210,13 @@ export const financeApi = {
     getPortfolioInsights: (userId?: string) => apiClient.post('/finance/loans/portfolio/insights', {}, { params: { user_id: userId } }),
     createLoan: (data: any) => apiClient.post('/finance/loans', data),
     recordLoanRepayment: (loanId: string, data: any) => apiClient.post(`/finance/loans/${loanId}/repayment`, data),
+
+    // Vendor Aliases
+    getAliases: () => apiClient.get('/ingestion/aliases'),
+    createAlias: (data: any) => apiClient.post('/ingestion/aliases', data),
+    updateAlias: (id: string, data: any) => apiClient.put(`/ingestion/aliases/${id}`, data),
+    deleteAlias: (id: string) => apiClient.delete(`/ingestion/aliases/${id}`),
+    previewAliasImpact: (pattern: string) => apiClient.post('/ingestion/aliases/preview', { pattern }),
 
     // Investment Goals
     getInvestmentGoals: (userId?: string) => apiClient.get('/finance/investment-goals', { params: { user_id: userId } }),
