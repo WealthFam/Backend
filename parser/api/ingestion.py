@@ -251,7 +251,8 @@ async def ingest_cas(
                     units=t_dict.get("units"),
                     nav=t_dict.get("nav"),
                     amfi=t_dict.get("amfi"),
-                    isin=t_dict.get("isin")
+                    isin=t_dict.get("isin"),
+                    is_synthesized=t_dict.get("is_synthesized", False)
                 )
             )
             results.append(item)

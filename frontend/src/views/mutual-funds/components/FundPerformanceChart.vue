@@ -3,16 +3,9 @@
         <svg :width="width" :height="height" :viewBox="`0 0 ${width} ${height}`">
             <!-- Grid lines -->
             <g class="grid">
-                <line
-                    v-for="i in 5"
-                    :key="`h-${i}`"
-                    :x1="padding.left"
-                    :y1="padding.top + (chartHeight / 4) * (i - 1)"
-                    :x2="width - padding.right"
-                    :y2="padding.top + (chartHeight / 4) * (i - 1)"
-                    stroke="#e5e7eb"
-                    stroke-width="1"
-                />
+                <line v-for="i in 5" :key="`h-${i}`" :x1="padding.left" :y1="padding.top + (chartHeight / 4) * (i - 1)"
+                    :x2="width - padding.right" :y2="padding.top + (chartHeight / 4) * (i - 1)" stroke="#e5e7eb"
+                    stroke-width="1" />
             </g>
 
             <!-- Gradient definition for area fill -->
@@ -24,87 +17,45 @@
             </defs>
 
             <!-- Area fill (smooth) -->
-            <path
-                v-if="paths.area"
-                :d="paths.area"
-                fill="url(#valueGradient)"
-                stroke="none"
-            />
+            <path v-if="paths.area" :d="paths.area" fill="url(#valueGradient)" stroke="none" />
 
             <!-- Value line (smooth) -->
-            <path
-                v-if="paths.value"
-                :d="paths.value"
-                fill="none"
-                stroke="#3b82f6"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            />
+            <path v-if="paths.value" :d="paths.value" fill="none" stroke="#3b82f6" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round" />
 
             <!-- Invested line (smooth dashed) -->
-            <path
-                v-if="paths.invested"
-                :d="paths.invested"
-                fill="none"
-                stroke="#94a3b8"
-                stroke-width="0.5"
-                stroke-dasharray="5,5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            />
+            <path v-if="paths.invested" :d="paths.invested" fill="none" stroke="#94a3b8" stroke-width="0.5"
+                stroke-dasharray="5,5" stroke-linecap="round" stroke-linejoin="round" />
 
             <!-- Benchmark line (smooth dotted) -->
-            <path
-                v-if="paths.benchmark"
-                :d="paths.benchmark"
-                fill="none"
-                stroke="#f59e0b"
-                stroke-width="1.5"
-                stroke-dasharray="2,3"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                style="opacity: 0.6;"
-            />
+            <path v-if="paths.benchmark" :d="paths.benchmark" fill="none" stroke="#f59e0b" stroke-width="1.5"
+                stroke-dasharray="2,3" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;" />
 
-            <!-- Data points for interaction -->
+            <!-- Hover columns (for easier tooltip triggering) -->
+            <g class="hover-columns">
+                <rect v-for="(_point, index) in dataPoints" :key="`hover-${index}`"
+                    :x="index === 0 ? padding.left : padding.left + xScale(index) - (chartWidth / (dataPoints.length - 1)) / 2"
+                    :y="padding.top" :width="chartWidth / (dataPoints.length - 1)" :height="chartHeight"
+                    fill="transparent" style="cursor: pointer;" @mouseenter="showTooltip(index, $event)"
+                    @mouseleave="hideTooltip" />
+            </g>
+
+            <!-- Data points (visible circles) -->
             <g class="data-points">
-                <circle
-                    v-for="(point, index) in dataPoints"
-                    :key="`point-${index}`"
-                    :cx="point.x"
-                    :cy="point.y"
-                    r="2"
-                    fill="#3b82f6"
-                    class="hover-point"
-                    @mouseenter="showTooltip(index, $event)"
-                    @mouseleave="hideTooltip"
-                />
+                <circle v-for="(point, index) in dataPoints" :key="`point-${index}`" :cx="point.x" :cy="point.y"
+                    :r="tooltip.index === index ? 5 : 0" fill="white" stroke="#3b82f6" stroke-width="2"
+                    pointer-events="none" />
             </g>
 
             <!-- Transaction Markers -->
             <g v-if="markers" class="transaction-markers">
                 <g v-for="(marker, index) in markerPoints" :key="`marker-${index}`">
-                    <circle
-                        :cx="marker.x"
-                        :cy="marker.y"
-                        :r="6"
-                        :fill="marker.type === 'SELL' ? '#ef4444' : '#10b981'"
-                        :stroke="marker.type === 'SELL' ? '#dc2626' : '#059669'"
-                        stroke-width="2"
-                        class="transaction-marker"
-                        @mouseenter="showMarkerTooltip(index, $event)"
-                        @mouseleave="hideTooltip"
-                    />
-                    <text
-                        :x="marker.x"
-                        :y="marker.y + 1"
-                        text-anchor="middle"
-                        font-size="10"
-                        fill="white"
-                        font-weight="bold"
-                        pointer-events="none"
-                    >
+                    <circle :cx="marker.x" :cy="marker.y" :r="6" :fill="marker.type === 'SELL' ? '#ef4444' : '#10b981'"
+                        :stroke="marker.type === 'SELL' ? '#dc2626' : '#059669'" stroke-width="2"
+                        class="transaction-marker" @mouseenter="showMarkerTooltip(index, $event)"
+                        @mouseleave="hideTooltip" />
+                    <text :x="marker.x" :y="marker.y + 1" text-anchor="middle" font-size="10" fill="white"
+                        font-weight="bold" pointer-events="none">
                         {{ marker.type === 'SELL' ? '↓' : '↑' }}
                     </text>
                 </g>
@@ -112,28 +63,17 @@
 
             <!-- Y-axis labels -->
             <g class="y-axis-labels">
-                <text
-                    v-for="(label, i) in yAxisLabels"
-                    :key="`y-${i}`"
-                    :x="padding.left - 10"
-                    :y="padding.top + (chartHeight / 4) * i + 4"
-                    text-anchor="end"
-                    class="axis-label"
-                >
+                <text v-for="(label, i) in yAxisLabels" :key="`y-${i}`" :x="padding.left - 10"
+                    :y="padding.top + (chartHeight / 4) * i + 4" text-anchor="end" class="axis-label">
                     {{ label }}
                 </text>
             </g>
 
             <!-- X-axis labels -->
             <g class="x-axis-labels">
-                <text
-                    v-for="(label, i) in xAxisLabels"
-                    :key="`x-${i}`"
+                <text v-for="(label, i) in xAxisLabels" :key="`x-${i}`"
                     :x="xAxisLabels.length > 1 ? padding.left + (chartWidth / (xAxisLabels.length - 1)) * i : padding.left + chartWidth / 2"
-                    :y="height - padding.bottom + 20"
-                    text-anchor="middle"
-                    class="axis-label"
-                >
+                    :y="height - padding.bottom + 20" text-anchor="middle" class="axis-label">
                     {{ label }}
                 </text>
             </g>
@@ -151,7 +91,7 @@
             </div>
             <div v-if="props.benchmark && props.benchmark.length > 0" class="legend-item">
                 <div class="legend-line dotted" style="background: #f59e0b;"></div>
-                <span>Nifty 50 (Normalized)</span>
+                <span>Nifty 50 (Simulated)</span>
             </div>
         </div>
 
@@ -209,6 +149,7 @@ const chartHeight = height - padding.top - padding.bottom
 
 const tooltip = ref({
     visible: false,
+    index: -1,
     x: 0,
     y: 0,
     date: '',
@@ -222,14 +163,14 @@ const tooltip = ref({
 // Calculate scales
 const maxValue = computed(() => {
     if (!props.data || props.data.length === 0) return 100
-    
+
     let max = Math.max(...props.data.map(d => Math.max(d.value, d.invested)))
-    
+
     if (props.benchmark && props.benchmark.length > 0) {
         const bMax = Math.max(...props.benchmark.map(b => b.value))
         max = Math.max(max, bMax)
     }
-    
+
     return max
 })
 
@@ -263,14 +204,14 @@ const getPathData = (dataPoints: { x: number; y: number }[]) => {
     if (dataPoints.length === 1) return `M ${dataPoints[0].x},${dataPoints[0].y}`
 
     let path = `M ${dataPoints[0].x},${dataPoints[0].y}`
-    
+
     // Smoothing factor
     const smoothing = 0.2
 
     for (let i = 0; i < dataPoints.length - 1; i++) {
         const curr = dataPoints[i]
         const next = dataPoints[i + 1]
-        
+
         // Control point calculation
         const prev = dataPoints[i - 1] || curr
         const nextNext = dataPoints[i + 2] || next
@@ -303,11 +244,11 @@ const paths = computed(() => {
     }))
 
     const valuePath = getPathData(valuePoints)
-    
+
     // Create area path by closing the value path to the bottom axis
     let areaPath = ''
     if (valuePoints.length > 0) {
-        areaPath = valuePath + 
+        areaPath = valuePath +
             ` L ${padding.left + xScale(valuePoints.length - 1)},${height - padding.bottom}` +
             ` L ${padding.left},${height - padding.bottom} Z`
     }
@@ -322,8 +263,8 @@ const paths = computed(() => {
         benchmarkPath = getPathData(benchmarkPoints)
     }
 
-    return { 
-        value: valuePath, 
+    return {
+        value: valuePath,
         invested: getPathData(investedPoints),
         area: areaPath,
         benchmark: benchmarkPath
@@ -351,22 +292,22 @@ const yAxisLabels = computed(() => {
 
 const xAxisLabels = computed(() => {
     if (!props.data || props.data.length === 0) return []
-    
+
     // Determine the total time span in days
     const firstDate = new Date(props.data[0].date)
     const lastDate = new Date(props.data[props.data.length - 1].date)
     const daysSpan = (lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)
-    
+
     // For 800px width, ~6-8 labels is usually good
     const targetLabelCount = 6
     const step = Math.max(1, Math.floor(props.data.length / targetLabelCount))
     const labels: string[] = []
-    
+
     props.data.forEach((d, i) => {
         // Show label for first, last, and every Nth point if it fits
         if (i === 0 || i === props.data.length - 1 || i % step === 0) {
             const date = new Date(d.date)
-            
+
             if (daysSpan <= 95) { // ~3 months or less
                 labels.push(date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }))
             } else if (daysSpan <= 366) { // ~1 year or less
@@ -378,7 +319,7 @@ const xAxisLabels = computed(() => {
             labels.push('')
         }
     })
-    
+
     // Final check for label overlap (very basic)
     // If the last label is too close to the previous non-empty label, hide the previous one
     let lastLabelIndex = -1
@@ -391,7 +332,7 @@ const xAxisLabels = computed(() => {
             }
         }
     }
-    
+
     return labels
 })
 
@@ -405,14 +346,28 @@ function formatAmount(value: number): string {
 
 function showTooltip(index: number, event: MouseEvent) {
     const dataPoint = props.data[index]
+    const container = (event.currentTarget as HTMLElement).closest('.line-chart-container')
+    const rect = container?.getBoundingClientRect()
+
+    if (!rect) return
+
+    // Calculate position relative to container
+    let x = event.clientX - rect.left + 15
+    let y = event.clientY - rect.top - 120
+
+    // Prevent overflow
+    if (x + 200 > rect.width) x = event.clientX - rect.left - 180
+    if (y < 0) y = event.clientY - rect.top + 20
+
     tooltip.value = {
         visible: true,
-        x: event.clientX + 10,
-        y: event.clientY - 80,
-        date: new Date(dataPoint.date).toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric', 
-            year: 'numeric' 
+        index: index,
+        x: x,
+        y: y,
+        date: new Date(dataPoint.date).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
         }),
         value: dataPoint.value,
         invested: dataPoint.invested,
@@ -424,17 +379,18 @@ function showTooltip(index: number, event: MouseEvent) {
 
 function hideTooltip() {
     tooltip.value.visible = false
+    tooltip.value.index = -1
 }
 
 // Calculate marker positions
 const markerPoints = computed(() => {
     if (!props.markers || !props.data) return []
-    
+
     return props.markers.map(marker => {
         // Find the index in data that matches this marker's date
         const dataIndex = props.data.findIndex(d => d.date === marker.date)
         if (dataIndex === -1) return null
-        
+
         return {
             x: padding.left + xScale(dataIndex),
             y: padding.top + yScale(props.data[dataIndex].value),
@@ -449,18 +405,29 @@ const markerPoints = computed(() => {
 function showMarkerTooltip(index: number, event: MouseEvent) {
     const marker = markerPoints.value[index]
     if (!marker) return
-    
+
     const dataIndex = props.data.findIndex(d => d.date === marker.date)
     const dataPoint = props.data[dataIndex]
-    
+    const container = (event.currentTarget as HTMLElement).closest('.line-chart-container')
+    const rect = container?.getBoundingClientRect()
+
+    if (!rect) return
+
+    let x = event.clientX - rect.left + 15
+    let y = event.clientY - rect.top - 140
+
+    if (x + 200 > rect.width) x = event.clientX - rect.left - 180
+    if (y < 0) y = event.clientY - rect.top + 20
+
     tooltip.value = {
         visible: true,
-        x: event.clientX + 10,
-        y: event.clientY - 100,
-        date: new Date(marker.date).toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric', 
-            year: 'numeric' 
+        index: dataIndex,
+        x: x,
+        y: y,
+        date: new Date(marker.date).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
         }),
         value: dataPoint.value,
         invested: dataPoint.invested,
@@ -523,17 +490,15 @@ svg {
 }
 
 .legend-line.dashed {
-    background: repeating-linear-gradient(
-        to right,
-        #94a3b8 0,
-        #94a3b8 5px,
-        transparent 5px,
-        transparent 10px
-    );
+    background: repeating-linear-gradient(to right,
+            #94a3b8 0,
+            #94a3b8 5px,
+            transparent 5px,
+            transparent 10px);
 }
 
 .chart-tooltip {
-    position: fixed;
+    position: absolute;
     background: white;
     border: 1px solid #e2e8f0;
     border-radius: 8px;

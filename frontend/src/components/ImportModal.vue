@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { financeApi } from '@/api/client'
-import CustomSelect from '@/components/CustomSelect.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useCurrency } from '@/composables/useCurrency'
 
@@ -21,6 +20,18 @@ const loading = ref(false)
 const accounts = ref<any[]>([])
 const selectedAccount = ref('')
 const file = ref<File | null>(null)
+
+// Step Labels
+const stepLabels = ['Account & File', 'Analysis', 'Mapping', 'Verification']
+
+// Detail Fields
+const detailFields = [
+    { key: 'date', label: 'Date', icon: '📅', desc: 'Transaction date', optional: false },
+    { key: 'description', label: 'Description', icon: '📝', desc: 'Payee or narration', optional: false },
+    { key: 'reference', label: 'Reference', icon: '🆔', desc: 'Reference / UTR / Txn #', optional: true },
+    { key: 'balance', label: 'Balance', icon: '💰', desc: 'Available balance after txn', optional: true },
+    { key: 'credit_limit', label: 'Credit Limit', icon: '💳', desc: 'New credit limit if updated', optional: true },
+] as const
 
 // Step 2: Mapping
 const mapping = ref({
@@ -57,7 +68,10 @@ async function fetchAccounts() {
     }
 }
 
-const accountOptions = computed(() => accounts.value.map(a => ({ label: `${a.icon || '🏦'} ${a.name}`, value: a.id })))
+const accountOptionsFlat = computed(() => accounts.value.map(a => ({
+    label: `${a.icon || '🏦'} ${a.name} (${a.currency})`,
+    value: a.id
+})))
 
 // Watch open to load accounts
 watch(() => props.isOpen, (val) => {
@@ -87,15 +101,17 @@ watch(selectedAccount, (newVal) => {
     }
 })
 
-async function handleFileUpload(event: Event) {
-    const target = event.target as HTMLInputElement
-    if (target.files && target.files[0]) {
-        file.value = target.files[0]
+async function handleFileUpload(event: any) {
+    const target = event.target || event
+    const uploadFile = target.files ? target.files[0] : (target[0] || target)
+
+    if (uploadFile) {
+        file.value = uploadFile
         analyzing.value = true
 
         try {
             const formData = new FormData()
-            formData.append('file', file.value)
+            formData.append('file', file.value as File)
 
             const res = await financeApi.analyzeCsv(formData)
             const analysis = res.data
@@ -105,10 +121,7 @@ async function handleFileUpload(event: Event) {
             previewRows.value = analysis.preview
 
             notify.success(`Detected headers on row ${analysis.header_row_index + 1}`)
-
-            // Auto-Map if not loaded from config
-            // Simple heuristic to pre-fill common names if not already set (or if set to default)
-            // (Skipping complex auto-map for now, trust Saved Config first, then user)
+            step.value = 2 // Auto-advance to preview
 
         } catch (e) {
             notify.error("Failed to analyze file. Please check format.")
@@ -145,7 +158,7 @@ async function parseFile() {
         formData.append('mapping', JSON.stringify(mapPayload))
         formData.append('header_row_index', String(detectedHeaderRow.value))
 
-        const res = await financeApi.parseCsv(formData) // Uses universal parser now
+        const res = await financeApi.parseCsv(formData)
         parsedTxns.value = res.data
         selectedTxns.value = new Set(parsedTxns.value.map((_, i) => i))
 
@@ -166,6 +179,14 @@ function toggleSelection(index: number) {
         selectedTxns.value.delete(index)
     } else {
         selectedTxns.value.add(index)
+    }
+}
+
+function toggleAllVerify() {
+    if (selectedTxns.value.size < parsedTxns.value.length) {
+        selectedTxns.value = new Set(parsedTxns.value.map((_, i) => i))
+    } else {
+        selectedTxns.value.clear()
     }
 }
 
@@ -232,856 +253,465 @@ function close() {
 </script>
 
 <template>
-    <Teleport to="body">
-        <div v-if="isOpen" class="modal-overlay-global">
-            <div class="modal-global large-modal">
-                <div class="modal-header">
-                    <h2 class="modal-title">Import Transactions</h2>
-                    <button class="btn-icon" @click="close">✕</button>
+    <v-dialog :model-value="isOpen" @update:model-value="close" persistent max-width="1100" scrollable>
+        <v-card class="premium-import-card rounded-xl overflow-hidden">
+            <v-card-title class="pa-0">
+                <div class="modal-header-premium pa-4 d-flex align-center justify-space-between text-white">
+                    <div class="d-flex align-center ga-3">
+                        <v-icon color="white">mdi-file-import-outline</v-icon>
+                        <h2 class="text-h6 font-weight-black">Import Transactions</h2>
+                    </div>
+                    <v-btn icon variant="text" color="white" density="compact" @click="close">
+                        <v-icon size="24">mdi-close</v-icon>
+                    </v-btn>
                 </div>
 
-                <!-- Stepper (Fixed) -->
-                <div class="stepper">
-                    <div class="step" :class="{ active: step >= 1 }"><span class="step-num">1</span> Upload</div>
-                    <div class="line"></div>
-                    <div class="step" :class="{ active: step >= 2 }"><span class="step-num">2</span> Preview</div>
-                    <div class="line"></div>
-                    <div class="step" :class="{ active: step >= 3 }"><span class="step-num">3</span> Map</div>
-                    <div class="line"></div>
-                    <div class="step" :class="{ active: step >= 4 }"><span class="step-num">4</span> Verify</div>
+                <!-- Stepper Progress Indicator -->
+                <div class="stepper-nav pa-4 border-b border-opacity-5 d-flex align-center justify-center gap-4">
+                    <div v-for="s in 4" :key="s" class="d-flex align-center gap-2">
+                        <div class="step-circle" :class="{ active: step >= s }">{{ s }}</div>
+                        <span class="step-label text-caption font-weight-black" :class="{ active: step >= s }">
+                            {{ stepLabels[s - 1] }}
+                        </span>
+                        <div v-if="s < 4" class="step-divider" :class="{ active: step > s }"></div>
+                    </div>
+                </div>
+            </v-card-title>
+
+            <v-card-text class="pa-0 pa-md-6 bg-surface-lighten-5">
+                <v-divider v-if="loading" class="mb-4"></v-divider>
+                <div v-if="loading" class="d-flex flex-column align-center justify-center py-10">
+                    <v-progress-circular indeterminate color="primary" size="64" width="6"></v-progress-circular>
+                    <p class="mt-4 text-h6 font-weight-bold opacity-70">Processing transactions...</p>
                 </div>
 
-                <!-- Content Body (Scrollable) -->
-                <div v-if="loading" class="loading">Processing...</div>
-                <div v-else class="content-body">
-                    <div class="step-container">
-                        <!-- Step 1: Upload -->
-                        <div v-if="step === 1">
-                            <div class="form-group">
-                                <label>Account</label>
-                                <CustomSelect v-model="selectedAccount" :options="accountOptions"
-                                    placeholder="Select Bank Account" />
-                            </div>
-                            <div class="form-group">
-                                <label>File (CSV / Excel)</label>
-                                <input type="file" @change="handleFileUpload" accept=".csv, .xlsx, .xls"
-                                    class="file-input" />
-                            </div>
-                        </div>
+                <div v-else class="import-content-wrapper pa-4 pa-md-0">
+                    <!-- Step 1: Account & File Selection -->
+                    <v-window v-model="step" class="overflow-visible">
+                        <v-window-item :value="1">
+                            <v-row>
+                                <v-col cols="12" md="6">
+                                    <v-label class="text-subtitle-2 font-weight-black mb-2 d-block">Select Target
+                                        Account</v-label>
+                                    <v-autocomplete v-model="selectedAccount" :items="accountOptionsFlat"
+                                        item-title="label" item-value="value"
+                                        placeholder="Which bank account is this for?" variant="solo"
+                                        density="comfortable" flat class="premium-select-field" hide-details>
 
-                        <!-- Step 2: Preview -->
-                        <div v-if="step === 2">
-                            <div v-if="analyzing" class="loading">Analyzing file structure...</div>
+                                    </v-autocomplete>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-label class="text-subtitle-2 font-weight-black mb-2 d-block">Upload CSV or
+                                        Excel</v-label>
+                                    <v-file-input @change="handleFileUpload" accept=".csv, .xlsx, .xls" variant="solo"
+                                        density="comfortable" flat class="premium-file-field"
+                                        prepend-inner-icon="mdi-cloud-upload-outline" prepend-icon=""
+                                        placeholder="Drag and drop or click to browse" hide-details></v-file-input>
+                                </v-col>
+                            </v-row>
+
+                            <v-alert border="start" border-color="primary" color="surface" elevation="1"
+                                class="mt-10 rounded-xl pa-6">
+                                <template v-slot:prepend>
+                                    <v-icon color="primary" size="32">mdi-lightbulb-outline</v-icon>
+                                </template>
+                                <div class="ml-4">
+                                    <h4 class="text-h6 font-weight-black mb-1">Pro Tip</h4>
+                                    <p class="text-body-2 opacity-70">Once you map your statement columns for an
+                                        account, we'll remember them for
+                                        your next import! Saving you time and clicks.</p>
+                                </div>
+                            </v-alert>
+                        </v-window-item>
+
+                        <!-- Step 2: File Analysis Preview -->
+                        <v-window-item :value="2">
+                            <div v-if="analyzing"
+                                class="d-flex flex-column align-center justify-center py-10 text-center">
+                                <v-progress-circular indeterminate color="primary" size="48"></v-progress-circular>
+                                <p class="mt-4 font-weight-bold opacity-70">Analyzing file structure...</p>
+                            </div>
 
                             <div v-else>
-                                <div class="mapping-instructions">
-                                    <div class="instruction-card">
-                                        <div class="icon">👀</div>
-                                        <div>
-                                            <h3>Review File Content</h3>
-                                            <p>We found <strong>{{ csvHeaders.length }} columns</strong> starting at Row
-                                                {{ detectedHeaderRow + 1 }}. Does this look right?</p>
-                                        </div>
+                                <v-card
+                                    class="bg-surface border-0 rounded-xl pa-4 mb-6 d-flex align-center gap-4 elevation-1">
+                                    <div class="text-h4">👀</div>
+                                    <div>
+                                        <h3 class="text-h6 font-weight-black">Review File Structure</h3>
+                                        <p class="text-body-2 opacity-70">
+                                            We found <strong>{{ csvHeaders.length }} columns</strong> starting at row
+                                            <v-chip size="x-small" color="primary" variant="flat"
+                                                class="font-weight-black mx-1">{{
+                                                    detectedHeaderRow + 1 }}</v-chip>.
+                                        </p>
                                     </div>
-                                </div>
+                                </v-card>
 
-                                <div v-if="previewRows.length > 0" class="preview-section">
-                                    <h4>Files Preview (First 3 Rows)</h4>
-                                    <div class="scroll-x">
-                                        <table class="mini-table">
-                                            <thead>
-                                                <tr>
-                                                    <th v-for="h in csvHeaders" :key="h">{{ h }}</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr v-for="(row, idx) in previewRows.slice(0, 3)" :key="idx">
-                                                    <td v-for="h in csvHeaders" :key="h">{{ row[h] }}</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Step 3: Mapping -->
-                        <div v-if="step === 3">
-                            <div class="mapping-instructions">
-                                <!-- Instructions removed to save space -->
-                            </div>
-
-                            <div class="mapping-container">
-                                <!-- Core Fields Card -->
-                                <div class="mapping-card">
-                                    <div class="card-header">
-                                        <h3>Transaction Details</h3>
-                                    </div>
-                                    <div class="card-body">
-                                        <!-- Date -->
-                                        <div class="mapping-row">
-                                            <div class="field-label">
-                                                <span class="field-icon">📅</span>
-                                                <div class="text">
-                                                    <span class="name">Date</span>
-                                                    <span class="desc">Transaction date</span>
-                                                </div>
-                                            </div>
-                                            <div class="connector">→</div>
-                                            <div class="field-input">
-                                                <input v-if="csvHeaders.length === 0" v-model="mapping.date"
-                                                    class="form-input" placeholder="Column Name" />
-                                                <select v-else v-model="mapping.date" class="form-select">
-                                                    <option v-for="h in csvHeaders" :key="h" :value="h">{{ h }}</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <!-- Description -->
-                                        <div class="mapping-row">
-                                            <div class="field-label">
-                                                <span class="field-icon">📝</span>
-                                                <div class="text">
-                                                    <span class="name">Description</span>
-                                                    <span class="desc">Payee or narration</span>
-                                                </div>
-                                            </div>
-                                            <div class="connector">→</div>
-                                            <div class="field-input">
-                                                <input v-if="csvHeaders.length === 0" v-model="mapping.description"
-                                                    class="form-input" placeholder="Column Name" />
-                                                <select v-else v-model="mapping.description" class="form-select">
-                                                    <option v-for="h in csvHeaders" :key="h" :value="h">{{ h }}</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <!-- Reference -->
-                                        <div class="mapping-row">
-                                            <div class="field-label">
-                                                <span class="field-icon">🆔</span>
-                                                <div class="text">
-                                                    <span class="name">Reference</span>
-                                                    <span class="desc">Reference / UTR / Txn #</span>
-                                                </div>
-                                            </div>
-                                            <div class="connector">→</div>
-                                            <div class="field-input">
-                                                <input v-if="csvHeaders.length === 0" v-model="mapping.reference"
-                                                    class="form-input" placeholder="Column Name (e.g. Ref No)" />
-                                                <select v-else v-model="mapping.reference" class="form-select">
-                                                    <option value="">-- No Reference --</option>
-                                                    <option v-for="h in csvHeaders" :key="h" :value="h">{{ h }}</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <!-- Balance -->
-                                        <div class="mapping-row">
-                                            <div class="field-label">
-                                                <span class="field-icon">💰</span>
-                                                <div class="text">
-                                                    <span class="name">Balance</span>
-                                                    <span class="desc">Available balance after txn</span>
-                                                </div>
-                                            </div>
-                                            <div class="connector">→</div>
-                                            <div class="field-input">
-                                                <input v-if="csvHeaders.length === 0" v-model="mapping.balance"
-                                                    class="form-input" placeholder="Column Name (e.g. Balance)" />
-                                                <select v-else v-model="mapping.balance" class="form-select">
-                                                    <option value="">-- No Balance --</option>
-                                                    <option v-for="h in csvHeaders" :key="h" :value="h">{{ h }}</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <!-- Credit Limit -->
-                                        <div class="mapping-row">
-                                            <div class="field-label">
-                                                <span class="field-icon">💳</span>
-                                                <div class="text">
-                                                    <span class="name">Credit Limit</span>
-                                                    <span class="desc">New credit limit if updated</span>
-                                                </div>
-                                            </div>
-                                            <div class="connector">→</div>
-                                            <div class="field-input">
-                                                <input v-if="csvHeaders.length === 0" v-model="mapping.credit_limit"
-                                                    class="form-input" placeholder="Column Name (e.g. Limit)" />
-                                                <select v-else v-model="mapping.credit_limit" class="form-select">
-                                                    <option value="">-- No Limit --</option>
-                                                    <option v-for="h in csvHeaders" :key="h" :value="h">{{ h }}</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Financials Card -->
-                                <div class="mapping-card">
-                                    <div class="card-header">
-                                        <h3>Financials</h3>
-                                    </div>
-                                    <div class="card-body">
-                                        <!-- Amount Mode Toggle -->
-                                        <div class="mode-toggle">
-                                            <div class="toggle-option" :class="{ active: mapping.mode === 'single' }"
-                                                @click="mapping.mode = 'single'">
-                                                <span class="icon">💰</span> Single Column
-                                            </div>
-                                            <div class="toggle-option" :class="{ active: mapping.mode === 'split' }"
-                                                @click="mapping.mode = 'split'">
-                                                <span class="icon">⚖️</span> Split (Debit/Credit)
-                                            </div>
-                                        </div>
-
-                                        <!-- Single Amount -->
-                                        <div v-if="mapping.mode === 'single'" class="mapping-row">
-                                            <div class="field-label">
-                                                <span class="field-icon">💵</span>
-                                                <div class="text">
-                                                    <span class="name">Amount</span>
-                                                    <span class="desc">Mixed +/- values</span>
-                                                </div>
-                                            </div>
-                                            <div class="connector">→</div>
-                                            <div class="field-input">
-                                                <input v-if="csvHeaders.length === 0" v-model="mapping.amount"
-                                                    class="form-input" placeholder="Column Name" />
-                                                <select v-else v-model="mapping.amount" class="form-select">
-                                                    <option v-for="h in csvHeaders" :key="h" :value="h">{{ h }}</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <!-- Split Amount -->
-                                        <template v-else>
-                                            <div class="mapping-row">
-                                                <div class="field-label">
-                                                    <span class="field-icon">➖</span>
-                                                    <div class="text">
-                                                        <span class="name">Debit</span>
-                                                        <span class="desc">Money out</span>
-                                                    </div>
-                                                </div>
-                                                <div class="connector">→</div>
-                                                <div class="field-input">
-                                                    <input v-if="csvHeaders.length === 0" v-model="splitMapping.debit"
-                                                        class="form-input" placeholder="Column Name" />
-                                                    <select v-else v-model="splitMapping.debit" class="form-select">
-                                                        <option v-for="h in csvHeaders" :key="h" :value="h">{{ h }}
-                                                        </option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                            <div class="mapping-row">
-                                                <div class="field-label">
-                                                    <span class="field-icon">➕</span>
-                                                    <div class="text">
-                                                        <span class="name">Credit</span>
-                                                        <span class="desc">Money in</span>
-                                                    </div>
-                                                </div>
-                                                <div class="connector">→</div>
-                                                <div class="field-input">
-                                                    <input v-if="csvHeaders.length === 0" v-model="splitMapping.credit"
-                                                        class="form-input" placeholder="Column Name" />
-                                                    <select v-else v-model="splitMapping.credit" class="form-select">
-                                                        <option v-for="h in csvHeaders" :key="h" :value="h">{{ h }}
-                                                        </option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Step 4: Verification -->
-                        <div v-if="step === 4">
-                            <div class="verify-header">
-                                <p>{{ selectedTxns.size }} rows selected</p>
-                            </div>
-                            <div class="table-container">
-                                <table>
+                                <v-table v-if="previewRows.length > 0"
+                                    class="premium-table border rounded-xl overflow-hidden">
                                     <thead>
                                         <tr>
-                                            <th><input type="checkbox" checked
-                                                    @click="selectedTxns.size < parsedTxns.length ? selectedTxns = new Set(parsedTxns.map((_, i) => i)) : selectedTxns.clear()" />
+                                            <th v-for="h in csvHeaders" :key="h"
+                                                class="text-uppercase text-[10px] font-weight-black opacity-60">
+                                                {{ h }}
                                             </th>
-                                            <th>Date</th>
-                                            <th>Ref #</th> <!-- Added Ref Column -->
-                                            <th>Recipient / Source</th>
-                                            <th>Description</th>
-                                            <th>Amount</th>
-                                            <th>Type</th>
-                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="(row, idx) in previewRows.slice(0, 3)" :key="idx">
+                                            <td v-for="h in csvHeaders" :key="h" class="text-caption opacity-80">{{
+                                                row[h] }}</td>
+                                        </tr>
+                                    </tbody>
+                                </v-table>
+                            </div>
+                        </v-window-item>
+
+                        <!-- Step 3: Column Mapping -->
+                        <v-window-item :value="3">
+                            <v-row>
+                                <!-- Transaction Details Mapping -->
+                                <v-col cols="12" md="7">
+                                    <v-card variant="outlined"
+                                        class="rounded-xl border-opacity-5 pa-4 h-100 bg-surface shadow-sm">
+                                        <h4 class="text-subtitle-1 font-weight-black mb-6 d-flex align-center gap-2">
+                                            <v-icon color="primary">mdi-card-text-outline</v-icon>
+                                            Transaction Details
+                                        </h4>
+
+                                        <div class="mapping-grid-premium">
+                                            <div v-for="field in detailFields" :key="field.key"
+                                                class="mapping-item-row mb-4 d-flex align-center">
+                                                <div class="field-info-panel d-flex align-center ga-3 flex-grow-1">
+                                                    <div class="field-icon-box">{{ field.icon }}</div>
+                                                    <div class="flex-grow-1">
+                                                        <div class="text-caption font-weight-black">{{ field.label }}
+                                                        </div>
+                                                        <div class="text-[10px] opacity-60 line-clamp-1">{{ field.desc
+                                                            }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="mapping-arrow mx-4 opacity-30">
+                                                    <v-icon size="small">mdi-arrow-right</v-icon>
+                                                </div>
+                                                <div class="field-select-panel" style="width: 200px;">
+                                                    <v-select v-model="mapping[field.key]" :items="csvHeaders"
+                                                        placeholder="Choose column..." variant="solo" density="compact"
+                                                        flat class="premium-select-field-small" hide-details>
+                                                        <template v-if="field.optional" v-slot:prepend-item>
+                                                            <v-list-item value="" title="-- No Column --"></v-list-item>
+                                                        </template>
+                                                    </v-select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </v-card>
+                                </v-col>
+
+                                <!-- Financials Mapping -->
+                                <v-col cols="12" md="5">
+                                    <v-card variant="outlined"
+                                        class="rounded-xl border-opacity-5 pa-4 h-100 bg-surface shadow-sm text-surface">
+                                        <h4 class="text-subtitle-1 font-weight-black mb-4 d-flex align-center gap-2">
+                                            <v-icon color="success">mdi-cash-multiple</v-icon>
+                                            Financials
+                                        </h4>
+
+                                        <v-btn-toggle v-model="mapping.mode" mandatory color="primary" variant="tonal"
+                                            class="rounded-xl mb-6 w-100 d-flex" density="compact">
+                                            <v-btn value="single"
+                                                class="flex-grow-1 font-weight-bold text-caption">Single Column</v-btn>
+                                            <v-btn value="split"
+                                                class="flex-grow-1 font-weight-bold text-caption">Debit/Credit
+                                                Split</v-btn>
+                                        </v-btn-toggle>
+
+                                        <div v-if="mapping.mode === 'single'" class="mapping-item-row">
+                                            <div class="field-info-panel d-flex align-center ga-3 flex-grow-1">
+                                                <div class="field-icon-box">💵</div>
+                                                <div class="flex-grow-1">
+                                                    <div class="text-caption font-weight-black">Amount</div>
+                                                    <v-select v-model="mapping.amount" :items="csvHeaders"
+                                                        placeholder="Amount column" variant="solo" density="compact"
+                                                        flat class="premium-select-field-small mt-2"
+                                                        hide-details></v-select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div v-else class="d-flex flex-column gap-4">
+                                            <div class="field-info-panel d-flex align-center ga-3">
+                                                <div class="field-icon-box">➖</div>
+                                                <div class="flex-grow-1">
+                                                    <div class="text-caption font-weight-black">Debit (Out)</div>
+                                                    <v-select v-model="splitMapping.debit" :items="csvHeaders"
+                                                        variant="solo" density="compact" flat
+                                                        class="premium-select-field-small mt-2" hide-details></v-select>
+                                                </div>
+                                            </div>
+                                            <div class="field-info-panel d-flex align-center ga-3">
+                                                <div class="field-icon-box">➕</div>
+                                                <div class="flex-grow-1">
+                                                    <div class="text-caption font-weight-black">Credit (In)</div>
+                                                    <v-select v-model="splitMapping.credit" :items="csvHeaders"
+                                                        variant="solo" density="compact" flat
+                                                        class="premium-select-field-small mt-2" hide-details></v-select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </v-card>
+                                </v-col>
+                            </v-row>
+                        </v-window-item>
+
+                        <!-- Step 4: Final Verification -->
+                        <v-window-item :value="4">
+                            <div
+                                class="verify-header pa-3 d-flex align-center justify-space-between bg-primary-lighten-5 rounded-lg mb-4">
+                                <span class="text-subtitle-2 font-weight-black d-flex align-center">
+                                    <v-icon start size="20">mdi-check-circle-outline</v-icon>
+                                    {{ selectedTxns.size }} of {{ parsedTxns.length }} transactions selected
+                                </span>
+                                <v-btn size="x-small" variant="tonal" color="primary"
+                                    class="font-weight-black rounded-pill" @click="toggleAllVerify">
+                                    {{ selectedTxns.size < parsedTxns.length ? 'Select All' : 'Deselect All' }} </v-btn>
+                            </div>
+
+                            <div class="table-scroll-container border rounded-xl overflow-hidden bg-surface">
+                                <v-table class="premium-table verify-table" height="400px" fixed-header>
+                                    <thead>
+                                        <tr>
+                                            <th class="text-center px-4" style="width: 50px;">
+                                                <v-checkbox-btn :model-value="selectedTxns.size === parsedTxns.length"
+                                                    color="primary" hide-details
+                                                    @update:model-value="toggleAllVerify"></v-checkbox-btn>
+                                            </th>
+                                            <th class="font-weight-black text-[10px] opacity-60">DATE</th>
+                                            <th class="font-weight-black text-[10px] opacity-60">REF #</th>
+                                            <th class="font-weight-black text-[10px] opacity-60">RECIPIENT / SOURCE</th>
+                                            <th class="font-weight-black text-[10px] opacity-60 text-right">AMOUNT</th>
+                                            <th class="text-center" style="width: 50px;"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <tr v-for="(txn, idx) in parsedTxns" :key="idx"
-                                            :class="{ 'disabled': !selectedTxns.has(idx) }">
-                                            <td><input type="checkbox" :checked="selectedTxns.has(idx)"
-                                                    @change="toggleSelection(idx)" /></td>
-                                            <td>{{ txn.date }}</td>
-                                            <td><small>{{ txn.external_id || txn.ref_id || '-' }}</small></td>
-                                            <!-- Display ID -->
-                                            <td><strong>{{ txn.recipient || '-' }}</strong></td>
-                                            <td>{{ txn.description }}</td>
-                                            <td :class="txn.type">{{ formatAmount(txn.amount) }}</td>
-                                            <td><span class="badge">{{ txn.type }}</span></td>
-                                            <td><button class="btn-icon danger" @click="removeTxn(idx)">✕</button></td>
+                                            :class="{ 'disabled-row': !selectedTxns.has(idx) }">
+                                            <td class="text-center px-4">
+                                                <v-checkbox-btn :model-value="selectedTxns.has(idx)"
+                                                    @update:model-value="toggleSelection(idx)" color="primary"
+                                                    hide-details></v-checkbox-btn>
+                                            </td>
+                                            <td class="text-caption">{{ txn.date }}</td>
+                                            <td class="text-caption opacity-50">{{ txn.external_id || txn.ref_id || '-'
+                                                }}</td>
+                                            <td>
+                                                <div class="font-weight-bold text-caption text-surface">{{ txn.recipient
+                                                    || '-' }}</div>
+                                                <div class="text-[10px] opacity-60 line-clamp-1">{{ txn.description }}
+                                                </div>
+                                            </td>
+                                            <td class="text-right font-weight-black"
+                                                :class="txn.type === 'DEBIT' ? 'text-error' : 'text-success'">
+                                                {{ formatAmount(txn.amount) }}
+                                            </td>
+                                            <td class="text-center">
+                                                <v-btn icon="mdi-trash-can-outline" size="x-small" variant="text"
+                                                    color="error" @click="removeTxn(idx)"></v-btn>
+                                            </td>
                                         </tr>
                                     </tbody>
-                                </table>
+                                </v-table>
                             </div>
-                        </div>
+                        </v-window-item>
 
-                        <!-- Step 5: Done -->
-                        <div v-if="step === 5" class="center-content">
-                            <div class="success-icon">✅</div>
-                            <h2>Import Complete!</h2>
-                            <p>Successfully imported {{ importResult.imported }} transactions.</p>
-                            <div v-if="importResult.errors.length > 0" class="errors">
-                                <h3>Errors ({{ importResult.errors.length }})</h3>
-                                <ul>
-                                    <li v-for="err in importResult.errors" :key="err">{{ err }}</li>
-                                </ul>
+                        <!-- Step 5: Success Results -->
+                        <v-window-item :value="5">
+                            <div class="d-flex flex-column align-center justify-center py-10 text-center">
+                                <div class="success-icon-wrapper mb-6">
+                                    <v-icon color="success" size="100">mdi-check-circle</v-icon>
+                                </div>
+                                <h2 class="text-h4 font-weight-black mb-2">Import Successful!</h2>
+                                <p class="text-h6 opacity-70 mb-8">Successfully imported {{ importResult?.imported }}
+                                    transactions to your
+                                    account.</p>
+
+                                <v-alert v-if="importResult?.errors?.length > 0" type="warning" variant="tonal"
+                                    class="rounded-xl w-100 max-w-600 text-left">
+                                    <h4 class="font-weight-black text-subtitle-2 mb-2">Errors Enountered ({{
+                                        importResult.errors.length }})</h4>
+                                    <ul class="text-caption opacity-80 pl-4">
+                                        <li v-for="err in importResult.errors" :key="err">{{ err }}</li>
+                                    </ul>
+                                </v-alert>
+
+                                <v-btn color="primary" variant="flat" size="large" rounded="pill"
+                                    class="mt-8 font-weight-black px-12" @click="close">
+                                    Done & Close
+                                </v-btn>
                             </div>
-                        </div>
-                    </div>
+                        </v-window-item>
+                    </v-window>
                 </div>
+            </v-card-text>
 
-                <!-- Fixed Footer -->
-                <div class="modal-footer">
-                    <template v-if="step === 1">
-                        <button class="btn btn-primary" @click="step = 2" :disabled="!selectedAccount || !file">Next:
-                            Map Columns</button>
-                    </template>
-                    <template v-else-if="step === 2">
-                        <button class="btn btn-outline" @click="step = 1">Back</button>
-                        <button class="btn btn-primary" @click="step = 3">Yes, Looks Good</button>
-                    </template>
-                    <template v-else-if="step === 3">
-                        <button class="btn btn-outline" @click="step = 2">Back</button>
-                        <button class="btn btn-primary" @click="parseFile">Next: Verify</button>
-                    </template>
-                    <template v-else-if="step === 4">
-                        <button class="btn btn-outline" @click="step = 3">Back</button>
-                        <button class="btn btn-primary" @click="importSelected">Import Selected</button>
-                    </template>
-                    <template v-else-if="step === 5">
-                        <button class="btn btn-primary" @click="close">Done</button>
-                    </template>
-                </div>
-            </div>
-        </div>
-    </Teleport>
+            <v-divider class="opacity-5"></v-divider>
+
+            <v-card-actions v-if="step < 5" class="pa-4 bg-surface px-6">
+                <v-btn v-if="step > 1" variant="tonal" rounded="pill" class="font-weight-black" @click="step--">
+                    Back
+                </v-btn>
+                <v-btn v-else variant="text" rounded="pill" class="font-weight-black" @click="close">
+                    Close
+                </v-btn>
+                <v-spacer></v-spacer>
+
+                <v-btn v-if="step === 1" color="primary" variant="flat" rounded="pill" class="font-weight-black px-8"
+                    :disabled="!selectedAccount || !file" @click="step = 2">
+                    Next: Preview File
+                </v-btn>
+
+                <v-btn v-if="step === 2" color="primary" variant="flat" rounded="pill" class="font-weight-black px-8"
+                    @click="step = 3">
+                    Yes, Looks Good
+                </v-btn>
+
+                <v-btn v-if="step === 3" color="primary" variant="flat" rounded="pill" class="font-weight-black px-8"
+                    @click="parseFile">
+                    Next: Verify List
+                </v-btn>
+
+                <v-btn v-if="step === 4" color="primary" variant="flat" rounded="pill" class="font-weight-black px-8"
+                    @click="importSelected" :disabled="selectedTxns.size === 0">
+                    Import {{ selectedTxns.size }} Transactions
+                </v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
 </template>
 
 <style scoped>
-/* Reuse globals + some specific */
-/* Reuse globals + some specific */
-.large-modal {
-    max-width: 1000px;
-    width: 95%;
-    height: auto;
-    /* Allow auto height */
-    max-height: 90vh;
-    /* Cap at 90vh */
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    /* No outer scroll */
+.premium-import-card {
+    background: #f8fafc;
 }
 
-/* Modal Header & Footer are fixed by flex layout */
-.modal-header {
-    flex-shrink: 0;
-    padding: 1rem;
-    border-bottom: 1px solid var(--color-border);
+.modal-header-premium {
+    background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, #4338ca 100%);
+    box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.2);
 }
 
-.modal-footer {
-    flex-shrink: 0;
-    padding: 1rem;
-    border-top: 1px solid var(--color-border);
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    background: var(--color-surface);
+.stepper-nav {
+    background: white;
 }
 
-/* Scrollable Content Body */
-.content-body {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    /* X handled by inner containers */
-    padding: 1rem;
-    padding-bottom: 1.5rem;
-    /* Breathing room */
-    min-height: 0;
-    /* Flex fix */
-}
-
-/* Stepper also fixed at top */
-.stepper {
-    flex-shrink: 0;
-    margin-bottom: 0;
-    padding: 1rem;
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-background);
-}
-
-.stepper {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    margin-bottom: 2rem;
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 1rem;
-}
-
-.step {
-    font-size: 0.9rem;
-    color: var(--color-text-muted);
-    opacity: 0.7;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.step-num {
+.step-circle {
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: var(--color-border);
+    background: #e2e8f0;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 800;
+    transition: all 0.3s ease;
+}
+
+.step-circle.active {
+    background: rgb(var(--v-theme-primary));
     color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
-    font-weight: 600;
+    box-shadow: 0 0 0 4px rgba(var(--v-theme-primary), 0.1);
 }
 
-.step.active {
-    opacity: 1;
-    color: var(--color-primary);
-    font-weight: 500;
+.step-label {
+    color: #94a3b8;
+    transition: all 0.3s ease;
 }
 
-.step.active .step-num {
-    background: var(--color-primary);
+.step-label.active {
+    color: rgb(var(--v-theme-primary));
 }
 
-.line {
-    width: 40px;
+.step-divider {
+    width: 32px;
     height: 2px;
-    background: var(--color-border);
-    border-radius: 2px;
+    background: #e2e8f0;
+    transition: all 0.3s ease;
 }
 
-.step-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+.step-divider.active {
+    background: rgb(var(--v-theme-primary));
 }
 
-/* Unified vertical rhythm */
-
-.form-group {
-    margin-bottom: 0;
+.premium-select-field :deep(.v-field) {
+    border-radius: 12px !important;
+    background: white !important;
+    border: 1px solid rgba(var(--v-border-color), 0.1);
 }
 
-/* Remove bottom margin rely on gap */
-.form-group label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
+.premium-file-field :deep(.v-field) {
+    border-radius: 12px !important;
+    background: white !important;
+    border: 1px dashed rgb(var(--v-theme-primary));
 }
 
-.file-input {
-    display: block;
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px dashed var(--color-border);
-    border-radius: 6px;
-    background: #f8fafc;
-    transition: all 0.2s;
+.premium-table {
+    background: white;
 }
 
-.file-input:hover {
-    border-color: var(--color-primary);
-    background: #f0f9ff;
+.premium-table th {
+    background: #f8fafc !important;
+    height: 40px !important;
 }
 
-/* Clean up ad-hoc margins */
-.mapping-instructions {
-    margin-bottom: 0;
+.premium-table td {
+    height: 48px !important;
 }
 
-.preview-section {
-    margin-bottom: 0;
-    background: var(--color-surface);
-    padding: 1rem;
+.field-icon-box {
+    width: 36px;
+    height: 36px;
+    background: #f1f5f9;
     border-radius: 8px;
-    border: 1px solid var(--color-border);
-}
-
-.mapping-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-}
-
-.field.full {
-    grid-column: span 2;
-}
-
-.form-input,
-.form-select {
-    width: 100%;
-    padding: 0.5rem;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    background: var(--color-background);
-    color: var(--color-text-main);
-}
-
-.table-container {
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.table-container::-webkit-scrollbar {
-    width: 8px;
-    background: transparent;
-}
-
-.table-container::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 4px;
-}
-
-.table-container:hover::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.2);
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9rem;
-}
-
-th {
-    position: sticky;
-    top: 0;
-    background: var(--color-surface);
-    z-index: 1;
-    text-align: left;
-    padding: 0.5rem;
-}
-
-td {
-    padding: 0.5rem;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.DEBIT {
-    color: var(--color-danger);
-}
-
-.CREDIT {
-    color: var(--color-success);
-}
-
-.disabled {
-    opacity: 0.5;
-}
-
-.center-content {
-    text-align: center;
-    padding: 2rem;
-}
-
-.success-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-}
-
-.errors {
-    text-align: left;
-    margin-top: 1rem;
-    background: #fff0f0;
-    padding: 1rem;
-    border: 1px solid #ffcccc;
-    color: #cc0000;
-}
-
-/* .modal-footer removed duplicate */
-.hint {
-    font-size: 0.9rem;
-    color: var(--color-text-muted);
-    margin-bottom: 1rem;
-}
-
-.mapping-instructions {
-    margin-bottom: 2rem;
-}
-
-/* .instruction-card duplicate removed */
-
-.preview-section h4 {
-    margin-top: 0;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    margin-bottom: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.scroll-x {
-    overflow-x: auto;
-    overflow-y: hidden;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-}
-
-.scroll-x::-webkit-scrollbar {
-    height: 8px;
-    background: transparent;
-}
-
-.scroll-x::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 4px;
-}
-
-.scroll-x:hover::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.2);
-}
-
-.mini-table {
-    width: max-content;
-    min-width: 100%;
-    border-collapse: collapse;
-    font-size: 0.8rem;
-}
-
-.mini-table th,
-.mini-table td {
-    padding: 0.5rem;
-    border: 1px solid var(--color-border);
-    white-space: nowrap;
-}
-
-.mini-table th {
-    background: var(--color-background);
-    font-weight: 600;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-size: 0.75rem;
-}
-
-.mini-table tbody tr:nth-child(even) {
-    background-color: #f8fafc;
-}
-
-.mini-table tbody tr:hover {
-    background-color: #f1f5f9;
-}
-
-/* Enhanced Instruction Card */
-.instruction-card {
-    display: flex;
-    gap: 1rem;
-    background: #f0f9ff;
-    /* Light Blue */
-    border: 1px solid #bae6fd;
-    padding: 1.25rem;
-    border-radius: 8px;
-    align-items: flex-start;
-}
-
-.instruction-card .icon {
-    font-size: 1.5rem;
-    background: #fff;
-    width: 40px;
-    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
-    box-shadow: var(--shadow-sm);
+    font-size: 1.25rem;
 }
 
-.instruction-card h3 {
-    margin: 0 0 0.25rem 0;
-    font-size: 1rem;
-    color: #0284c7;
+.premium-select-field-small :deep(.v-field) {
+    border-radius: 8px !important;
+    background: white !important;
+    border: 1px solid rgba(var(--v-border-color), 0.1);
 }
 
-.instruction-card p {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #334155;
+.disabled-row {
+    opacity: 0.4;
+    background: #f1f5f9;
 }
 
-
-/* Redesigned Mapping */
-/* Redesigned Mapping - Side-by-Side */
-.mapping-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    align-items: start;
+.success-icon-wrapper {
+    animation: bounce 1s ease infinite alternate;
 }
 
-@media (max-width: 640px) {
-    .mapping-container {
-        grid-template-columns: 1fr;
+@keyframes bounce {
+    from {
+        transform: translateY(0);
+    }
+
+    to {
+        transform: translateY(-10px);
     }
 }
 
-.mapping-card {
-    background: white;
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
+.line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    height: 100%;
 }
 
-.card-header {
-    background: #f8fafc;
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.card-header h3 {
-    margin: 0;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.card-body {
-    padding: 0.75rem;
-}
-
-.mapping-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.75rem;
-    gap: 0.75rem;
-}
-
-.mapping-row:last-child {
-    margin-bottom: 0;
-}
-
-.field-label {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex: 1;
-}
-
-.field-icon {
-    width: 28px;
-    height: 28px;
-    background: #f1f5f9;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-}
-
-.field-label .text {
-    display: flex;
-    flex-direction: column;
-}
-
-.field-label .name {
-    font-weight: 500;
-    font-size: 0.9rem;
-}
-
-.field-label .desc {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-}
-
-.connector {
-    color: var(--color-text-muted);
-    opacity: 0.5;
-    font-size: 1rem;
-}
-
-.field-input {
-    flex: 1;
-    max-width: 50%;
-}
-
-.form-select,
-.form-input {
-    padding: 0.4rem 0.6rem;
-    font-size: 0.9rem;
-}
-
-.mode-toggle {
-    display: flex;
-    background: #f1f5f9;
-    padding: 0.2rem;
-    border-radius: 6px;
-    margin-bottom: 1rem;
-}
-
-.toggle-option {
-    flex: 1;
-    text-align: center;
-    padding: 0.35rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-}
-
-.toggle-option:hover {
-    color: var(--color-text-main);
-}
-
-.toggle-option.active {
-    background: white;
-    color: var(--color-primary);
-    box-shadow: var(--shadow-sm);
-    font-weight: 600;
-}
-
-.badge-optional {
-    font-size: 0.7rem;
-    background: #f1f5f9;
-    border: 1px solid var(--color-border);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    margin-left: 0.5rem;
-    font-weight: normal;
-    color: var(--color-text-muted);
+.bg-primary-lighten-5 {
+    background-color: #f0f7ff;
 }
 </style>

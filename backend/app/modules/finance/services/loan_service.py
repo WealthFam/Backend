@@ -88,8 +88,16 @@ class LoanService:
         account = db.query(Account).filter(Account.id == loan.account_id).first()
         return self._map_to_read_schema(loan, account)
 
-    def get_loans(self, db: Session, tenant_id: str) -> list[schemas.LoanRead]:
-        loans = db.query(Loan).filter(Loan.tenant_id == tenant_id).all()
+    def get_loans(self, db: Session, tenant_id: str, user_id: str = None) -> list[schemas.LoanRead]:
+        query = db.query(Loan).filter(Loan.tenant_id == tenant_id)
+        
+        if user_id:
+            # Filter by account ownership (user's loans or shared loans)
+            from sqlalchemy import or_
+            query = query.join(Account, Loan.account_id == Account.id)\
+                         .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+            
+        loans = query.all()
         results = []
         for loan in loans:
             # Fetch associated account to get current balance

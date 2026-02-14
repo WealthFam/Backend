@@ -160,29 +160,54 @@ class MutualFundService:
         Check which transactions are duplicates of existing orders.
         Returns the same list with 'is_duplicate' flag set.
         """
-        from sqlalchemy import func
-        from datetime import datetime, date
+        try:
+            from sqlalchemy import func
+            from datetime import datetime, date
+            import traceback
         
-        for txn in transactions:
-            is_duplicate = False
+            for txn in transactions:
+                is_duplicate = False
+                scheme_code = txn.get('scheme_code')
             
-            # Only check if successfully mapped
-            if txn.get('scheme_code'):
-                user_id = txn.get('user_id')
-                scheme_code = str(txn.get('scheme_code'))
-                external_id = txn.get('external_id')
+                # Only check if successfully mapped
+                if scheme_code:
+                    user_id = txn.get('user_id')
+                    external_id = txn.get('external_id')
+                    
+                    if external_id:
+                        existing = db.query(MutualFundOrder.id).filter(
+                            MutualFundOrder.tenant_id == tenant_id,
+                            MutualFundOrder.user_id == user_id,
+                            MutualFundOrder.external_id == external_id
+                        ).first()
+                        if existing:
+                            is_duplicate = True
+
+                    
+                    if not is_duplicate and txn.get('is_synthesized'):
+                        scheme_code_str = str(scheme_code).strip()
+                        try:
+                            rounded_units = abs(round(float(txn.get('units', 0)), 4))
+                        except (ValueError, TypeError):
+                            rounded_units = 0.0
+                            
+                        # Check for existing holding balance regardless of user_id (if it belongs to tenant)
+                        existing_holding = db.query(MutualFundHolding).filter(
+                            MutualFundHolding.tenant_id == tenant_id,
+                            MutualFundHolding.scheme_code == scheme_code_str
+                        ).first()
+                        
+                        if existing_holding:
+                            db_units = abs(float(existing_holding.units))
+                            diff = abs(db_units - rounded_units)
+
+                            
+                            # For synthesized balance entries: If we already have >= units, it's likely already imported.
+                            # This handles cases where a previous import doubled the units.
+                            if db_units >= rounded_units - 0.001:
+                                is_duplicate = True
                 
-                # Priority 1: Check by external_id
-                if external_id:
-                    existing = db.query(MutualFundOrder.id).filter(
-                        MutualFundOrder.tenant_id == tenant_id,
-                        MutualFundOrder.user_id == user_id,
-                        MutualFundOrder.external_id == external_id
-                    ).first()
-                    if existing:
-                        is_duplicate = True
-                
-                # Priority 2: Check by field match
+                # Priority 3: Check by field match (For historical transactions)
                 if not is_duplicate:
                     txn_date_raw = txn.get('date')
                     if isinstance(txn_date_raw, str):
@@ -246,9 +271,11 @@ class MutualFundService:
                                 is_duplicate = True
                                 break
             
-            txn['is_duplicate'] = is_duplicate
+                txn['is_duplicate'] = is_duplicate
         
-        return transactions
+            return transactions
+        except Exception as e:
+            raise e
 
     @staticmethod
     def import_mapped_transactions(db: Session, tenant_id: str, transactions: List[dict]):
@@ -259,19 +286,9 @@ class MutualFundService:
         with _db_write_lock:
             for idx, txn in enumerate(transactions):
                 try:
-                    # add_transaction_logic expects 'date' as datetime or date object
-                    # We might need to parse it if it comes from JSON
-                    if isinstance(txn.get('date'), str):
-                        try:
-                            # Try common formats
-                            from datetime import datetime
-                            for fmt in ("%Y-%m-%d", "%d-%m-%Y"):
-                                try:
-                                    txn['date'] = datetime.strptime(txn['date'], fmt)
-                                    break
-                                except: continue
-                        except: pass
-                    
+                    if txn.get('is_duplicate'):
+                        continue
+                        
                     result = MutualFundService._add_transaction_logic(db, tenant_id, txn)
                     
                     if result and hasattr(result, 'id'):
@@ -340,33 +357,39 @@ class MutualFundService:
         from datetime import date
         
         txn_date = data['date'].date() if isinstance(data['date'], datetime) else data['date']
-        # Fix: Normalize type and sign logic
-        txn_type = data.get('type', 'BUY')
-        if txn_type == "DEBIT": txn_type = "BUY"
-        elif txn_type == "CREDIT": txn_type = "SELL"
+        # Preserve original type but use normalized for robust duplication check
+        raw_type = str(data.get('type', 'BUY')).upper().strip()
+        
+        is_withdrawal = any(kw in raw_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
+        normalized_type = "SELL" if is_withdrawal else "BUY"
         
         rounded_units = abs(round(float(data['units']), 4))
         rounded_amount = abs(round(float(data['amount']), 2))
         
+        # Check for duplicates by looking for ANY order on same date/units/amount for this fund
+        # We use a broad match for type (normalized) to catch duplicates even if type string varies
         existing_order = db.query(MutualFundOrder).filter(
             MutualFundOrder.tenant_id == tenant_id,
             MutualFundOrder.user_id == user_id,
             MutualFundOrder.scheme_code == scheme_code,
             func.date(MutualFundOrder.order_date) == txn_date,
-            MutualFundOrder.type == txn_type,
             func.round(func.abs(MutualFundOrder.units), 4) == rounded_units,
             func.round(func.abs(MutualFundOrder.amount), 2) == rounded_amount
         ).first()
 
         if existing_order:
-            return existing_order
+            # Check if existing order type is logically the same
+            existing_type = str(existing_order.type).upper().strip()
+            existing_is_withdrawal = any(kw in existing_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
+            if existing_is_withdrawal == is_withdrawal:
+                return existing_order
 
         # 3. Create Order
         order = MutualFundOrder(
             tenant_id=tenant_id,
             user_id=user_id,
             scheme_code=scheme_code,
-            type=txn_type,
+            type=raw_type, # PRESERVE original type (SIP, TOPUP, etc.)
             amount=abs(float(data['amount'])),
             units=abs(float(data['units'])),
             nav=abs(float(data['nav'])),
@@ -415,8 +438,12 @@ class MutualFundService:
             if folio_number:
                 holding.folio_number = folio_number
         
-        # Update Balance
-        if order.type == "BUY":
+        # Update Balance with inclusive keyword matching
+        o_type = str(order.type).upper().strip()
+        is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
+        is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
+
+        if is_investment:
             current_units = float(holding.units or 0.0)
             current_avg = float(holding.average_price or 0.0)
             
@@ -429,7 +456,7 @@ class MutualFundService:
             
             holding.average_price = total_cost / total_units if total_units > 0 else 0.0
             holding.units = total_units
-        elif order.type == "SELL":
+        elif is_withdrawal:
             current_units = float(holding.units or 0.0)
             holding.units = max(0, current_units - float(order.units))
         
@@ -711,6 +738,21 @@ class MutualFundService:
         holding, user_name, user_avatar = result
         meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == holding.scheme_code).first()
         
+        # Fetch Goal info if linked
+        goal_info = None
+        if holding.goal_id:
+            from backend.app.modules.finance.models import InvestmentGoal
+            goal = db.query(InvestmentGoal).filter(InvestmentGoal.id == holding.goal_id).first()
+            if goal:
+                goal_info = {
+                    "id": goal.id,
+                    "name": goal.name,
+                    "icon": goal.icon,
+                    "color": goal.color,
+                    "target_amount": float(goal.target_amount),
+                    "is_completed": goal.is_completed
+                }
+        
         # Get all transactions for this holding
         orders = db.query(MutualFundOrder).filter(
             MutualFundOrder.holding_id == holding.id,
@@ -730,10 +772,14 @@ class MutualFundService:
             
             order_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
             
-            if order.type == "BUY":
+            o_type = str(order.type).upper().strip()
+            is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
+            is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
+
+            if is_investment:
                 cash_flows.append((order_date, -amount))
                 total_invested += amount
-            else:
+            elif is_withdrawal:
                 cash_flows.append((order_date, amount))
         
         if float(holding.current_value or 0) > 0:
@@ -765,11 +811,11 @@ class MutualFundService:
         # Fetch Full NAV History from MFAPI
         nav_history = []
         try:
-            import requests
+            import httpx
             from datetime import datetime
             
             # Re-using the simplified fetch logic
-            response = requests.get(f"https://api.mfapi.in/mf/{holding.scheme_code}", timeout=3)
+            response = httpx.get(f"https://api.mfapi.in/mf/{holding.scheme_code}", timeout=5.0)
             
             if response.status_code == 200:
                 mf_data = response.json()
@@ -805,11 +851,15 @@ class MutualFundService:
             "id": holding.id,
             "scheme_name": meta.scheme_name if meta else "Unknown Fund",
             "scheme_code": holding.scheme_code,
+            "isin_growth": meta.isin_growth if meta else None,
+            "isin_reinvest": meta.isin_reinvest if meta else None,
+            "fund_house": meta.fund_house if meta else None,
             "folio_number": holding.folio_number,
             "category": meta.category if meta else "Other",
             "user_id": holding.user_id,
             "user_name": user_name or "Unassigned",
             "user_avatar": user_avatar,
+            "goal": goal_info,
             "units": float(holding.units or 0),
             "average_price": float(holding.average_price or 0),
             "current_value": float(holding.current_value or 0),
@@ -880,9 +930,13 @@ class MutualFundService:
             
             order_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
             
-            if order.type == "BUY":
+            o_type = str(order.type).upper().strip()
+            is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
+            is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
+
+            if is_investment:
                 cash_flows.append((order_date, -amount))
-            else:
+            elif is_withdrawal:
                 cash_flows.append((order_date, amount))
         
         if total_current_value > 0:
@@ -914,10 +968,10 @@ class MutualFundService:
         # 7. NAV History (Same as before)
         nav_history = []
         try:
-            import requests
+            import httpx
             from datetime import datetime
             
-            response = requests.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=3)
+            response = httpx.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=5.0)
             if response.status_code == 200:
                 mf_data = response.json()
                 raw_history = mf_data.get("data", [])
@@ -997,6 +1051,9 @@ class MutualFundService:
             "id": f"group_{scheme_code}", 
             "scheme_name": meta.scheme_name if meta else "Unknown Fund",
             "scheme_code": scheme_code,
+            "isin_growth": meta.isin_growth if meta else None,
+            "isin_reinvest": meta.isin_reinvest if meta else None,
+            "fund_house": meta.fund_house if meta else None,
             "folio_number": f"{len(folio_numbers)} Folios" if len(folio_numbers) > 1 else (list(folio_numbers)[0] if folio_numbers else "N/A"),
             "category": meta.category if meta else "Other",
             "user_id": list(user_ids)[0] if len(user_ids) == 1 else "multi",
@@ -1025,6 +1082,26 @@ class MutualFundService:
             ).first()
             
             if not holding:
+                # Fallback: if holding_id is numeric, attempt scheme-level update for all holdings in this scheme
+                if holding_id.isdigit():
+                    holdings = db.query(MutualFundHolding).filter(
+                        MutualFundHolding.scheme_code == holding_id,
+                        MutualFundHolding.tenant_id == tenant_id
+                    ).all()
+                    if not holdings: return None
+                    
+                    for h in holdings:
+                        if "user_id" in data:
+                            h.user_id = data["user_id"]
+                            db.query(MutualFundOrder).filter(
+                                MutualFundOrder.holding_id == h.id
+                            ).update({"user_id": data["user_id"]})
+                        if "goal_id" in data:
+                            h.goal_id = data["goal_id"]
+                    
+                    db.flush()
+                    MutualFundService._safe_commit(db)
+                    return holdings[0] # Return first one as representative
                 return None
                 
             if "user_id" in data:
@@ -1035,6 +1112,9 @@ class MutualFundService:
                     MutualFundOrder.tenant_id == tenant_id
                 ).update({"user_id": data["user_id"]})
             
+            if "goal_id" in data:
+                holding.goal_id = data["goal_id"]
+
             db.flush()
             MutualFundService._safe_commit(db)
             return holding
@@ -1187,10 +1267,14 @@ class MutualFundService:
                 # Convert order_date to date if it's datetime
                 order_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
                 
-                if order.type == "BUY" or order.type == "DEBIT":
+                o_type = str(order.type).upper().strip()
+                is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
+                is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
+
+                if is_investment:
                     cash_flows.append((order_date, -amount))  # Outflow is negative
                     total_invested += amount
-                elif order.type == "SELL" or order.type == "CREDIT":
+                elif is_withdrawal:
                     cash_flows.append((order_date, amount))  # Inflow is positive
             
             # Add current value as final inflow at today's date
@@ -1241,7 +1325,9 @@ class MutualFundService:
         return deleted_count
     
     @staticmethod
-    def get_performance_timeline(db: Session, tenant_id: str, period: str = "1y", granularity: str = "1w", user_id: Optional[str] = None):
+    def get_performance_timeline(db: Session, tenant_id: str, period: str = "1y", granularity: str = "1w", 
+                                 user_id: Optional[str] = None, scheme_code: Optional[str] = None, 
+                                 holding_id: Optional[str] = None):
         """
         Calculate portfolio value over time with smart caching.
         
@@ -1258,6 +1344,11 @@ class MutualFundService:
         holdings_query = db.query(MutualFundHolding.id).filter(MutualFundHolding.tenant_id == tenant_id)
         if user_id:
             holdings_query = holdings_query.filter(MutualFundHolding.user_id == user_id)
+        if scheme_code:
+            holdings_query = holdings_query.filter(MutualFundHolding.scheme_code == scheme_code)
+        if holding_id:
+            holdings_query = holdings_query.filter(MutualFundHolding.id == holding_id)
+            
         holdings = holdings_query.all()
         active_holding_ids = [h.id for h in holdings]
         
@@ -1277,11 +1368,20 @@ class MutualFundService:
                 "total_return_percent": 0
             }
         
-        # Calculate portfolio hash (sorted scheme codes + user_id)
-        unique_schemes = sorted(set(str(o.scheme_code) for o in orders))
+        # Variables for hash calculation and state tracking
+        unique_schemes = list(set(str(o.scheme_code) for o in orders))
+        latest_txn_update = max(o.created_at for o in orders) if orders else date.today()
+        
         hash_input = ",".join(unique_schemes)
+        # Portfolio hash with version suffix (v9) for robust classification fix
+        hash_input += f"|count:{len(orders)}|last_upd:{latest_txn_update.isoformat()}|v:9"
+        
         if user_id:
             hash_input += f"|user:{user_id}"
+        if scheme_code:
+            hash_input += f"|scheme:{scheme_code}"
+        if holding_id:
+            hash_input += f"|holding:{holding_id}"
             
         portfolio_hash = hashlib.md5(hash_input.encode()).hexdigest()
         
@@ -1300,10 +1400,9 @@ class MutualFundService:
             snapshot_days = 30 # Approximation
         else:
             snapshot_days = 7  # Default to weekly
-            # Align to Monday for consistency if weekly
-            days_until_monday = (7 - start_date.weekday()) % 7
-            if days_until_monday > 0:
-                start_date = start_date + timedelta(days=days_until_monday)
+            # Optimization: Don't force shift the first point to Monday! 
+            # This ensures the chart starts exactly on the first purchase date.
+            pass
         
         # Try to fetch cached snapshots
         cached_snapshots = db.query(PortfolioTimelineCache).filter(
@@ -1324,23 +1423,24 @@ class MutualFundService:
                 "date": snap.snapshot_date.date().isoformat(),
                 "value": float(snap.portfolio_value),
                 "invested": float(snap.invested_value),
-                "benchmark_value": float(getattr(snap, 'benchmark_value', 0.0) or 0.0)
+                "benchmark_value": float(snap.benchmark_value or 0.0)
             }
-        
-        # Convert cached snapshots to dict for easy lookup
         
         # Generate snapshots
         timeline = []
         current_date = start_date
         
+        # Linear-time performance variables
+        running_holdings = {} # {scheme_code: units}
+        running_invested = 0.0
+        running_bm_units = 0.0
+        order_idx = 0
+        
         # Bulk NAV data cache to avoid repeated API calls per scheme
-        # {scheme_code: {date_str: nav}}
         bulk_nav_data = {}
         
         def get_nav_bulk(scheme_code: str):
-            if scheme_code in bulk_nav_data:
-                return bulk_nav_data[scheme_code]
-            
+            if scheme_code in bulk_nav_data: return bulk_nav_data[scheme_code]
             try:
                 import httpx
                 resp = httpx.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=10.0)
@@ -1349,115 +1449,82 @@ class MutualFundService:
                     nav_map = {entry['date']: float(entry['nav']) for entry in data.get('data', [])}
                     bulk_nav_data[scheme_code] = nav_map
                     return nav_map
-            except Exception as e:
-                pass
+            except: pass
             return {}
 
         def find_closest_nav(nav_map, target_date):
             if not nav_map: return 0.0
-            
-            # Try exact match first (API format is DD-MM-YYYY)
             target_str = target_date.strftime("%d-%m-%Y")
-            if target_str in nav_map:
-                return nav_map[target_str]
-            
-            # Look back up to 7 days
+            if target_str in nav_map: return nav_map[target_str]
             for i in range(1, 8):
                 prev_date = target_date - timedelta(days=i)
                 prev_str = prev_date.strftime("%d-%m-%Y")
-                if prev_str in nav_map:
-                    return nav_map[prev_str]
-            
-            # Fallback to any latest available if none in range
-            # (In a real app, you might want more complex logic here)
+                if prev_str in nav_map: return nav_map[prev_str]
             return next(iter(nav_map.values())) if nav_map else 0.0
         
-        
         while current_date <= end_date:
-            # Check if this snapshot is cached
+            # IMPORTANT: We must always advance the transaction state to the current date,
+            # even if we are loading from raw cache, to keep running_invested and running_bm_units in sync.
+            while order_idx < len(orders):
+                o = orders[order_idx]
+                o_date = o.order_date.date() if hasattr(o.order_date, 'date') else o.order_date
+                if o_date <= current_date:
+                    s_code = str(o.scheme_code)
+                    amt = float(o.amount)
+                    if amt <= 0: amt = float(o.units) * float(o.nav)
+                    
+                    o_type = str(o.type).upper().strip()
+                    # More precise keyword matching to avoid 'IN' matching 'REDEMPTION'
+                    is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
+                    is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
+                    
+                    if is_investment:
+                        running_holdings[s_code] = running_holdings.get(s_code, 0) + float(o.units)
+                        running_invested += amt
+                    elif is_withdrawal:
+                        running_holdings[s_code] = running_holdings.get(s_code, 0) - float(o.units)
+                        running_invested -= amt
+                        
+                    # Accumulate Benchmark Shadow Units
+                    try:
+                        bm_code = "120716"
+                        if bm_code not in bulk_nav_data: get_nav_bulk(bm_code)
+                        hist_bm_nav = find_closest_nav(bulk_nav_data.get(bm_code, {}), o_date)
+                        if hist_bm_nav > 0:
+                            if is_investment: 
+                                running_bm_units += (amt / hist_bm_nav)
+                            elif is_withdrawal: 
+                                running_bm_units -= (amt / hist_bm_nav)
+                    except: pass
+                    order_idx += 1
+                else:
+                    break
+
             if current_date in cache_dict and current_date < end_date:
-                # Use cached value
+                # Use cached value (but we already advanced running_invested/holdings above!)
                 timeline.append(cache_dict[current_date])
             else:
-                # Calculate holdings snapshot at this date
-                holdings_snapshot = {}  # {scheme_code: units}
-                invested_at_date = 0
-                buy_total = 0
-                sell_total = 0
+                # Calculate portfolio and benchmark values for new snapshot
+                portfolio_value = 0.0
+                for s_code, units in running_holdings.items():
+                    if units > 1e-6:
+                        if s_code not in bulk_nav_data: get_nav_bulk(s_code)
+                        nav = find_closest_nav(bulk_nav_data.get(s_code, {}), current_date)
+                        portfolio_value += units * nav
                 
-                for order in orders:
-                    order_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
-                    
-                    if order_date <= current_date:
-                        scheme_code = str(order.scheme_code)
-                        
-                        if order.type == "BUY" or order.type == "DEBIT":
-                            holdings_snapshot[scheme_code] = holdings_snapshot.get(scheme_code, 0) + float(order.units)
-                            invested_at_date += float(order.amount)
-                            buy_total += float(order.amount)
-                        elif order.type == "SELL" or order.type == "CREDIT":
-                            holdings_snapshot[scheme_code] = holdings_snapshot.get(scheme_code, 0) - float(order.units)
-                            invested_at_date -= float(order.amount)
-                            sell_total += float(order.amount)
-                
-                
-                # Calculate portfolio value at this date
-                portfolio_value = 0
-                nav_fetched = 0
-                nav_fallback = 0
-                
-                for scheme_code, units in holdings_snapshot.items():
-                    if units > 0:
-                        try:
-                            if scheme_code not in bulk_nav_data:
-                                get_nav_bulk(scheme_code)
-                            
-                            nav = find_closest_nav(bulk_nav_data.get(scheme_code, {}), current_date)
-                            portfolio_value += units * nav
-                            nav_fetched += 1
-                        except Exception as e:
-                            # Use current NAV as fallback if API/Cache fails
-                            holding = db.query(MutualFundHolding).filter(
-                                MutualFundHolding.scheme_code == scheme_code,
-                                MutualFundHolding.tenant_id == tenant_id
-                            ).first()
-                            if holding and holding.last_nav:
-                                portfolio_value += units * float(holding.last_nav)
-                                nav_fallback += 1
-                
-                
-                # Calculate Benchmark (Nifty 50 Proxy: 120716)
+                # Benchmark Value
                 benchmark_value = 0.0
                 try:
-                    BENCHMARK_SCHEME = "120716"
-                    if BENCHMARK_SCHEME not in bulk_nav_data:
-                        get_nav_bulk(BENCHMARK_SCHEME)
-                    
-                    bm_nav = find_closest_nav(bulk_nav_data.get(BENCHMARK_SCHEME, {}), current_date)
-                    
-                    shadow_units = 0.0
-                    for order in orders:
-                        o_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
-                        if o_date <= current_date:
-                            hist_bm_nav = find_closest_nav(bulk_nav_data.get(BENCHMARK_SCHEME, {}), o_date)
-                            if hist_bm_nav > 0:
-                                amt = float(order.amount)
-                                # Approximate amount if 0 using units * nav
-                                if amt <= 0: amt = float(order.units) * float(order.nav)
-                                
-                                if order.type == "BUY" or order.type == "DEBIT":
-                                    shadow_units += (amt / hist_bm_nav)
-                                elif order.type == "SELL" or order.type == "CREDIT":
-                                    shadow_units -= (amt / hist_bm_nav)
-                    
-                    benchmark_value = max(0, shadow_units * bm_nav)
-                except Exception:
-                    benchmark_value = 0.0
+                    bm_code = "120716"
+                    if bm_code not in bulk_nav_data: get_nav_bulk(bm_code)
+                    bm_nav = find_closest_nav(bulk_nav_data.get(bm_code, {}), current_date)
+                    benchmark_value = max(0, running_bm_units * bm_nav)
+                except: pass
 
                 snapshot_data = {
                     "date": current_date.isoformat(),
                     "value": round(portfolio_value, 2),
-                    "invested": round(invested_at_date, 2),
+                    "invested": round(running_invested, 2),
                     "benchmark_value": round(benchmark_value, 2)
                 }
                 timeline.append(snapshot_data)
@@ -1465,7 +1532,7 @@ class MutualFundService:
                 # Save to cache if not today
                 if current_date < end_date:
                     # Sanity Check: Don't cache if value is 0 but we have investment (means NAV fetch failed)
-                    if portfolio_value == 0 and invested_at_date > 0:
+                    if portfolio_value == 0 and running_invested > 0:
                         pass
                     else:
                         from datetime import datetime as dt
@@ -1474,7 +1541,8 @@ class MutualFundService:
                             snapshot_date=dt.combine(current_date, dt.min.time()),
                             portfolio_hash=portfolio_hash,
                             portfolio_value=round(portfolio_value, 2),
-                            invested_value=round(invested_at_date, 2)
+                            invested_value=round(running_invested, 2),
+                            benchmark_value=round(benchmark_value, 2)
                         )
                         db.add(cache_entry)
             
@@ -1505,56 +1573,15 @@ class MutualFundService:
             # Silent fail or log properly
             db.rollback()
         
-        # Calculate Benchmark (Nifty 50 proxy: 120716)
-        # Instead of simple normalization, we simulate actual investment timing (SIPs/Lumpsums)
+        # Consolidate benchmark timeline from snapshot results
         benchmark_timeline = []
-        try:
-            benchmark_code = "120716" # UTI Nifty 50 Index Fund
-            get_nav_bulk(benchmark_code)
-            b_nav_map = bulk_nav_data.get(benchmark_code, {})
-
-            total_benchmark_units = 0.0
-            order_idx = 0
-            
-            for point in timeline:
-                p_date_iso = point["date"]
-                p_date = date.fromisoformat(p_date_iso)
-                
-                # Check for any transactions UP TO this snapshot date
-                while order_idx < len(orders):
-                    order = orders[order_idx]
-                    o_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
-                    
-                    if o_date <= p_date:
-                        # Fetch index NAV on this transaction date
-                        o_nav = find_closest_nav(b_nav_map, o_date)
-                        if o_nav > 0:
-                            # Use units * nav if amount is 0 (fallback)
-                            amount = float(order.amount)
-                            if amount <= 0:
-                                amount = float(order.units) * float(order.nav)
-                                
-                            if order.type == "BUY" or order.type == "DEBIT":
-                                total_benchmark_units += (amount / o_nav)
-                            elif order.type == "SELL" or order.type == "CREDIT":
-                                # Proportionally sell benchmark units based on value ratio
-                                # We'll just sell the same equivalent cash value for simplicity
-                                total_benchmark_units -= (amount / o_nav)
-                        order_idx += 1
-                    else:
-                        break
-                
-                # Nifty 50 value today = total units * current snapshot NAV
-                p_nav = find_closest_nav(b_nav_map, p_date)
-                simulated_value = total_benchmark_units * p_nav
-                
+        for p in timeline:
+            if "benchmark_value" in p:
                 benchmark_timeline.append({
-                    "date": p_date_iso,
-                    "value": round(simulated_value, 2)
+                    "date": p["date"],
+                    "value": p["benchmark_value"]
                 })
-        except Exception as b_err:
-            benchmark_timeline = []
-
+        
         return {
             "timeline": timeline,
             "benchmark": benchmark_timeline,
@@ -1563,51 +1590,3 @@ class MutualFundService:
             "total_return_percent": round(total_return_percent, 2)
         }
     
-    @staticmethod
-    def _fetch_historical_nav(scheme_code: str, target_date) -> float:
-        """
-        Fetch NAV for a specific date from mfapi.in.
-        Falls back to nearest available NAV if exact date not found.
-        """
-        import httpx
-        from datetime import timedelta
-        
-        try:
-            # mfapi.in provides historical data in reverse chronological order
-            response = httpx.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=5.0)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'data' not in data:
-                raise ValueError("No NAV data available")
-            
-            # Format target date as DD-MM-YYYY to match API format
-            target_date_str = target_date.strftime("%d-%m-%Y")
-            
-            # Try to find exact date first
-            for entry in data['data']:
-                if entry['date'] == target_date_str:
-                    return float(entry['nav'])
-            
-            # If not found, find closest date within 7 days before
-            target_timestamp = target_date
-            for entry in data['data']:
-                try:
-                    from datetime import datetime
-                    entry_date = datetime.strptime(entry['date'], "%d-%m-%Y").date()
-                    
-                    # Use NAV from up to 7 days before target
-                    if entry_date <= target_date and (target_date - entry_date).days <= 7:
-                        return float(entry['nav'])
-                except:
-                    continue
-            
-            # If still not found, use the latest available NAV
-            if data['data']:
-                return float(data['data'][0]['nav'])
-            
-            raise ValueError("No suitable NAV found")
-            
-        except Exception as e:
-            pass
-            raise

@@ -76,6 +76,8 @@ def get_performance_timeline(
     period: str = "1y",
     granularity: str = "1w",
     user_id: Optional[str] = Query(None),
+    scheme_code: Optional[str] = Query(None),
+    holding_id: Optional[str] = Query(None),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -86,8 +88,10 @@ def get_performance_timeline(
     - period: One of '1m', '3m', '6m', '1y', 'all'
     - granularity: One of '1d', '1w', '1m'
     - user_id: Filter by specific family member
+    - scheme_code: Filter by specific fund scheme
+    - holding_id: Filter by specific holding
     """
-    return MutualFundService.get_performance_timeline(db, str(current_user.tenant_id), period, granularity, user_id)
+    return MutualFundService.get_performance_timeline(db, str(current_user.tenant_id), period, granularity, user_id, scheme_code, holding_id)
 
 @router.delete("/analytics/cache")
 def clear_timeline_cache(
@@ -129,6 +133,9 @@ def get_holding_details(
 ):
     details = MutualFundService.get_holding_details(db, str(current_user.tenant_id), holding_id)
     if not details:
+        # Fallback: if holding_id is numeric, it might be a scheme_code passed from a generic link
+        if holding_id.isdigit():
+            return get_scheme_details(holding_id, current_user, db)
         raise HTTPException(status_code=404, detail="Holding not found")
     return details
 

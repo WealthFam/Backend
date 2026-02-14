@@ -1,190 +1,267 @@
 <template>
     <MainLayout>
-        <div class="loan-details-container animate-in">
-            <div class="mb-6">
-                <button @click="router.back()" class="back-link">
-                    <span>← Back to Loans</span>
-                </button>
+        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
+            <!-- Animated Mesh Background -->
+            <div class="mesh-blob blob-1"
+                style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
+            </div>
+            <div class="mesh-blob blob-2"
+                style="background: rgba(var(--v-theme-secondary), 0.05); width: 400px; height: 400px; bottom: -100px; left: -100px;">
             </div>
 
-            <div v-if="loading" class="text-center py-12">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            </div>
-
-            <div v-else-if="loan">
-                <div class="details-header">
-                    <div>
-                        <div style="display: flex; align-items: center; gap: 0.75rem;">
-                            <span style="font-size: 2rem;">{{ getLoanIcon(loan.loan_type) }}</span>
-                            <h1 class="page-title">{{ loan.name }}</h1>
-                        </div>
-                        <p class="subtitle">
-                            {{ loan.tenure_months }} Months {{ loan.loan_type?.replace('_', ' ') }} @ {{
-                                loan.interest_rate }}% Interest
-                        </p>
-                    </div>
-                    <div class="header-right">
-                        <p class="header-label">Current Outstanding</p>
-                        <p class="header-value">{{ formatCurrency(loan.outstanding_balance) }}</p>
-                    </div>
+            <div class="relative-pos z-10">
+                <div class="mb-6">
+                    <v-btn variant="text" color="primary" class="pl-0 font-weight-bold" @click="router.back()">
+                        <ChevronLeft :size="20" class="mr-1" />
+                        Back to Loans
+                    </v-btn>
                 </div>
 
-                <!-- Stats Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                    <div class="stat-card-mini">
-                        <p class="stat-label-mini">Principal Amount</p>
-                        <p class="stat-value-mini">{{ formatCurrency(loan.principal_amount) }}</p>
-                    </div>
-                    <div class="stat-card-mini">
-                        <p class="stat-label-mini">EMI Amount</p>
-                        <p class="stat-value-mini">{{ formatCurrency(loan.emi_amount) }}</p>
-                    </div>
-                    <div class="stat-card-mini">
-                        <p class="stat-label-mini">Next Due Date</p>
-                        <p class="stat-value-mini">{{ formatDate(loan.next_emi_date) }}</p>
-                    </div>
-                    <div class="stat-card-mini">
-                        <p class="stat-label-mini">Progress</p>
-                        <div class="flex items-center space-x-2">
-                            <div class="w-full bg-gray-200 rounded-full h-2 mt-1">
-                                <div class="bg-blue-600 h-2 rounded-full"
-                                    :style="{ width: loan.progress_percentage + '%' }"></div>
+                <!-- Loading State -->
+                <div v-if="loading" class="d-flex justify-center align-center py-16">
+                    <v-progress-circular indeterminate color="primary" size="64" width="6" />
+                </div>
+
+                <div v-else-if="loan">
+                    <!-- Header -->
+                    <div class="d-flex flex-column flex-md-row justify-space-between align-md-start mb-8 gap-4">
+                        <div class="d-flex align-top gap-4">
+                            <v-avatar size="64" variant="tonal" color="primary" rounded="xl" class="elevation-4">
+                                <span class="text-h4">{{ getLoanIcon(loan.loan_type) }}</span>
+                            </v-avatar>
+                            <div>
+                                <h1 class="text-h4 font-weight-black text-content mb-1">{{ loan.name }}</h1>
+                                <div class="d-flex align-center gap-3 text-medium-emphasis font-weight-bold">
+                                    <v-chip size="small" variant="outlined" class="font-weight-bold text-uppercase">
+                                        {{ loan.loan_type?.replace('_', ' ') || 'LOAN' }}
+                                    </v-chip>
+                                    <span>{{ loan.tenure_months }} Months</span>
+                                    <span>•</span>
+                                    <span>{{ loan.interest_rate }}% Interest</span>
+                                </div>
                             </div>
-                            <span class="text-sm font-bold">{{ loan.progress_percentage }}%</span>
+                        </div>
+                        <div class="text-md-right p-4 bg-surface-variant bg-opacity-5 rounded-xl border border-dashed">
+                            <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-1">Current
+                                Outstanding</div>
+                            <div class="text-h4 font-weight-black text-primary">{{
+                                formatCurrency(loan.outstanding_balance) }}</div>
                         </div>
                     </div>
-                </div>
 
-                <!-- AI Insights Section -->
-                <div class="ai-insights-section">
-                    <div class="ai-header">
-                        <h3 class="ai-title">✨ AI Loan Advisor</h3>
-                        <button @click="generateInsights" :disabled="insightLoading" class="btn-ai">
-                            <span v-if="insightLoading">Analyzing...</span>
-                            <span v-else>Generate Insights</span>
-                        </button>
-                    </div>
+                    <!-- Stats Cards -->
+                    <v-row class="mb-8">
+                        <v-col cols="6" md="3">
+                            <v-card class="premium-glass-card pa-4 h-100" elevation="0">
+                                <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-1">
+                                    Principal Amount</div>
+                                <div class="text-h6 font-weight-black text-content">{{
+                                    formatCurrency(loan.principal_amount) }}</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="6" md="3">
+                            <v-card class="premium-glass-card pa-4 h-100" elevation="0">
+                                <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-1">EMI
+                                    Amount</div>
+                                <div class="text-h6 font-weight-black text-content">{{ formatCurrency(loan.emi_amount)
+                                }}</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="6" md="3">
+                            <v-card class="premium-glass-card pa-4 h-100" elevation="0">
+                                <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-1">Next
+                                    Due Date</div>
+                                <div class="text-h6 font-weight-black text-content">{{ formatDate(loan.next_emi_date) }}
+                                </div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="6" md="3">
+                            <v-card class="premium-glass-card pa-4 h-100 d-flex flex-column justify-center"
+                                elevation="0">
+                                <div class="d-flex justify-space-between text-caption font-weight-bold mb-1">
+                                    <span class="text-medium-emphasis text-uppercase">Progress</span>
+                                    <span class="text-primary">{{ loan.progress_percentage }}%</span>
+                                </div>
+                                <v-progress-linear :model-value="loan.progress_percentage" color="primary" rounded
+                                    height="8"></v-progress-linear>
+                            </v-card>
+                        </v-col>
+                    </v-row>
 
-                    <div v-if="insights" class="ai-content">
-                        <div v-html="renderedInsights"></div>
-                    </div>
-                    <div v-else class="ai-empty">
-                        Click generate to get personalized advice on prepayment and interest savings.
-                    </div>
-                </div>
-
-                <!-- Content Split -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-                    <!-- Chart Section -->
-                    <div class="chart-card">
-                        <h3 class="card-title">Principal vs Interest</h3>
-                        <div class="relative h-64">
-                            <Pie v-if="chartData" :data="chartData" :options="chartOptions" />
-                        </div>
+                    <!-- AI Insights Section -->
+                    <v-card class="premium-glass-card mb-8 overflow-hidden" elevation="0"
+                        style="border-color: rgba(var(--v-theme-primary), 0.2) !important;">
                         <div
-                            style="margin-top: 1rem; text-align: center; font-size: 0.875rem; color: var(--color-text-muted);">
-                            Total Interest Payable: <span style="font-weight: 700; color: var(--color-text-main);">{{
-                                formatCurrency(totalInterest) }}</span>
+                            class="pa-6 d-flex flex-column flex-md-row justify-space-between align-md-center gap-4 bg-primary bg-opacity-5">
+                            <div class="d-flex align-center gap-3">
+                                <div class="primary-glow-box">
+                                    <Sparkles :size="24" class="text-primary" />
+                                </div>
+                                <div>
+                                    <h3 class="text-h6 font-weight-black text-content">AI Loan Advisor</h3>
+                                    <p class="text-caption font-weight-bold text-medium-emphasis">Get personalized
+                                        prepayment and saving strategies</p>
+                                </div>
+                            </div>
+                            <v-btn color="primary" variant="flat" rounded="pill" class="font-weight-bold"
+                                @click="generateInsights" :loading="insightLoading">
+                                {{ insights ? 'Refresh Analysis' : 'Generate Insights' }}
+                            </v-btn>
                         </div>
-                    </div>
+                        <div v-if="insights" class="pa-6 pt-2">
+                            <div class="markdown-body premium-markdown" v-html="renderedInsights"></div>
+                        </div>
+                    </v-card>
 
-                    <!-- Amortization Schedule -->
-                    <div class="lg:col-span-2 table-card">
-                        <h3 class="card-title">Amortization Schedule</h3>
-                        <div style="overflow-x: auto; max-height: 500px; overflow-y: auto;">
-                            <table class="amortization-table">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Date</th>
-                                        <th style="text-align: right;">EMI</th>
-                                        <th style="text-align: right;">Principal</th>
-                                        <th style="text-align: right;">Interest</th>
-                                        <th style="text-align: right;">Balance</th>
-                                        <th style="text-align: center;">Status</th>
-                                        <th style="text-align: center;">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="item in loan.amortization_schedule" :key="item.installment_no">
-                                        <td>{{ item.installment_no }}</td>
-                                        <td>{{ formatDate(item.due_date) }}</td>
-                                        <td style="text-align: right; font-weight: 600;">{{ formatCurrency(item.emi) }}
-                                        </td>
-                                        <td style="text-align: right; color: var(--color-success);">{{
-                                            formatCurrency(item.principal_component) }}</td>
-                                        <td style="text-align: right; color: var(--color-danger);">{{
-                                            formatCurrency(item.interest_component) }}</td>
-                                        <td style="text-align: right; color: var(--color-text-muted);">{{
-                                            formatCurrency(item.closing_balance) }}</td>
-                                        <td style="text-align: center;">
-                                            <span class="status-badge" :class="{
-                                                'status-paid': item.status === 'PAID',
-                                                'status-unpaid': item.status === 'PENDING',
-                                                'status-overdue': item.status === 'OVERDUE'
-                                            }">
-                                                {{ item.status }}
-                                            </span>
-                                        </td>
-                                        <td style="text-align: center;">
-                                            <button v-if="item.status !== 'PAID'" @click="openRepaymentModal(item)"
-                                                class="btn-pay-mini">
-                                                Pay Now
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <!-- Content Split -->
+                    <v-row>
+                        <!-- Chart Section -->
+                        <v-col cols="12" lg="4">
+                            <v-card class="premium-glass-card pa-6 h-100" elevation="0">
+                                <h3 class="text-h6 font-weight-black text-content mb-6">Principal vs Interest</h3>
+                                <div style="height: 300px; position: relative;">
+                                    <Pie v-if="chartData" :data="chartData as any" :options="chartOptions as any" />
+                                </div>
+                                <div
+                                    class="mt-6 text-center pa-4 bg-surface-variant bg-opacity-5 rounded-lg border border-dashed">
+                                    <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase">Total
+                                        Interest Payable</div>
+                                    <div class="text-h5 font-weight-black text-error">{{ formatCurrency(totalInterest)
+                                    }}</div>
+                                </div>
+                            </v-card>
+                        </v-col>
+
+                        <!-- Amortization Schedule -->
+                        <v-col cols="12" lg="8">
+                            <v-card class="premium-glass-card h-100 d-flex flex-column overflow-hidden" elevation="0">
+                                <div class="pa-6 pb-2">
+                                    <h3 class="text-h6 font-weight-black text-content">Amortization Schedule</h3>
+                                </div>
+                                <div class="flex-grow-1 overflow-auto" style="max-height: 500px;">
+                                    <v-table class="bg-transparent">
+                                        <thead>
+                                            <tr>
+                                                <th
+                                                    class="text-left font-weight-bold text-caption text-medium-emphasis">
+                                                    #</th>
+                                                <th
+                                                    class="text-left font-weight-bold text-caption text-medium-emphasis">
+                                                    DATE</th>
+                                                <th
+                                                    class="text-right font-weight-bold text-caption text-medium-emphasis">
+                                                    EMI</th>
+                                                <th
+                                                    class="text-right font-weight-bold text-caption text-medium-emphasis">
+                                                    PRINCIPAL</th>
+                                                <th
+                                                    class="text-right font-weight-bold text-caption text-medium-emphasis">
+                                                    INTEREST</th>
+                                                <th
+                                                    class="text-right font-weight-bold text-caption text-medium-emphasis">
+                                                    BALANCE</th>
+                                                <th
+                                                    class="text-center font-weight-bold text-caption text-medium-emphasis">
+                                                    STATUS</th>
+                                                <th
+                                                    class="text-center font-weight-bold text-caption text-medium-emphasis">
+                                                    ACTION</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="item in loan.amortization_schedule" :key="item.installment_no"
+                                                class="hover-row">
+                                                <td class="font-weight-bold text-caption">{{ item.installment_no }}</td>
+                                                <td class="font-weight-bold text-caption">{{ formatDate(item.due_date)
+                                                }}</td>
+                                                <td class="text-right font-weight-black text-body-2">{{
+                                                    formatCurrency(item.emi) }}</td>
+                                                <td class="text-right font-weight-bold text-caption text-success">{{
+                                                    formatCurrency(item.principal_component) }}</td>
+                                                <td class="text-right font-weight-bold text-caption text-error">{{
+                                                    formatCurrency(item.interest_component) }}</td>
+                                                <td
+                                                    class="text-right font-weight-bold text-caption text-medium-emphasis">
+                                                    {{ formatCurrency(item.closing_balance) }}</td>
+                                                <td class="text-center">
+                                                    <v-chip size="x-small" :color="getStatusColor(item.status)"
+                                                        variant="flat" class="font-weight-bold">
+                                                        {{ item.status }}
+                                                    </v-chip>
+                                                </td>
+                                                <td class="text-center">
+                                                    <v-btn v-if="item.status !== 'PAID'" size="small" color="primary"
+                                                        variant="tonal" rounded="pill" class="font-weight-bold px-4"
+                                                        height="24" @click="openRepaymentModal(item)">
+                                                        Pay
+                                                    </v-btn>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </v-table>
+                                </div>
+                            </v-card>
+                        </v-col>
+                    </v-row>
                 </div>
-            </div>
 
-            <!-- Repayment Modal -->
-            <div v-if="showRepaymentModal" class="modal-overlay-global">
-                <div class="modal-global" style="max-width: 450px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title">Record EMI Payment</h2>
-                        <button class="btn-icon" @click="closeRepaymentModal">✕</button>
-                    </div>
-
-                    <form @submit.prevent="submitRepayment" style="padding-top: 1rem;">
-                        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                            <div class="form-group">
-                                <label class="form-label">Amount</label>
-                                <input v-model.number="repaymentForm.amount" type="number" required class="form-input">
+                <!-- Repayment Modal -->
+                <v-dialog v-model="showRepaymentModal" max-width="500">
+                    <v-card rounded="xl" class="premium-glass-modal elevation-24">
+                        <div class="px-6 pt-6 pb-2 d-flex justify-space-between align-center">
+                            <div>
+                                <div class="text-overline font-weight-black text-primary mb-1 letter-spacing-2">RECORD
+                                    PAYMENT</div>
+                                <h2 class="text-h5 font-weight-black text-content">EMI #{{ repaymentForm.installment_no
+                                }}</h2>
                             </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Date</label>
-                                <input v-model="repaymentForm.date" type="date" required class="form-input">
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Paid From</label>
-                                <CustomSelect v-model="repaymentForm.bank_account_id" :options="accountOptions"
-                                    placeholder="Select Bank Account" />
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Notes (Optional)</label>
-                                <input v-model="repaymentForm.description" type="text" class="form-input"
-                                    placeholder="e.g. Paid via mobile app">
-                            </div>
+                            <v-btn icon variant="text" @click="showRepaymentModal = false" density="comfortable"
+                                class="bg-surface-variant bg-opacity-10 opacity-70 hover:opacity-100">
+                                <X :size="20" />
+                            </v-btn>
                         </div>
 
-                        <div class="modal-footer">
-                            <button type="button" @click="closeRepaymentModal" class="btn btn-outline"
-                                style="min-width: 100px;">Cancel</button>
-                            <button type="submit" class="btn btn-primary" style="min-width: 140px;"
-                                :disabled="isSubmitting">
-                                {{ isSubmitting ? 'Recording...' : 'Record Payment' }}
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                        <v-card-text class="px-6 py-4">
+                            <v-form @submit.prevent="submitRepayment">
+                                <v-text-field v-model.number="repaymentForm.amount" label="Amount" type="number"
+                                    prefix="₹" variant="outlined" density="comfortable" hide-details rounded="lg"
+                                    bg-color="surface" class="mb-4 font-weight-black text-h6">
+                                </v-text-field>
+
+                                <v-text-field v-model="repaymentForm.date" label="Payment Date" type="date"
+                                    variant="outlined" density="comfortable" hide-details rounded="lg"
+                                    bg-color="surface" class="mb-4">
+                                </v-text-field>
+
+                                <v-select v-model="repaymentForm.bank_account_id" :items="accountOptions"
+                                    item-title="label" item-value="value" label="Paid From" variant="outlined"
+                                    density="comfortable" hide-details rounded="lg" bg-color="surface" class="mb-4"
+                                    append-inner-icon="mdi-chevron-down">
+                                </v-select>
+
+                                <v-text-field v-model="repaymentForm.description" label="Notes (Optional)"
+                                    placeholder="e.g. Paid via UPI" variant="outlined" density="comfortable"
+                                    hide-details rounded="lg" bg-color="surface">
+                                </v-text-field>
+                            </v-form>
+                        </v-card-text>
+
+                        <v-card-actions class="px-6 pb-6 pt-2">
+                            <v-btn variant="text" @click="showRepaymentModal = false" height="48" rounded="lg"
+                                class="px-6 font-weight-bold text-none text-medium-emphasis">
+                                Cancel
+                            </v-btn>
+                            <v-spacer />
+                            <v-btn color="primary" variant="flat" rounded="lg" height="48"
+                                class="px-8 font-weight-black text-none elevation-4" @click="submitRepayment"
+                                :loading="isSubmitting">
+                                Record Payment
+                            </v-btn>
+                        </v-card-actions>
+                    </v-card>
+                </v-dialog>
             </div>
-        </div>
+        </v-container>
     </MainLayout>
 </template>
 
@@ -193,28 +270,14 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi as api } from '@/api/client'
-import CustomSelect from '@/components/CustomSelect.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useCurrency } from '@/composables/useCurrency'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { Pie } from 'vue-chartjs'
 import { marked } from 'marked'
+import { ChevronLeft, Sparkles, X } from 'lucide-vue-next'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
-
-const loanTypeOptions = [
-    { label: 'Home Loan', value: 'HOME_LOAN', icon: '🏠' },
-    { label: 'Personal Loan', value: 'PERSONAL_LOAN', icon: '👤' },
-    { label: 'Car Loan', value: 'CAR_LOAN', icon: '🚗' },
-    { label: 'Education Loan', value: 'EDUCATION_LOAN', icon: '🎓' },
-    { label: 'Credit Card', value: 'CREDIT_CARD', icon: '💳' },
-    { label: 'Other', value: 'OTHER', icon: '💰' }
-]
-
-const getLoanIcon = (type: string) => {
-    const opt = loanTypeOptions.find(o => o.value === type)
-    return opt ? opt.icon : '💰'
-}
 
 const route = useRoute()
 const router = useRouter()
@@ -236,6 +299,20 @@ const repaymentForm = ref({
     description: ''
 })
 
+const loanTypeOptions = [
+    { label: 'Home Loan', value: 'HOME_LOAN', icon: '🏠' },
+    { label: 'Personal Loan', value: 'PERSONAL_LOAN', icon: '👤' },
+    { label: 'Car Loan', value: 'CAR_LOAN', icon: '🚗' },
+    { label: 'Education Loan', value: 'EDUCATION_LOAN', icon: '🎓' },
+    { label: 'Credit Card', value: 'CREDIT_CARD', icon: '💳' },
+    { label: 'Other', value: 'OTHER', icon: '💰' }
+]
+
+const getLoanIcon = (type: string) => {
+    const opt = loanTypeOptions.find(o => o.value === type)
+    return opt ? opt.icon : '💰'
+}
+
 const accountOptions = computed(() => {
     return accounts.value
         .filter(a => a.type === 'BANK' || a.type === 'WALLET')
@@ -253,10 +330,6 @@ const openRepaymentModal = (item: any) => {
     showRepaymentModal.value = true
 }
 
-const closeRepaymentModal = () => {
-    showRepaymentModal.value = false
-}
-
 const submitRepayment = async () => {
     if (!repaymentForm.value.bank_account_id) {
         notificationStore.error("Please select a bank account")
@@ -268,7 +341,7 @@ const submitRepayment = async () => {
         const id = route.params.id as string
         await api.recordLoanRepayment(id, repaymentForm.value)
         notificationStore.success("Repayment recorded successfully")
-        closeRepaymentModal()
+        showRepaymentModal.value = false
         fetchLoanDetails()
     } catch (e) {
         console.error("Failed to record repayment", e)
@@ -313,7 +386,30 @@ const chartData = computed(() => {
 
 const chartOptions = {
     responsive: true,
-    maintainAspectRatio: false
+    maintainAspectRatio: false,
+    plugins: {
+        legend: {
+            position: 'bottom' as const,
+            labels: {
+                usePointStyle: true,
+                padding: 20,
+                font: {
+                    family: 'Inter',
+                    size: 11,
+                    weight: 'bold'
+                }
+            }
+        }
+    }
+}
+
+const getStatusColor = (status: string) => {
+    switch (status) {
+        case 'PAID': return 'success'
+        case 'OVERDUE': return 'error'
+        case 'PENDING': return 'warning'
+        default: return 'medium-emphasis'
+    }
 }
 
 const fetchLoanDetails = async () => {
@@ -354,268 +450,74 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.loan-details-container {
-    width: 100%;
-    margin: 0 auto;
-    padding-bottom: 3rem;
+.dashboard-page {
+    position: relative;
+    min-height: calc(100vh - 64px);
 }
 
-.back-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--color-primary);
-    text-decoration: none;
-    font-size: 0.875rem;
-    font-weight: 500;
-    margin-bottom: 1.5rem;
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 0;
+.mesh-blob {
+    position: absolute;
+    filter: blur(80px);
+    opacity: 0.15;
+    border-radius: 50%;
 }
 
-.back-link:hover {
-    color: var(--color-primary-dark);
+.relative-pos {
+    position: relative;
 }
 
-.details-header {
+.z-10 {
+    z-index: 10;
+}
+
+.premium-glass-card {
+    background: rgba(var(--v-theme-surface), 0.7) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(128, 128, 128, 0.15) !important;
+    box-shadow: none !important;
+}
+
+.premium-glass-card:not(.border-dashed) {
+    border-color: rgba(var(--v-border-color), 0.15) !important;
+}
+
+.premium-glass-modal {
+    background: rgba(var(--v-theme-surface), 0.95) !important;
+    backdrop-filter: blur(24px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.primary-glow-box {
+    width: 48px;
+    height: 48px;
+    background: rgba(var(--v-theme-primary), 0.1);
+    border-radius: 50%;
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 2rem;
+    align-items: center;
+    justify-content: center;
 }
 
-.page-title {
-    font-size: 1.75rem;
+.premium-markdown :deep(h1),
+.premium-markdown :deep(h2),
+.premium-markdown :deep(h3) {
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
     font-weight: 800;
-    color: var(--color-text-main);
-    margin: 0;
+    line-height: 1.2;
 }
 
-.subtitle {
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-    margin-top: 0.25rem;
+.premium-markdown :deep(p) {
+    margin-bottom: 1rem;
+    line-height: 1.6;
+    opacity: 0.9;
 }
 
-.header-right {
-    text-align: right;
-}
-
-.header-label {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-}
-
-.header-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-text-main);
-}
-
-.grid {
-    display: grid;
-}
-
-.grid-cols-1 {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
-}
-
-@media (min-width: 768px) {
-    .md\:grid-cols-4 {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-}
-
-@media (min-width: 1024px) {
-    .lg\:grid-cols-3 {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-.gap-4 {
-    gap: 1rem;
-}
-
-.gap-8 {
-    gap: 2rem;
-}
-
-.mb-8 {
-    margin-bottom: 2rem;
-}
-
-.stat-card-mini {
-    background: white;
-    padding: 1rem;
-    border-radius: 0.75rem;
-    border: 1px solid var(--color-border);
-}
-
-.stat-label-mini {
-    font-size: 0.65rem;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    font-weight: 700;
-    margin-bottom: 0.25rem;
-}
-
-.stat-value-mini {
-    font-weight: 700;
-    font-size: 1.125rem;
-    color: var(--color-text-main);
-}
-
-.ai-insights-section {
-    background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
-    border-radius: 1rem;
-    padding: 1.5rem;
-    border: 1px solid #ddd6fe;
-    margin-bottom: 2rem;
-}
-
-.ai-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+.premium-markdown :deep(ul) {
+    padding-left: 1.5rem;
     margin-bottom: 1rem;
 }
 
-.ai-title {
-    font-weight: 700;
-    font-size: 1.125rem;
-    color: #4c1d95;
-    margin: 0;
-}
-
-.ai-content {
-    background: white;
-    padding: 1.25rem;
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.ai-empty {
-    text-align: center;
-    padding: 1rem;
-    color: #6d28d9;
-    font-style: italic;
-    font-size: 0.875rem;
-}
-
-.btn-ai {
-    background: #7c3aed;
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    font-size: 0.8125rem;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.btn-ai:hover {
-    background: #6d28d9;
-}
-
-.chart-card,
-.table-card {
-    background: white;
-    padding: 1.5rem;
-    border-radius: 1rem;
-    border: 1px solid var(--color-border);
-}
-
-.card-title {
-    font-weight: 700;
-    font-size: 1rem;
-    margin-bottom: 1.25rem;
-    color: var(--color-text-main);
-}
-
-.amortization-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.8125rem;
-}
-
-.amortization-table th {
-    text-align: left;
-    padding: 0.75rem 1rem;
-    background: var(--color-background);
-    color: var(--color-text-muted);
-    font-weight: 700;
-    text-transform: uppercase;
-    font-size: 0.65rem;
-    position: sticky;
-    top: 0;
-}
-
-.amortization-table td {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.amortization-table tr:hover {
-    background: var(--color-background);
-}
-
-.status-badge {
-    padding: 0.125rem 0.5rem;
-    border-radius: 2rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-}
-
-.status-paid {
-    background: #d1fae5;
-    color: #065f46;
-}
-
-.status-unpaid {
-    background: #fef3c7;
-    color: #92400e;
-}
-
-.animate-in {
-    animation: fadeIn 0.4s ease-out;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.btn-pay-mini {
-    padding: 0.25rem 0.75rem;
-    background: #3B82F6;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.btn-pay-mini:hover {
-    background: #2563EB;
-}
-
-.status-overdue {
-    background: #fee2e2;
-    color: #991b1b;
+.hover-row:hover {
+    background-color: rgba(var(--v-theme-surface-variant), 0.05);
 }
 </style>

@@ -1,29 +1,55 @@
 <template>
     <MainLayout>
-        <div class="categories-page">
-            <header class="page-header">
-                <div class="header-left">
-                    <h1 class="page-title">Management</h1>
-                    <div class="header-tabs ml-6">
-                        <button class="tab-btn" :class="{ active: activeTab === 'categories' }"
-                            @click="activeTab = 'categories'">
-                            Categories
-                        </button>
-                        <button class="tab-btn" :class="{ active: activeTab === 'rules' }" @click="activeTab = 'rules'">
-                            Rules
-                        </button>
-                    </div>
-                </div>
-                <!-- Header Actions moved to specific tabs -->
-            </header>
+        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
+            <!-- Animated Mesh Background -->
+            <div class="mesh-blob blob-1"
+                style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
+            </div>
+            <div class="mesh-blob blob-2"
+                style="background: rgba(var(--v-theme-secondary), 0.05); width: 400px; height: 400px; bottom: -100px; left: -100px;">
+            </div>
 
-            <!-- Tab Content -->
-            <KeepAlive>
-                <CategoriesTab v-if="activeTab === 'categories'" />
-                <RulesTab v-else-if="activeTab === 'rules'" />
-            </KeepAlive>
+            <div class="relative-pos z-10">
+                <!-- Header -->
+                <v-row class="mb-10 align-center">
+                    <v-col cols="12" md="6">
+                        <h1 class="text-h4 font-weight-black mb-1">Categories</h1>
+                        <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold">
+                            Manage your spending categories and classification rules
+                        </p>
+                    </v-col>
 
-        </div>
+                    <v-col cols="12" md="6" class="d-flex justify-md-end align-center">
+                        <!-- Redesigned Tab Switcher (Segmented Control) -->
+                        <div class="glass-card pa-1 border rounded-pill d-flex"
+                            style="background: rgba(var(--v-theme-surface), 0.5)">
+                            <v-btn variant="flat" rounded="pill" height="40"
+                                class="text-none font-weight-black px-8 letter-spacing-1"
+                                :color="activeTab === 'categories' ? 'primary' : 'transparent'"
+                                :class="activeTab !== 'categories' ? 'text-disabled' : ''"
+                                @click="activeTab = 'categories'">
+                                Categories
+                            </v-btn>
+                            <v-btn variant="flat" rounded="pill" height="40"
+                                class="text-none font-weight-black px-8 letter-spacing-1"
+                                :color="activeTab === 'rules' ? 'primary' : 'transparent'"
+                                :class="activeTab !== 'rules' ? 'text-disabled' : ''" @click="activeTab = 'rules'">
+                                Rules
+                            </v-btn>
+                        </div>
+                    </v-col>
+                </v-row>
+
+                <v-window v-model="activeTab" class="bg-transparent overflow-visible">
+                    <v-window-item value="categories">
+                        <CategoriesTab />
+                    </v-window-item>
+                    <v-window-item value="rules">
+                        <RulesTab />
+                    </v-window-item>
+                </v-window>
+            </div>
+        </v-container>
     </MainLayout>
 </template>
 
@@ -37,56 +63,5 @@ const activeTab = ref('categories')
 </script>
 
 <style scoped>
-.categories-page {
-    padding-bottom: 5rem;
-}
-
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #e5e7eb;
-}
-
-.header-left {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.page-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #111827;
-    margin: 0;
-    letter-spacing: -0.01em;
-}
-
-.header-tabs {
-    display: flex;
-    gap: 0.125rem;
-    background: #f3f4f6;
-    padding: 0.125rem;
-    border-radius: 0.625rem;
-}
-
-.tab-btn {
-    padding: 0.375rem 1rem;
-    border: none;
-    background: transparent;
-    border-radius: 0.5rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: #6b7280;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.tab-btn.active {
-    background: white;
-    color: #111827;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
+/* Vuetify handles the layout, minimal custom CSS needed */
 </style>

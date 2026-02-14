@@ -19,10 +19,11 @@ def create_recurring_transaction(
 
 @router.get("/recurring", response_model=List[schemas.RecurringTransactionRead])
 def get_recurring_transactions(
+    user_id: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return RecurringService.get_recurring_transactions(db, str(current_user.tenant_id))
+    return RecurringService.get_recurring_transactions(db, str(current_user.tenant_id), user_id=user_id)
 
 @router.put("/recurring/{recurrence_id}", response_model=schemas.RecurringTransactionRead)
 def update_recurring_transaction(

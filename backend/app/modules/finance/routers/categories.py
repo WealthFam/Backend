@@ -117,3 +117,19 @@ def delete_rule(
     if not success:
         raise HTTPException(status_code=404, detail="Rule not found")
     return {"status": "success"}
+
+@router.post("/rules/import")
+def import_rules(
+    rules: List[dict],
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    CategoryService.import_category_rules(db, rules, str(current_user.tenant_id))
+    return {"status": "success", "count": len(rules)}
+
+@router.get("/rules/export")
+def export_rules(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return CategoryService.export_category_rules(db, str(current_user.tenant_id))

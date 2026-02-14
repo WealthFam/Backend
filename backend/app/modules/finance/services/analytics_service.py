@@ -8,6 +8,8 @@ from backend.app.modules.finance.services.transaction_service import Transaction
 class AnalyticsService:
     @staticmethod
     def get_summary_metrics(db: Session, tenant_id: str, user_role: str = "ADULT", account_id: str = None, start_date: datetime = None, end_date: datetime = None, user_id: str = None, exclude_hidden: bool = False):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         
         # 1. Accounts & Net Worth (Accounts are filtered by owner_id if user_id is provided)
         accounts_query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
@@ -104,6 +106,27 @@ class AnalyticsService:
                                                            .filter(models.Account.type.notin_(["INVESTMENT", "CREDIT"]))
         
         monthly_spending = abs(float(monthly_spending_query.scalar() or 0))
+
+        # 2a. Monthly Income
+        monthly_income_query = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.amount > 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False
+        )
+        if start_date:
+            monthly_income_query = monthly_income_query.filter(models.Transaction.date >= start_date)
+        if end_date:
+            monthly_income_query = monthly_income_query.filter(models.Transaction.date <= end_date)
+        if account_id:
+            monthly_income_query = monthly_income_query.filter(models.Transaction.account_id == account_id)
+        if user_id:
+            monthly_income_query = monthly_income_query.join(
+                models.Account, models.Transaction.account_id == models.Account.id
+            ).filter(
+                or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+            )
+        monthly_income = float(monthly_income_query.scalar() or 0)
         
         # 2b. Total Excluded for the period
         def get_excluded_sum(is_income: bool):
@@ -283,6 +306,7 @@ class AnalyticsService:
         return {
             "breakdown": breakdown,
             "today_total": today_total,
+            "monthly_income": monthly_income,
             "monthly_total": monthly_spending,
             "monthly_spending": monthly_spending,  # Keep for backward compatibility
             "total_excluded": total_excluded,
@@ -297,6 +321,8 @@ class AnalyticsService:
 
     @staticmethod
     def get_net_worth_timeline(db: Session, tenant_id: str, days: int = 30, user_id: str = None):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         from .mutual_funds import MutualFundService
         
         # 1. Get current static balances (Bank + Cash - Credit Debt - Loans)
@@ -373,6 +399,8 @@ class AnalyticsService:
 
     @staticmethod
     def get_spending_trend(db: Session, tenant_id: str, user_id: str = None):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         
         now = datetime.utcnow()
         start_date = datetime(now.year, now.month, 1)
@@ -412,7 +440,9 @@ class AnalyticsService:
         return trend
 
     @staticmethod
-    def get_balance_forecast(db: Session, tenant_id: str, days: int = 30, account_id: str = None):
+    def get_balance_forecast(db: Session, tenant_id: str, days: int = 30, account_id: str = None, user_id: str = None):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         
         # 1. Starting Balance (Liquid assets only)
         liquid_accounts_query = db.query(models.Account).filter(
@@ -421,6 +451,9 @@ class AnalyticsService:
         )
         if account_id:
             liquid_accounts_query = liquid_accounts_query.filter(models.Account.id == account_id)
+        if user_id:
+            # Filter by account ownership
+            liquid_accounts_query = liquid_accounts_query.filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         
         liquid_accounts = liquid_accounts_query.all()
         
@@ -482,14 +515,45 @@ class AnalyticsService:
             
         return forecast
     @staticmethod
-    def get_budget_history(db: Session, tenant_id: str, months: int = 6):
-        
+    def get_budget_history(db: Session, tenant_id: str, months: int = 6, user_id: str = None):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+            
         # Get all budgets to know which categories to track
         budgets = db.query(models.Budget).filter(models.Budget.tenant_id == tenant_id).all()
         categories = [b.category for b in budgets]
         
+        # If no budgets, fallback to top 5 categories by spending in the last 6 months
         if not categories:
-            return []
+            top_cats_query = db.query(
+                models.Transaction.category,
+                func.sum(models.Transaction.amount).label('total')
+            ).filter(
+                models.Transaction.tenant_id == tenant_id,
+                models.Transaction.amount < 0,
+                models.Transaction.is_transfer == False,
+                models.Transaction.exclude_from_reports == False
+            )
+            
+            if user_id:
+                 top_cats_query = top_cats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                                .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+            
+            top_cats = top_cats_query.group_by(models.Transaction.category)\
+                                     .order_by(func.sum(models.Transaction.amount).asc())\
+                                     .limit(5).all()
+            
+            categories = [row.category for row in top_cats if row.category]
+            if not categories:
+                return []
+            
+            # Create dummy budget objects for the logic below
+            class DummyBudget:
+                def __init__(self, cat):
+                    self.category = cat
+                    self.amount_limit = 0
+            
+            budgets = [DummyBudget(c) for c in categories]
 
         now = datetime.utcnow()
         # Calculate start of the first month in range
@@ -508,7 +572,7 @@ class AnalyticsService:
         # Query spending for ALL categories for the WHOLE period in one go
         # Group by category and month
         # Note: func.date_trunc('month', ...) is supported by DuckDB
-        monthly_stats = db.query(
+        monthly_stats_query = db.query(
             models.Transaction.category,
             func.date_trunc('month', models.Transaction.date).label('month_start'),
             func.sum(models.Transaction.amount).label('total')
@@ -521,7 +585,13 @@ class AnalyticsService:
         ).group_by(
             models.Transaction.category,
             text('month_start')
-        ).all()
+        )
+        
+        if user_id:
+            monthly_stats_query = monthly_stats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                                      .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+            
+        monthly_stats = monthly_stats_query.all()
         
         # Organize statistics into a map for easy lookup: {month_start_date: {category: amount}}
         stats_map = {}
@@ -533,7 +603,7 @@ class AnalyticsService:
             
         # Handle 'OVERALL' special case if it exists in categories
         if 'OVERALL' in categories:
-            overall_stats = db.query(
+            overall_stats_query = db.query(
                 func.date_trunc('month', models.Transaction.date).label('month_start'),
                 func.sum(models.Transaction.amount).label('total')
             ).filter(
@@ -542,7 +612,13 @@ class AnalyticsService:
                 models.Transaction.amount < 0,
                 models.Transaction.is_transfer == False,
                 models.Transaction.exclude_from_reports == False
-            ).group_by(
+            )
+            
+            if user_id:
+                overall_stats_query = overall_stats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                                          .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+            
+            overall_stats = overall_stats_query.group_by(
                 text('month_start')
             ).all()
             
@@ -582,6 +658,8 @@ class AnalyticsService:
         return history[::-1] # Chronological order
     @staticmethod
     def get_heatmap_data(db: Session, tenant_id: str, start_date: datetime = None, end_date: datetime = None, user_id: str = None):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         """
         Get transaction coordinates and weights for heatmap visualization.
         """

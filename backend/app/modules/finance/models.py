@@ -247,6 +247,7 @@ class InvestmentGoal(Base):
     icon = Column(String, default="🎯")
     color = Column(String, default="#3b82f6")
     is_completed = Column(Boolean, default=False)
+    owner_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     holdings = relationship("MutualFundHolding", back_populates="goal")
@@ -351,6 +352,7 @@ class PortfolioTimelineCache(Base):
     portfolio_hash = Column(String, nullable=False, index=True)  # Hash of scheme_codes to detect changes
     portfolio_value = Column(Numeric(15, 2), nullable=False)
     invested_value = Column(Numeric(15, 2), nullable=False)
+    benchmark_value = Column(Numeric(15, 2), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Composite index for fast lookups

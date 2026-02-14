@@ -11,6 +11,12 @@ export const useRulesStore = defineStore('rules', () => {
     const loading = ref(false)
     const error = ref<string | null>(null)
     const searchQuery = ref('')
+    const matchingCount = ref(0)
+    const matchingPreview = ref<any[]>([])
+    const previewLoading = ref(false)
+    const overrideExisting = ref(false)
+    const previewPage = ref(1)
+    const previewLimit = 5
 
     const notify = useNotificationStore()
 
@@ -147,12 +153,67 @@ export const useRulesStore = defineStore('rules', () => {
 
     async function applyRuleRetrospectively(ruleId: string) {
         try {
-            await financeApi.applyRuleRetrospectively(ruleId)
-            notify.success("Rule applied to past transactions")
-            return true
+            const res = await financeApi.applyRuleRetrospectively(ruleId, overrideExisting.value)
+            const count = res.data.affected || 0
+            notify.success(`Successfully updated ${count} past transactions`)
+            return count
         } catch (e: any) {
             console.error("Failed to apply rule", e)
             notify.error("Failed to apply rule")
+            return false
+        }
+    }
+
+    async function fetchMatchPreview(keywords: string[], page: number = 1) {
+        previewLoading.value = true
+        previewPage.value = page
+        try {
+            const onlyUncategorized = !overrideExisting.value
+            const [countRes, previewRes] = await Promise.all([
+                financeApi.getMatchCount(keywords, onlyUncategorized),
+                financeApi.getMatchPreview(keywords, onlyUncategorized, page, previewLimit)
+            ])
+            matchingCount.value = countRes.data.count
+            matchingPreview.value = previewRes.data
+        } catch (e: any) {
+            console.error("Failed to fetch match preview", e)
+        } finally {
+            previewLoading.value = false
+        }
+    }
+
+    async function exportRules() {
+        try {
+            const res = await financeApi.exportRules()
+            const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' })
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `rules_export_${new Date().toISOString().split('T')[0]}.json`
+            a.click()
+            window.URL.revokeObjectURL(url)
+            notify.success("Rules exported successfully")
+        } catch (e: any) {
+            console.error("Failed to export rules", e)
+            notify.error("Failed to export rules")
+        }
+    }
+
+    async function importRules(file: File) {
+        try {
+            const reader = new FileReader()
+            reader.onload = async (e) => {
+                const content = e.target?.result as string
+                const data = JSON.parse(content)
+                await financeApi.importRules(data)
+                notify.success("Rules imported successfully")
+                await fetchRules()
+            }
+            reader.readAsText(file)
+            return true
+        } catch (e: any) {
+            console.error("Failed to import rules", e)
+            notify.error("Failed to import rules")
             return false
         }
     }
@@ -172,6 +233,15 @@ export const useRulesStore = defineStore('rules', () => {
         deleteRule,
         ignoreSuggestion,
         approveSuggestion,
-        applyRuleRetrospectively
+        applyRuleRetrospectively,
+        fetchMatchPreview,
+        matchingCount,
+        matchingPreview,
+        previewLoading,
+        overrideExisting,
+        previewPage,
+        previewLimit,
+        exportRules,
+        importRules
     }
 })

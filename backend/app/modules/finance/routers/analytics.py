@@ -31,6 +31,7 @@ def get_metrics(
 def get_forecast(
     days: int = 30,
     account_id: str = None,
+    user_id: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -38,18 +39,21 @@ def get_forecast(
         db, 
         str(current_user.tenant_id), 
         days=days,
-        account_id=account_id
+        account_id=account_id,
+        user_id=user_id
     )
 @router.get("/budget-history")
 def get_budget_history(
     months: int = 6,
+    user_id: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     return AnalyticsService.get_budget_history(
         db, 
         str(current_user.tenant_id), 
-        months=months
+        months=months,
+        user_id=user_id
     )
 @router.get("/net-worth-timeline")
 def get_net_worth_timeline(

@@ -1,269 +1,508 @@
 <template>
-    <div class="animate-in">
-        <!-- Control Bar: Search Left, Title/Count Right (Settings Style) -->
-        <div class="flex items-center justify-between mt-4 mb-6 gap-4">
-            <!-- Search Bar Premium -->
-            <div class="search-bar-premium no-margin flex-1 max-w-[320px]">
-                <Search class="search-icon text-gray-400" :size="16" />
-                <input type="text" v-model="rulesStore.searchQuery" placeholder="Search rules..." class="search-input">
-            </div>
+    <v-container fluid class="pa-0 animate-in relative-pos z-10">
+        <!-- Control Bar (Glass Box) -->
+        <v-card class="premium-glass-card pa-4 mb-8 no-hover" rounded="xl">
+            <v-row align="center">
+                <v-col cols="12" sm="4">
+                    <v-text-field v-model="rulesStore.searchQuery" placeholder="Search rules..." hide-details
+                        density="comfortable" variant="plain" class="font-weight-black px-2">
+                        <template v-slot:prepend-inner>
+                            <Search :size="20" class="opacity-60" />
+                        </template>
+                    </v-text-field>
+                </v-col>
 
-            <!-- Header with Badge & Action -->
-            <div class="header-with-badge flex items-center gap-3">
-                <h3 class="text-sm font-bold text-gray-900 uppercase tracking-wide">Active Rules</h3>
-                <span
-                    class="pulse-status-badge bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1 rounded-full text-xs font-bold">
-                    {{ rulesStore.filteredRules.length }} Active
-                </span>
-                <button class="btn-primary-glow flex items-center gap-2 px-3 py-1.5 ml-2" @click="openAddRuleModal">
-                    <div class="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px]">+</div>
-                    <span class="text-sm font-bold">New Rule</span>
-                </button>
+                <v-spacer />
+
+                <v-col cols="12" sm="auto" class="d-flex align-center gap-3">
+                    <!-- Export/Import Capsule (Matches CategoriesTab) -->
+                    <div class="glass-card border rounded-pill d-flex align-center pa-1 shadow-sm"
+                        style="background: rgba(var(--v-theme-surface), 0.5)">
+                        <v-btn variant="text" size="small" rounded="pill" color="primary"
+                            class="text-none font-weight-black px-4" @click="rulesStore.exportRules">
+                            <template v-slot:prepend>
+                                <Download :size="16" />
+                            </template>
+                            Export
+                            <v-tooltip activator="parent" location="top">Download rules as JSON</v-tooltip>
+                        </v-btn>
+                        <v-divider vertical class="mx-1 my-1 opacity-20" />
+                        <v-btn variant="text" size="small" rounded="pill" color="primary"
+                            class="text-none font-weight-black px-4" @click="ruleFileInput?.click()">
+                            <template v-slot:prepend>
+                                <Upload :size="16" />
+                            </template>
+                            Import
+                            <input type="file" ref="ruleFileInput" class="d-none" accept=".json"
+                                @change="handleRuleImport" />
+                            <v-tooltip activator="parent" location="top">Upload rules from JSON</v-tooltip>
+                        </v-btn>
+                    </div>
+                </v-col>
+            </v-row>
+        </v-card>
+
+        <!-- Suggestions Section (Stacked Top) -->
+        <v-expand-transition>
+            <div v-if="rulesStore.suggestions.length > 0" class="mb-10">
+                <div class="d-flex align-center gap-3 mb-6">
+                    <v-avatar color="secondary" variant="tonal" size="44">
+                        <Sparkles :size="24" class="text-secondary" />
+                    </v-avatar>
+                    <div>
+                        <div class="d-flex align-center gap-2 mb-1">
+                            <h2 class="text-h6 font-weight-black line-height-1">Suggestions</h2>
+                            <v-chip size="x-small" color="secondary" variant="flat" border
+                                class="font-weight-black letter-spacing-1">
+                                {{ rulesStore.suggestions.length }}
+                            </v-chip>
+                        </div>
+                        <p class="text-caption font-weight-bold opacity-60">Smart suggestions based on your
+                            spending activity</p>
+                    </div>
+                </div>
+
+                <v-row>
+                    <v-col v-for="s in rulesStore.suggestions" :key="s.name" cols="12" md="4">
+                        <v-card class="premium-glass-card pa-6 overflow-hidden" rounded="xl" elevation="2">
+                            <div class="d-flex justify-space-between align-start relative-pos z-10">
+                                <div class="flex-grow-1">
+                                    <div class="text-h6 font-weight-black mb-1">{{ s.name }}</div>
+                                    <div class="text-body-2 font-weight-medium opacity-60 mb-4 italic truncate"
+                                        style="max-width: 300px;">
+                                        matches "{{ s.keywords.join(', ') }}"
+                                    </div>
+                                    <v-chip color="primary" variant="tonal" size="small"
+                                        class="font-weight-black letter-spacing-1" label border>
+                                        {{ categoriesStore.getCategoryDisplay(s.category) }}
+                                    </v-chip>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <v-btn variant="outlined" size="small" color="slate-400"
+                                        class="rounded-lg border-thin"
+                                        style="min-width: 36px; width: 36px; height: 36px; padding: 0"
+                                        @click="rulesStore.ignoreSuggestion(s)">
+                                        <X :size="18" />
+                                        <v-tooltip activator="parent" location="top">Ignore</v-tooltip>
+                                    </v-btn>
+                                    <v-btn color="primary" variant="tonal" size="small" class="rounded-lg border-thin"
+                                        style="min-width: 36px; width: 36px; height: 36px; padding: 0"
+                                        @click="openSuggestionModal(s)">
+                                        <Check :size="18" />
+                                        <v-tooltip activator="parent" location="top">Accept Suggestion</v-tooltip>
+                                    </v-btn>
+                                </div>
+                            </div>
+                            <Sparkles class="card-bg-icon-standard" color="secondary" />
+                        </v-card>
+                    </v-col>
+                </v-row>
+            </div>
+        </v-expand-transition>
+
+        <!-- Active Rules Grid (Stacked Bottom) -->
+        <v-divider class="mb-10 opacity-10" />
+
+        <div class="d-flex align-center gap-3 mb-6">
+            <v-avatar color="primary" variant="tonal" size="44">
+                <FileText :size="24" class="text-primary" />
+            </v-avatar>
+            <div>
+                <div class="d-flex align-center gap-2 mb-1">
+                    <h2 class="text-h6 font-weight-black line-height-1">Active Rules</h2>
+                    <v-chip size="x-small" color="primary" variant="flat" border
+                        class="font-weight-black letter-spacing-1">
+                        {{ rulesStore.rules.length }}
+                    </v-chip>
+                </div>
+                <p class="text-caption font-weight-bold opacity-60">Manage your classification and categorization logic
+                </p>
             </div>
         </div>
 
-        <!-- Suggestions -->
-        <div v-if="rulesStore.suggestions.length > 0" class="mb-8 animate-in delay-100">
-            <div class="flex items-center gap-2 mb-4">
-                <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
-                    AI Suggestions
-                </span>
-                <span class="text-xs text-gray-500">Based on your transaction history</span>
-            </div>
+        <v-row v-if="rulesStore.filteredRules.length === 0" class="justify-center py-16">
+            <v-col cols="12" sm="8" md="6" class="text-center">
+                <v-avatar size="100" color="surface-variant" variant="tonal" class="mb-6 elevation-2">
+                    <FileText :size="48" class="opacity-30" />
+                </v-avatar>
+                <h3 class="text-h5 font-weight-black mb-2">No Rules Found</h3>
+                <p class="text-subtitle-1 opacity-60 mb-8 font-weight-medium mx-auto" style="max-width: 400px">
+                    {{ rulesStore.emptyRulesMsg }}
+                </p>
+                <v-btn v-if="!rulesStore.searchQuery" color="primary" rounded="pill" size="large" variant="elevated"
+                    class="text-none px-10 elevation-4 btn-primary-glow font-weight-black" @click="openAddRuleModal">
+                    Create First Rule
+                    <v-tooltip activator="parent" location="top">Define your first rule</v-tooltip>
+                </v-btn>
+            </v-col>
+        </v-row>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div v-for="s in rulesStore.suggestions" :key="s.name"
-                    class="glass-card p-4 border-l-4 border-l-indigo-500 hover:shadow-md transition-all group relative overflow-hidden">
-                    <div
-                        class="absolute inset-0 bg-gradient-to-r from-indigo-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+        <!-- Rules Grid -->
+        <v-row v-else class="pb-16">
+            <!-- Add New Rule Card -->
+            <v-col cols="12" sm="6" lg="4">
+                <v-card
+                    class="premium-glass-card group h-100 d-flex flex-column align-center justify-center border-dashed border-primary border-opacity-25"
+                    rounded="xl" style="min-height: 240px; cursor: pointer" @click="openAddRuleModal">
+                    <v-avatar color="primary" size="64" class="mb-4 elevation-8 group-on-hover-scale"
+                        style="box-shadow: 0 0 20px rgba(var(--v-theme-primary), 0.3)">
+                        <Plus :size="36" color="white" stroke-width="3" />
+                    </v-avatar>
+                    <div class="text-h6 font-weight-black mb-1">Add New Rule</div>
+                    <div class="text-caption font-weight-bold opacity-40">Create custom classification</div>
+
+                    <!-- Subtle background icon -->
+                    <div class="card-bg-icon-standard">
+                        <FileText :size="120" />
                     </div>
+                </v-card>
+            </v-col>
+            <v-col v-for="rule in rulesStore.filteredRules" :key="rule.id" cols="12" sm="6" lg="4">
+                <v-card class="premium-glass-card h-100 d-flex flex-column overflow-hidden" rounded="xl">
+                    <div class="pa-6 flex-grow-1 relative-pos z-10">
+                        <div class="d-flex justify-space-between align-start mb-6">
+                            <div class="d-flex align-center gap-4 min-w-0">
+                                <v-avatar color="primary" variant="tonal" rounded="lg" size="52" border
+                                    class="elevation-2">
+                                    <FileText :size="28" />
+                                </v-avatar>
+                                <div class="min-w-0">
+                                    <div class="text-h6 font-weight-black truncate mb-1">{{ rule.name }}</div>
+                                    <v-chip v-if="rule.exclude_from_reports" density="comfortable" size="x-small"
+                                        color="error" variant="flat" label
+                                        class="text-uppercase font-weight-black letter-spacing-1">
+                                        Hidden
+                                    </v-chip>
+                                    <span v-else class="text-caption font-weight-bold opacity-60">
+                                        {{ rule.keywords.length }} Active Keyword{{ rule.keywords.length !== 1 ?
+                                            's' :
+                                            '' }}
+                                    </span>
+                                </div>
+                            </div>
 
-                    <div class="relative z-10 flex justify-between items-start">
-                        <div>
-                            <div class="font-bold text-gray-900">{{ s.name }}</div>
-                            <div class="text-xs text-gray-500 mt-1"> matches "{{ s.keywords.join(', ') }}"</div>
-                            <div
-                                class="mt-2 text-sm font-medium text-indigo-600 bg-white/80 inline-block px-2 py-1 rounded border border-indigo-100">
-                                {{ categoriesStore.getCategoryDisplay(s.category) }}
+                            <div class="text-right shrink-0 ml-4">
+                                <span
+                                    class="text-overline font-weight-black opacity-60 line-height-1 mb-1 d-block">Store
+                                    As</span>
+                                <v-chip density="comfortable" size="small" variant="flat" color="surface"
+                                    class="font-weight-black border" label>
+                                    {{ categoriesStore.getCategoryDisplay(rule.category) }}
+                                </v-chip>
                             </div>
                         </div>
-                        <div class="flex gap-2">
-                            <button @click="rulesStore.ignoreSuggestion(s)"
-                                class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
-                                title="Ignore">
-                                ✕
-                            </button>
-                            <button @click="openSuggestionModal(s)"
-                                class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-indigo-700 transition-colors">
-                                Approve
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Rules List -->
-        <div v-if="rulesStore.filteredRules.length === 0"
-            class="text-center py-12 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-            <div class="text-4xl mb-3">📜</div>
-            <div class="text-gray-900 font-bold text-lg mb-1">No Rules Found</div>
-            <p class="text-gray-500 text-sm max-w-sm mx-auto">{{ rulesStore.emptyRulesMsg }}</p>
-            <button v-if="!rulesStore.searchQuery" @click="openAddRuleModal" class="mt-4 btn-primary-glow px-4 py-2">
-                Create First Rule
-            </button>
-        </div>
-
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
-            <div v-for="rule in rulesStore.filteredRules" :key="rule.id"
-                class="glass-card flex flex-col hover:shadow-lg transition-all group relative border border-gray-100/50 bg-gradient-to-b from-white to-gray-50/30">
-
-                <!-- Top Section: Header -->
-                <div class="p-4 flex items-start justify-between gap-3 border-b border-gray-100/50">
-                    <div class="flex items-start gap-3 min-w-0">
-                        <div
-                            class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl shrink-0">
-                            📜
-                        </div>
-                        <div class="flex flex-col min-w-0">
-                            <div class="flex items-center gap-2">
-                                <h3 class="font-bold text-gray-900 truncate leading-tight">{{ rule.name }}</h3>
-                            </div>
-                            <div class="flex items-center gap-2 mt-1">
-                                <span v-if="rule.exclude_from_reports"
-                                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100 uppercase tracking-wider">
-                                    Hidden
-                                </span>
-                                <span class="text-xs text-muted flex items-center gap-1">
-                                    {{ rule.keywords.length }} keyword{{ rule.keywords.length !== 1 ? 's' : '' }}
-                                </span>
+                        <!-- Keywords Box -->
+                        <div class="inset-glass-metric pa-4 border-thin mb-4">
+                            <div class="d-flex flex-wrap gap-2">
+                                <v-chip v-for="(k, idx) in rule.keywords.slice(0, 6)" :key="idx" size="x-small"
+                                    variant="flat" border class="font-mono font-weight-black bg-surface opacity-80">
+                                    {{ k }}
+                                </v-chip>
+                                <v-chip v-if="rule.keywords.length > 6" size="x-small" variant="text"
+                                    class="text-primary font-weight-black">
+                                    +{{ rule.keywords.length - 6 }} more
+                                </v-chip>
+                                <div v-if="rule.keywords.length === 0" class="text-caption italic opacity-40">No
+                                    keywords defined</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Assigns To Badge -->
-                    <div class="flex flex-col items-end shrink-0">
-                        <span class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Assigns
-                            To</span>
-                        <div
-                            class="px-2 py-1 bg-white border border-gray-100 rounded-lg shadow-sm text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                            {{ categoriesStore.getCategoryDisplay(rule.category) }}
+                    <v-divider class="opacity-10" />
+
+                    <!-- Bottom Actions (Refined) -->
+                    <div class="pa-4 d-flex align-center justify-space-between bg-transparent">
+                        <v-btn variant="outlined" color="primary"
+                            class="rounded-lg border-thin font-weight-black text-none"
+                            style="height: 36px; min-width: 36px; padding: 0"
+                            @click="handleApplyRuleRetrospectively(rule.id)">
+                            <Zap :size="16" class="mr-1" />
+                            <v-tooltip activator="parent" location="top">Apply Retrospectively</v-tooltip>
+                        </v-btn>
+                        <div class="d-flex gap-2">
+                            <v-btn variant="outlined" color="primary" class="rounded-lg border-thin"
+                                style="height: 36px; min-width: 36px; padding: 0" @click="openEditRuleModal(rule)">
+                                <Pencil :size="18" />
+                                <v-tooltip activator="parent" location="top">Edit</v-tooltip>
+                            </v-btn>
+                            <v-btn variant="outlined" color="error" class="rounded-lg border-thin"
+                                style="height: 36px; min-width: 36px; padding: 0" @click="deleteRule(rule.id)">
+                                <Trash2 :size="18" />
+                                <v-tooltip activator="parent" location="top">Delete</v-tooltip>
+                            </v-btn>
                         </div>
                     </div>
-                </div>
 
-                <!-- Middle Section: Keywords -->
-                <div class="p-4 bg-gray-50/50 flex-1">
-                    <div class="flex flex-wrap gap-1.5">
-                        <span v-for="(k, idx) in rule.keywords.slice(0, 5)" :key="idx"
-                            class="text-xs bg-white text-gray-600 px-2 py-1 rounded-md border border-gray-200 shadow-sm font-mono">
-                            {{ k }}
-                        </span>
-                        <span v-if="rule.keywords.length > 5"
-                            class="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-md border border-gray-200 font-medium">
-                            +{{ rule.keywords.length - 5 }}
-                        </span>
+                    <!-- Subtle background icon -->
+                    <div class="card-bg-icon-standard">
+                        <Filter :size="120" />
                     </div>
-                </div>
-
-                <!-- Bottom Section: Actions -->
-                <div
-                    class="p-2 flex justify-end gap-1 border-t border-gray-100 bg-white rounded-b-xl opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-0 right-0 left-0 hover:opacity-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20">
-                    <button class="btn-icon-sm text-amber-500 hover:bg-amber-50"
-                        @click="handleApplyRuleRetrospectively(rule.id)" title="Run on past transactions">
-                        <Zap :size="16" />
-                    </button>
-                    <button class="btn-icon-sm text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
-                        @click="openEditRuleModal(rule)" title="Edit">
-                        <Edit2 :size="16" />
-                    </button>
-                    <button class="btn-icon-sm text-gray-400 hover:text-rose-600 hover:bg-rose-50"
-                        @click="deleteRule(rule.id)" title="Delete">
-                        <Trash2 :size="16" />
-                    </button>
-                </div>
-            </div>
-        </div>
+                </v-card>
+            </v-col>
+        </v-row>
 
         <!-- Add/Edit Rule Modal -->
-        <div v-if="showRuleModal"
-            class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div
-                class="bg-white rounded-2xl shadow-xl w-full max-w-md border border-gray-100 flex flex-col max-h-[90vh]">
-                <div class="flex items-center justify-between p-6 border-b border-gray-100">
-                    <h2 class="text-xl font-bold text-gray-900">{{ isEditingRule ? 'Edit Rule' : 'New Rule' }}</h2>
-                    <button
-                        class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"
-                        @click="showRuleModal = false">✕</button>
-                </div>
-
-                <div class="p-6 space-y-4 overflow-y-auto">
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Rule Name</label>
-                        <input v-model="newRule.name" placeholder="e.g. Swiggy Orders"
-                            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 font-medium">
+        <v-dialog v-model="showRuleModal" max-width="550px" persistent>
+            <v-card class="premium-glass-card no-hover" rounded="xl">
+                <v-card-title class="pa-6 border-b d-flex align-center">
+                    <div class="d-flex align-center gap-3 flex-grow-1">
+                        <v-avatar color="primary" rounded="lg" size="44" class="elevation-4">
+                            <FileText :size="24" class="text-white" />
+                        </v-avatar>
+                        <div>
+                            <div class="text-overline font-weight-black opacity-60 line-height-1 mb-1">
+                                {{ isEditingRule ? 'Logic Update' : 'New Intelligence Rule' }}
+                            </div>
+                            <div class="text-h6 font-weight-black line-height-1 truncate" style="max-width: 300px;">
+                                {{ newRule.name || 'Set Classification Logic' }}
+                            </div>
+                        </div>
                     </div>
+                    <v-btn icon variant="text" size="small" @click="showRuleModal = false" color="slate-400">
+                        <X :size="20" />
+                        <v-tooltip activator="parent" location="top">Close</v-tooltip>
+                    </v-btn>
+                </v-card-title>
 
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Assign Category</label>
-                        <CustomSelect v-model="newRule.category"
-                            :options="categoriesStore.categories.map(c => ({ label: `${c.icon || '🏷️'} ${c.name}`, value: c.name }))"
-                            placeholder="Select Category" />
+                <v-card-text class="pa-6">
+                    <v-form @submit.prevent="saveRule">
+                        <v-row>
+                            <v-col cols="12">
+                                <v-text-field v-model="newRule.name" label="Rule Identifier" variant="outlined"
+                                    rounded="lg" placeholder="e.g. Swiggy Orders" required hide-details
+                                    class="font-weight-black text-h6" density="comfortable" />
+                            </v-col>
+
+                            <v-col cols="12">
+                                <v-select v-model="newRule.category" label="Target Category" variant="outlined"
+                                    rounded="lg"
+                                    :items="categoriesStore.categories.map(c => ({ title: `${c.icon || '🏷️'} ${c.name}`, value: c.name }))"
+                                    placeholder="Select Category" required hide-details class="font-weight-black"
+                                    density="comfortable" />
+                            </v-col>
+
+                            <v-col cols="12">
+                                <v-textarea v-model="newRule.keywords" label="Trigger Keywords (Comma separated)"
+                                    variant="outlined" rounded="lg" placeholder="swiggy, zomato, food delivery" rows="3"
+                                    hide-details class="font-weight-bold" density="comfortable" />
+                                <div class="text-caption font-weight-medium opacity-50 mt-2 ml-1">
+                                    Matches any transaction description containing these terms.
+                                </div>
+                            </v-col>
+
+                            <v-col cols="12">
+                                <v-card variant="tonal" color="error" rounded="lg" class="pa-1">
+                                    <v-switch v-model="newRule.exclude_from_reports" color="error" inset hide-details
+                                        class="px-4">
+                                        <template v-slot:label>
+                                            <div class="ml-2 py-2">
+                                                <div class="text-subtitle-2 font-weight-black line-height-1 mb-1">Hide
+                                                    from reports</div>
+                                                <div class="text-caption font-weight-bold opacity-70">Exclude from
+                                                    dashboard analytics and monthly totals.</div>
+                                            </div>
+                                        </template>
+                                    </v-switch>
+                                </v-card>
+                            </v-col>
+                        </v-row>
+                    </v-form>
+                </v-card-text>
+
+                <v-card-actions class="pa-6 pt-0">
+                    <v-spacer />
+                    <v-btn variant="text" @click="showRuleModal = false" class="text-none px-8 font-weight-black"
+                        rounded="pill">
+                        Cancel
+                        <v-tooltip activator="parent" location="top">Discard changes</v-tooltip>
+                    </v-btn>
+                    <v-btn color="primary" rounded="pill" class="text-none px-10 btn-primary-glow font-weight-black"
+                        @click="saveRule" size="large">
+                        Save Intelligence
+                        <v-tooltip activator="parent" location="top">Save rule changes</v-tooltip>
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Confirmation Dialogs -->
+        <!-- Delete Rule -->
+        <v-dialog v-model="showRuleDeleteConfirm" max-width="450px" persistent>
+            <v-card class="premium-glass-card no-hover text-center pa-8" rounded="xl">
+                <v-avatar color="error" variant="tonal" size="80" class="mb-6 mx-auto">
+                    <Trash2 :size="48" />
+                </v-avatar>
+                <h3 class="text-h5 font-weight-black mb-2">Delete Classification Rule?</h3>
+                <p class="text-subtitle-1 font-weight-medium opacity-60 mb-8">
+                    Future transactions matched by this rule will become uncategorized.
+                </p>
+                <v-row>
+                    <v-col cols="6">
+                        <v-btn block variant="text" rounded="pill" class="text-none font-weight-black" height="48"
+                            @click="showRuleDeleteConfirm = false">
+                            Cancel
+                            <v-tooltip activator="parent" location="top">Keep this rule</v-tooltip>
+                        </v-btn>
+                    </v-col>
+                    <v-col cols="6">
+                        <v-btn block color="error" rounded="pill" class="text-none font-weight-black" height="48"
+                            @click="confirmDeleteRule">
+                            Yes, Delete
+                            <v-tooltip activator="parent" location="top">Permanently delete rule</v-tooltip>
+                        </v-btn>
+                    </v-col>
+                </v-row>
+            </v-card>
+        </v-dialog>
+
+        <!-- Exclude confirmation -->
+        <v-dialog v-model="showExcludeConfirm" max-width="450px" persistent>
+            <v-card class="premium-glass-card no-hover text-center pa-8" rounded="xl">
+                <v-avatar color="amber" variant="tonal" size="80" class="mb-6 mx-auto">
+                    <EyeOff :size="48" />
+                </v-avatar>
+                <h3 class="text-h5 font-weight-black mb-2">Invisible in Reports?</h3>
+                <p class="text-subtitle-1 font-weight-medium opacity-60 mb-8">
+                    Transactions matching this rule will be hidden from monthly totals and charts.
+                </p>
+                <div class="d-flex gap-3">
+                    <v-btn variant="text" rounded="pill" class="text-none font-weight-black flex-grow-1" height="48"
+                        @click="showExcludeConfirm = false">
+                        Back
+                        <v-tooltip activator="parent" location="top">Return to editing</v-tooltip>
+                    </v-btn>
+                    <v-btn color="primary" rounded="pill" class="text-none font-weight-black flex-grow-1 elevation-4"
+                        height="48" @click="confirmSaveRule">
+                        Confirm & Save
+                        <v-tooltip activator="parent" location="top">Confirm and save rule</v-tooltip>
+                    </v-btn>
+                </div>
+            </v-card>
+        </v-dialog>
+
+        <!-- Apply Retro -->
+        <v-dialog v-model="showApplyRuleConfirm" max-width="500px" persistent>
+            <v-card class="premium-glass-card no-hover text-center pa-8" rounded="xl">
+                <v-avatar color="primary" variant="tonal" size="80" class="mb-6 mx-auto">
+                    <Zap :size="48" />
+                </v-avatar>
+                <h3 class="text-h5 font-weight-black mb-2">Retroactive Application</h3>
+                <p class="text-subtitle-1 font-weight-medium opacity-60 mb-4">
+                    Scan your history and apply this logic to matching records?
+                </p>
+
+                <!-- Override Switch -->
+                <div class="d-flex justify-center mb-6">
+                    <v-card variant="tonal" color="primary" rounded="pill" class="pa-1 pr-4 border-thin">
+                        <v-switch v-model="rulesStore.overrideExisting" color="primary" inset hide-details
+                            density="compact" @update:model-value="refetchPreview">
+                            <template v-slot:label>
+                                <span class="text-caption font-weight-black ml-2">Override existing categories</span>
+                            </template>
+                        </v-switch>
+                        <v-tooltip activator="parent" location="top">If on, updates all matches. If off, only
+                            uncategorized.</v-tooltip>
+                    </v-card>
+                </div>
+
+                <v-expand-transition>
+                    <div v-if="rulesStore.previewLoading" class="py-8">
+                        <v-progress-circular indeterminate color="primary" size="32" />
+                        <div class="mt-2 text-caption font-weight-bold opacity-60">Scanning history...</div>
                     </div>
+                    <div v-else-if="rulesStore.matchingCount > 0" class="mb-8">
+                        <div class="inset-glass-metric pa-4 border-thin text-left">
+                            <div
+                                class="d-flex align-center justify-space-between mb-3 text-caption font-weight-black opacity-60">
+                                <span>Preview (Latest 5 of {{ rulesStore.matchingCount }})</span>
+                                <v-chip size="x-small" color="primary" variant="flat" border>
+                                    {{ rulesStore.matchingCount }} matches
+                                </v-chip>
+                            </div>
+                            <div class="d-flex flex-column gap-2">
+                                <div v-for="txn in rulesStore.matchingPreview" :key="txn.id"
+                                    class="d-flex justify-space-between align-center border-b pb-2 last-no-border opacity-90">
+                                    <div class="min-w-0 pr-2">
+                                        <div class="text-caption font-weight-black truncate">{{ txn.description ||
+                                            txn.recipient
+                                            }}</div>
+                                        <div class="text-extra-small opacity-50">
+                                            {{ new Date(txn.date).toLocaleDateString() }}
+                                            <v-chip v-if="txn.category && txn.category !== 'Uncategorized'"
+                                                size="x-small" variant="text" color="primary"
+                                                class="px-1 font-weight-bold">
+                                                · {{ txn.category }}
+                                            </v-chip>
+                                        </div>
+                                    </div>
+                                    <div class="text-caption font-weight-black shrink-0"
+                                        :class="txn.amount < 0 ? 'text-error' : 'text-success'">
+                                        {{ txn.amount < 0 ? '-' : '' }}₹{{ Math.abs(txn.amount).toLocaleString() }}
+                                            </div>
+                                    </div>
+                                </div>
 
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Keywords (Comma separated)</label>
-                        <textarea v-model="newRule.keywords" placeholder="swiggy, zomato, food delivery" rows="3"
-                            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 font-medium font-mono text-sm"></textarea>
-                        <p class="text-xs text-gray-500 mt-1">Transactions containing ANY of these words will match.</p>
-                    </div>
+                                <!-- Pagination -->
+                                <div v-if="rulesStore.matchingCount > rulesStore.previewLimit"
+                                    class="mt-4 d-flex justify-center">
+                                    <v-pagination v-model="rulesStore.previewPage"
+                                        :length="Math.ceil(rulesStore.matchingCount / rulesStore.previewLimit)"
+                                        :total-visible="3" density="compact" variant="flat" color="primary"
+                                        active-color="primary" size="small" @update:model-value="handlePageChange" />
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else-if="!rulesStore.previewLoading"
+                            class="mb-8 text-center text-caption font-weight-black text-amber">
+                            <AlertCircle :size="16" class="mr-1 inline-block vertical-align-middle" />
+                            No matching transactions found.
+                        </div>
+                </v-expand-transition>
 
-                    <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
-                        <input type="checkbox" v-model="newRule.exclude_from_reports" id="exclude"
-                            class="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300">
-                        <label for="exclude" class="text-sm font-medium text-gray-700 cursor-pointer select-none">
-                            Hide matching transactions from reports
-                            <span class="block text-xs text-gray-500 font-normal">Good for internal transfers or
-                                reimbursable expenses</span>
-                        </label>
-                    </div>
-
-                    <button @click="saveRule"
-                        class="w-full py-3 rounded-xl bg-indigo-600 font-bold text-white hover:bg-indigo-700 shadow-md mt-2">
-                        Save Rule
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Delete Rule Confirmation -->
-        <div v-if="showRuleDeleteConfirm"
-            class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col items-center text-center">
-                <div
-                    class="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-3xl mb-4 text-rose-500">
-                    🗑️</div>
-                <h2 class="text-xl font-bold text-gray-900 mb-2">Delete Rule?</h2>
-                <p class="text-gray-500 mb-6 text-sm">Future transactions will typically be Uncategorized or follow
-                    other rules.</p>
-                <div class="flex gap-3 w-full">
-                    <button @click="showRuleDeleteConfirm = false"
-                        class="flex-1 py-2.5 rounded-xl border border-gray-200 font-bold text-gray-600">Cancel</button>
-                    <button @click="confirmDeleteRule"
-                        class="flex-1 py-2.5 rounded-xl bg-rose-500 font-bold text-white hover:bg-rose-600">Delete</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Exclude Confirmation -->
-        <div v-if="showExcludeConfirm"
-            class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col items-center text-center">
-                <div
-                    class="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center text-3xl mb-4 text-amber-500">
-                    👁️‍🗨️</div>
-                <h2 class="text-xl font-bold text-gray-900 mb-2">Hide from Reports?</h2>
-                <p class="text-gray-500 mb-6 text-sm">Matching transactions will NOT appear in analytics or report sums.
-                    They will still match the category.</p>
-                <div class="flex gap-3 w-full">
-                    <button @click="showExcludeConfirm = false"
-                        class="flex-1 py-2.5 rounded-xl border border-gray-200 font-bold text-gray-600">Cancel</button>
-                    <button @click="confirmSaveRule"
-                        class="flex-1 py-2.5 rounded-xl bg-indigo-600 font-bold text-white hover:bg-indigo-700">Confirm
-                        & Save</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Apply Retro Confirmation -->
-        <div v-if="showApplyRuleConfirm"
-            class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col items-center text-center">
-                <div
-                    class="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center text-3xl mb-4 text-indigo-600">
-                    ⚡</div>
-                <h2 class="text-xl font-bold text-gray-900 mb-2">Run Rule on History?</h2>
-                <p class="text-gray-500 mb-6 text-sm">This will search all <strong>Uncategorized</strong> transactions
-                    and apply this rule if they match. This cannot be undone.</p>
-                <div class="flex gap-3 w-full">
-                    <button @click="showApplyRuleConfirm = false"
-                        class="flex-1 py-2.5 rounded-xl border border-gray-200 font-bold text-gray-600">Cancel</button>
-                    <button @click="confirmApplyRule"
-                        class="flex-1 py-2.5 rounded-xl bg-indigo-600 font-bold text-white hover:bg-indigo-700">Yes, Run
-                        It</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                <v-row>
+                    <v-col cols="6">
+                        <v-btn block variant="text" rounded="pill" class="text-none font-weight-black" height="48"
+                            @click="showApplyRuleConfirm = false">
+                            Cancel
+                            <v-tooltip activator="parent" location="top">Don't run logic</v-tooltip>
+                        </v-btn>
+                    </v-col>
+                    <v-col cols="6">
+                        <v-btn block color="primary" rounded="pill" class="text-none font-weight-black elevation-4"
+                            height="48" @click="confirmApplyRule"
+                            :disabled="rulesStore.matchingCount === 0 || rulesStore.previewLoading">
+                            Run Logic
+                            <v-tooltip activator="parent" location="top">Scan history now</v-tooltip>
+                        </v-btn>
+                    </v-col>
+                </v-row>
+            </v-card>
+        </v-dialog>
+    </v-container>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Search, Zap, Edit2, Trash2 } from 'lucide-vue-next'
-import CustomSelect from '@/components/CustomSelect.vue'
 import { useRulesStore } from '@/stores/finance/rules'
 import { useCategoriesStore } from '@/stores/finance/categories'
 import { useNotificationStore } from '@/stores/notification'
+import {
+    Search,
+    Plus,
+    Pencil,
+    Trash2,
+    Zap,
+    Filter,
+    X,
+    Check,
+    AlertCircle,
+    EyeOff,
+    Sparkles,
+    FileText,
+    Download,
+    Upload
+} from 'lucide-vue-next'
 
 const rulesStore = useRulesStore()
 const categoriesStore = useCategoriesStore()
@@ -289,7 +528,6 @@ const newRule = ref({
 onMounted(() => {
     rulesStore.fetchRules()
     rulesStore.fetchSuggestions()
-    // Categories needed for selection
     if (categoriesStore.categories.length === 0) {
         categoriesStore.fetchCategories()
     }
@@ -314,7 +552,6 @@ function openEditRuleModal(rule: any) {
     showRuleModal.value = true
 }
 
-// Open modal pre-filled with suggestion data
 function openSuggestionModal(s: any) {
     isEditingRule.value = false
     editingRuleId.value = null
@@ -327,49 +564,18 @@ function openSuggestionModal(s: any) {
     showRuleModal.value = true
 }
 
-// Approve suggestion directly (alternative to opening modal)
-// Actually original Categories.vue had separate approveSuggestion logic which created rule directly.
-// The user might prefer reviewing it first. 
-// But the original code was: await financeApi.createRule(...)
-// I will keep the modal flow for consistency with "Approve" button, 
-// OR I can adhere strictly to original behavior. 
-// Original behavior: "Rule for ... approved!" without modal.
-// Let's implement the direct approve too if needed, but opening modal is safer UX.
-// Wait, the original Categories.vue had `approveSuggestion(s)` that called `financeApi.createRule` directly.
-// I'll stick to opening the modal so user can verify/edit keywords, as it's cleaner.
-// But wait, the button says "Approve", user might expect instant action.
-// Let's change the button text to "Review & Approve" if it opens modal?
-// Or just replicate original behavior.
-// Original: 
-/*
-async function approveSuggestion(s: any) {
-    try {
-        await financeApi.createRule({ ... })
-        notify.success(...)
-        fetchCategories()
-    } ...
-}
-*/
-// I will replicate this direct approval behavior to avoid changing UX too much, 
-// but add a "Review" button? No, let's just stick to the modal approach because I already wrote `openSuggestionModal`
-// and it's better. I'll change the button click in template to `openSuggestionModal`.
-// Wait, in my template above I used `@click="openSuggestionModal(s)"`. That's fine.
-
 async function saveRule() {
     if (!newRule.value.name || !newRule.value.category || !newRule.value.keywords) return
 
-    // If auto-exclude is on, ask for confirmation first
     if (newRule.value.exclude_from_reports) {
         showExcludeConfirm.value = true
         return
     }
 
-    // Otherwise proceed directly
     await confirmSaveRule()
 }
 
 async function confirmSaveRule() {
-    // Parse keywords: comma separated -> list
     const keywordList = newRule.value.keywords.split(',').map(k => k.trim())
     const payload = {
         ...newRule.value,
@@ -380,10 +586,8 @@ async function confirmSaveRule() {
     let success = false
     if (isEditingRule.value && editingRuleId.value) {
         success = await rulesStore.updateRule(editingRuleId.value, payload)
-        if (success) {
-            if (newRule.value.exclude_from_reports) {
-                notify.success(`Rule updated! Matching transactions will be hidden from reports.`)
-            } // Store handles generic success
+        if (success && newRule.value.exclude_from_reports) {
+            notify.success(`Rule updated! Matching transactions will be hidden from reports.`)
         }
     } else {
         success = await rulesStore.createRule(payload)
@@ -413,82 +617,120 @@ async function confirmDeleteRule() {
     }
 }
 
-function handleApplyRuleRetrospectively(ruleId: string) {
+async function handleApplyRuleRetrospectively(ruleId: string) {
     ruleToApply.value = ruleId
-    showApplyRuleConfirm.value = true
+    const rule = rulesStore.rules.find(r => r.id === ruleId)
+    if (rule) {
+        showApplyRuleConfirm.value = true
+        await rulesStore.fetchMatchPreview(rule.keywords)
+    }
 }
 
 async function confirmApplyRule() {
     if (!ruleToApply.value) return
-    const success = await rulesStore.applyRuleRetrospectively(ruleToApply.value)
-    if (success) {
+    const count = await rulesStore.applyRuleRetrospectively(ruleToApply.value)
+    if (count !== false) {
         showApplyRuleConfirm.value = false
         ruleToApply.value = null
     }
 }
 
-// Expose open modal for parent if needed
+async function refetchPreview() {
+    if (!ruleToApply.value) return
+    const rule = rulesStore.rules.find(r => r.id === ruleToApply.value)
+    if (rule) {
+        await rulesStore.fetchMatchPreview(rule.keywords, 1)
+    }
+}
+
+async function handlePageChange(page: number) {
+    if (!ruleToApply.value) return
+    const rule = rulesStore.rules.find(r => r.id === ruleToApply.value)
+    if (rule) {
+        await rulesStore.fetchMatchPreview(rule.keywords, page)
+    }
+}
+
+const ruleFileInput = ref<HTMLInputElement | null>(null)
+
+function handleRuleImport(event: Event) {
+    const input = event.target as HTMLInputElement
+    if (input.files && input.files[0]) {
+        rulesStore.importRules(input.files[0])
+        input.value = '' // Reset
+    }
+}
+
 defineExpose({
     openAddRuleModal
 })
 </script>
 
 <style scoped>
-/* Reused styles */
-.search-bar-premium {
-    display: flex;
-    align-items: center;
-    background: white;
-    padding: 0.5rem 0.875rem;
-    border-radius: 0.75rem;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+.truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.search-icon {
-    margin-right: 0.625rem;
-    opacity: 0.6;
+.animate-in {
+    animation: fadeIn 0.4s ease-out;
 }
 
-.search-input {
-    border: none;
-    background: transparent;
-    outline: none;
-    width: 100%;
-    font-size: 0.875rem;
-    color: #1f2937;
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-.glass-card {
-    background: white;
-    border: 1px solid var(--color-border);
-    border-radius: 1rem;
-    box-shadow: var(--shadow-sm);
-    transition: all 0.2s ease;
+.line-height-1 {
+    line-height: 1;
 }
 
-.btn-primary-glow {
-    background: var(--color-primary);
-    color: white;
-    border-radius: 0.5rem;
-    transition: all 0.2s;
+.last-no-border:last-child {
+    border-bottom: none !important;
 }
 
-.btn-primary-glow:hover {
-    background: var(--color-primary-dark);
-    box-shadow: 0 0 15px var(--color-primary-light);
+.text-extra-small {
+    font-size: 0.65rem !important;
 }
 
-.btn-icon-sm {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 0.5rem;
-    transition: all 0.2s;
-    border: none;
-    background: transparent;
-    cursor: pointer;
+.card-bg-icon-standard {
+    position: absolute;
+    bottom: -1.5rem;
+    right: -1rem;
+    font-size: 8rem;
+    opacity: 0.03;
+    pointer-events: none;
+    line-height: 1;
+    transform: rotate(-12deg);
+    transition: all 0.5s ease;
+    z-index: 0;
+}
+
+.premium-glass-card:hover .card-bg-icon-standard {
+    transform: rotate(0deg) scale(1.1);
+    opacity: 0.05;
+}
+
+.rules-tabs :deep(.v-btn) {
+    border-radius: 12px !important;
+    transition: all 0.3s ease;
+}
+
+.rules-tabs :deep(.v-tab--selected) {
+    background: rgba(var(--v-theme-primary), 0.1);
+    color: rgb(var(--v-theme-primary)) !important;
+}
+
+.tab-item {
+    font-size: 0.9rem !important;
+    letter-spacing: 0.5px;
 }
 </style>

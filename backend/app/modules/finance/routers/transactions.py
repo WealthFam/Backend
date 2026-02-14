@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -92,10 +92,11 @@ def smart_categorize_transaction(
 @router.post("/transactions/rules/{rule_id}/apply-retrospective")
 def apply_rule_retrospectively(
     rule_id: str,
+    override: bool = False,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return TransactionService.apply_rule_retrospectively(db, rule_id, str(current_user.tenant_id))
+    return TransactionService.apply_rule_retrospectively(db, rule_id, str(current_user.tenant_id), override=override)
 
 @router.post("/transactions/match-count")
 def get_match_count(
@@ -107,6 +108,19 @@ def get_match_count(
         db, payload.keywords, str(current_user.tenant_id), only_uncategorized=payload.only_uncategorized
     )
     return {"count": count}
+
+@router.post("/transactions/match-preview", response_model=List[schemas.TransactionRead])
+def get_match_preview(
+    payload: schemas.MatchCountRequest,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = 1,
+    limit: int = 5
+):
+    skip = (page - 1) * limit
+    return TransactionService.get_matching_preview(
+        db, payload.keywords, str(current_user.tenant_id), skip=skip, limit=limit, only_uncategorized=payload.only_uncategorized
+    )
 
 @router.post("/transactions/bulk-rename")
 def bulk_rename_transactions(

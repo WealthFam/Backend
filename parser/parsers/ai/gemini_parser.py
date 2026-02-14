@@ -1,5 +1,5 @@
 from google import genai
-from google.genai import types
+from google.genai import types, errors
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
 import json
@@ -139,6 +139,14 @@ class GeminiParser:
                 confidence=float(data.get("confidence", 0.9))
             )
 
+        except errors.ClientError as e:
+            # The SDK might use 'code' or 'status_code' depending on version
+            status_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
+            if status_code == 429:
+                print(f"AI Quota Exhausted (429): {e}")
+            else:
+                print(f"AI Client Error ({status_code}): {e}")
+            return None
         except Exception as e:
             print(f"AI Parse Error: {e}")
             return None
@@ -213,6 +221,13 @@ class GeminiParser:
             )
             data = json.loads(response.text.strip().replace("```json", "").replace("```", ""))
             return data
+        except errors.ClientError as e:
+            status_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
+            if status_code == 429:
+                msg = "Gemini API quota exceeded. Please check your plan or retry later."
+                print(f"AI Pattern Gen Quota Error: {msg}")
+                return {"error": "quota_exhausted", "message": msg}
+            return {"error": str(e)}
         except Exception as e:
             print(f"AI Pattern Gen Error: {e}")
             import traceback

@@ -22,15 +22,19 @@ class AccountService:
         return db_account
 
     @staticmethod
-    def get_accounts(db: Session, tenant_id: str, owner_id: Optional[str] = None, user_role: str = "ADULT") -> List[models.Account]:
+    def get_accounts(db: Session, tenant_id: str, owner_id: Optional[str] = None, user_role: str = "ADULT", include_unverified: bool = False) -> List[models.Account]:
+        if owner_id in [None, "null", "undefined", ""]:
+            owner_id = None
+        
         query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
+        
+        # Only filter out unverified accounts if not explicitly requested
+        if not include_unverified:
+            query = query.filter(models.Account.is_verified == True)
+        
         if owner_id:
             query = query.filter((models.Account.owner_id == owner_id) | (models.Account.owner_id == None))
         
-        # Role-based restriction: Kids can't see Investments or Credit Cards
-        if user_role == "CHILD":
-            query = query.filter(models.Account.type.notin_(["INVESTMENT", "CREDIT"]))
-            
         # Role-based restriction: Kids can't see Investments or Credit Cards
         if user_role == "CHILD":
             query = query.filter(models.Account.type.notin_(["INVESTMENT", "CREDIT"]))

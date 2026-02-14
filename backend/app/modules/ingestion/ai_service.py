@@ -4,6 +4,9 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from backend.app.modules.ingestion import models as ingestion_models
+from google.api_core.exceptions import ResourceExhausted, InvalidArgument, Unauthenticated
+from google.genai.errors import ClientError
+import traceback
 
 class AIProvider(ABC):
     @abstractmethod
@@ -63,18 +66,28 @@ class GeminiProvider:
         model_id = config.model_name or "gemini-1.5-flash"
         
         prompt = (
-            "You are a professional financial advisor. Analyze the following financial summary data for a household. "
-            "Return a JSON list of exactly 3 concise insights. Each insight must be a JSON object with: "
-            "'id' (unique string), 'type' (one of: danger, warning, success, info), 'title' (short heading), "
-            "'content' (1-2 sentences), 'icon' (a single emoji relevant to the topic). "
-            "Focus on budget utilization, unusual spending, and income health. "
-            f"\n\nFINANCIAL SUMMARY:\n{summary_data}"
+            "You are a sophisticated personal finance analyst. Analyze the provided budget and spending data, which includes:"
+             "- Current Month Breakdown (Categories & Overview)"
+             "- Last Month Overview (Use for trend comparison)"
+             "- Year-to-Date (YTD) Totals (Use for long-term health check)"
+            
+            "Identify the 5 most critical financial observations/patterns. Look for:"
+            "1. Month-over-Month Trends (e.g., 'Spending is down 15% vs last month')."
+            "2. Category Anomalies (e.g., 'Dining Out is 2x higher than usual')."
+            "3. Progress vs YTD (e.g., 'You have saved 20% of your income this year')."
+            "4. Budget Adherence (e.g., 'Excellent discipline in Groceries')."
+            "5. Forward-looking risks based on current pace."
+            
+            "Return a JSON list of exactly 5 insights. Each insight must be a JSON object with: "
+            "'id' (unique string), 'type' (one of: danger, warning, success, info), 'title' (short, punchy headline), "
+            "'content' (1 concise sentence explaining the observation and specific actionable advice), 'icon' (a relevant emoji). "
+            f"\n\nFINANCIAL DATA:\n{summary_data}"
         )
         
         try:
             response = client.models.generate_content(
                 model=model_id,
-                contents=f"{prompt}\n\nRESPONSE FORMAT: JSON Array."
+                contents=f"{prompt}\n\nRESPONSE FORMAT: JSON Array of objects."
             )
             if not response or not response.text:
                 return None
@@ -84,7 +97,46 @@ class GeminiProvider:
             end = text.rfind(']') + 1
             if start != -1 and end != 0:
                 return json.loads(text[start:end])
-        except Exception:
+        except ClientError as e:
+            if e.code == 429 or "RESOURCE_EXHAUSTED" in str(e):
+                return [{
+                    "id": "ai_quota",
+                    "type": "warning",
+                    "title": "AI Quota Exceeded",
+                    "content": "You've hit the usage limit for the free Gemini API. Insights will refresh later.",
+                    "icon": "hourglass_empty"
+                }]
+            elif e.code in [400, 401, 403]:
+                return [{
+                    "id": "ai_auth_error",
+                    "type": "danger",
+                    "title": "AI Configuration Error",
+                    "content": "Your API Key appears to be invalid or expired. Please check your settings.",
+                    "icon": "key_off",
+                    "action": "settings"
+                }]
+            print(f"AI ClientError: {e}")
+            pass
+        except ResourceExhausted:
+            return [{
+                "id": "ai_quota",
+                "type": "warning",
+                "title": "AI Quota Exceeded",
+                "content": "You've hit the usage limit for the free Gemini API. Insights will refresh later.",
+                "icon": "hourglass_empty"
+            }]
+        except (InvalidArgument, Unauthenticated):
+            return [{
+                "id": "ai_auth_error",
+                "type": "danger",
+                "title": "AI Configuration Error",
+                "content": "Your API Key appears to be invalid or expired. Please check your settings.",
+                "icon": "key_off",
+                "action": "settings"
+            }]
+        except Exception as e:
+            print(f"AI Generation Error: {e}")
+            traceback.print_exc()
             pass
         return None
 
@@ -207,7 +259,7 @@ class AIService:
             return "AI Provider not configured correctly."
 
         # Convert summary to string for the prompt
-        summary_str = json.dumps(summary_data, indent=2)
+        summary_str = json.dumps(summary_data, indent=2, default=str)
         
         return provider.generate_analysis(config, summary_str)
 
@@ -228,7 +280,7 @@ class AIService:
             return None
 
         # Convert summary to string for the prompt
-        summary_str = json.dumps(summary_data, indent=2)
+        summary_str = json.dumps(summary_data, indent=2, default=str)
         
         return provider.generate_structured_insights(config, summary_str)
 
@@ -249,7 +301,7 @@ class AIService:
             return "AI Provider not configured correctly."
 
         # Convert summary to string for the prompt
-        details_str = json.dumps(loan_data, indent=2)
+        details_str = json.dumps(loan_data, indent=2, default=str)
         
         return provider.generate_loan_advice(config, details_str)
 
@@ -270,6 +322,6 @@ class AIService:
             return "AI Provider not configured correctly."
 
         # Convert summary to string for the prompt
-        data_str = json.dumps(loans_data, indent=2)
+        data_str = json.dumps(loans_data, indent=2, default=str)
         
         return provider.generate_loans_overview_advice(config, data_str)

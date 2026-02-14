@@ -1,29 +1,39 @@
 <template>
-    <div class="heatmap-container glass-card">
-        <div class="heatmap-header">
-            <div class="header-info">
-                <h3 class="heatmap-title">Spending Heatmap 🗺️</h3>
-                <p class="heatmap-subtitle">Visualizing expenses by location</p>
-            </div>
-            <div class="header-actions">
-                <div class="intensity-legend">
-                    <span class="legend-label">Low</span>
-                    <div class="gradient-bar"></div>
-                    <span class="legend-label">High</span>
+    <v-card class="premium-glass-card heatmap-card h-100 overflow-hidden">
+        <div class="pa-4 d-flex align-center justify-space-between">
+            <div>
+                <div class="d-flex align-center gap-2 mb-1">
+                    <v-icon color="primary" size="20">mdi-map-marker-radius</v-icon>
+                    <h3 class="text-h6 font-weight-black">Spending Heatmap</h3>
                 </div>
+                <p class="text-caption font-weight-bold opacity-60">Visualizing expenses by location</p>
+            </div>
+
+            <div class="intensity-legend-premium pa-2 px-4 rounded-pill d-flex align-center gap-3">
+                <span class="text-10 font-weight-black text-uppercase opacity-50">Low</span>
+                <div class="gradient-bar-premium"></div>
+                <span class="text-10 font-weight-black text-uppercase opacity-50">High</span>
+                <v-chip v-if="hasLocationData" size="x-small" color="primary" variant="tonal"
+                    class="ml-2 font-weight-black">
+                    {{ data.length }} Points
+                </v-chip>
             </div>
         </div>
 
-        <div id="map" class="heatmap-canvas" ref="mapContainer"></div>
+        <div class="map-wrapper border-t border-opacity-5">
+            <div id="map" class="heatmap-canvas" ref="mapContainer"></div>
 
-        <div v-if="!hasLocationData" class="no-data-overlay">
-            <div class="empty-state">
-                <div class="empty-icon">📍</div>
-                <h3>No Geolocation Data</h3>
-                <p>Transactions with location coordinates will appear here.</p>
-            </div>
+            <v-fade-transition>
+                <div v-if="!hasLocationData" class="no-data-overlay d-flex align-center justify-center">
+                    <div class="text-center">
+                        <div class="text-h1 mb-4">📍</div>
+                        <h3 class="text-h6 font-weight-bold mb-1">No Geolocation Data</h3>
+                        <p class="text-body-2 opacity-60">Transactions with location coordinates will appear here.</p>
+                    </div>
+                </div>
+            </v-fade-transition>
         </div>
-    </div>
+    </v-card>
 </template>
 
 <script setup lang="ts">
@@ -130,64 +140,40 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.heatmap-container {
+.heatmap-card {
+    min-height: 600px;
     display: flex;
     flex-direction: column;
-    height: 600px;
+}
+
+.premium-glass-card {
+    background: rgba(var(--v-theme-surface), 0.7) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(var(--v-border-color), 0.1) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07) !important;
+}
+
+.map-wrapper {
     position: relative;
-    overflow: hidden;
-    background: #111827;
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
-.heatmap-header {
-    padding: 1.25rem 1.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    z-index: 1000;
-    background: rgba(17, 24, 39, 0.8);
-    backdrop-filter: blur(8px);
-}
-
-.heatmap-title {
-    font-size: 1.125rem;
-    font-weight: 700;
-    color: white;
-    margin: 0;
-}
-
-.heatmap-subtitle {
-    font-size: 0.8125rem;
-    color: #94a3b8;
-    margin: 0.25rem 0 0 0;
+    flex: 1;
+    min-height: 500px;
+    background: #0f172a;
+    /* Fallback for map loading */
 }
 
 .heatmap-canvas {
-    flex: 1;
+    height: 100%;
     width: 100%;
     z-index: 1;
 }
 
-.intensity-legend {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    background: rgba(255, 255, 255, 0.05);
-    padding: 0.5rem 1rem;
-    border-radius: 2rem;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+.intensity-legend-premium {
+    background: rgba(var(--v-theme-on-surface), 0.05);
+    border: 1px solid rgba(var(--v-border-color), 0.1);
 }
 
-.legend-label {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #94a3b8;
-    text-transform: uppercase;
-}
-
-.gradient-bar {
+.gradient-bar-premium {
     width: 100px;
     height: 6px;
     border-radius: 3px;
@@ -197,47 +183,65 @@ onUnmounted(() => {
 .no-data-overlay {
     position: absolute;
     inset: 0;
-    top: 76px;
-    /* Below header */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(17, 24, 39, 0.6);
-    backdrop-filter: blur(4px);
+    background: rgba(var(--v-theme-surface), 0.6);
+    backdrop-filter: blur(8px);
     z-index: 10;
 }
 
-.empty-state {
-    text-align: center;
-    color: white;
+.text-10 {
+    font-size: 10px;
 }
 
-.empty-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.5));
+.opacity-60 {
+    opacity: 0.6;
 }
 
-.empty-state h3 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.25rem;
+.opacity-50 {
+    opacity: 0.5;
 }
 
-.empty-state p {
-    color: #94a3b8;
-    max-width: 250px;
+.gap-2 {
+    gap: 8px;
+}
+
+.gap-3 {
+    gap: 12px;
 }
 
 /* Leaflet Overrides */
+:deep(.leaflet-container) {
+    background: #0f172a !important;
+}
+
 :deep(.leaflet-popup-content-wrapper) {
-    background: rgba(30, 41, 59, 0.9);
-    color: white;
+    background: rgba(var(--v-theme-surface), 0.9) !important;
+    color: rgb(var(--v-theme-on-surface)) !important;
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 0.75rem;
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 :deep(.leaflet-popup-tip) {
-    background: rgba(30, 41, 59, 0.9);
+    background: rgba(var(--v-theme-surface), 0.9) !important;
+}
+
+:deep(.leaflet-control-zoom) {
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+:deep(.leaflet-control-zoom-in),
+:deep(.leaflet-control-zoom-out) {
+    background: rgba(var(--v-theme-surface), 0.8) !important;
+    color: rgb(var(--v-theme-on-surface)) !important;
+    border: 1px solid rgba(var(--v-border-color), 0.1) !important;
+    backdrop-filter: blur(4px);
+}
+
+:deep(.leaflet-control-zoom-in:hover),
+:deep(.leaflet-control-zoom-out:hover) {
+    background: rgb(var(--v-theme-primary)) !important;
+    color: white !important;
 }
 </style>

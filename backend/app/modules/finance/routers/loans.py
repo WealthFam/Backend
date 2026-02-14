@@ -39,13 +39,14 @@ def record_repayment(
 
 @router.get("/loans", response_model=List[schemas.LoanRead])
 def get_loans(
+    user_id: str | None = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     List all active loans.
     """
-    return service.get_loans(db, str(current_user.tenant_id))
+    return service.get_loans(db, str(current_user.tenant_id), user_id)
 
 @router.get("/loans/{loan_id}", response_model=schemas.LoanDetail)
 def get_loan_details(

@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 import uuid
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 import logging
 from backend.app.modules.finance import models, schemas
 
@@ -126,6 +127,13 @@ class TransactionService:
         sort_by: str = "date",
         sort_order: str = "desc"
     ) -> List[models.Transaction]:
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+        
+        # import logging
+        # logger = logging.getLogger(__name__)
+        # logger.info(f"get_transactions: tenant_id={tenant_id}, user_id={user_id}, account_id={account_id}")
+
         query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
         
         if user_role == "CHILD":
@@ -158,7 +166,7 @@ class TransactionService:
         if user_id:
             # Filter by account ownership: show user's accounts OR shared accounts
             from sqlalchemy import or_
-            query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+            query = query.outerjoin(models.Account, models.Transaction.account_id == models.Account.id)\
                          .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
             
         sort_column = models.Transaction.date
@@ -188,9 +196,12 @@ class TransactionService:
         search: Optional[str] = None,
         category: Optional[str] = None,
         user_role: str = "ADULT",
+        user_id: Optional[str] = None,
         exclude_from_reports: bool = False,
         exclude_transfers: bool = False
     ) -> int:
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
 
         if user_role == "CHILD":
@@ -199,6 +210,13 @@ class TransactionService:
 
         if account_id:
             query = query.filter(models.Transaction.account_id == account_id)
+        
+        if user_id:
+            # Filter by account ownership: show user's accounts OR shared accounts
+            from sqlalchemy import or_
+            query = query.outerjoin(models.Account, models.Transaction.account_id == models.Account.id)\
+                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+
         if start_date:
             query = query.filter(models.Transaction.date >= start_date)
         if end_date:
@@ -355,11 +373,45 @@ class TransactionService:
 
     # --- Triage Functions ---
     @staticmethod
-    def get_pending_transactions(db: Session, tenant_id: str, skip: int = 0, limit: int = 50, sort_by: str = "date", sort_order: str = "desc"):
+    def get_pending_transactions(
+        db: Session, 
+        tenant_id: str, 
+        skip: int = 0, 
+        limit: int = 50, 
+        sort_by: str = "date", 
+        sort_order: str = "desc",
+        search: Optional[str] = None,
+        source: Optional[str] = None,
+        user_id: Optional[str] = None
+    ):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
         query = db.query(ingestion_models.PendingTransaction).filter(
             ingestion_models.PendingTransaction.tenant_id == tenant_id
         )
-        total = query.count()
+
+        if user_id:
+            # Join with Account to filter by owner
+            from backend.app.modules.finance import models as finance_models
+            from sqlalchemy import or_
+            query = query.outerjoin(finance_models.Account, ingestion_models.PendingTransaction.account_id == finance_models.Account.id)\
+                         .filter(or_(finance_models.Account.owner_id == user_id, finance_models.Account.owner_id == None))
+        
+        # Filter by source (SMS, EMAIL, etc.)
+        if source:
+            query = query.filter(ingestion_models.PendingTransaction.source == source)
+        
+        # Filter by search query (description, recipient, amount, ID)
+        if search:
+            from sqlalchemy import or_, cast, String
+            search_pattern = f"%{search}%"
+            query = query.filter(or_(
+                ingestion_models.PendingTransaction.description.ilike(search_pattern),
+                ingestion_models.PendingTransaction.recipient.ilike(search_pattern),
+                ingestion_models.PendingTransaction.id.ilike(search_pattern),
+                cast(ingestion_models.PendingTransaction.amount, String).like(search_pattern)
+            ))
+        
         total = query.count()
         
         sort_column = ingestion_models.PendingTransaction.created_at
@@ -367,6 +419,8 @@ class TransactionService:
             sort_column = ingestion_models.PendingTransaction.amount
         elif sort_by == "description":
             sort_column = ingestion_models.PendingTransaction.description
+        elif sort_by == "date":
+            sort_column = ingestion_models.PendingTransaction.date
         
         if sort_order == "asc":
             query = query.order_by(sort_column.asc())
@@ -593,7 +647,7 @@ class TransactionService:
         }
 
     @staticmethod
-    def apply_rule_retrospectively(db: Session, rule_id: str, tenant_id: str) -> dict:
+    def apply_rule_retrospectively(db: Session, rule_id: str, tenant_id: str, override: bool = False) -> dict:
         rule = db.query(models.CategoryRule).filter(
             models.CategoryRule.id == rule_id,
             models.CategoryRule.tenant_id == tenant_id
@@ -606,12 +660,14 @@ class TransactionService:
         if not keywords:
             return {"success": True, "affected": 0}
             
-        # Find transactions that match keywords AND are uncategorized
-        from sqlalchemy import or_
+        # Find transactions that match keywords
         query = db.query(models.Transaction).filter(
-            models.Transaction.tenant_id == tenant_id,
-            (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)
+            models.Transaction.tenant_id == tenant_id
         )
+
+        # If not overriding, only search for uncategorized
+        if not override:
+            query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
         
         # Build OR clause for keywords
         filters = []
@@ -641,7 +697,6 @@ class TransactionService:
     @staticmethod
     def get_matching_count(db: Session, keywords: List[str], tenant_id: str, only_uncategorized: bool = True) -> int:
         if not keywords: return 0
-        from sqlalchemy import or_
         query = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id
         )
@@ -655,6 +710,24 @@ class TransactionService:
             filters.append(models.Transaction.recipient.ilike(pattern))
         query = query.filter(or_(*filters))
         return query.count()
+
+    @staticmethod
+    def get_matching_preview(db: Session, keywords: List[str], tenant_id: str, skip: int = 0, limit: int = 5, only_uncategorized: bool = True) -> List[models.Transaction]:
+        if not keywords: return []
+        query = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id
+        )
+        if only_uncategorized:
+            query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
+            
+        filters = []
+        for k in keywords:
+            pattern = f"%{k}%"
+            filters.append(models.Transaction.description.ilike(pattern))
+            filters.append(models.Transaction.recipient.ilike(pattern))
+        
+        query = query.filter(or_(*filters)).order_by(models.Transaction.date.desc())
+        return query.offset(skip).limit(limit).all()
 
     @staticmethod
     def bulk_rename(db: Session, old_name: str, new_name: str, tenant_id: str, sync_to_parser: bool = False) -> int:

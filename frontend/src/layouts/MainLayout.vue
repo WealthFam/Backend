@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
+import { useTheme } from 'vuetify'
 import {
     LayoutDashboard,
     Wallet,
@@ -11,662 +12,526 @@ import {
     Settings,
     Bell,
     LogOut,
-    ChevronLeft,
-    ChevronRight,
-    Landmark,
-    Layers,
+    User as UserIcon,
     Target,
-    Tags
+    Layers,
+    Landmark,
+    Tags,
+    Menu,
+    Search,
+    Moon,
+    Sun,
+    Users,
+    ChevronDown
 } from 'lucide-vue-next'
 import ToastContainer from '@/components/ToastContainer.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+const theme = useTheme()
 
-// Version info from Vite defines
+// Version info
 const appVersion = __APP_VERSION__
 const appBuild = __APP_BUILD__
 
-// Sidebar State
-const isSidebarCollapsed = ref(true)
-function toggleSidebar() { isSidebarCollapsed.value = !isSidebarCollapsed.value }
+// Navigation State
+const drawer = ref(true)
+const rail = ref(true)
+
+// Theme Toggle
+function toggleTheme() {
+    theme.global.name.value = theme.global.current.value.dark ? 'wealthFamTheme' : 'wealthFamDark'
+}
 
 // User Menu State
-const showUserMenu = ref(false)
 const selectedAvatar = ref(localStorage.getItem('user_avatar') || 'default')
-const userMenuContainer = ref<HTMLElement | null>(null)
 
-const AVATARS = {
+const AVATARS: Record<string, string> = {
     'default': '👤',
     'male': '👨‍💼',
     'female': '👩‍💼',
     'kid': '🧒'
 }
 
-function toggleUserMenu() { showUserMenu.value = !showUserMenu.value }
+const navItems = [
+    { title: 'Dashboard', icon: LayoutDashboard, to: '/' },
+    { title: 'Transactions', icon: Wallet, to: '/transactions' },
+    { title: 'Budgets', icon: PieChart, to: '/budgets' },
+    { title: 'Categories', icon: Tags, to: '/categories' },
+    { title: 'Insights', icon: Sparkles, to: '/insights' },
+    { title: 'Mutual Funds', icon: Coins, to: '/mutual-funds' },
+    { title: 'Financial Goals', icon: Target, to: '/investment-goals' },
+    { title: 'Expense Groups', icon: Layers, to: '/expense-groups' },
+    { title: 'Loans', icon: Landmark, to: '/loans' },
+    { title: 'Settings', icon: Settings, to: '/settings' },
+]
 
 function logout() {
     auth.logout()
     router.push('/login')
 }
 
-// Close menu when clicking outside
-function handleClickOutside(event: MouseEvent) {
-    if (userMenuContainer.value && !userMenuContainer.value.contains(event.target as Node)) {
-        showUserMenu.value = false
-    }
-}
-
-onMounted(() => {
-    document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-    document.removeEventListener('click', handleClickOutside)
-})
+// Watch for mobile screen size to handle drawer properly? 
+// Vuetify handles mobile with temporary/permanent props.
 </script>
 
 <template>
-    <div class="app-layout">
-        <!-- Global Top Header -->
-        <header class="global-header glass">
-            <div class="header-left">
-                <router-link to="/" class="brand">
-                    <img src="/logo.png" alt="WealthFam Logo" class="logo-image" />
-                    <span class="brand-text">WealthFam</span>
-                    <span class="brand-tagline">Refine Your Finances</span>
-                </router-link>
-            </div>
-
-            <div class="header-center">
-                <div class="search-bar">
-                    <input type="text" placeholder="Search transactions..." />
-                </div>
-            </div>
-
-            <div class="header-right">
-                <div class="notification-trigger">
-                    <Bell :size="20" class="text-muted" />
-                </div>
-
-                <div class="user-menu-container" ref="userMenuContainer">
-                    <div class="user-menu-trigger" @click.stop="toggleUserMenu">
-                        <div class="user-info-pill" v-if="auth.user">
-                            <span class="user-greeting">Hi,</span>
-                            <span class="user-name-text">{{ auth.user.full_name || auth.user.email?.split('@')[0]
-                            }}</span>
-                        </div>
-                        <div class="user-avatar">
-                            {{ AVATARS[selectedAvatar as keyof typeof AVATARS] }}
-                        </div>
-                    </div>
-
-                    <!-- Dropdown Menu -->
-                    <transition name="fade">
-                        <div v-if="showUserMenu" class="dropdown-menu">
-                            <div class="dropdown-header">
-                                <div class="user-name">{{ auth.user?.full_name || auth.user?.email || 'User' }}</div>
-                                <div class="user-role" style="text-transform: capitalize;">{{ auth.user?.role ||
-                                    'Member' }}</div>
-                            </div>
-                            <div class="dropdown-divider"></div>
-                            <button class="dropdown-item danger" @click="logout">
-                                <LogOut :size="16" /> Logout
-                            </button>
-                        </div>
-                    </transition>
-                </div>
-            </div>
-        </header>
-
-        <!-- Main Body -->
-        <div class="app-body">
-            <aside class="sidebar" :class="{ 'collapsed': isSidebarCollapsed }">
-                <div class="sidebar-toggle-area">
-                    <button class="collapse-btn" @click="toggleSidebar">
-                        <component :is="isSidebarCollapsed ? ChevronRight : ChevronLeft" :size="20" />
-                    </button>
-                </div>
-
-                <nav class="sidebar-nav">
-                    <router-link to="/" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <LayoutDashboard :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Dashboard</span>
-                    </router-link>
-                    <router-link to="/transactions" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <Wallet :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Transactions</span>
-                    </router-link>
-                    <router-link to="/budgets" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <PieChart :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Budgets</span>
-                    </router-link>
-                    <router-link to="/categories" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <Tags :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Categories</span>
-                    </router-link>
-                    <router-link to="/insights" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <Sparkles :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Insights</span>
-                    </router-link>
-                    <router-link to="/mutual-funds" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <Coins :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Mutual Funds</span>
-                    </router-link>
-                    <router-link to="/investment-goals" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <Target :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Financial Goals</span>
-                    </router-link>
-                    <router-link to="/expense-groups" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <Layers :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Expense Groups</span>
-                    </router-link>
-                    <router-link to="/loans" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <Landmark :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Loans</span>
-                    </router-link>
-                    <router-link to="/settings" class="nav-item" active-class="active">
-                        <span class="icon">
-                            <Settings :size="20" />
-                        </span>
-                        <span class="label" v-if="!isSidebarCollapsed">Settings</span>
-                    </router-link>
-                </nav>
-
-                <!-- Version Info -->
-                <div class="sidebar-footer">
-                    <div class="version-tag" :title="`Build: v${appVersion}-b${appBuild}`">
-                        <template v-if="!isSidebarCollapsed">
-                            v{{ appVersion }}-b{{ appBuild }}
-                        </template>
-                        <template v-else>
-                            v{{ appVersion.split('.')[0] }}
-                        </template>
-                    </div>
-                </div>
-            </aside>
-
-            <main class="main-content">
-                <div class="page-container">
-                    <slot></slot>
-                </div>
-            </main>
+    <v-app>
+        <!-- Background Animated Blobs -->
+        <div class="layout-blobs">
+            <div class="blob b1"></div>
+            <div class="blob b2"></div>
+            <div class="blob b3"></div>
         </div>
 
+        <!-- Header / App Bar -->
+        <v-app-bar flat height="72" class="premium-header" border="b">
+            <template v-slot:prepend>
+                <v-btn icon variant="text" color="slate-600" @click.stop="rail = !rail" class="d-none d-lg-flex">
+                    <Menu :size="20" />
+                </v-btn>
+                <v-app-bar-nav-icon class="d-lg-none" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
+            </template>
+
+            <router-link to="/" class="brand-link">
+                <v-img src="/logo.png" width="36" height="36" class="mr-3" />
+                <div class="brand-details d-none d-sm-block">
+                    <span class="brand-name">WealthFam</span>
+                    <span class="brand-tag">Premium Finance</span>
+                </div>
+            </router-link>
+
+            <v-spacer></v-spacer>
+
+            <!-- Global Search -->
+            <div class="search-container d-none d-md-flex flex-grow-1 justify-center">
+                <v-text-field placeholder="Type to search..." variant="solo" flat density="compact" hide-details
+                    class="global-search" rounded="pill">
+                    <template v-slot:prepend-inner>
+                        <Search :size="18" class="text-slate-400 mr-2" />
+                    </template>
+                </v-text-field>
+            </div>
+
+            <v-spacer class="d-none d-md-flex"></v-spacer>
+
+            <v-spacer class="d-none d-md-flex"></v-spacer>
+
+            <!-- Date Chip (Desktop) -->
+            <div class="date-chip-v2 d-none d-md-flex mr-4">
+                <div class="pulse-dot"></div>
+                {{ new Date().toLocaleDateString(undefined, {
+                    weekday: 'short', day: 'numeric', month: 'short'
+                }) }}
+            </div>
+
+            <!-- Global Member Selection -->
+            <v-menu offset="12" transition="scale-transition" v-if="auth.user && auth.user.role !== 'CHILD'">
+                <template v-slot:activator="{ props }">
+                    <v-btn v-bind="props" variant="elevated" color="surface" class="text-none font-weight-bold mr-4"
+                        height="40" rounded="pill" elevation="1">
+                        <template v-slot:prepend>
+                            <v-avatar v-if="auth.selectedMemberId" size="24" color="primary-lighten-5" class="mr-1">
+                                <span class="text-caption font-weight-black text-primary"
+                                    style="font-size: 0.6rem !important;">{{
+                                        auth.selectedMemberName.charAt(0).toUpperCase() }}</span>
+                            </v-avatar>
+                            <Users v-else :size="16" class="text-primary mr-2" />
+                        </template>
+                        {{ auth.selectedMemberName }}
+                        <ChevronDown :size="14" class="ml-2 opacity-50" />
+                    </v-btn>
+                </template>
+                <v-card width="260" rounded="xl" elevation="10" border>
+                    <v-list density="compact" nav>
+                        <v-list-item @click="auth.selectMember(null)" :active="auth.selectedMemberId === null"
+                            color="primary">
+                            <template v-slot:prepend>
+                                <Users :size="18" class="mr-3" />
+                            </template>
+                            <v-list-item-title class="font-weight-bold">All Members</v-list-item-title>
+                        </v-list-item>
+                        <v-divider class="my-2"></v-divider>
+                        <v-list-item v-for="user in auth.familyMembers" :key="user.id"
+                            @click="auth.selectMember(user.id)" :active="auth.selectedMemberId === user.id"
+                            color="primary">
+                            <template v-slot:prepend>
+                                <v-avatar size="28" color="primary-lighten-5" class="mr-3">
+                                    <span class="text-caption font-weight-black text-primary">{{ (user.full_name ||
+                                        user.email).charAt(0).toUpperCase() }}</span>
+                                </v-avatar>
+                            </template>
+                            <v-list-item-title class="font-weight-bold">{{ user.full_name ||
+                                user.email.split('@')[0]
+                                }}</v-list-item-title>
+                        </v-list-item>
+                    </v-list>
+                </v-card>
+            </v-menu>
+
+            <!-- Theme Toggle -->
+            <v-btn icon @click="toggleTheme" color="slate-600" class="mr-2">
+                <component :is="theme.global.current.value.dark ? Sun : Moon" :size="20" />
+            </v-btn>
+
+            <!-- Utility Actions -->
+            <v-btn icon color="slate-600" class="mr-2">
+                <Bell :size="20" />
+            </v-btn>
+
+            <!-- User Profile Menu -->
+            <v-menu offset="12" transition="scale-transition" v-if="auth.user">
+                <template v-slot:activator="{ props }">
+                    <v-btn v-bind="props" variant="flat" class="profile-btn" rounded="pill" height="44">
+                        <v-avatar size="32" class="mr-2 avatar-glow">
+                            <span class="avatar-emoji">{{ AVATARS[selectedAvatar] }}</span>
+                        </v-avatar>
+                        <span class="user-display-name d-none d-sm-inline">{{ auth.user.email.split('@')[0] }}</span>
+                    </v-btn>
+                </template>
+
+                <v-card width="280" class="premium-popup">
+                    <v-list class="pa-4">
+                        <v-list-item class="mb-4 pa-0">
+                            <template v-slot:prepend>
+                                <v-avatar size="56" class="mr-4 avatar-glow">
+                                    <span class="text-h5">{{ AVATARS[selectedAvatar] }}</span>
+                                </v-avatar>
+                            </template>
+                            <v-list-item-title class="text-h6 font-weight-bold">{{ auth.user.email.split('@')[0]
+                                }}</v-list-item-title>
+                            <v-list-item-subtitle class="text-primary font-weight-medium">Family
+                                Admin</v-list-item-subtitle>
+                        </v-list-item>
+
+                        <v-divider class="mb-4"></v-divider>
+
+                        <v-list-item link to="/settings" rounded="lg" class="mb-1">
+                            <template v-slot:prepend>
+                                <UserIcon :size="18" class="mr-4 text-slate-500" />
+                            </template>
+                            <v-list-item-title>Profile Settings</v-list-item-title>
+                        </v-list-item>
+
+                        <v-list-item link @click="logout" rounded="lg" class="text-red-500">
+                            <template v-slot:prepend>
+                                <LogOut :size="18" class="mr-4 text-red-500" />
+                            </template>
+                            <v-list-item-title class="font-weight-bold">Sign Out</v-list-item-title>
+                        </v-list-item>
+                    </v-list>
+                </v-card>
+            </v-menu>
+        </v-app-bar>
+
+        <!-- Side Navigation -->
+        <v-navigation-drawer v-model="drawer" :rail="rail" permanent class="premium-sidebar" width="280" border="0">
+            <v-list nav class="mt-4" :class="rail ? 'px-2' : 'px-4'">
+                <v-list-item v-for="item in navItems" :key="item.title" :to="item.to" :active="route.path === item.to"
+                    rounded="xl" class="nav-list-item mb-2" color="primary" link>
+                    <template v-slot:prepend>
+                        <div class="nav-icon-wrapper" :class="{ 'mr-4': !rail }">
+                            <component :is="item.icon" :size="22" class="nav-icon"
+                                :class="{ 'active-icon': route.path === item.to }" />
+                        </div>
+                    </template>
+                    <v-list-item-title class="nav-title" v-if="!rail">{{ item.title }}</v-list-item-title>
+                </v-list-item>
+            </v-list>
+
+            <template v-slot:append>
+                <div class="sidebar-footer border-t pa-6">
+                    <div v-if="!rail" class="footer-content">
+                        <span class="os-label">WealthFam Core OS</span>
+                        <div class="build-info">v{{ appVersion }}-{{ appBuild }}</div>
+                    </div>
+                    <div v-else class="text-center">
+                        <span class="text-primary font-weight-bold">v{{ appVersion.split('.')[0] }}</span>
+                    </div>
+                </div>
+            </template>
+        </v-navigation-drawer>
+
+        <!-- Content -->
+        <v-main class="layout-main">
+            <div class="page-shell">
+                <slot></slot>
+            </div>
+        </v-main>
+
         <ToastContainer />
-    </div>
+    </v-app>
 </template>
 
 <style scoped>
-.app-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: var(--color-background);
-}
-
-/* Global Header */
-.global-header {
-    height: 52px;
-    background: white;
-    border-bottom: 1px solid var(--color-border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 var(--spacing-lg);
-    z-index: 100;
-    box-shadow: var(--shadow-sm);
-}
-
-.glass {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-}
-
-.header-left {
-    display: flex;
-    align-items: center;
-}
-
-.brand {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    text-decoration: none;
-    cursor: pointer;
-}
-
-.brand-text {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--color-primary);
-    letter-spacing: -0.02em;
-}
-
-.brand-tagline {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-    font-weight: 500;
-    margin-left: auto;
-    align-self: center;
-    display: none;
-}
-
-.logo-image {
-    height: 32px;
-    width: auto;
-    object-fit: contain;
-}
-
-@media (min-width: 1024px) {
-    .brand-tagline {
-        display: block;
-    }
-}
-
-.header-center {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-}
-
-.search-bar input {
-    background: var(--color-background);
-    border: 1px solid var(--color-border);
-    padding: 0.5rem 1rem;
-    border-radius: 2rem;
-    width: 300px;
-    transition: all 0.2s;
-}
-
-.search-bar input:focus {
-    width: 400px;
-    border-color: var(--color-primary);
-    outline: none;
-}
-
-.header-right {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-lg);
-}
-
-.notification-trigger {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.notification-trigger:hover {
-    background: var(--color-background);
-}
-
-.user-menu-container {
-    position: relative;
-}
-
-.user-menu-trigger {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    cursor: pointer;
-    padding: 0.25rem 0.5rem 0.25rem 0.75rem;
-    border-radius: 2rem;
-    transition: all 0.2s;
-    border: 1px solid transparent;
-}
-
-.user-menu-trigger:hover {
-    background: var(--color-background);
-    border-color: var(--color-border);
-}
-
-.user-info-pill {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    line-height: 1.1;
-    text-align: right;
-}
-
-.user-greeting {
-    font-size: 0.7rem;
-    color: var(--color-text-muted);
-    font-weight: 500;
-}
-
-.user-name-text {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--color-text-main);
-}
-
-.notification-bell {
-    font-size: 1.2rem;
-}
-
-.user-avatar {
-    width: 32px;
-    height: 32px;
-    background: var(--color-primary-light);
-    color: var(--color-primary-dark);
-    font-size: 1rem;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid white;
-    box-shadow: 0 0 0 1px var(--color-border);
-}
-
-/* Dropdown Menu */
-.dropdown-menu {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 0.5rem;
-    background: white;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    box-shadow: var(--shadow-lg);
-    width: 200px;
-    padding: 0.5rem;
-    z-index: 200;
-}
-
-.dropdown-header {
-    padding: 0.5rem 1rem;
-}
-
-.user-name {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--color-text-main);
-}
-
-.user-role {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-}
-
-.dropdown-divider {
-    height: 1px;
-    background: var(--color-border);
-    margin: 0.5rem 0;
-}
-
-.dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.5rem 1rem;
-    text-align: left;
-    background: none;
-    border: none;
-    font-size: 0.9rem;
-    color: var(--color-text-main);
-    cursor: pointer;
-    border-radius: 0.25rem;
-}
-
-.dropdown-item:hover {
-    background: var(--color-background);
-}
-
-.dropdown-item.danger {
-    color: var(--color-danger);
-}
-
-.dropdown-item.danger:hover {
-    background: #fef2f2;
-}
-
-/* Transitions */
-.fade-enter-active,
-.fade-leave-active {
-    transition: opacity 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-    opacity: 0;
-}
-
-/* Avatar Modal */
-.modal-overlay {
+.layout-blobs {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 200;
-    backdrop-filter: blur(2px);
-}
-
-.modal {
-    background: white;
-    padding: 2rem;
-    border-radius: 1rem;
-    box-shadow: var(--shadow-lg);
-    border: 1px solid var(--color-border);
-}
-
-.avatar-modal {
-    text-align: center;
-    max-width: 500px;
-    width: 90%;
-}
-
-.avatar-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-    margin-top: 1.5rem;
-}
-
-.avatar-option {
-    background: var(--color-background);
-    border: 2px solid transparent;
-    padding: 1.5rem;
-    border-radius: 0.75rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-size: 2.5rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-}
-
-.avatar-option span {
-    display: block;
-    font-size: 0.9rem;
-    margin-top: 0.5rem;
-    color: var(--color-text-muted);
-    font-weight: 500;
-}
-
-.avatar-option:hover {
-    border-color: var(--color-primary-light);
-    background: white;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-.avatar-option.selected {
-    border-color: var(--color-primary);
-    background: var(--color-primary-light);
-    color: var(--color-primary-dark);
-}
-
-.avatar-option.selected span {
-    color: var(--color-primary-dark);
-}
-
-/* App Body & Sidebar (Existing) */
-.app-body {
-    display: flex;
-    flex: 1;
+    z-index: 0;
+    background: rgb(var(--v-theme-background));
+    pointer-events: none;
     overflow: hidden;
 }
 
-.sidebar {
-    background: white;
-    border-right: 1px solid var(--color-border);
-    width: var(--sidebar-width);
-    transition: width var(--transition-normal);
-    display: flex;
-    flex-direction: column;
+.blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(100px);
+    opacity: 0.12;
 }
 
-.sidebar.collapsed {
-    width: var(--sidebar-collapsed-width);
+.b1 {
+    width: 800px;
+    height: 800px;
+    background: rgb(var(--v-theme-primary));
+    top: -200px;
+    left: -100px;
+    animation: orbit 30s infinite linear;
 }
 
-.sidebar-toggle-area {
-    padding: var(--spacing-sm);
-    display: flex;
-    justify-content: flex-end;
-    border-bottom: 1px solid var(--color-border);
+.b2 {
+    width: 700px;
+    height: 700px;
+    background: rgb(var(--v-theme-secondary));
+    bottom: -200px;
+    right: 0;
+    animation: orbit 25s infinite linear reverse;
 }
 
-.collapse-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--color-text-muted);
-    font-size: 1.2rem;
-    padding: 0.25rem 0.5rem;
+.b3 {
+    width: 500px;
+    height: 500px;
+    background: rgb(var(--v-theme-accent));
+    top: 30%;
+    right: 20%;
+    animation: orbit 20s infinite linear;
 }
 
-.collapse-btn:hover {
-    color: var(--color-primary);
+@keyframes orbit {
+    from {
+        transform: rotate(0deg) translateX(100px) rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg) translateX(100px) rotate(-360deg);
+    }
 }
 
-.sidebar-nav {
-    flex: 1;
-    padding: 1.5rem 0.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+.premium-header {
+    background: rgb(var(--v-theme-surface)) !important;
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    z-index: 1000 !important;
+    /* Removed fixed 0.95 opacity to let theme surface shine, or adjust per theme if needed */
 }
 
-.nav-item {
+.brand-link {
     display: flex;
     align-items: center;
-    padding: 0.75rem 1rem;
-    color: var(--color-text-muted);
     text-decoration: none;
-    border-radius: 0px;
-    white-space: nowrap;
-    overflow: hidden;
-    transition: color 0.2s ease, background-color 0.2s ease;
-    font-size: 0.95rem;
-    font-weight: 500;
+    color: inherit;
+    margin-left: 1rem;
 }
 
-.nav-item:hover {
-    color: var(--color-text-main);
-    background: var(--color-background);
-}
-
-.nav-item.active {
-    background: var(--color-primary-light);
-    color: var(--color-primary);
-    font-weight: 600;
-}
-
-.nav-item .icon {
+.brand-name {
+    display: block;
     font-size: 1.25rem;
-    width: 24px;
-    margin-right: 12px;
-    text-align: center;
+    font-weight: 900;
+    color: rgb(var(--v-theme-on-surface));
+    /* text-slate-900 */
+    letter-spacing: -0.03em;
+    line-height: 1;
+}
+
+.brand-tag {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    /* text-slate-600 for better contrast */
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 2px;
+}
+
+.global-search {
+    width: 100%;
+    max-width: 500px;
+}
+
+:deep(.global-search .v-field) {
+    background: rgb(var(--v-theme-surface), 0.8) !important;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)) !important;
+    font-size: 0.875rem;
+}
+
+.profile-btn {
+    background: rgb(var(--v-theme-surface)) !important;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+    transition: all 0.2s;
+}
+
+.profile-btn:hover {
+    background: #f8fafc !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+.avatar-glow {
+    background: linear-gradient(135deg, #e0e7ff 0%, #ede9fe 100%);
+    border: 1px solid white;
+    box-shadow: 0 0 15px rgba(79, 70, 229, 0.1);
+}
+
+.avatar-emoji {
+    font-size: 1.2rem;
+}
+
+.user-display-name {
+    font-weight: 700;
+    color: rgb(var(--v-theme-on-surface));
+    /* text-slate-800 */
+    font-size: 0.875rem;
+}
+
+.premium-popup {
+    border-radius: 1.25rem !important;
+    border: 1px solid rgba(255, 255, 255, 0.5) !important;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
+}
+
+.premium-sidebar {
+    background: rgb(var(--v-theme-surface)) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.nav-list-item {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-list-item:not(.v-list-item--active):hover {
+    background: rgba(var(--v-theme-on-surface), 0.05) !important;
+    transform: translateX(4px);
+}
+
+.nav-list-item.v-list-item--active {
+    background: rgba(79, 70, 229, 0.12) !important;
+    color: #4f46e5 !important;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.1) !important;
+}
+
+:deep(.nav-icon-wrapper) {
     display: flex;
+    align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
-.sidebar.collapsed .nav-item {
-    padding: 0.875rem 0;
-    justify-content: center;
-    border-radius: 0.5rem;
+.nav-list-item.v-list-item--active :deep(.nav-icon) {
+    color: #4f46e5 !important;
 }
 
-.sidebar.collapsed .nav-item:hover {
-    transform: none;
-    background: var(--color-background);
+.nav-list-item.v-list-item--active :deep(.nav-title) {
+    color: rgb(var(--v-theme-primary)) !important;
+    font-weight: 700 !important;
 }
 
-.sidebar.collapsed .nav-item .icon {
-    margin-right: 0;
+.nav-icon {
+    color: rgb(var(--v-theme-on-surface), 0.7);
+    /* text-slate-600 */
+    transition: all 0.2s;
 }
 
-.main-content {
-    flex: 1;
-    overflow-y: auto;
-    background: var(--color-background);
-    padding: var(--spacing-lg);
+.active-icon {
+    color: #4f46e5;
+    transform: scale(1.1);
 }
 
-.page-container {
+.nav-title {
+    font-size: 0.9375rem;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+}
+
+.sidebar-footer {
+    background: rgba(var(--v-theme-on-surface), 0.05);
+}
+
+.os-label {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: rgb(var(--v-theme-on-surface), 0.5);
+    /* text-slate-600 */
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+}
+
+.build-info {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+    margin-top: 2px;
+}
+
+.layout-main {
+    z-index: 1;
+    background: transparent !important;
+}
+
+.page-shell {
+    padding: 2rem;
     max-width: 1600px;
     margin: 0 auto;
 }
 
-.sidebar-footer {
-    margin-top: auto;
-    padding: 1.25rem 0.75rem;
+@media (max-width: 600px) {
+    .page-shell {
+        padding: 1rem;
+    }
+}
+
+
+.date-chip-v2 {
     display: flex;
-    justify-content: center;
     align-items: center;
-}
-
-.version-tag {
-    font-size: 0.6rem;
-    color: var(--color-text-muted);
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgb(var(--v-theme-surface), 0.5);
+    border-radius: 20px;
+    font-size: 0.8rem;
     font-weight: 700;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    background: var(--color-background);
-    padding: 0.25rem 0.6rem;
-    border-radius: 2rem;
-    border: 1px solid var(--color-border);
-    transition: all 0.2s ease;
-    cursor: default;
-    user-select: none;
+    color: rgb(var(--v-theme-on-surface), 0.8);
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
-.version-tag:hover {
-    color: var(--color-primary);
-    border-color: var(--color-primary-light);
-    background: white;
+.pulse-dot {
+    width: 6px;
+    height: 6px;
+    background: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 0 rgba(34, 197, 94, 0.4);
+    animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+    0% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+    }
+
+    70% {
+        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+    }
 }
 </style>

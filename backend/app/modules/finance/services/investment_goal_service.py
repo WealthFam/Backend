@@ -6,14 +6,25 @@ from decimal import Decimal
 
 class InvestmentGoalService:
     @staticmethod
-    def get_goals(db: Session, tenant_id: str) -> List[schemas.InvestmentGoalProgress]:
+    def get_goals(db: Session, tenant_id: str, user_id: Optional[str] = None) -> List[schemas.InvestmentGoalProgress]:
+        # Sanitization
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+            
         from sqlalchemy.orm import joinedload
-        goals = db.query(models.InvestmentGoal).options(
+        from sqlalchemy import or_
+        
+        query = db.query(models.InvestmentGoal).options(
             joinedload(models.InvestmentGoal.assets).joinedload(models.GoalAsset.linked_account),
             joinedload(models.InvestmentGoal.holdings).joinedload(models.MutualFundHolding.meta)
         ).filter(
             models.InvestmentGoal.tenant_id == tenant_id
-        ).all()
+        )
+        
+        if user_id:
+            query = query.filter(or_(models.InvestmentGoal.owner_id == user_id, models.InvestmentGoal.owner_id == None))
+            
+        goals = query.all()
         
         results = []
         for goal in goals:
@@ -100,8 +111,12 @@ class InvestmentGoalService:
 
     @staticmethod
     def create_goal(db: Session, goal: schemas.InvestmentGoalCreate, tenant_id: str) -> models.InvestmentGoal:
+        data = goal.model_dump()
+        if data.get('owner_id') in [None, "null", "undefined", ""]:
+            data['owner_id'] = None
+            
         db_goal = models.InvestmentGoal(
-            **goal.model_dump(),
+            **data,
             tenant_id=tenant_id
         )
         db.add(db_goal)
@@ -146,8 +161,27 @@ class InvestmentGoalService:
 
     @staticmethod
     def link_holding_to_goal(db: Session, holding_id: str, goal_id: Optional[str], tenant_id: str) -> bool:
+        # Check for aggregate ID (e.g. group_123456)
+        actual_id = holding_id
+        if holding_id.startswith("group_"):
+            actual_id = holding_id.replace("group_", "")
+        
+        # If actual_id is numeric, it's a scheme_code (aggregate view)
+        if actual_id.isdigit():
+            holdings = db.query(models.MutualFundHolding).filter(
+                models.MutualFundHolding.scheme_code == actual_id,
+                models.MutualFundHolding.tenant_id == tenant_id
+            ).all()
+            if not holdings:
+                return False
+            for h in holdings:
+                h.goal_id = goal_id
+            db.commit()
+            return True
+
+        # Otherwise treat as standard holding ID
         holding = db.query(models.MutualFundHolding).filter(
-            models.MutualFundHolding.id == holding_id,
+            models.MutualFundHolding.id == actual_id,
             models.MutualFundHolding.tenant_id == tenant_id
         ).first()
         if not holding:

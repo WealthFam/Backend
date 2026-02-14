@@ -41,6 +41,7 @@ class TransactionMeta(BaseModel):
     nav: Optional[float] = None
     amfi: Optional[str] = None
     isin: Optional[str] = None
+    is_synthesized: bool = False
 
 class ParsedItem(BaseModel):
     status: str # extracted, partial, ignored

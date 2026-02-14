@@ -11,10 +11,11 @@ router = APIRouter()
 
 @router.get("/investment-goals", response_model=List[schemas.InvestmentGoalProgress])
 def get_goals(
+    user_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return InvestmentGoalService.get_goals(db, str(current_user.tenant_id))
+    return InvestmentGoalService.get_goals(db, str(current_user.tenant_id), user_id=user_id)
 
 @router.post("/investment-goals", response_model=schemas.InvestmentGoalRead)
 def create_goal(

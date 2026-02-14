@@ -17,10 +17,18 @@ class RecurringService:
         return db_rec
 
     @staticmethod
-    def get_recurring_transactions(db: Session, tenant_id: str) -> List[models.RecurringTransaction]:
-        return db.query(models.RecurringTransaction).filter(
+    def get_recurring_transactions(db: Session, tenant_id: str, user_id: str = None) -> List[models.RecurringTransaction]:
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+        query = db.query(models.RecurringTransaction).filter(
             models.RecurringTransaction.tenant_id == tenant_id
-        ).all()
+        )
+        if user_id:
+            from sqlalchemy import or_
+            query = query.join(models.Account, models.RecurringTransaction.account_id == models.Account.id).filter(
+                or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+            )
+        return query.all()
 
     @staticmethod
     def update_recurring_transaction(db: Session, recurrence_id: str, update: schemas.RecurringTransactionUpdate, tenant_id: str) -> Optional[models.RecurringTransaction]:

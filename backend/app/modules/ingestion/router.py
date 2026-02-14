@@ -641,11 +641,16 @@ def list_triage(
     skip: int = 0,
     sort_by: str = "date",
     sort_order: str = "desc",
+    search: Optional[str] = None,
+    source: Optional[str] = None,
+    user_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     items, total = TransactionService.get_pending_transactions(
-        db, str(current_user.tenant_id), skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order
+        db, str(current_user.tenant_id), skip=skip, limit=limit, 
+        sort_by=sort_by, sort_order=sort_order, search=search, source=source,
+        user_id=user_id
     )
     return {
         "total": total,

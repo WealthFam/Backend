@@ -5,7 +5,7 @@ from backend.app.modules.finance import models, schemas
 
 class ExpenseGroupService:
     @staticmethod
-    def get_expense_groups(db: Session, tenant_id: str) -> List[models.ExpenseGroup]:
+    def get_expense_groups(db: Session, tenant_id: str, user_id: str = None) -> List[models.ExpenseGroup]:
         # 1. Fetch all groups
         groups = db.query(models.ExpenseGroup).filter(
             models.ExpenseGroup.tenant_id == tenant_id
@@ -17,12 +17,21 @@ class ExpenseGroupService:
         # 2. Fetch totals in bulk
         # select expense_group_id, sum(amount) from transactions where expense_group_id IN (...) group by expense_group_id
         group_ids = [g.id for g in groups]
-        totals = db.query(
+        
+        query = db.query(
             models.Transaction.expense_group_id,
             func.sum(models.Transaction.amount)
         ).filter(
-            models.Transaction.expense_group_id.in_(group_ids)
-        ).group_by(models.Transaction.expense_group_id).all()
+            models.Transaction.expense_group_id.in_(group_ids),
+            models.Transaction.tenant_id == tenant_id
+        )
+        
+        if user_id:
+            from sqlalchemy import or_
+            query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+            
+        totals = query.group_by(models.Transaction.expense_group_id).all()
         
         # 3. Map totals (Negate because expenses are typically stored as negative)
         totals_map = {gid: -float(total or 0) for gid, total in totals}
