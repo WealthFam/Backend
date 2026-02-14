@@ -2,10 +2,10 @@
 import { ref, onMounted, watch } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { useRoute } from 'vue-router'
-import CustomSelect from '@/components/CustomSelect.vue'
+
 import ImportModal from '@/components/ImportModal.vue'
 import SmartPromptModal from '@/components/SmartPromptModal.vue'
-import { useCurrency } from '@/composables/useCurrency'
+
 import SpendingHeatmap from '@/components/SpendingHeatmap.vue'
 import TransactionList from './transactions/TransactionList.vue'
 import TransactionTriage from './transactions/TransactionTriage.vue'
@@ -17,16 +17,17 @@ import {
 } from 'lucide-vue-next'
 
 // Composables
-import { useTransactionHelpers } from '@/composables/useTransactionHelpers'
+
 import { useTransactionState } from '@/composables/useTransactionState'
 import { useTriageState } from '@/composables/useTriageState'
 import { useTransactionModals } from '@/composables/useTransactionModals'
 import { useAuthStore } from '@/stores/auth'
+import { financeApi } from '@/api/client'
 
 // Global State
 const route = useRoute()
 
-const { formatAmount } = useCurrency()
+// const { formatAmount } = useCurrency()
 
 // Master Data (shared across composables)
 const accounts = ref<any[]>([])
@@ -40,9 +41,7 @@ const showImportModal = ref(false)
 const activeTab = ref<'list' | 'analytics' | 'triage' | 'heatmap'>('list')
 const activeTriageSubTab = ref<'pending' | 'training'>('pending')
 
-// Heatmap State
-const heatmapData = ref<any[]>([])
-const loadingHeatmap = ref(false)
+
 
 // Smart Categorization Modal (shared between composables)
 const showSmartPrompt = ref(false)
@@ -56,16 +55,7 @@ const smartPromptData = ref({
     excludeFromReports: false
 })
 
-// Initialize Helpers Composable
-const {
-    formatDate,
-    getAccountName,
-    getCategoryDisplay,
-    getExpenseGroupName,
-    accountOptions,
-    categoryOptions,
-    expenseGroupOptions
-} = useTransactionHelpers(accounts, categories, expenseGroups)
+
 
 // Initialize Transaction State Composable
 const {
@@ -78,22 +68,16 @@ const {
     startDate,
     endDate,
     selectedTimeRange,
-    timeRangeOptions,
+
     page,
     pageSize,
-    totalPages,
     txnSortKey,
     txnSortOrder,
     selectedIds,
-    allSelected,
     showDeleteConfirm,
     fetchData,
     handleTimeRangeChange,
-    toggleTxnSort,
-    changePage,
-    toggleSelectAll,
-    toggleSelection,
-    confirmDelete
+    toggleTxnSort
 } = useTransactionState(route, accounts, categories, budgets, loans, expenseGroups)
 
 // Initialize Triage State Composable
@@ -110,27 +94,13 @@ const {
     trainingSortKey,
     trainingSortOrder,
     selectedTrainingIds,
-    expandedTrainingIds,
-    showDiscardConfirm,
-    showTrainingDiscardConfirm,
-    createIgnoreRule,
-    trainingIdToDiscard,
-    selectedMessage,
-    showLabelForm,
-    labelForm,
     fetchTriage,
     approveTriage,
     rejectTriage,
-    confirmDiscard,
     handleBulkRejectTriage,
     startLabeling,
-    handleLabelSubmit,
     dismissTraining,
     handleBulkDismissTraining,
-    handleConfirmGlobalTrainingDismiss,
-    toggleSelectAllTriage,
-    toggleSelectAllTraining,
-    toggleTrainingExpand
 } = useTriageState(accounts, categories, showSmartPrompt, smartPromptData, fetchData)
 
 // Initialize Modals Composable
@@ -140,52 +110,29 @@ const {
     potentialMatches,
     isSearchingMatches,
     matchesSearched,
-    showRenamePrompt,
-    renamePromptData,
     form,
-    currentCategoryBudget,
-    openAddModal,
     openEditModal,
     handleSubmit,
-    handleBulkRename,
     handleSmartCategorize,
     findMatches,
     selectMatch
 } = useTransactionModals(selectedAccount, accounts, budgets, transactions, fetchData, showSmartPrompt, smartPromptData)
 
-// Loan options computed
-const loanOptions = () => {
-    return loans.value.map(l => ({ label: l.name, value: l.id }))
-}
 
-// fetchData is now provided by useTransactionState composable
-
-// All triage/training functions are now provided by useTriageState composable
-// All time range and filtering functions are now provided by useTransactionState composable
-
-
-
-// All selection and deletion functions are now provided by useTransactionState composable
-
-// All helper functions (formatDate, getAccountName, getCategoryDisplay, getExpenseGroupName) 
-// are now provided by useTransactionHelpers composable
-
-
-// All modal handler functions (openAddModal, openEditModal, etc.) are now provided by useTransactionModals composable
-
-// handleBulkRename and handleSmartCategorize are now provided by useTransactionModals composable
-
-
-function switchTab(tab: 'list' | 'analytics' | 'triage' | 'heatmap') {
-    activeTab.value = tab
-    if (tab === 'triage') {
-        fetchTriage()
-    } else if (tab === 'heatmap') {
-        // Heatmap data is fetched by the child component
-    } else {
-        fetchData()
+// Heatmap Data
+const heatmapData = ref<any[]>([])
+async function fetchHeatmap() {
+    try {
+        const res = await financeApi.getHeatmapData(startDate.value, endDate.value, auth.selectedMemberId || undefined)
+        heatmapData.value = res.data
+    } catch (e) {
+        console.error('Failed to fetch heatmap', e)
     }
 }
+
+
+
+
 
 // Search debounce
 let searchDebounce: any = null
@@ -205,6 +152,7 @@ watch(() => auth.selectedMemberId, () => {
     page.value = 1
     fetchData()
     fetchTriage()
+    fetchHeatmap()
 })
 
 onMounted(() => {
@@ -254,7 +202,7 @@ onMounted(() => {
                                         </v-chip>
                                     </div>
                                 </v-tab>
-                                <v-tab value="heatmap" class="premium-tab" rounded="xl">
+                                <v-tab value="heatmap" class="premium-tab" rounded="xl" @click="fetchHeatmap">
                                     <div class="d-flex align-center gap-2">
                                         <MapIcon :size="16" />
                                         <span>Heatmap</span>
@@ -270,7 +218,7 @@ onMounted(() => {
                     <v-window-item value="list">
                         <TransactionList v-bind="{
                             transactions, accounts, categories, expenseGroups,
-                            total, loading, selectedAccount, categoryFilter,
+                            loading, total, selectedAccount, categoryFilter,
                             searchQuery, startDate, endDate, selectedTimeRange,
                             page, pageSize, txnSortKey, txnSortOrder
                         }" v-model:selectedIds="selectedIds"
@@ -297,14 +245,17 @@ onMounted(() => {
                             v-model:selectedTrainingIds="selectedTrainingIds"
                             @update:activeSubTab="activeTriageSubTab = $event"
                             @update:triageSearchQuery="triageSearchQuery = $event"
-                            @update:triageSourceFilter="triageSourceFilter = $event"
+                            @update:triageSourceFilter="triageSourceFilter = $event as any"
                             @update:triageSortKey="triageSortKey = $event"
                             @update:triageSortOrder="triageSortOrder = $event"
+                            @update:triagePagination="triagePagination = $event; fetchTriage()"
                             @update:trainingSortKey="trainingSortKey = $event"
-                            @update:trainingSortOrder="trainingSortOrder = $event" @approveTriage="approveTriage"
-                            @rejectTriage="rejectTriage" @bulkRejectTriage="handleBulkRejectTriage"
-                            @startLabeling="startLabeling" @dismissTraining="dismissTraining"
-                            @bulkDismissTraining="handleBulkDismissTraining" @refreshTriage="fetchTriage" />
+                            @update:trainingSortOrder="trainingSortOrder = $event"
+                            @update:trainingPagination="trainingPagination = $event; fetchTriage()"
+                            @approveTriage="approveTriage" @rejectTriage="rejectTriage"
+                            @bulkRejectTriage="handleBulkRejectTriage" @startLabeling="startLabeling"
+                            @dismissTraining="dismissTraining" @bulkDismissTraining="handleBulkDismissTraining"
+                            @refreshTriage="fetchTriage" />
                     </v-window-item>
 
                     <v-window-item value="heatmap">

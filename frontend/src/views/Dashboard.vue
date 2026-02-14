@@ -118,7 +118,7 @@
                             <v-card class="premium-glass-card pa-5" rounded="xl" elevation="1"
                                 @click="router.push('/budgets')">
                                 <div class="d-flex justify-space-between align-center mb-3">
-                                    <div class="d-flex align-center gap-2">
+                                    <div class="d-flex align-center ga-2">
                                         <v-avatar size="32" color="surface-variant" variant="tonal">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(b.category).icon
                                                 }}</span>
@@ -226,7 +226,7 @@
                 <v-col cols="12">
                     <v-card class="premium-glass-card pa-6 pa-md-8 overflow-visible" rounded="xl" elevation="1">
                         <div
-                            class="d-flex flex-column flex-md-row justify-space-between align-start align-md-center mb-8 gap-4">
+                            class="d-flex flex-column flex-md-row justify-space-between align-start align-md-center mb-8 ga-4">
                             <h2 class="text-h6 font-weight-black d-flex align-center">
                                 <v-icon color="primary" class="mr-2">mdi-credit-card</v-icon> Credit Intelligence
                             </h2>
@@ -281,7 +281,7 @@
 
                                 <v-col cols="12" md="4">
                                     <div class="d-flex justify-space-between mb-1">
-                                        <div class="d-flex align-center gap-2">
+                                        <div class="d-flex align-center ga-2">
                                             <span
                                                 class="text-overline text-slate-500 font-weight-black">Utilization</span>
                                             <v-chip size="x-small"
@@ -304,7 +304,7 @@
 
                                 <v-col cols="12" md="4" class="text-md-right">
                                     <div class="d-flex flex-md-column justify-space-between align-end">
-                                        <div class="d-flex gap-6 mb-1">
+                                        <div class="d-flex ga-6 mb-1">
                                             <div class="text-right">
                                                 <div class="text-overline text-slate-500 font-weight-black"
                                                     style="line-height:1">
@@ -569,40 +569,6 @@ watch(() => auth.selectedMemberId, async () => {
 </script>
 
 <style scoped>
-.gap-2 {
-    gap: 8px;
-}
-
-.gap-4 {
-    gap: 16px;
-}
-
-.gap-6 {
-    gap: 24px;
-}
-
-.gap-8 {
-    gap: 32px;
-}
-
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-    width: 6px;
-}
-
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background: rgba(var(--v-theme-on-surface), 0.2);
-    border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(var(--v-theme-on-surface), 0.3);
-}
-
 .snap-label {
     font-size: 0.75rem;
     font-weight: 600;

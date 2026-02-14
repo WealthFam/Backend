@@ -267,7 +267,7 @@ onMounted(() => {
                     </p>
                 </v-col>
 
-                <v-col cols="12" md="6" class="d-flex justify-md-end align-center gap-4">
+                <v-col cols="12" md="6" class="d-flex justify-md-end align-center ga-4">
                     <!-- Month Selector (Refined Vuetify Style) -->
                     <v-sheet rounded="pill" border class="d-flex align-center px-1" height="44">
                         <v-btn icon variant="text" size="small" @click="changeMonth(-1)" color="primary">
@@ -318,10 +318,10 @@ onMounted(() => {
                                         </v-chip>
                                     </div>
 
-                                    <div class="d-flex align-baseline gap-3 mb-8">
+                                    <div class="d-flex align-baseline ga-3 mb-8">
                                         <span class="text-h2 font-weight-black text-white letter-spacing-tight">{{
                                             formatAmount(overallBudget.spent)
-                                            }}</span>
+                                        }}</span>
                                         <span class="text-h4 text-white opacity-30">/</span>
                                         <span class="text-h4 font-weight-bold text-white opacity-60">
                                             {{ overallBudget.amount_limit ? formatAmount(overallBudget.amount_limit) :
@@ -330,7 +330,7 @@ onMounted(() => {
                                     </div>
 
                                     <div v-if="overallBudget.amount_limit"
-                                        class="glass-card pa-4 d-flex align-center gap-4 mb-8"
+                                        class="glass-card pa-4 d-flex align-center ga-4 mb-8"
                                         style="background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.1);">
                                         <v-avatar size="44" :color="spendingVelocity.status === 'aggressive' ? 'error' :
                                             (spendingVelocity.status === 'warning' ? 'warning' : 'success')"
@@ -412,7 +412,7 @@ onMounted(() => {
 
                     <!-- AI Insights Section -->
                     <div class="mb-10">
-                        <div class="d-flex align-center gap-3 mb-6">
+                        <div class="d-flex align-center ga-3 mb-6">
                             <v-avatar color="primary" variant="tonal" size="44">
                                 <Sparkles class="text-primary" :size="24" />
                             </v-avatar>
@@ -433,12 +433,12 @@ onMounted(() => {
                             </v-btn>
                         </div>
 
-                        <div v-if="insights.length > 0" class="d-flex flex-column gap-4">
+                        <div v-if="insights.length > 0" class="d-flex flex-column ga-4">
                             <v-card v-for="insight in insights" :key="insight.id" class="premium-glass-card pa-6"
                                 rounded="xl" elevation="2"
                                 @click="insight.action === 'settings' ? router.push('/settings') : null"
                                 :class="{ 'cursor-pointer hover-scale': insight.action }">
-                                <div class="d-flex align-start gap-4">
+                                <div class="d-flex align-start ga-4">
                                     <v-avatar size="48"
                                         :color="insight.type === 'danger' ? 'error' : (insight.type === 'warning' ? 'warning' : 'primary')"
                                         variant="tonal" rounded="lg">
@@ -522,13 +522,13 @@ onMounted(() => {
                                         class="text-subtitle-2 font-weight-black opacity-60 d-flex justify-space-between align-center">
                                         <span>Outflow</span>
                                         <span class="text-subtitle-1">{{ formatAmount(overallBudget.total_excluded)
-                                            }}</span>
+                                        }}</span>
                                     </div>
                                     <div v-if="overallBudget.excluded_income > 0"
                                         class="text-subtitle-2 font-weight-black text-success d-flex justify-space-between align-center">
                                         <span>Inflow</span>
                                         <span class="text-subtitle-1">+{{ formatAmount(overallBudget.excluded_income)
-                                            }}</span>
+                                        }}</span>
                                     </div>
                                 </div>
                             </v-card>
@@ -537,7 +537,7 @@ onMounted(() => {
 
                     <!-- Category Intelligence -->
                     <div
-                        class="mb-8 d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center gap-4">
+                        class="mb-8 d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center ga-4">
                         <div>
                             <h2 class="text-h5 font-weight-black mb-1">Category Intelligence</h2>
                             <p class="text-subtitle-2 font-weight-bold opacity-60">Breakdown of your monthly activity
@@ -570,7 +570,7 @@ onMounted(() => {
                                 <div class="pa-6 flex-grow-1">
                                     <!-- Card Header -->
                                     <div class="d-flex justify-space-between align-start mb-6">
-                                        <div class="d-flex align-center gap-3">
+                                        <div class="d-flex align-center ga-3">
                                             <v-avatar
                                                 :color="group.parent.color ? group.parent.color + '15' : (activeTab === 'expense' ? 'rose-lighten-5' : 'emerald-lighten-5')"
                                                 rounded="lg" size="52" border class="elevation-2">
@@ -579,7 +579,7 @@ onMounted(() => {
                                             <div>
                                                 <span class="text-h6 font-weight-black line-height-1 mb-1 d-block">{{
                                                     group.parent.category
-                                                }}</span>
+                                                    }}</span>
                                                 <div class="d-flex gap-2">
                                                     <v-chip v-if="group.children.length > 0" size="x-small"
                                                         variant="tonal" color="primary" class="font-weight-bold">
@@ -673,7 +673,7 @@ onMounted(() => {
                                                             </div>
                                                             <span class="text-caption font-weight-bold">{{
                                                                 formatAmount(child.spent)
-                                                            }}</span>
+                                                                }}</span>
                                                         </div>
                                                         <div v-if="child.amount_limit">
                                                             <v-progress-linear
@@ -851,26 +851,7 @@ onMounted(() => {
     z-index: 10;
 }
 
-.gap-3 {
-    gap: 0.75rem;
-}
-
-.gap-4 {
-    gap: 1rem;
-}
-
-.gap-6 {
-    gap: 1.5rem;
-}
-
-.no-scrollbar::-webkit-scrollbar {
-    display: none;
-}
-
-.no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-}
+/* .gap-*, .ga-*, .no-scrollbar removed */
 
 .letter-spacing-1 {
     letter-spacing: 0.1em;

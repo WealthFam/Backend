@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import CustomSelect from '@/components/CustomSelect.vue'
 import { useCurrency } from '@/composables/useCurrency'
 
 const props = defineProps<{

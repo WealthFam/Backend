@@ -10,9 +10,9 @@
             </div>
 
             <div class="intensity-legend-premium pa-2 px-4 rounded-pill d-flex align-center gap-3">
-                <span class="text-[10px] font-weight-black text-uppercase opacity-50">Low</span>
+                <span class="text-10 font-weight-black text-uppercase opacity-50">Low</span>
                 <div class="gradient-bar-premium"></div>
-                <span class="text-[10px] font-weight-black text-uppercase opacity-50">High</span>
+                <span class="text-10 font-weight-black text-uppercase opacity-50">High</span>
                 <v-chip v-if="hasLocationData" size="x-small" color="primary" variant="tonal"
                     class="ml-2 font-weight-black">
                     {{ data.length }} Points
@@ -188,7 +188,7 @@ onUnmounted(() => {
     z-index: 10;
 }
 
-.text-[10px] {
+.text-10 {
     font-size: 10px;
 }
 

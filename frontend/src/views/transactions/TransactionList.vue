@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import CustomSelect from '@/components/CustomSelect.vue'
 import { useCurrency } from '@/composables/useCurrency'
 
 const { formatAmount } = useCurrency()
@@ -57,17 +56,12 @@ const headers = [
 // Adaptation for v-data-table selection (array based) vs parent's Set based
 const tableSelection = computed({
     get: () => Array.from(selectedIds.value),
-    set: (val: any[]) => {
+    set: () => {
         // This is handled by toggleSelection instead to maintain Set reactivity easily
     }
 })
 
 // Computed
-const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
-const allSelected = computed(() => {
-    return props.transactions.length > 0 && props.transactions.every(t => selectedIds.value.has(t.id))
-})
-
 const accountOptions = computed(() => {
     return [{ title: 'All Accounts', value: '' }, ...props.accounts.map(a => ({ title: a.name, value: a.id }))]
 })

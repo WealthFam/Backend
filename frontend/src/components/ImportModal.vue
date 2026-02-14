@@ -26,8 +26,8 @@ const stepLabels = ['Account & File', 'Analysis', 'Mapping', 'Verification']
 
 // Detail Fields
 const detailFields = [
-    { key: 'date', label: 'Date', icon: '📅', desc: 'Transaction date' },
-    { key: 'description', label: 'Description', icon: '📝', desc: 'Payee or narration' },
+    { key: 'date', label: 'Date', icon: '📅', desc: 'Transaction date', optional: false },
+    { key: 'description', label: 'Description', icon: '📝', desc: 'Payee or narration', optional: false },
     { key: 'reference', label: 'Reference', icon: '🆔', desc: 'Reference / UTR / Txn #', optional: true },
     { key: 'balance', label: 'Balance', icon: '💰', desc: 'Available balance after txn', optional: true },
     { key: 'credit_limit', label: 'Credit Limit', icon: '💳', desc: 'New credit limit if updated', optional: true },
@@ -257,7 +257,7 @@ function close() {
         <v-card class="premium-import-card rounded-xl overflow-hidden">
             <v-card-title class="pa-0">
                 <div class="modal-header-premium pa-4 d-flex align-center justify-space-between text-white">
-                    <div class="d-flex align-center gap-3">
+                    <div class="d-flex align-center ga-3">
                         <v-icon color="white">mdi-file-import-outline</v-icon>
                         <h2 class="text-h6 font-weight-black">Import Transactions</h2>
                     </div>
@@ -297,9 +297,7 @@ function close() {
                                         item-title="label" item-value="value"
                                         placeholder="Which bank account is this for?" variant="solo"
                                         density="comfortable" flat class="premium-select-field" hide-details>
-                                        <template v-slot:item="{ props, item }">
-                                            <v-list-item v-bind="props" class="rounded-lg ma-1"></v-list-item>
-                                        </template>
+
                                     </v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="6">
@@ -384,13 +382,13 @@ function close() {
                                         <div class="mapping-grid-premium">
                                             <div v-for="field in detailFields" :key="field.key"
                                                 class="mapping-item-row mb-4 d-flex align-center">
-                                                <div class="field-info-panel d-flex align-center gap-3 flex-grow-1">
+                                                <div class="field-info-panel d-flex align-center ga-3 flex-grow-1">
                                                     <div class="field-icon-box">{{ field.icon }}</div>
                                                     <div class="flex-grow-1">
                                                         <div class="text-caption font-weight-black">{{ field.label }}
                                                         </div>
                                                         <div class="text-[10px] opacity-60 line-clamp-1">{{ field.desc
-                                                        }}</div>
+                                                            }}</div>
                                                     </div>
                                                 </div>
                                                 <div class="mapping-arrow mx-4 opacity-30">
@@ -429,7 +427,7 @@ function close() {
                                         </v-btn-toggle>
 
                                         <div v-if="mapping.mode === 'single'" class="mapping-item-row">
-                                            <div class="field-info-panel d-flex align-center gap-3 flex-grow-1">
+                                            <div class="field-info-panel d-flex align-center ga-3 flex-grow-1">
                                                 <div class="field-icon-box">💵</div>
                                                 <div class="flex-grow-1">
                                                     <div class="text-caption font-weight-black">Amount</div>
@@ -442,7 +440,7 @@ function close() {
                                         </div>
 
                                         <div v-else class="d-flex flex-column gap-4">
-                                            <div class="field-info-panel d-flex align-center gap-3">
+                                            <div class="field-info-panel d-flex align-center ga-3">
                                                 <div class="field-icon-box">➖</div>
                                                 <div class="flex-grow-1">
                                                     <div class="text-caption font-weight-black">Debit (Out)</div>
@@ -451,7 +449,7 @@ function close() {
                                                         class="premium-select-field-small mt-2" hide-details></v-select>
                                                 </div>
                                             </div>
-                                            <div class="field-info-panel d-flex align-center gap-3">
+                                            <div class="field-info-panel d-flex align-center ga-3">
                                                 <div class="field-icon-box">➕</div>
                                                 <div class="flex-grow-1">
                                                     <div class="text-caption font-weight-black">Credit (In)</div>
@@ -505,7 +503,7 @@ function close() {
                                             </td>
                                             <td class="text-caption">{{ txn.date }}</td>
                                             <td class="text-caption opacity-50">{{ txn.external_id || txn.ref_id || '-'
-                                            }}</td>
+                                                }}</td>
                                             <td>
                                                 <div class="font-weight-bold text-caption text-surface">{{ txn.recipient
                                                     || '-' }}</div>

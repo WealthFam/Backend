@@ -61,7 +61,7 @@ onUnmounted(() => { document.removeEventListener('click', handleClickOutside) })
 
 <template>
     <div class="custom-select-container" ref="containerRef">
-        <div class="select-trigger form-input" :class="{ 'open': isOpen, 'placeholder': !modelValue }" @click="toggle"
+        <div class="select-trigger" :class="{ 'open': isOpen, 'placeholder': !modelValue }" @click="toggle"
             tabindex="0" @keydown.enter.prevent="toggle" @keydown.space.prevent="toggle">
             <span class="truncate">{{ selectedLabel }}</span>
             <span class="chevron">▼</span>
@@ -108,7 +108,19 @@ onUnmounted(() => { document.removeEventListener('click', handleClickOutside) })
     padding: 0.5rem 0.875rem;
     position: relative;
     z-index: 10;
-    /* Lower than dropdown but enough to be interactive */
+    /* Copied from form-input */
+    border: 1px solid #e2e8f0; /* var(--color-border) fallback */
+    border-radius: 0.5rem;
+    font-family: inherit;
+    font-size: 1rem; /* var(--font-size-base) */
+    color: #0f172a; /* var(--color-text-main) */
+    transition: all 0.3s ease;
+}
+
+.select-trigger:focus {
+    outline: none;
+    border-color: #4f46e5; /* var(--color-primary) */
+    box-shadow: 0 0 0 3px #e0e7ff; /* var(--color-primary-light) */
 }
 
 .truncate {

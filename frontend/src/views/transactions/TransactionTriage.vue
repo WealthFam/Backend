@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import CustomSelect from '@/components/CustomSelect.vue'
 import { useCurrency } from '@/composables/useCurrency'
 
@@ -45,9 +45,12 @@ const emit = defineEmits<{
 // Local State
 const selectedTriageIds = defineModel<string[]>('selectedTriageIds', { default: [] })
 const selectedTrainingIds = defineModel<string[]>('selectedTrainingIds', { default: [] })
-const expandedTrainingIds = ref(new Set<string>())
+// Computed Interface for Tabs
+const activeTab = computed({
+    get: () => props.activeSubTab,
+    set: (val) => emit('update:activeSubTab', val)
+})
 
-// Computed
 const accountOptions = computed(() => {
     return props.accounts.map(a => ({ label: a.name, value: a.id }))
 })
@@ -174,13 +177,7 @@ function toggleSelectAllTraining() {
     }
 }
 
-function toggleTrainingExpand(id: string) {
-    if (expandedTrainingIds.value.has(id)) {
-        expandedTrainingIds.value.delete(id)
-    } else {
-        expandedTrainingIds.value.add(id)
-    }
-}
+
 
 function handleTriagePaginationLimitChange(newLimit: number) {
     emit('update:triagePagination', { ...props.triagePagination, limit: newLimit, skip: 0 })
@@ -209,341 +206,325 @@ function handleTrainingPaginationNext() {
 
 <template>
     <div class="triage-view animate-in">
-        <div class="triage-tabs mb-6">
-            <button class="triage-tab-btn" :class="{ active: activeSubTab === 'pending' }"
-                @click="emit('update:activeSubTab', 'pending')">
-                Pending Inbox ({{ triagePagination.total }})
-            </button>
-            <button class="triage-tab-btn" :class="{ active: activeSubTab === 'training' }"
-                @click="emit('update:activeSubTab', 'training')">
-                Training Area ({{ trainingPagination.total }})
-            </button>
-        </div>
+        <!-- Vuetify Tabs -->
+        <v-tabs v-model="activeTab" color="primary" align-tabs="start" class="mb-6 rounded-lg bg-surface-light">
+            <v-tab value="pending">
+                <v-icon start icon="mdi-inbox-arrow-down" class="mr-2"></v-icon>
+                Pending Inbox
+                <v-chip size="x-small" color="primary" class="ml-2" variant="flat">
+                    {{ triagePagination.total }}
+                </v-chip>
+            </v-tab>
+            <v-tab value="training">
+                <v-icon start icon="mdi-robot" class="mr-2"></v-icon>
+                Training Area
+                <v-chip size="x-small" color="warning" class="ml-2" variant="flat">
+                    {{ trainingPagination.total }}
+                </v-chip>
+            </v-tab>
+        </v-tabs>
 
-        <div v-if="activeSubTab === 'pending'">
-            <div class="alert-info-glass mb-4">
-                <div class="alert-icon">🔒</div>
-                <div class="alert-text">
+        <v-window v-model="activeTab">
+            <!-- PENDING TAB -->
+            <v-window-item value="pending">
+                <v-alert icon="mdi-shield-lock" type="info" variant="tonal" class="mb-4" border="start"
+                    density="compact">
                     <strong>Review Intake</strong>: These transactions were auto-detected but require
                     categorization or confirmation before affecting your balance.
-                </div>
-            </div>
+                </v-alert>
 
-            <div class="triage-filter-bar mb-4">
-                <div class="triage-search-box">
-                    <span class="search-icon-mini">🔍</span>
-                    <input type="text" :value="triageSearchQuery"
-                        @input="emit('update:triageSearchQuery', ($event.target as HTMLInputElement).value)"
-                        placeholder="Search by merchant, ID or amount..." class="triage-search-input-premium">
-                </div>
+                <!-- Filters Toolbar -->
+                <div class="d-flex flex-wrap align-center gap-3 mb-4 glass-card pa-3 rounded-lg">
+                    <v-text-field :model-value="triageSearchQuery"
+                        @update:model-value="emit('update:triageSearchQuery', $event)"
+                        prepend-inner-icon="mdi-text-search" placeholder="Search merchant, ID or amount..." hide-details
+                        density="compact" variant="outlined" bg-color="surface" class="flex-grow-1"
+                        style="min-width: 250px; max-width: 400px"></v-text-field>
 
-                <div class="source-toggle-group">
-                    <button class="source-chip" :class="{ active: triageSourceFilter === 'ALL' }"
-                        @click="emit('update:triageSourceFilter', 'ALL')">All Sources</button>
-                    <button class="source-chip" :class="{ active: triageSourceFilter === 'SMS' }"
-                        @click="emit('update:triageSourceFilter', 'SMS')">SMS</button>
-                    <button class="source-chip" :class="{ active: triageSourceFilter === 'EMAIL' }"
-                        @click="emit('update:triageSourceFilter', 'EMAIL')">Email</button>
-                </div>
+                    <v-btn-toggle :model-value="triageSourceFilter"
+                        @update:model-value="emit('update:triageSourceFilter', $event || 'ALL')" density="compact"
+                        color="primary" variant="outlined" divided mandatory class="rounded">
+                        <v-btn value="ALL" size="small" class="px-4">All</v-btn>
+                        <v-btn value="SMS" size="small" class="px-4">SMS</v-btn>
+                        <v-btn value="EMAIL" size="small" class="px-4">Email</v-btn>
+                    </v-btn-toggle>
 
-                <!-- Sort Controls Pending -->
-                <div class="flex items-center gap-2 ml-auto">
-                    <CustomSelect :modelValue="triageSortKey" @update:modelValue="emit('update:triageSortKey', $event)"
-                        :options="[{ label: 'Date', value: 'date' }, { label: 'Amount', value: 'amount' }, { label: 'Description', value: 'description' }]"
-                        class="w-32 text-xs" />
-                    <button @click="emit('update:triageSortOrder', triageSortOrder === 'asc' ? 'desc' : 'asc')"
-                        class="btn-icon-circle-small bg-white border border-gray-200" title="Toggle Order">
-                        {{ triageSortOrder === 'asc' ? '↑' : '↓' }}
-                    </button>
-                </div>
-            </div>
+                    <v-spacer></v-spacer>
 
-            <div class="bulk-action-bar-triage mb-4 flex items-center justify-between">
-                <div class="flex items-center gap-4">
-                    <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-muted">
-                        <input type="checkbox" @change="toggleSelectAllTriage"
-                            :checked="selectedTriageIds.length === filteredTriageTransactions.length && filteredTriageTransactions.length > 0"
-                            class="rounded border-gray-300 text-indigo-600" />
-                        Select All Filtered
-                    </label>
-                    <button v-if="selectedTriageIds.length > 0" @click="emit('bulkRejectTriage')"
-                        class="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-2">
-                        🗑️ Discard {{ selectedTriageIds.length }}
-                    </button>
-                </div>
-                <button @click="emit('refreshTriage')" class="btn-icon-circle-small">🔄</button>
-            </div>
+                    <div class="d-flex align-center gap-2">
+                        <v-select :model-value="triageSortKey"
+                            @update:model-value="emit('update:triageSortKey', $event)"
+                            :items="[{ title: 'Date', value: 'date' }, { title: 'Amount', value: 'amount' }, { title: 'Description', value: 'description' }]"
+                            hide-details density="compact" variant="outlined" label="Sort by" style="width: 160px"
+                            bg-color="surface"></v-select>
 
-            <div class="triage-grid">
-                <div v-for="txn in filteredTriageTransactions" :key="txn.id" class="glass-card triage-card"
-                    :class="[txn.amount < 0 ? 'debit-theme' : 'credit-theme', { 'is-transfer-active': txn.is_transfer, 'selected': selectedTriageIds.includes(txn.id) }]">
-                    <div class="triage-card-header">
-                        <div class="header-left">
-                            <input type="checkbox" v-model="selectedTriageIds" :value="txn.id" class="mr-2" />
-                            <span class="source-tag" :class="txn.source.toLowerCase()">{{ txn.source }}</span>
-                            <span v-if="txn.is_ai_parsed" class="ai-badge-mini pulse"
-                                title="Extracted using Gemini AI">✨ AI Verified</span>
-                            <span v-if="txn.is_transfer" class="transfer-badge-mini"
-                                title="Auto-detected as internal transfer">🔄 Self-Transfer</span>
-                        </div>
-                        <span class="triage-date">{{ formatDate(txn.date).day }} <span class="date-sep">•</span>
-                            {{ formatDate(txn.date).meta }}</span>
+                        <v-btn @click="emit('update:triageSortOrder', triageSortOrder === 'asc' ? 'desc' : 'asc')"
+                            variant="outlined" size="small" height="40" width="40" color="medium-emphasis"
+                            class="rounded" :icon="triageSortOrder === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down'">
+                        </v-btn>
                     </div>
+                </div>
 
-                    <div class="triage-card-body">
-                        <div class="triage-main-content">
-                            <div class="triage-amount-display" :class="txn.amount < 0 ? 'expense' : 'income'">
-                                <div class="amount-val">{{ formatAmount(Math.abs(txn.amount)) }}</div>
-                                <div class="amount-indicator">{{ txn.amount < 0 ? 'Debit' : 'Credit' }}</div>
+                <!-- Bulk Actions -->
+                <div class="d-flex align-center justify-space-between mb-4">
+                    <div class="d-flex align-center ga-4">
+                        <v-checkbox-btn
+                            :model-value="selectedTriageIds.length === filteredTriageTransactions.length && filteredTriageTransactions.length > 0"
+                            @update:model-value="toggleSelectAllTriage" color="primary" label="Select All Filtered"
+                            hide-details density="compact" class="ml-1"></v-checkbox-btn>
+
+                        <v-scale-transition>
+                            <v-btn v-if="selectedTriageIds.length > 0" color="error" variant="tonal" size="small"
+                                prepend-icon="mdi-delete" @click="emit('bulkRejectTriage')">
+                                Discard {{ selectedTriageIds.length }}
+                            </v-btn>
+                        </v-scale-transition>
+                    </div>
+                    <v-btn icon="mdi-refresh" variant="text" size="small" @click="emit('refreshTriage')"></v-btn>
+                </div>
+
+                <!-- Transactions Grid -->
+                <v-row>
+                    <v-col v-for="txn in filteredTriageTransactions" :key="txn.id" cols="12" md="6" lg="4">
+                        <v-card class="h-100 d-flex flex-column glass-card"
+                            :class="{ 'border-primary': selectedTriageIds.includes(txn.id) }" variant="flat"
+                            :ripple="false">
+
+                            <!-- Header -->
+                            <v-card-item class="pb-0">
+                                <template v-slot:prepend>
+                                    <v-checkbox-btn v-model="selectedTriageIds" :value="txn.id" density="compact"
+                                        hide-details></v-checkbox-btn>
+                                </template>
+                                <v-card-title class="text-subtitle-1 font-weight-bold">
+                                    {{ txn.recipient || txn.description }}
+                                </v-card-title>
+                                <v-card-subtitle class="d-flex align-center">
+                                    <v-chip size="x-small" label class="mr-2 text-caption">{{ txn.source }}</v-chip>
+                                    {{ formatDate(txn.date).day }} • {{ formatDate(txn.date).meta }}
+                                </v-card-subtitle>
+                                <template v-slot:append>
+                                    <div class="text-right">
+                                        <div class="text-h6 font-weight-black"
+                                            :class="txn.amount < 0 ? 'text-error' : 'text-success'">
+                                            {{ formatAmount(Math.abs(txn.amount)) }}
+                                        </div>
+                                        <div class="text-caption text-medium-emphasis">{{ txn.amount < 0 ? 'Debit'
+                                            : 'Credit' }}</div>
+                                        </div>
+                                </template>
+                            </v-card-item>
+
+                            <v-divider class="my-3 opacity-20"></v-divider>
+
+                            <!-- Body -->
+                            <v-card-text class="flex-grow-1 pt-0">
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+                                    <v-chip v-if="txn.is_ai_parsed" size="x-small" color="purple" variant="flat"
+                                        prepend-icon="mdi-auto-fix">AI
+                                        Verified</v-chip>
+                                    <v-chip v-if="txn.is_transfer" size="x-small" color="info" variant="flat"
+                                        prepend-icon="mdi-bank-transfer">Self-Transfer</v-chip>
+                                    <v-chip v-if="txn.external_id" size="x-small" variant="outlined"
+                                        class="text-caption">ID: {{ txn.external_id
+                                        }}</v-chip>
                                 </div>
 
-                                <div class="triage-details-info">
-                                    <h3 class="triage-title">{{ txn.recipient || txn.description }}</h3>
-                                    <div class="triage-account-info">
-                                        <span class="acc-indicator"></span>
-                                        {{ getAccountName(txn.account_id) }}
+                                <div class="text-body-2 mb-2">
+                                    <v-icon size="small" color="grey" start>mdi-bank</v-icon>
+                                    {{ getAccountName(txn.account_id) }}
+                                </div>
+                                <div v-if="txn.raw_message"
+                                    class="bg-grey-lighten-4 pa-2 rounded text-caption text-medium-emphasis mb-2 text-truncate">
+                                    "{{ txn.raw_message }}"
+                                </div>
+
+                                <!-- Controls -->
+                                <div class="d-flex flex-column gap-2 mt-4">
+                                    <div class="d-flex align-center justify-space-between">
+                                        <v-switch v-model="txn.is_transfer" color="info" label="Internal Transfer"
+                                            density="compact" hide-details inset
+                                            @change="txn.exclude_from_reports = txn.is_transfer"></v-switch>
+                                        <v-switch v-model="txn.exclude_from_reports" color="error"
+                                            label="Exclude from Reports" density="compact" hide-details
+                                            inset></v-switch>
                                     </div>
+
+
+                                    <v-select v-if="txn.is_transfer" v-model="txn.to_account_id"
+                                        :items="accountOptions.filter(a => a.value !== txn.account_id)"
+                                        item-title="label" item-value="value"
+                                        :label="txn.amount < 0 ? 'To Account' : 'From Account'" density="compact"
+                                        variant="outlined" hide-details></v-select>
+                                    <CustomSelect v-else v-model="txn.category" :options="categoryOptions"
+                                        placeholder="Assign Category" class="mt-2" />
                                 </div>
-                            </div>
+                            </v-card-text>
 
-                            <div class="triage-meta-pills">
-                                <div class="meta-pill" v-if="txn.description">
-                                    <span class="pill-icon">📝</span> {{ txn.description }}
-                                </div>
-                                <div class="meta-pill" v-if="txn.external_id">
-                                    <span class="pill-icon">🆔</span> {{ txn.external_id }}
-                                </div>
-                                <div class="meta-pill highlight" v-if="txn.balance">
-                                    <span class="pill-icon">💰</span> Bal: ₹{{ txn.balance.toFixed(2) }}
-                                </div>
-                            </div>
+                            <!-- Actions -->
+                            <v-card-actions class="pa-4 pt-0">
+                                <v-btn variant="text" color="grey" @click="emit('rejectTriage', txn.id)">Discard</v-btn>
+                                <v-spacer></v-spacer>
+                                <v-btn color="primary" variant="elevated"
+                                    @click="emit('approveTriage', txn)">Confirm</v-btn>
+                            </v-card-actions>
+                        </v-card>
+                    </v-col>
+                </v-row>
 
-                            <div v-if="txn.raw_message" class="triage-raw-box">
-                                <div class="raw-label">Origin Message</div>
-                                <div class="raw-content-text">{{ txn.raw_message }}</div>
-                            </div>
-                        </div>
-
-                        <div class="triage-card-actions">
-                            <div class="action-top-row">
-                                <div class="triage-input-group">
-                                    <div class="toggle-control">
-                                        <label class="premium-switch">
-                                            <input type="checkbox" v-model="txn.is_transfer"
-                                                @change="txn.exclude_from_reports = txn.is_transfer">
-                                            <span class="premium-slider"></span>
-                                        </label>
-                                        <span class="toggle-text">{{ txn.is_transfer ? 'Internal Transfer' :
-                                            'Expense/Income' }}</span>
-                                    </div>
-
-                                    <div class="toggle-control">
-                                        <label class="premium-switch">
-                                            <input type="checkbox" v-model="txn.exclude_from_reports">
-                                            <span class="premium-slider" style="background-color: #fee2e2;"></span>
-                                        </label>
-                                        <span class="toggle-text" style="color: #991b1b;">Exclude from
-                                            Reports</span>
-                                    </div>
-
-                                    <div class="select-container">
-                                        <CustomSelect v-if="txn.is_transfer" v-model="txn.to_account_id"
-                                            :options="accountOptions.filter(a => a.value !== txn.account_id)"
-                                            :placeholder="txn.amount < 0 ? 'To Account (Tracked)' : 'From Account (Tracked)'"
-                                            class="triage-select-premium" />
-                                        <CustomSelect v-else v-model="txn.category" :options="categoryOptions"
-                                            placeholder="Assign Category" class="triage-select-premium" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="action-bottom-row">
-                                <button @click="emit('rejectTriage', txn.id)"
-                                    class="btn-triage-secondary">Discard</button>
-
-                                <div class="approval-cluster">
-                                    <button @click="emit('approveTriage', txn)" class="btn-triage-primary">
-                                        Confirm Entry
-                                        <span class="btn-shimmer"></span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div v-if="triagePagination.total === 0" class="empty-state-triage">
-                        <div class="empty-glow-icon">✨</div>
-                        <h3>Inbox zero!</h3>
-                        <p>No new transactions waiting for review.</p>
-                    </div>
-
-                    <!-- Triage Pagination & Page Size -->
-                    <div v-if="triagePagination.total > 0"
-                        class="mt-6 flex items-center justify-between border-t border-gray-100 pt-6">
-                        <div class="flex items-center gap-4">
-                            <span class="text-[10px] text-muted font-mono">
-                                {{ triagePagination.skip + 1 }}–{{ Math.min(triagePagination.skip +
-                                    triagePagination.limit,
-                                    triagePagination.total) }} of {{ triagePagination.total }}
-                            </span>
-                            <div class="flex items-center gap-2">
-                                <span class="text-[10px] text-muted uppercase font-bold tracking-wider">Size:</span>
-                                <select :value="triagePagination.limit"
-                                    @change="handleTriagePaginationLimitChange(Number(($event.target as HTMLSelectElement).value))"
-                                    class="text-[10px] bg-white border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-700">
-                                    <option :value="10">10</option>
-                                    <option :value="20">20</option>
-                                    <option :value="50">50</option>
-                                    <option :value="100">100</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-1" v-if="triagePagination.total > triagePagination.limit">
-                            <button @click="handleTriagePaginationPrev" :disabled="triagePagination.skip === 0"
-                                class="btn-pagination-compact">Prev</button>
-                            <button @click="handleTriagePaginationNext"
-                                :disabled="triagePagination.skip + triagePagination.limit >= triagePagination.total"
-                                class="btn-pagination-compact">Next</button>
-                        </div>
-                    </div>
+                <!-- Empty State -->
+                <div v-if="triagePagination.total === 0" class="text-center py-12">
+                    <v-icon size="64" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
+                    <h3 class="text-h5 font-weight-bold">Inbox Zero!</h3>
+                    <p class="text-medium-emphasis">No new transactions waiting for review.</p>
                 </div>
-            </div>
 
-            <!-- Training Area -->
-            <div v-if="activeSubTab === 'training'">
-                <div class="alert-info-glass mb-4 training-alert">
-                    <div class="alert-icon">🤖</div>
-                    <div class="alert-text">
-                        <strong>Interactive Training</strong>: These messages look like transactions but could
-                        not be parsed. Label them to help the system learn!
+                <!-- Pagination -->
+                <v-row v-if="triagePagination.total > 0" class="mt-4 align-center">
+                    <v-col cols="12" md="6" class="text-caption text-medium-emphasis">
+                        Showing {{ triagePagination.skip + 1 }}-{{ Math.min(triagePagination.skip +
+                            triagePagination.limit,
+                            triagePagination.total) }} of {{ triagePagination.total }}
+                    </v-col>
+                    <v-col cols="12" md="6" class="d-flex justify-end align-center gap-2">
+                        <span class="text-caption mr-2">Rows per page:</span>
+                        <v-select :model-value="triagePagination.limit"
+                            @update:model-value="handleTriagePaginationLimitChange($event)" :items="[12, 24, 60]"
+                            density="compact" variant="outlined" hide-details class="d-inline-block"
+                            style="width: 85px"></v-select>
+
+                        <v-btn size="small" variant="text" :disabled="triagePagination.skip === 0"
+                            @click="handleTriagePaginationPrev">Prev</v-btn>
+                        <v-btn size="small" variant="text"
+                            :disabled="triagePagination.skip + triagePagination.limit >= triagePagination.total"
+                            @click="handleTriagePaginationNext">Next</v-btn>
+                    </v-col>
+                </v-row>
+            </v-window-item>
+
+            <!-- TRAINING TAB -->
+            <v-window-item value="training">
+                <v-alert icon="mdi-robot" type="warning" variant="tonal" class="mb-4" border="start" density="compact">
+                    <strong>Interactive Training</strong>: These messages look like transactions but could
+                    not be parsed. Label them to help the system learn!
+                </v-alert>
+
+                <!-- Training Toolbar -->
+                <div class="d-flex align-center justify-space-between mb-4">
+                    <div class="d-flex align-center ga-4">
+                        <v-checkbox-btn
+                            :model-value="selectedTrainingIds.length === unparsedMessages.length && unparsedMessages.length > 0"
+                            @update:model-value="toggleSelectAllTraining" color="warning" label="Select All"
+                            hide-details density="compact" class="ml-1"></v-checkbox-btn>
+
+                        <v-scale-transition>
+                            <v-btn v-if="selectedTrainingIds.length > 0" color="warning" variant="tonal" size="small"
+                                prepend-icon="mdi-delete" @click="emit('bulkDismissTraining')">
+                                Dismiss {{ selectedTrainingIds.length }}
+                            </v-btn>
+                        </v-scale-transition>
+                    </div>
+
+                    <div class="d-flex align-center gap-2">
+                        <v-select :model-value="trainingSortKey"
+                            @update:model-value="emit('update:trainingSortKey', $event)"
+                            :items="[{ title: 'Date', value: 'created_at' }, { title: 'Sender', value: 'sender' }]"
+                            hide-details density="compact" variant="outlined" label="Sort by" style="width: 160px"
+                            bg-color="surface"></v-select>
+
+                        <v-btn @click="emit('update:trainingSortOrder', trainingSortOrder === 'asc' ? 'desc' : 'asc')"
+                            variant="outlined" size="small" height="40" width="40" color="medium-emphasis"
+                            class="rounded" :icon="trainingSortOrder === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down'">
+                        </v-btn>
+                        <v-btn icon="mdi-refresh" variant="text" size="small" @click="emit('refreshTriage')"></v-btn>
                     </div>
                 </div>
 
-                <div class="bulk-action-bar-training mb-4 flex items-center justify-between">
-                    <div class="flex items-center gap-4">
-                        <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-amber-800/60">
-                            <input type="checkbox" @change="toggleSelectAllTraining"
-                                :checked="selectedTrainingIds.length === unparsedMessages.length && unparsedMessages.length > 0"
-                                class="rounded border-amber-300 text-amber-600" />
-                            Select All Current
-                        </label>
-                        <button v-if="selectedTrainingIds.length > 0" @click="emit('bulkDismissTraining')"
-                            class="bg-amber-100 text-amber-800 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-2">
-                            🗑️ Dismiss {{ selectedTrainingIds.length }}
-                        </button>
-                    </div>
-                    <!-- Sort Controls Training -->
-                    <div class="flex items-center gap-2">
-                        <CustomSelect :modelValue="trainingSortKey"
-                            @update:modelValue="emit('update:trainingSortKey', $event)"
-                            :options="[{ label: 'Date', value: 'created_at' }, { label: 'Sender', value: 'sender' }]"
-                            class="w-32 text-xs" />
-                        <button @click="emit('update:trainingSortOrder', trainingSortOrder === 'asc' ? 'desc' : 'asc')"
-                            class="btn-icon-circle-small bg-white border border-amber-200 text-amber-700"
-                            title="Toggle Order">
-                            {{ trainingSortOrder === 'asc' ? '↑' : '↓' }}
-                        </button>
-                        <button @click="emit('refreshTriage')" class="btn-icon-circle-small amber-themed">🔄</button>
-                    </div>
-                </div>
+                <!-- Training Grid -->
+                <v-row>
+                    <v-col v-for="msg in sortedTrainingMessages" :key="msg.id" cols="12" md="6">
+                        <v-card class="h-100 d-flex flex-column glass-card" variant="flat">
+                            <v-card-item>
+                                <template v-slot:prepend>
+                                    <v-checkbox-btn v-model="selectedTrainingIds" :value="msg.id" density="compact"
+                                        hide-details></v-checkbox-btn>
+                                </template>
+                                <v-card-title class="text-subtitle-1">
+                                    {{ msg.sender || 'Unknown Sender' }}
+                                </v-card-title>
+                                <v-card-subtitle>
+                                    {{ formatDate(msg.created_at).day }} • {{ msg.source }}
+                                </v-card-subtitle>
+                                <template v-slot:append>
+                                    <v-chip color="warning" size="small" variant="flat">Needs Training</v-chip>
+                                </template>
+                            </v-card-item>
 
-                <div class="triage-grid">
-                    <div v-for="msg in sortedTrainingMessages" :key="msg.id"
-                        class="glass-card triage-card training-theme"
-                        :class="{ 'selected': selectedTrainingIds.includes(msg.id) }">
-                        <div class="triage-card-header">
-                            <div class="header-left">
-                                <input type="checkbox" v-model="selectedTrainingIds" :value="msg.id" class="mr-2" />
-                                <span class="source-tag" :class="msg.source.toLowerCase()">{{ msg.source
-                                }}</span>
-                                <span class="ai-badge-mini"
-                                    style="background: #fef3c7; color: #92400e; border-color: #f59e0b;">🤖 Needs
-                                    Training</span>
-                            </div>
-                            <span class="triage-date">{{ formatDate(msg.created_at).day }}</span>
-                        </div>
+                            <v-divider></v-divider>
 
-                        <div class="triage-card-body">
-                            <div class="training-content-premium">
-                                <div class="training-header">
-                                    <div class="training-sender" v-if="msg.sender">
-                                        <span class="label">Sender:</span> {{ msg.sender }}
-                                    </div>
-                                    <div class="training-subject" v-if="msg.subject">
-                                        <span class="label">Subject:</span> {{ msg.subject }}
-                                    </div>
+                            <v-card-text class="flex-grow-1">
+                                <div v-if="msg.subject" class="mb-2 text-body-2 font-weight-bold">
+                                    Subject: <span class="text-medium-emphasis font-weight-regular">{{ msg.subject
+                                        }}</span>
                                 </div>
-                                <pre class="training-raw-preview-premium"
-                                    :class="{ 'expanded': expandedTrainingIds.has(msg.id) }">{{ msg.raw_content }}</pre>
-                                <button v-if="msg.raw_content?.length > 150" @click="toggleTrainingExpand(msg.id)"
-                                    class="read-more-btn">
-                                    {{ expandedTrainingIds.has(msg.id) ? 'Collapse ▲' : 'Read More ▼' }}
-                                </button>
-                            </div>
-                        </div>
+                                <div class="bg-grey-lighten-5 pa-3 rounded border text-caption font-mono"
+                                    style="white-space: pre-wrap; max-height: 200px; overflow-y: auto;">
+                                    {{ msg.raw_content }}
+                                </div>
+                            </v-card-text>
 
-                        <div class="triage-card-actions">
-                            <div class="action-bottom-row">
-                                <button @click="emit('dismissTraining', msg.id)"
-                                    class="btn-triage-secondary">Dismiss</button>
-                                <button @click="emit('startLabeling', msg)" class="btn-triage-primary">
-                                    Label Fields
-                                    <span class="btn-shimmer"></span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                            <v-card-actions class="pa-4 pt-0">
+                                <v-btn variant="text" color="grey"
+                                    @click="emit('dismissTraining', msg.id)">Dismiss</v-btn>
+                                <v-spacer></v-spacer>
+                                <v-btn color="warning" variant="elevated" @click="emit('startLabeling', msg)">Label
+                                    Fields</v-btn>
+                            </v-card-actions>
+                        </v-card>
+                    </v-col>
+                </v-row>
+
+                <!-- Empty State -->
+                <div v-if="trainingPagination.total === 0" class="text-center py-12">
+                    <v-icon size="64" color="success" class="mb-4">mdi-shield-check</v-icon>
+                    <h3 class="text-h5 font-weight-bold">All Clear!</h3>
+                    <p class="text-medium-emphasis">No unparsed messages waiting for training.</p>
                 </div>
 
-                <div v-if="trainingPagination.total === 0" class="empty-state-triage">
-                    <div class="empty-glow-icon">🛡️</div>
-                    <h3>All clear!</h3>
-                    <p>No unparsed messages waiting for training.</p>
-                </div>
-
-                <!-- Training Area Pagination & Page Size -->
-                <div v-if="trainingPagination.total > 0"
-                    class="mt-6 flex items-center justify-between border-t border-gray-100 pt-6">
-                    <div class="flex items-center gap-4">
-                        <span class="text-[10px] text-muted font-mono">
-                            {{ trainingPagination.skip + 1 }}–{{ Math.min(trainingPagination.skip +
-                                trainingPagination.limit, trainingPagination.total) }} of {{
-                                trainingPagination.total }}
-                        </span>
-                        <div class="flex items-center gap-2">
-                            <span class="text-[10px] text-muted uppercase font-bold tracking-wider">Page
-                                Size:</span>
-                            <select :value="trainingPagination.limit"
-                                @change="handleTrainingPaginationLimitChange(Number(($event.target as HTMLSelectElement).value))"
-                                class="text-[10px] bg-white border border-amber-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold text-amber-800">
-                                <option :value="10">10</option>
-                                <option :value="20">20</option>
-                                <option :value="50">50</option>
-                                <option :value="100">100</option>
-                                <option :value="200">200</option>
-                                <option :value="500">500</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-1" v-if="trainingPagination.total > trainingPagination.limit">
-                        <button @click="handleTrainingPaginationPrev" :disabled="trainingPagination.skip === 0"
-                            class="btn-pagination-compact amber">Prev</button>
-                        <button @click="handleTrainingPaginationNext"
+                <!-- Training Pagination -->
+                <v-row v-if="trainingPagination.total > 0" class="mt-4 align-center">
+                    <v-col cols="12" md="6" class="text-caption text-medium-emphasis">
+                        Showing {{ trainingPagination.skip + 1 }}-{{ Math.min(trainingPagination.skip +
+                            trainingPagination.limit,
+                            trainingPagination.total) }} of {{ trainingPagination.total }}
+                    </v-col>
+                    <v-col cols="12" md="6" class="d-flex justify-end align-center gap-2">
+                        <span class="text-caption mr-2">Rows per page:</span>
+                        <v-select :model-value="trainingPagination.limit"
+                            @update:model-value="handleTrainingPaginationLimitChange($event)" :items="[12, 24, 60]"
+                            density="compact" variant="outlined" hide-details class="d-inline-block"
+                            style="width: 85px"></v-select>
+                        <v-btn size="small" variant="text" :disabled="trainingPagination.skip === 0"
+                            @click="handleTrainingPaginationPrev">Prev</v-btn>
+                        <v-btn size="small" variant="text"
                             :disabled="trainingPagination.skip + trainingPagination.limit >= trainingPagination.total"
-                            class="btn-pagination-compact amber">Next</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+                            @click="handleTrainingPaginationNext">Next</v-btn>
+                    </v-col>
+                </v-row>
+            </v-window-item>
+        </v-window>
+    </div>
 </template>
 
 <style scoped>
-/* This component inherits most styles from Transactions.vue */
-/* Only component-specific overrides needed here */
-
-.triage-view {
-    min-height: 400px;
+.glass-card {
+    background: rgba(var(--v-theme-surface), 0.7) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(var(--v-border-color), 0.12);
+    transition: all 0.2s ease;
 }
+
+
 
 .animate-in {
     animation: fadeIn 0.3s ease-out;
@@ -561,205 +542,7 @@ function handleTrainingPaginationNext() {
     }
 }
 
-/* Utility classes used in template */
-.mb-4 {
-    margin-bottom: 1rem;
-}
-
-.mb-6 {
-    margin-bottom: 1.5rem;
-}
-
-.mt-6 {
-    margin-top: 1.5rem;
-}
-
-.mt-2 {
-    margin-top: 0.5rem;
-}
-
-.mr-2 {
-    margin-right: 0.5rem;
-}
-
-.ml-auto {
-    margin-left: auto;
-}
-
-.flex {
-    display: flex;
-}
-
-.items-center {
-    align-items: center;
-}
-
-.justify-between {
-    justify-content: space-between;
-}
-
-.gap-1 {
-    gap: 0.25rem;
-}
-
 .gap-2 {
     gap: 0.5rem;
-}
-
-.gap-4 {
-    gap: 1rem;
-}
-
-.text-xs {
-    font-size: 0.75rem;
-}
-
-.text-\[10px\] {
-    font-size: 10px;
-}
-
-.font-bold {
-    font-weight: 700;
-}
-
-.uppercase {
-    text-transform: uppercase;
-}
-
-.tracking-wider {
-    letter-spacing: 0.05em;
-}
-
-.font-mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.text-muted {
-    color: #6b7280;
-}
-
-.text-amber-800\/60 {
-    color: rgba(146, 64, 14, 0.6);
-}
-
-.rounded {
-    border-radius: 0.25rem;
-}
-
-.rounded-lg {
-    border-radius: 0.5rem;
-}
-
-.border-gray-300 {
-    border-color: #d1d5db;
-}
-
-.border-amber-300 {
-    border-color: #fcd34d;
-}
-
-.text-indigo-600 {
-    color: #4f46e5;
-}
-
-.text-amber-600 {
-    color: #d97706;
-}
-
-.cursor-pointer {
-    cursor: pointer;
-}
-
-.w-32 {
-    width: 8rem;
-}
-
-.border-t {
-    border-top-width: 1px;
-}
-
-.border-gray-100 {
-    border-color: #f3f4f6;
-}
-
-.pt-6 {
-    padding-top: 1.5rem;
-}
-
-.px-3 {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-}
-
-.py-1 {
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
-}
-
-.px-1\.5 {
-    padding-left: 0.375rem;
-    padding-right: 0.375rem;
-}
-
-.py-0\.5 {
-    padding-top: 0.125rem;
-    padding-bottom: 0.125rem;
-}
-
-.bg-rose-50 {
-    background-color: #fff1f2;
-}
-
-.text-rose-600 {
-    color: #e11d48;
-}
-
-.bg-amber-100 {
-    background-color: #fef3c7;
-}
-
-.text-amber-800 {
-    color: #92400e;
-}
-
-.bg-white {
-    background-color: white;
-}
-
-.border {
-    border-width: 1px;
-}
-
-.border-gray-200 {
-    border-color: #e5e7eb;
-}
-
-.border-amber-200 {
-    border-color: #fde68a;
-}
-
-.text-amber-700 {
-    color: #b45309;
-}
-
-.focus\:outline-none:focus {
-    outline: 2px solid transparent;
-    outline-offset: 2px;
-}
-
-.focus\:ring-1:focus {
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
-}
-
-.focus\:ring-indigo-500:focus {
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-}
-
-.focus\:ring-amber-500:focus {
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
-}
-
-.text-slate-700 {
-    color: #334155;
 }
 </style>
