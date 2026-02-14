@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
 import logging
@@ -16,7 +17,27 @@ class AccountService:
         if hasattr(db_account, 'owner_id') and db_account.owner_id:
              db_account.owner_id = str(db_account.owner_id) # Ensure string
 
+        # Anchor the initial balance if provided
+        if db_account.balance is not None:
+             db_account.last_synced_balance = db_account.balance
+             db_account.last_synced_at = datetime.utcnow()
+             if db_account.credit_limit:
+                 db_account.last_synced_limit = db_account.credit_limit
+
         db.add(db_account)
+        db.flush() # Get ID for snapshot
+        
+        # Create initial snapshot
+        if db_account.balance is not None:
+            snapshot = models.BalanceSnapshot(
+                account_id=str(db_account.id),
+                tenant_id=tenant_id,
+                balance=db_account.balance,
+                credit_limit=db_account.credit_limit,
+                timestamp=db_account.last_synced_at,
+                source="INITIAL_CREATION"
+            )
+            db.add(snapshot)
         db.commit()
         db.refresh(db_account)
         return db_account
@@ -83,6 +104,13 @@ class AccountService:
             return db_account
         
         # Apply updates
+        # SECURITY: Prevent balance/limit updates via generic endpoint to enforce Anchoring logic.
+        # These must be updated via override_balance or ingestion.
+        restricted_fields = ['balance', 'credit_limit', 'last_synced_balance', 'last_synced_at', 'last_synced_limit']
+        for field in restricted_fields:
+            if field in update_data:
+                del update_data[field]
+                
         for key, value in update_data.items():
             if key in ['tenant_id', 'owner_id'] and value:
                 value = str(value)
@@ -110,4 +138,34 @@ class AccountService:
             
         db.delete(db_account)
         db.commit()
-        return True
+    @staticmethod
+    def override_balance(db: Session, account_id: str, balance: float, timestamp: datetime, tenant_id: str, 
+                         credit_limit: Optional[float] = None, source: str = "MANUAL") -> models.Account:
+        db_account = db.query(models.Account).filter(
+            models.Account.id == account_id,
+            models.Account.tenant_id == tenant_id
+        ).first()
+        
+        if not db_account:
+            raise ValueError("Account not found")
+        
+        # 1. Update Account anchoring
+        db_account.balance = balance
+        db_account.last_synced_balance = balance
+        db_account.last_synced_at = timestamp
+        if credit_limit is not None:
+            db_account.credit_limit = credit_limit
+            db_account.last_synced_limit = credit_limit
+        
+        # 2. Add Snapshot
+        snapshot = models.BalanceSnapshot(
+            account_id=account_id,
+            tenant_id=tenant_id,
+            balance=balance,
+            timestamp=timestamp,
+            source=source
+        )
+        db.add(snapshot)
+        db.commit()
+        db.refresh(db_account)
+        return db_account

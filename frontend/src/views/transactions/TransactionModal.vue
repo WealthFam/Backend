@@ -100,13 +100,14 @@ function handleClose() {
                                 <v-col cols="12" class="mb-1">
                                     <v-text-field v-model="form.description" label="Description"
                                         placeholder="What was this for?" variant="solo-filled" density="compact" flat
-                                        rounded="lg" class="premium-input-v2" hide-details />
+                                        rounded="lg" class="premium-input-v2" hide-details autocomplete="off" />
                                 </v-col>
 
                                 <v-col cols="12" md="6" class="mb-1">
                                     <v-text-field v-model="form.amount" label="Amount" type="number" placeholder="0.00"
                                         variant="solo-filled" density="compact" flat rounded="lg"
-                                        class="premium-input-v2" hide-details prepend-inner-icon="DollarSign" />
+                                        class="premium-input-v2" hide-details prepend-inner-icon="DollarSign"
+                                        autocomplete="off" />
                                 </v-col>
 
                                 <v-col cols="12" md="6" class="mb-1">

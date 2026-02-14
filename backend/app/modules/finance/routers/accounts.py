@@ -72,3 +72,19 @@ def get_account_transaction_count(
         db, str(current_user.tenant_id), account_id, user_role=current_user.role
     )
     return {"count": count}
+
+@router.put("/accounts/{account_id}/balance")
+def update_account_balance(
+    account_id: str,
+    payload: schemas.BalanceSnapshotBase,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        return AccountService.override_balance(
+            db, account_id, float(payload.balance), payload.timestamp, str(current_user.tenant_id), 
+            credit_limit=float(payload.credit_limit) if payload.credit_limit is not None else None,
+            source=payload.source
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

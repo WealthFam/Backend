@@ -33,8 +33,10 @@ const emit = defineEmits<{
     'update:endDate': [value: string]
     'update:selectedTimeRange': [value: string]
     'update:page': [value: number]
+    'update:pageSize': [value: number]
     'sortChange': [key: string]
     'editTxn': [txn: any]
+    'mapVendor': [txn: any]
     'deleteSelected': []
     'importCsv': []
     'fetchData': []
@@ -56,8 +58,8 @@ const headers = [
 // Adaptation for v-data-table selection (array based) vs parent's Set based
 const tableSelection = computed({
     get: () => Array.from(selectedIds.value),
-    set: () => {
-        // This is handled by toggleSelection instead to maintain Set reactivity easily
+    set: (newSelection: any[]) => {
+        selectedIds.value = new Set(newSelection)
     }
 })
 
@@ -106,6 +108,9 @@ function handleOptionsUpdate(options: any) {
     }
     if (options.page !== props.page) {
         emit('update:page', options.page)
+    }
+    if (options.itemsPerPage !== props.pageSize) {
+        emit('update:pageSize', options.itemsPerPage)
     }
 }
 
@@ -305,6 +310,18 @@ function handleReset() {
         transform: scale(1);
     }
 }
+
+.hidden-txn-row {
+    opacity: 0.6;
+    filter: blur(0.8px) grayscale(0.5);
+    transition: all 0.3s ease;
+}
+
+.hidden-txn-row:hover {
+    opacity: 1;
+    filter: none;
+    background: rgba(var(--v-theme-surface), 0.8) !important;
+}
 </style>
 
 <template>
@@ -348,7 +365,8 @@ function handleReset() {
                 <v-col cols="12" md="4" lg="auto" class="flex-grow-1">
                     <v-text-field :model-value="searchQuery" @update:model-value="emit('update:searchQuery', $event)"
                         placeholder="Search description or recipient..." density="compact" hide-details variant="solo"
-                        rounded="lg" prepend-inner-icon="Search" class="search-input-premium" clearable />
+                        rounded="lg" prepend-inner-icon="Search" class="search-input-premium" clearable
+                        autocomplete="off" />
                 </v-col>
 
                 <v-col cols="12" sm="6" md="3" lg="auto">
@@ -400,7 +418,8 @@ function handleReset() {
         <v-card class="premium-glass-card overflow-hidden">
             <v-data-table-server v-model="tableSelection" :headers="headers" :items="transactions" :items-length="total"
                 :loading="loading" :items-per-page="pageSize" :page="page" hover @update:options="handleOptionsUpdate"
-                class="premium-table" density="comfortable" show-select>
+                class="premium-table" density="comfortable" show-select
+                :row-props="(data: any) => ({ class: { 'hidden-txn-row': data.item.exclude_from_reports } })">
                 <!-- Selection Column Slot -->
                 <template #[`item.data-table-select`]="{ item }">
                     <v-checkbox-btn :model-value="selectedIds.has(item.id)"
@@ -502,8 +521,24 @@ function handleReset() {
                 <!-- Actions Column -->
                 <template #[`item.actions`]="{ item }">
                     <div class="text-center">
-                        <v-btn icon="Pencil" size="x-small" variant="text" color="medium-emphasis"
-                            @click="emit('editTxn', item)" />
+                        <v-menu location="start">
+                            <template v-slot:activator="{ props }">
+                                <v-btn icon="MoreVertical" size="x-small" variant="text" color="medium-emphasis"
+                                    v-bind="props" />
+                            </template>
+                            <v-list density="compact" class="rounded-lg border" elevation="2">
+                                <v-list-item @click="emit('editTxn', item)" prepend-icon="Pencil" title="Edit"
+                                    value="edit">
+                                </v-list-item>
+                                <v-list-item @click="emit('mapVendor', item)" prepend-icon="MapPin" title="Map Vendor"
+                                    value="map">
+                                </v-list-item>
+                                <v-divider class="my-1"></v-divider>
+                                <v-list-item @click="() => { selectedIds = new Set([item.id]); emit('deleteSelected') }"
+                                    prepend-icon="Trash2" title="Delete" value="delete" color="error">
+                                </v-list-item>
+                            </v-list>
+                        </v-menu>
                     </div>
                 </template>
 
