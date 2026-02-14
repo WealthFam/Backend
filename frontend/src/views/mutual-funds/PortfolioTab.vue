@@ -107,7 +107,7 @@
                             </div>
                             <div class="text-right">
                                 <div class="text-error font-weight-black text-body-2">{{ formatAmount(item.profit_loss)
-                                }}</div>
+                                    }}</div>
                                 <div class="text-error text-caption font-weight-bold">
                                     {{ ((item.profit_loss / (item.invested_value || 1)) * 100).toFixed(2) }}%
                                 </div>
@@ -157,159 +157,200 @@
         <v-card class="premium-glass-card" rounded="xl">
             <div class="px-6 py-4 border-b d-flex justify-space-between align-center">
                 <h3 class="text-h6 font-weight-black text-content">All Holdings</h3>
+                <v-text-field v-model="search" prepend-inner-icon="mdi-magnify" density="compact" variant="outlined"
+                    hide-details placeholder="Search funds..." style="max-width: 300px"
+                    class="glass-input"></v-text-field>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="w-100 premium-table">
-                    <thead>
-                        <tr>
-                            <th class="text-left cursor-pointer" @click="handleSort('scheme_name')">Fund Name</th>
-                            <th class="text-right cursor-pointer" @click="handleSort('units')">Units</th>
-                            <th class="text-right cursor-pointer" @click="handleSort('average_price')">Avg Price</th>
-                            <th class="text-right cursor-pointer" @click="handleSort('last_nav')">NAV</th>
-                            <th class="text-right cursor-pointer" @click="handleSort('invested_value')">Invested</th>
-                            <th class="text-right cursor-pointer" @click="handleSort('current_value')">Current</th>
-                            <th class="text-right px-4" style="width: 120px;">Trend</th>
-                            <th class="text-right cursor-pointer" @click="handleSort('profit_loss')">Returns</th>
-                            <th class="text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <template v-for="item in sortedPortfolio" :key="item.id">
-                            <tr class="hover-bg-surface-variant transition-colors"
-                                :class="{ 'bg-active': expandedGroups.has(item.id) }">
-                                <td class="py-3 px-4">
-                                    <div class="d-flex align-center">
-                                        <div class="mr-2" style="width: 4px; height: 32px; border-radius: 4px;"
-                                            :style="{ background: getRandomColor(item.scheme_name) }"></div>
+            <v-data-table :headers="headers" :items="sortedPortfolio" :search="search" hover
+                class="premium-table bg-transparent" density="comfortable" item-value="id" v-model:expanded="expanded">
+                <!-- Fund Name Column -->
+                <!-- Fund Name Column -->
+                <template #[`item.scheme_name`]="{ item }">
+                    <div class="d-flex align-center py-2">
+                        <!-- Color Bar -->
+                        <div class="mr-3 flex-shrink-0" style="width: 4px; height: 32px; border-radius: 4px;"
+                            :style="{ background: getRandomColor(item.scheme_name) }"></div>
 
-                                        <v-btn icon density="compact" variant="text" size="24" v-if="item.has_multiple"
-                                            @click.stop="toggleGroup(item.id)" class="mr-2">
-                                            <ChevronDown v-if="expandedGroups.has(item.id)" :size="16" />
-                                            <ChevronRight v-else :size="16" />
-                                        </v-btn>
+                        <!-- Expand/Collapse Button (or spacer) -->
+                        <div class="mr-2 flex-shrink-0"
+                            style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
+                            <v-btn v-if="item.has_multiple" icon density="compact" variant="text" size="24"
+                                @click.stop="toggleGroup(item.id)">
+                                <ChevronDown v-if="expanded.includes(item.id)" :size="16" />
+                                <ChevronRight v-else :size="16" />
+                            </v-btn>
+                        </div>
 
-                                        <div>
-                                            <div class="font-weight-bold text-body-2 text-content">{{ item.scheme_name
-                                                }}</div>
-                                            <div class="d-flex align-center gap-2 mt-1">
-                                                <v-chip size="x-small" label class="font-weight-bold">{{
-                                                    item.scheme_code }}</v-chip>
-                                                <v-chip v-if="item.goal_id" color="success" size="x-small"
-                                                    variant="tonal" class="font-weight-bold">
-                                                    <Target :size="10" class="mr-1" /> Goal Linked
+                        <!-- Name & Details -->
+                        <div>
+                            <div class="font-weight-bold text-body-2 text-content">{{ item.scheme_name }}</div>
+                            <div class="d-flex align-center gap-2 mt-1">
+                                <v-chip size="x-small" label class="font-weight-bold">{{ item.scheme_code }}</v-chip>
+                                <v-chip v-if="item.goal_id" color="success" size="x-small" variant="tonal"
+                                    class="font-weight-bold">
+                                    <Target :size="10" class="mr-1" /> Goal Linked
+                                </v-chip>
+                                <v-chip v-if="item.has_multiple" size="x-small" variant="outlined"
+                                    class="text-medium-emphasis">
+                                    {{ item.children.length }} Folios
+                                </v-chip>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Numeric Columns -->
+                <template #[`item.units`]="{ item }">
+                    <span class="text-caption font-weight-medium">{{ item.units.toFixed(3) }}</span>
+                </template>
+                <template #[`item.average_price`]="{ item }">
+                    <span class="text-caption font-weight-medium">{{ formatAmount(item.average_price) }}</span>
+                </template>
+                <template #[`item.last_nav`]="{ item }">
+                    <span class="text-caption font-weight-medium">{{ formatAmount(item.last_nav) }}</span>
+                </template>
+                <template #[`item.invested_value`]="{ item }">
+                    <span class="text-body-2 font-weight-bold text-medium-emphasis">{{ formatAmount(item.invested_value)
+                    }}</span>
+                </template>
+                <template #[`item.current_value`]="{ item }">
+                    <span class="text-body-2 font-weight-black text-content">{{ formatAmount(item.current_value)
+                        }}</span>
+                </template>
+
+                <!-- Trend Column -->
+                <template #[`item.trend`]="{ item }">
+                    <Sparkline v-if="item.sparkline && item.sparkline.length" :data="item.sparkline"
+                        :color="item.profit_loss >= 0 ? '#10b981' : '#ef4444'" :height="30" width="100" />
+                </template>
+
+                <!-- Returns Column -->
+                <template #[`item.profit_loss`]="{ item }">
+                    <div class="d-flex flex-column align-end">
+                        <span class="font-weight-black text-caption"
+                            :class="item.profit_loss >= 0 ? 'text-success' : 'text-error'">
+                            {{ item.profit_loss >= 0 ? '+' : '' }}{{ formatAmount(item.profit_loss) }}
+                        </span>
+                        <span class="font-weight-bold opacity-70" style="font-size: 10px">
+                            {{ ((item.profit_loss / (item.invested_value || 1)) * 100).toFixed(2) }}%
+                        </span>
+                    </div>
+                </template>
+
+                <!-- Actions Column -->
+                <template #[`item.actions`]="{ item }">
+                    <div class="d-flex justify-end gap-1">
+                        <v-btn icon variant="text" density="compact" color="primary"
+                            @click="item.has_multiple ? $router.push(`/mutual-funds/${item.scheme_code}?type=aggregate`) : $router.push(`/mutual-funds/${item.id}`)">
+                            <EyeIconMain :size="18" />
+                            <v-tooltip activator="parent" location="top">View Details</v-tooltip>
+                        </v-btn>
+                        <v-btn icon variant="text" density="compact" :color="item.goal_id ? 'success' : 'secondary'"
+                            @click="selectedHolding = item; showLinkGoalModal = true">
+                            <Target :size="18" />
+                            <v-tooltip activator="parent" location="top">
+                                {{ item.goal_id ? 'Update Goal Link' : 'Link to Goal' }}
+                            </v-tooltip>
+                        </v-btn>
+                    </div>
+                </template>
+
+                <!-- Expanded Row (Children / Folios) -->
+                <template v-slot:expanded-row="{ columns, item }">
+                    <td :colspan="columns.length" class="pa-0">
+                        <v-sheet color="surface-light" class="pa-2 px-4">
+                            <div class="d-flex align-center gap-2 mb-2">
+                                <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase ls-1"
+                                    style="font-size: 0.65rem;">
+                                    Folio Breakdown ({{ item.children.length }})
+                                </span>
+                                <v-divider class="border-opacity-25"></v-divider>
+                            </div>
+
+                            <v-row dense>
+                                <v-col v-for="child in item.children" :key="child.id" cols="12" md="6" xl="4">
+                                    <v-card variant="outlined"
+                                        class="bg-surface border-thin border-primary border-opacity-50"
+                                        density="compact">
+                                        <v-card-text class="pa-2">
+                                            <!-- Sub-Header: Folio & Tools -->
+                                            <div class="d-flex justify-space-between align-start mb-2">
+                                                <v-chip size="x-small" variant="tonal" color="secondary" label
+                                                    class="font-weight-bold px-1"
+                                                    style="height: 18px; font-size: 0.6rem;">
+                                                    {{ child.folio_number || 'No Folio' }}
                                                 </v-chip>
+                                                <div class="d-flex gap-1" style="margin-top: -2px;">
+                                                    <v-btn icon density="compact" variant="text" size="x-small"
+                                                        :color="child.goal_id ? 'success' : 'medium-emphasis'"
+                                                        @click="selectedHolding = child; showLinkGoalModal = true">
+                                                        <Target :size="12" />
+                                                    </v-btn>
+                                                    <v-btn icon density="compact" variant="text" size="x-small"
+                                                        color="primary" :to="`/mutual-funds/${child.id}`">
+                                                        <EyeIconMain :size="12" />
+                                                    </v-btn>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="text-right font-weight-medium text-caption">{{ item.units.toFixed(3) }}</td>
-                                <td class="text-right font-weight-medium text-caption">{{
-                                    formatAmount(item.average_price) }}</td>
-                                <td class="text-right font-weight-medium text-caption">{{ formatAmount(item.last_nav) }}
-                                </td>
-                                <td class="text-right font-weight-bold text-body-2 text-medium-emphasis">{{
-                                    formatAmount(item.invested_value) }}</td>
-                                <td class="text-right font-weight-black text-body-2 text-content">{{
-                                    formatAmount(item.current_value) }}</td>
-                                <td class="text-right px-4">
-                                    <Sparkline v-if="item.sparkline && item.sparkline.length" :data="item.sparkline"
-                                        :color="item.profit_loss >= 0 ? '#10b981' : '#ef4444'" :height="30" />
-                                </td>
-                                <td class="text-right">
-                                    <div class="d-flex flex-column align-end">
-                                        <span class="font-weight-black text-caption"
-                                            :class="item.profit_loss >= 0 ? 'text-success' : 'text-error'">
-                                            {{ item.profit_loss >= 0 ? '+' : '' }}{{ formatAmount(item.profit_loss) }}
-                                        </span>
-                                        <span class="text-[10px] font-weight-bold opacity-70">
-                                            {{ ((item.profit_loss / (item.invested_value || 1)) * 100).toFixed(2) }}%
-                                        </span>
-                                    </div>
-                                </td>
-                                <td class="text-right px-4">
-                                    <div class="d-flex justify-end gap-1">
-                                        <v-btn icon variant="text" density="compact" color="primary"
-                                            @click="item.has_multiple ? $router.push(`/mutual-funds/${item.scheme_code}?type=aggregate`) : $router.push(`/mutual-funds/${item.id}`)">
-                                            <EyeIconMain :size="18" />
-                                            <v-tooltip activator="parent" location="top">View Details</v-tooltip>
-                                        </v-btn>
-                                        <v-btn icon variant="text" density="compact"
-                                            :color="item.goal_id ? 'success' : 'secondary'"
-                                            @click="selectedHolding = item; showLinkGoalModal = true">
-                                            <Target :size="18" />
-                                            <v-tooltip activator="parent" location="top">
-                                                {{ item.goal_id ? 'Update Goal Link' : 'Link to Goal' }}
-                                            </v-tooltip>
-                                        </v-btn>
-                                    </div>
-                                </td>
-                            </tr>
 
-                            <!-- Nested Rows -->
-                            <template v-if="item.has_multiple && expandedGroups.has(item.id)">
-                                <tr v-for="child in item.children" :key="child.id"
-                                    class="bg-surface-variant bg-opacity-5">
-                                    <td class="pl-12 py-2">
-                                        <div
-                                            class="d-flex align-center text-caption text-medium-emphasis font-weight-medium">
-                                            <div class="mr-2 px-2 py-0.5 border rounded bg-surface">
-                                                {{ child.folio_number || 'No Folio' }}
+                                            <!-- Key Data Points -->
+                                            <v-row dense no-gutters class="mb-2">
+                                                <v-col cols="4">
+                                                    <div
+                                                        class="text-[9px] text-medium-emphasis font-weight-bold text-uppercase">
+                                                        Invested</div>
+                                                    <div class="text-caption font-weight-bold">{{
+                                                        formatAmount(child.invested_value) }}</div>
+                                                </v-col>
+                                                <v-col cols="4">
+                                                    <div
+                                                        class="text-[9px] text-medium-emphasis font-weight-bold text-uppercase">
+                                                        Current</div>
+                                                    <div class="text-caption font-weight-black">{{
+                                                        formatAmount(child.current_value) }}</div>
+                                                </v-col>
+                                                <v-col cols="4" class="text-right">
+                                                    <div
+                                                        class="text-[9px] text-medium-emphasis font-weight-bold text-uppercase">
+                                                        Returns</div>
+                                                    <div class="text-caption font-weight-bold"
+                                                        :class="child.profit_loss >= 0 ? 'text-success' : 'text-error'">
+                                                        {{ child.profit_loss >= 0 ? '+' : '' }}{{
+                                                            formatAmount(child.profit_loss) }}
+                                                    </div>
+                                                </v-col>
+                                            </v-row>
+
+                                            <!-- Performance & Units Footer -->
+                                            <div
+                                                class="d-flex align-end justify-space-between pt-1 border-t border-dashed border-opacity-25">
+                                                <div class="d-flex flex-column" style="width: 70px;">
+                                                    <span
+                                                        class="text-[8px] text-medium-emphasis mb-0.5 font-weight-bold">PERFORMANCE</span>
+                                                    <Sparkline v-if="child.sparkline && child.sparkline.length"
+                                                        :data="child.sparkline"
+                                                        :color="child.profit_loss >= 0 ? '#10b981' : '#ef4444'"
+                                                        :height="12" width="70" stroke-width="3" />
+                                                </div>
+                                                <div class="text-right">
+                                                    <div class="text-[8px] text-medium-emphasis font-weight-bold">UNITS
+                                                    </div>
+                                                    <div class="text-caption font-weight-medium"
+                                                        style="font-size: 0.7rem;">{{ child.units.toFixed(3) }}</div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </td>
-                                    <td class="text-right text-caption text-medium-emphasis">{{ child.units.toFixed(3)
-                                        }}</td>
-                                    <td class="text-right text-caption text-medium-emphasis">{{
-                                        formatAmount(child.average_price) }}</td>
-                                    <td class="text-right text-caption text-medium-emphasis">{{
-                                        formatAmount(child.last_nav) }}</td>
-                                    <td class="text-right text-caption text-medium-emphasis">{{
-                                        formatAmount(child.invested_value) }}</td>
-                                    <td class="text-right text-caption text-content font-weight-bold">{{
-                                        formatAmount(child.current_value) }}</td>
-                                    <td class="text-right px-4">
-                                        <Sparkline v-if="child.sparkline && child.sparkline.length"
-                                            :data="child.sparkline"
-                                            :color="child.profit_loss >= 0 ? '#10b981' : '#ef4444'" :height="20" />
-                                    </td>
-                                    <td class="text-right text-caption"
-                                        :class="child.profit_loss >= 0 ? 'text-success' : 'text-error'">
-                                        {{ formatAmount(child.profit_loss) }}
-                                    </td>
-                                    <td class="text-right px-4">
-                                        <div class="d-flex justify-end gap-1">
-                                            <v-btn icon variant="text" density="compact" color="primary" size="small"
-                                                :to="`/mutual-funds/${child.id}`">
-                                                <EyeIconMain :size="14" />
-                                            </v-btn>
-                                            <v-btn icon variant="text" density="compact"
-                                                :color="child.goal_id ? 'success' : 'secondary'" size="small"
-                                                @click="selectedHolding = child; showLinkGoalModal = true">
-                                                <Target :size="14" />
-                                                <v-tooltip activator="parent" location="top">
-                                                    {{ child.goal_id ? 'Update Goal Link' : 'Link to Goal' }}
-                                                </v-tooltip>
-                                            </v-btn>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </template>
-                        </template>
-
-                        <tr v-if="portfolio.length === 0 && !isLoading">
-                            <td colspan="8" class="text-center py-8 text-medium-emphasis">
-                                <div class="text-h6 mb-2">No investments found</div>
-                                <div class="text-caption">Use the Search tab to add funds or Import your CAS</div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+                                        </v-card-text>
+                                    </v-card>
+                                </v-col>
+                            </v-row>
+                        </v-sheet>
+                    </td>
+                </template>
+            </v-data-table>
         </v-card>
-
-        <LinkGoalModal v-if="showLinkGoalModal" v-model="showLinkGoalModal" :holding="selectedHolding"
-            @success="fetchPortfolio" />
+        <!-- Modals -->
+        <LinkGoalModal v-model="showLinkGoalModal" :holding="selectedHolding" @saved="fetchPortfolio" />
     </div>
 </template>
 <script setup lang="ts">
@@ -326,8 +367,6 @@ import LinkGoalModal from './modals/LinkGoalModal.vue'
 import { marked } from 'marked'
 import { useCurrency } from '@/composables/useCurrency'
 
-// Note: Ensure useCurrency is available or copy formatAmount logic
-
 const props = defineProps<{
     active: boolean
 }>()
@@ -342,13 +381,23 @@ const analytics = ref<any>(null)
 const aiAnalysis = ref('')
 const isAnalyzing = ref(false)
 const performanceHistory = ref<any[]>([])
+const search = ref('')
+const expanded = ref<string[]>([])
 
-// Sorting
-const sortKey = ref('current_value')
-const sortDesc = ref(true)
+// Headers
 
-// Grouping
-const expandedGroups = ref(new Set<string>())
+// Headers
+const headers = [
+    { title: 'Fund Name', key: 'scheme_name', align: 'start' },
+    { title: 'Units', key: 'units', align: 'end' },
+    { title: 'Avg Price', key: 'average_price', align: 'end' },
+    { title: 'NAV', key: 'last_nav', align: 'end' },
+    { title: 'Invested', key: 'invested_value', align: 'end' },
+    { title: 'Current', key: 'current_value', align: 'end' },
+    { title: 'Trend', key: 'trend', align: 'end', sortable: false },
+    { title: 'Returns', key: 'profit_loss', align: 'end' },
+    { title: 'Actions', key: 'actions', align: 'end', sortable: false },
+]
 
 // Modals
 const showLinkGoalModal = ref(false)
@@ -400,25 +449,14 @@ const sortedPortfolio = computed(() => {
                 last_nav: items[0].last_nav,
                 has_multiple: true,
                 children: items,
-                goal_id: items.some((i: any) => i.goal_id) ? items[0].goal_id : null // Simplified goal check
+                sparkline: items[0].sparkline, // Use first child's sparkline for group
+                goal_id: items.some((i: any) => i.goal_id) ? items[0].goal_id : null
             })
         } else {
             result.push({ ...items[0], has_multiple: false })
         }
     })
-
-    // 2. Sort
-    return result.sort((a, b) => {
-        let valA = a[sortKey.value]
-        let valB = b[sortKey.value]
-        if (typeof valA === 'string') {
-            valA = valA.toLowerCase()
-            valB = valB.toLowerCase()
-        }
-        if (valA < valB) return sortDesc.value ? 1 : -1
-        if (valA > valB) return sortDesc.value ? -1 : 1
-        return 0
-    })
+    return result
 })
 
 const topGainers = computed(() => {
@@ -482,7 +520,6 @@ async function fetchPortfolio() {
         const memberId = authStore.selectedMemberId || undefined
         const response = await financeApi.getPortfolio(memberId)
         portfolio.value = response.data || []
-        // Emit count to parent if needed
     } catch (err) {
         console.error('Failed to fetch portfolio', err)
     } finally {
@@ -500,13 +537,11 @@ async function fetchAnalytics() {
         ])
         analytics.value = analyticsRes.data
 
-        // Handle structured response { timeline: [], benchmark: [], ... }
         const perfData = perfRes.data || {}
         if (perfData.timeline && Array.isArray(perfData.timeline)) {
             performanceHistory.value = perfData.timeline
             benchmarkHistory.value = perfData.benchmark || []
         } else if (Array.isArray(perfData)) {
-            // Fallback for legacy generic array response
             performanceHistory.value = perfData
             benchmarkHistory.value = []
         } else {
@@ -515,7 +550,6 @@ async function fetchAnalytics() {
         }
     } catch (e) {
         console.error(e)
-        // Fallback or empty state
         performanceHistory.value = []
         benchmarkHistory.value = []
     }
@@ -531,15 +565,11 @@ async function generateAIAnalysis() {
 }
 
 function toggleGroup(id: string) {
-    if (expandedGroups.value.has(id)) expandedGroups.value.delete(id)
-    else expandedGroups.value.add(id)
-}
-
-function handleSort(key: string) {
-    if (sortKey.value === key) sortDesc.value = !sortDesc.value
-    else {
-        sortKey.value = key
-        sortDesc.value = true
+    const index = expanded.value.indexOf(id)
+    if (index !== -1) {
+        expanded.value.splice(index, 1)
+    } else {
+        expanded.value.push(id)
     }
 }
 
@@ -567,12 +597,6 @@ watch(() => props.active, async (isActive) => {
     }
 }, { immediate: true })
 
-
-
-// Expose portfolio count to parent? 
-// We can use a store or emit event, but for now parent can duplicate fetch or we keep it simple.
-// Actually, parent header shows count. Maybe standard pattern is store.
-// Let's assume parent just passes props or we emit.
 const emit = defineEmits(['update:count'])
 watch(portfolio, () => {
     emit('update:count', portfolio.value.length)
@@ -580,9 +604,6 @@ watch(portfolio, () => {
 </script>
 
 <style scoped>
-/* Scoped styles mainly for table since glass card is global/utility usually, 
-   but duplicating here to ensure self-contained */
-
 .premium-glass-card {
     background: rgba(var(--v-theme-surface), 0.7) !important;
     backdrop-filter: blur(20px) saturate(180%);
@@ -592,37 +613,31 @@ watch(portfolio, () => {
 }
 
 .premium-table {
-    border-collapse: collapse;
-    width: 100%;
+    background: transparent !important;
 }
 
-.premium-table th {
-    padding: 12px 16px;
-    font-size: 0.75rem;
-    font-weight: 700;
+/* Custom Table Styles override */
+:deep(.v-data-table) {
+    background: transparent !important;
+}
+
+:deep(.v-data-table-header__content) {
+    font-weight: 800;
     text-transform: uppercase;
+    font-size: 0.7rem;
     color: rgba(var(--v-theme-on-surface), 0.5);
-    border-bottom: 1px solid rgba(var(--v-border-color), 0.1);
-}
-
-.premium-table td {
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(var(--v-border-color), 0.05);
 }
 
 .hover-bg-surface-variant:hover {
     background-color: rgba(var(--v-theme-on-surface), 0.03);
 }
 
-.border-b-dashed {
-    border-bottom: 1px dashed rgba(var(--v-border-color), 0.15);
-}
-
-.border-b-dashed:last-child {
-    border-bottom: none;
-}
-
 .rotate-180 {
     transform: rotate(180deg);
+}
+
+.glass-input :deep(.v-field__outline__start),
+.glass-input :deep(.v-field__outline__end) {
+    border-color: rgba(var(--v-border-color), 0.2);
 }
 </style>

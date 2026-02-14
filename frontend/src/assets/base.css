@@ -1,36 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 :root {
-  /* Brand Colors */
-  --color-primary: #4f46e5;
-  --color-primary-dark: #4338ca;
-  --color-primary-light: #e0e7ff;
-  --color-background: #f1f5f9;
-  --color-surface: #ffffff;
-  --color-border: #e2e8f0;
-  --color-text-main: #0f172a;
-  --color-text-muted: #64748b;
-  --color-success: #10b981;
-  --color-danger: #ef4444;
-  --color-warning: #f59e0b;
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
+  /* Use Vuetify Theme Variables instead of custom colors */
   --sidebar-width: 260px;
   --sidebar-collapsed-width: 64px;
-  --font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-size-sm: 0.875rem;
-  --font-size-base: 1rem;
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.3s ease;
 }
 
 *,
@@ -42,9 +13,9 @@
 
 body {
   min-height: 100vh;
-  color: var(--color-text-main);
+  color: rgb(var(--v-theme-on-background));
   background: transparent;
-  font-family: var(--font-family-base);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -130,20 +101,20 @@ body {
 }
 
 .btn-primary-glow {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-  color: white;
+  background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-primary), 0.8) 100%);
+  color: rgb(var(--v-theme-on-primary));
   padding: 0.75rem 1.5rem;
   border-radius: 0.75rem;
   font-weight: 600;
   border: none;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.3);
   transition: all 0.2s;
 }
 
 .btn-primary-glow:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.4);
+  box-shadow: 0 6px 16px rgba(var(--v-theme-primary), 0.4);
 }
 
 /* Global Premium Styling */
@@ -167,9 +138,9 @@ body {
 }
 
 /* Midnight Premium Highlight (Hero Card) - Theme Aware */
+/* Midnight Premium Highlight (Hero Card) - Theme Aware */
 .midnight-premium-card {
-  background: linear-gradient(135deg, #4f46e5 0%, #312e81 100%) !important;
-  /* Vibrant Indigo in Light Mode */
+  background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-secondary)) 100%) !important;
   color: white !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
@@ -177,7 +148,7 @@ body {
 }
 
 :where(.v-theme--dark, .v-theme--wealthFamDark) .midnight-premium-card {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+  background: linear-gradient(135deg, rgba(var(--v-theme-surface), 0.9) 0%, rgba(var(--v-theme-background), 0.95) 100%) !important;
   /* Deep Midnight in Dark Mode */
   border-color: rgba(255, 255, 255, 0.05) !important;
 }
