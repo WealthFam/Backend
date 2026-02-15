@@ -4,6 +4,21 @@
   --sidebar-collapsed-width: 64px;
 }
 
+.page-container {
+  min-height: calc(100vh - 64px);
+  position: relative;
+  overflow: hidden;
+  padding: 24px !important;
+  /* Default mobile padding */
+}
+
+@media (min-width: 960px) {
+  .page-container {
+    padding: 40px !important;
+    /* Tablet/Desktop padding */
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -14,10 +29,24 @@
 body {
   min-height: 100vh;
   color: rgb(var(--v-theme-on-background));
-  background: transparent;
+  background: rgb(var(--v-theme-background));
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
+}
+
+.text-h1,
+.text-h2,
+.text-h3,
+.text-h4,
+.text-h5,
+.text-h6 {
+  letter-spacing: -0.02em !important;
+}
+
+.font-weight-black {
+  letter-spacing: -0.03em !important;
 }
 
 /* Base Components - REMOVED (Use Vuetify) */
@@ -52,7 +81,11 @@ body {
 }
 
 .dashboard-page {
-  background: linear-gradient(-45deg, #f1f5f9, #e2e8f0, #f8fafc, #f1f5f9);
+  background: linear-gradient(-45deg,
+      rgba(var(--v-theme-primary), 0.05),
+      rgba(var(--v-theme-secondary), 0.05),
+      rgba(var(--v-theme-background), 1),
+      rgba(var(--v-theme-primary), 0.02));
   background-size: 400% 400%;
   animation: meshGradient 20s ease infinite;
   min-height: 100vh;
@@ -60,7 +93,7 @@ body {
 
 /* Hardened Dark Mode Selectors */
 :where(.v-theme--dark, .v-theme--wealthFamDark) .dashboard-page {
-  background: linear-gradient(-45deg, #0f172a, #1e293b, #020617, #1e293b) !important;
+  background: linear-gradient(-45deg, #020617, #0f172a, #020617, #1e293b) !important;
 }
 
 @keyframes meshGradient {
@@ -113,24 +146,24 @@ body {
 }
 
 .btn-primary-glow:hover {
-  transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(var(--v-theme-primary), 0.4);
 }
 
 /* Global Premium Styling */
 .premium-glass-card {
-  background: rgb(var(--v-theme-surface), 0.9) !important;
+  background: rgba(var(--v-theme-surface), 0.7) !important;
   color: rgb(var(--v-theme-on-surface)) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(var(--v-border-color), 0.15) !important;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(var(--v-border-color), 0.12) !important;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.08) !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border-radius: 20px !important;
 }
 
 .premium-glass-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.15) !important;
+  border-color: rgba(var(--v-theme-primary), 0.3) !important;
+  box-shadow: 0 15px 45px -10px rgba(0, 0, 0, 0.12) !important;
 }
 
 .premium-glass-card.no-hover:hover {
@@ -172,6 +205,19 @@ body {
 }
 
 /* Global Premium Input/Select Focus Glow */
+/* Subtler borders for inputs in Light Mode to reduce contrast */
+:where(.v-theme--wealthFamTheme) .v-field__outline {
+  --v-field-border-opacity: 1;
+  /* reset opacity so we can control color directly */
+  color: #cbd5e1 !important;
+  /* slate-300 */
+}
+
+:where(.v-theme--wealthFamTheme) .v-field:hover .v-field__outline {
+  color: #94a3b8 !important;
+  /* slate-400 */
+}
+
 .v-field--focused {
   border-color: rgb(var(--v-theme-primary)) !important;
   box-shadow: 0 0 0 4px rgba(var(--v-theme-primary), 0.15) !important;

@@ -3,6 +3,10 @@ import { ref, watch, computed } from 'vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useCurrency } from '@/composables/useCurrency'
+import {
+    FileDown, X, UploadCloud, Lightbulb, FileText,
+    Coins, CheckCircle2, Trash2, CheckCircle
+} from 'lucide-vue-next'
 
 const { formatAmount } = useCurrency()
 
@@ -258,11 +262,11 @@ function close() {
             <v-card-title class="pa-0">
                 <div class="modal-header-premium pa-4 d-flex align-center justify-space-between text-white">
                     <div class="d-flex align-center ga-3">
-                        <v-icon color="white">FileDown</v-icon>
+                        <FileDown class="text-white" :size="24" />
                         <h2 class="text-h6 font-weight-black">Import Transactions</h2>
                     </div>
                     <v-btn icon variant="text" color="white" density="compact" @click="close">
-                        <v-icon size="24">X</v-icon>
+                        <X :size="24" class="text-white" />
                     </v-btn>
                 </div>
 
@@ -295,7 +299,7 @@ function close() {
                                         Account</v-label>
                                     <v-autocomplete v-model="selectedAccount" :items="accountOptionsFlat"
                                         item-title="label" item-value="value"
-                                        placeholder="Which bank account is this for?" variant="solo"
+                                        placeholder="Which bank account is this for?" variant="outlined"
                                         density="comfortable" flat class="premium-select-field" hide-details>
 
                                     </v-autocomplete>
@@ -303,17 +307,20 @@ function close() {
                                 <v-col cols="12" md="6">
                                     <v-label class="text-subtitle-2 font-weight-black mb-2 d-block">Upload CSV or
                                         Excel</v-label>
-                                    <v-file-input @change="handleFileUpload" accept=".csv, .xlsx, .xls" variant="solo"
-                                        density="comfortable" flat class="premium-file-field"
-                                        prepend-inner-icon="UploadCloud" prepend-icon=""
-                                        placeholder="Drag and drop or click to browse" hide-details></v-file-input>
+                                    <v-file-input @change="handleFileUpload" accept=".csv, .xlsx, .xls"
+                                        variant="outlined" density="comfortable" flat class="premium-file-field"
+                                        prepend-icon="" placeholder="Drag and drop or click to browse" hide-details>
+                                        <template v-slot:prepend-inner>
+                                            <UploadCloud :size="20" class="text-primary mr-2" />
+                                        </template>
+                                    </v-file-input>
                                 </v-col>
                             </v-row>
 
                             <v-alert border="start" border-color="primary" color="surface" elevation="1"
                                 class="mt-10 rounded-xl pa-6">
                                 <template v-slot:prepend>
-                                    <v-icon color="primary" size="32">Lightbulb</v-icon>
+                                    <Lightbulb :size="32" class="text-primary" />
                                 </template>
                                 <div class="ml-4">
                                     <h4 class="text-h6 font-weight-black mb-1">Pro Tip</h4>
@@ -375,7 +382,7 @@ function close() {
                                     <v-card variant="outlined"
                                         class="rounded-xl border-opacity-5 pa-4 h-100 bg-surface shadow-sm">
                                         <h4 class="text-subtitle-1 font-weight-black mb-6 d-flex align-center gap-2">
-                                            <v-icon color="primary">FileText</v-icon>
+                                            <FileText :size="20" class="text-primary" />
                                             Transaction Details
                                         </h4>
 
@@ -388,7 +395,7 @@ function close() {
                                                         <div class="text-caption font-weight-black">{{ field.label }}
                                                         </div>
                                                         <div class="text-[10px] opacity-60 line-clamp-1">{{ field.desc
-                                                        }}</div>
+                                                            }}</div>
                                                     </div>
                                                 </div>
                                                 <div class="mapping-arrow mx-4 opacity-30">
@@ -396,8 +403,9 @@ function close() {
                                                 </div>
                                                 <div class="field-select-panel" style="width: 200px;">
                                                     <v-select v-model="mapping[field.key]" :items="csvHeaders"
-                                                        placeholder="Choose column..." variant="solo" density="compact"
-                                                        flat class="premium-select-field-small" hide-details>
+                                                        placeholder="Choose column..." variant="outlined"
+                                                        density="comfortable" flat class="premium-select-field-small"
+                                                        hide-details>
                                                         <template v-if="field.optional" v-slot:prepend-item>
                                                             <v-list-item value="" title="-- No Column --"></v-list-item>
                                                         </template>
@@ -413,7 +421,7 @@ function close() {
                                     <v-card variant="outlined"
                                         class="rounded-xl border-opacity-5 pa-4 h-100 bg-surface shadow-sm text-surface">
                                         <h4 class="text-subtitle-1 font-weight-black mb-4 d-flex align-center gap-2">
-                                            <v-icon color="success">Coins</v-icon>
+                                            <Coins :size="20" class="text-success" />
                                             Financials
                                         </h4>
 
@@ -432,9 +440,9 @@ function close() {
                                                 <div class="flex-grow-1">
                                                     <div class="text-caption font-weight-black">Amount</div>
                                                     <v-select v-model="mapping.amount" :items="csvHeaders"
-                                                        placeholder="Amount column" variant="solo" density="compact"
-                                                        flat class="premium-select-field-small mt-2"
-                                                        hide-details></v-select>
+                                                        placeholder="Amount column" variant="outlined"
+                                                        density="comfortable" flat
+                                                        class="premium-select-field-small mt-2" hide-details></v-select>
                                                 </div>
                                             </div>
                                         </div>
@@ -445,7 +453,7 @@ function close() {
                                                 <div class="flex-grow-1">
                                                     <div class="text-caption font-weight-black">Debit (Out)</div>
                                                     <v-select v-model="splitMapping.debit" :items="csvHeaders"
-                                                        variant="solo" density="compact" flat
+                                                        variant="outlined" density="comfortable" flat
                                                         class="premium-select-field-small mt-2" hide-details></v-select>
                                                 </div>
                                             </div>
@@ -454,7 +462,7 @@ function close() {
                                                 <div class="flex-grow-1">
                                                     <div class="text-caption font-weight-black">Credit (In)</div>
                                                     <v-select v-model="splitMapping.credit" :items="csvHeaders"
-                                                        variant="solo" density="compact" flat
+                                                        variant="outlined" density="comfortable" flat
                                                         class="premium-select-field-small mt-2" hide-details></v-select>
                                                 </div>
                                             </div>
@@ -469,7 +477,7 @@ function close() {
                             <div
                                 class="verify-header pa-3 d-flex align-center justify-space-between bg-primary-lighten-5 rounded-lg mb-4">
                                 <span class="text-subtitle-2 font-weight-black d-flex align-center">
-                                    <v-icon start size="20">CheckCircle2</v-icon>
+                                    <CheckCircle2 :size="20" class="mr-2" />
                                     {{ selectedTxns.size }} of {{ parsedTxns.length }} transactions selected
                                 </span>
                                 <v-btn size="x-small" variant="tonal" color="primary"
@@ -503,7 +511,7 @@ function close() {
                                             </td>
                                             <td class="text-caption">{{ txn.date }}</td>
                                             <td class="text-caption opacity-50">{{ txn.external_id || txn.ref_id || '-'
-                                            }}</td>
+                                                }}</td>
                                             <td>
                                                 <div class="font-weight-bold text-caption text-surface">{{ txn.recipient
                                                     || '-' }}</div>
@@ -515,8 +523,10 @@ function close() {
                                                 {{ formatAmount(txn.amount) }}
                                             </td>
                                             <td class="text-center">
-                                                <v-btn icon="Trash2" size="x-small" variant="text" color="error"
-                                                    @click="removeTxn(idx)"></v-btn>
+                                                <v-btn icon size="x-small" variant="text" color="error"
+                                                    @click="removeTxn(idx)">
+                                                    <Trash2 :size="16" />
+                                                </v-btn>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -528,7 +538,7 @@ function close() {
                         <v-window-item :value="5">
                             <div class="d-flex flex-column align-center justify-center py-10 text-center">
                                 <div class="success-icon-wrapper mb-6">
-                                    <v-icon color="success" size="100">CheckCircle</v-icon>
+                                    <CheckCircle :size="100" class="text-success" />
                                 </div>
                                 <h2 class="text-h4 font-weight-black mb-2">Import Successful!</h2>
                                 <p class="text-h6 opacity-70 mb-8">Successfully imported {{ importResult?.imported }}
@@ -591,7 +601,7 @@ function close() {
 
 <style scoped>
 .premium-import-card {
-    background: #f8fafc;
+    background: rgb(var(--v-theme-surface));
 }
 
 .modal-header-premium {
@@ -607,8 +617,8 @@ function close() {
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: #e2e8f0;
-    color: #64748b;
+    background: rgba(var(--v-theme-on-surface), 0.1);
+    color: rgba(var(--v-theme-on-surface), 0.6);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -624,7 +634,7 @@ function close() {
 }
 
 .step-label {
-    color: #94a3b8;
+    color: rgba(var(--v-theme-on-surface), 0.4);
     transition: all 0.3s ease;
 }
 
@@ -635,7 +645,7 @@ function close() {
 .step-divider {
     width: 32px;
     height: 2px;
-    background: #e2e8f0;
+    background: rgba(var(--v-theme-on-surface), 0.1);
     transition: all 0.3s ease;
 }
 
@@ -656,11 +666,11 @@ function close() {
 }
 
 .premium-table {
-    background: white;
+    background: rgb(var(--v-theme-surface));
 }
 
 .premium-table th {
-    background: #f8fafc !important;
+    background: rgba(var(--v-theme-on-surface), 0.02) !important;
     height: 40px !important;
 }
 
@@ -671,7 +681,7 @@ function close() {
 .field-icon-box {
     width: 36px;
     height: 36px;
-    background: #f1f5f9;
+    background: rgba(var(--v-theme-on-surface), 0.05);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -687,7 +697,7 @@ function close() {
 
 .disabled-row {
     opacity: 0.4;
-    background: #f1f5f9;
+    background: rgba(var(--v-theme-on-surface), 0.05);
 }
 
 .success-icon-wrapper {
@@ -712,6 +722,6 @@ function close() {
 }
 
 .bg-primary-lighten-5 {
-    background-color: #f0f7ff;
+    background-color: rgba(var(--v-theme-primary), 0.1);
 }
 </style>

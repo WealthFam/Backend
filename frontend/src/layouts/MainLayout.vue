@@ -155,7 +155,7 @@ function logout() {
                             </template>
                             <v-list-item-title class="font-weight-bold">{{ user.full_name ||
                                 user.email.split('@')[0]
-                            }}</v-list-item-title>
+                                }}</v-list-item-title>
                         </v-list-item>
                     </v-list>
                 </v-card>
@@ -191,7 +191,7 @@ function logout() {
                                 </v-avatar>
                             </template>
                             <v-list-item-title class="text-h6 font-weight-bold">{{ auth.user.email.split('@')[0]
-                            }}</v-list-item-title>
+                                }}</v-list-item-title>
                             <v-list-item-subtitle class="text-primary font-weight-medium">Family
                                 Admin</v-list-item-subtitle>
                         </v-list-item>
@@ -329,11 +329,11 @@ function logout() {
 }
 
 .premium-header {
-    background: rgb(var(--v-theme-surface)) !important;
+    background: rgba(var(--v-theme-surface), 0.75) !important;
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
     z-index: 1000 !important;
-    /* Removed fixed 0.95 opacity to let theme surface shine, or adjust per theme if needed */
+    border-bottom: 1px solid rgba(var(--v-border-color), 0.12);
 }
 
 .brand-link {
@@ -398,15 +398,17 @@ function logout() {
 
 .premium-popup {
     border-radius: 1.25rem !important;
-    border: 1px solid rgba(255, 255, 255, 0.5) !important;
+    border: 1px solid rgba(var(--v-border-color), 0.2) !important;
+    background: rgba(var(--v-theme-surface), 0.9) !important;
     backdrop-filter: blur(10px);
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
 }
 
 .premium-sidebar {
-    background: rgb(var(--v-theme-surface)) !important;
+    background: rgba(var(--v-theme-surface), 0.75) !important;
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    border-right: 1px solid rgba(var(--v-border-color), 0.12) !important;
 }
 
 .nav-list-item {
@@ -419,9 +421,9 @@ function logout() {
 }
 
 .nav-list-item.v-list-item--active {
-    background: rgba(79, 70, 229, 0.12) !important;
-    color: #4f46e5 !important;
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.1) !important;
+    background: rgba(var(--v-theme-primary), 0.12) !important;
+    color: rgb(var(--v-theme-primary)) !important;
+    box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.15) !important;
 }
 
 :deep(.nav-icon-wrapper) {
@@ -432,7 +434,7 @@ function logout() {
 }
 
 .nav-list-item.v-list-item--active :deep(.nav-icon) {
-    color: #4f46e5 !important;
+    color: rgb(var(--v-theme-primary)) !important;
 }
 
 .nav-list-item.v-list-item--active :deep(.nav-title) {
@@ -447,7 +449,7 @@ function logout() {
 }
 
 .active-icon {
-    color: #4f46e5;
+    color: rgb(var(--v-theme-primary));
     transform: scale(1.1);
 }
 
