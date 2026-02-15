@@ -3,7 +3,7 @@
         <div class="pa-4 d-flex align-center justify-space-between">
             <div>
                 <div class="d-flex align-center gap-2 mb-1">
-                    <v-icon color="primary" size="20">mdi-map-marker-radius</v-icon>
+                    <v-icon color="primary" size="20">MapPin</v-icon>
                     <h3 class="text-h6 font-weight-black">Spending Heatmap</h3>
                 </div>
                 <p class="text-caption font-weight-bold opacity-60">Visualizing expenses by location</p>

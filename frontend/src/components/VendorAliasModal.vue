@@ -77,7 +77,7 @@ async function save() {
         <v-card class="rounded-xl">
             <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                 <span class="text-h6 font-weight-bold">New Merchant Alias</span>
-                <v-btn icon="mdi-close" variant="text" density="comfortable" @click="isOpen = false"></v-btn>
+                <v-btn icon="X" variant="text" density="comfortable" @click="isOpen = false"></v-btn>
             </v-card-title>
             <v-card-text class="pa-6">
                 <v-form @submit.prevent="save">
