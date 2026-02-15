@@ -2,9 +2,13 @@
     <div class="animate-in">
         <!-- Search Bar -->
         <div class="d-flex flex-column flex-sm-row align-center justify-space-between gap-4 mb-6">
-            <v-text-field v-model="searchQuery" prepend-inner-icon="mdi-magnify" placeholder="Search email accounts..."
-                variant="outlined" density="comfortable" hide-details class="flex-grow-1"
-                style="max-width: 400px; width: 100%;" bg-color="surface"></v-text-field>
+            <v-text-field v-model="searchQuery" placeholder="Search email accounts..." variant="outlined"
+                density="comfortable" hide-details class="flex-grow-1" style="max-width: 400px; width: 100%;"
+                bg-color="surface">
+                <template v-slot:prepend-inner>
+                    <Search :size="18" class="text-medium-emphasis mr-2" />
+                </template>
+            </v-text-field>
 
             <div class="d-flex align-center gap-3">
                 <h3 class="text-subtitle-1 font-weight-bold">Email Accounts</h3>
@@ -18,7 +22,10 @@
             :color="syncStatus.status === 'completed' ? 'success' : 'error'" variant="tonal" border="start" closable
             class="mb-6" @click:close="syncStatus = null">
             <template v-slot:prepend>
-                <div class="text-h5 mr-2">{{ syncStatus.status === 'completed' ? '✅' : '❌' }}</div>
+                <div class="mr-2">
+                    <CheckCircle2 v-if="syncStatus.status === 'completed'" :size="24" />
+                    <XCircle v-else :size="24" />
+                </div>
             </template>
             <div class="text-subtitle-2 font-weight-bold">
                 {{ syncStatus.status === 'completed' ? 'Sync Complete' : 'Sync Failed' }}
@@ -30,7 +37,7 @@
 
         <v-row>
             <v-col v-for="config in emailConfigs" :key="config.id" cols="12" md="6" lg="4">
-                <v-card class="email-card-premium h-100 d-flex flex-column" elevation="0">
+                <v-card class="premium-glass-card h-100 d-flex flex-column" elevation="0">
                     <div class="status-stripe-compact" :class="{
                         'active': config.is_active,
                         'inactive': !config.is_active,
@@ -41,7 +48,7 @@
                         <!-- Header -->
                         <div class="d-flex justify-space-between align-start mb-3">
                             <div class="d-flex align-center gap-2 overflow-hidden">
-                                <v-avatar color="indigo-lighten-5" size="32" class="border">
+                                <v-avatar color="primary" variant="tonal" size="32" class="border">
                                     <span class="text-caption">
                                         {{familyMembers.find(u => u.id === config.user_id)?.avatar || '👤'}}
                                     </span>
@@ -65,11 +72,11 @@
                             </div>
 
                             <div class="d-flex align-center gap-1">
-                                <v-btn icon density="compact" variant="text" color="medium-emphasis"
+                                <v-btn icon density="comfortable" variant="text" color="medium-emphasis"
                                     @click="openHistoryModal(config)" title="History">
                                     <Clock :size="18" />
                                 </v-btn>
-                                <v-btn icon density="compact" variant="text" color="medium-emphasis"
+                                <v-btn icon density="comfortable" variant="text" color="medium-emphasis"
                                     @click="openEditEmailModal(config)" title="Settings">
                                     <Settings :size="18" />
                                 </v-btn>
@@ -84,7 +91,7 @@
                                 <div v-if="config.last_sync_at" class="text-caption font-weight-medium">
                                     {{ formatDate(config.last_sync_at).meta }}
                                     <span class="text-medium-emphasis">({{ formatDate(config.last_sync_at).day
-                                        }})</span>
+                                    }})</span>
                                 </div>
                                 <div v-else class="text-caption text-warning font-weight-bold">Never</div>
                             </div>
@@ -120,11 +127,11 @@
         </div>
 
         <!-- RECENT EMAIL SCAN LOGS -->
-        <v-card class="mt-12 glass-card" elevation="0">
+        <v-card class="mt-12 premium-glass-card" elevation="0">
             <v-card-title class="d-flex align-center justify-space-between py-4 px-6">
                 <div class="d-flex align-center gap-3">
-                    <v-avatar color="indigo-lighten-5" size="40" rounded>
-                        <span class="text-h6">📨</span>
+                    <v-avatar color="primary" variant="tonal" size="40" rounded>
+                        <Mail :size="24" />
                     </v-avatar>
                     <div>
                         <div class="text-subtitle-1 font-weight-bold">Recent Scan Activity</div>
@@ -174,7 +181,7 @@
                     <tr v-if="emailLogs.length === 0">
                         <td colspan="5" class="text-center py-8 text-medium-emphasis font-italic">
                             <div class="d-flex flex-column align-center gap-2">
-                                <span class="text-h4">📭</span>
+                                <MailOpen :size="48" class="text-medium-emphasis opacity-50 mb-2" />
                                 No scan history found.
                             </div>
                         </td>
@@ -189,7 +196,7 @@
                 <span class="text-caption text-medium-emphasis">
                     Showing {{ emailLogPagination.skip + 1 }} - {{ Math.min(emailLogPagination.skip +
                         emailLogPagination.limit,
-                    emailLogPagination.total) }}
+                        emailLogPagination.total) }}
                 </span>
                 <div class="d-flex gap-2">
                     <v-btn size="small" variant="outlined" :disabled="emailLogPagination.skip === 0"
@@ -218,8 +225,9 @@
                             <div class="text-caption text-medium-emphasis">{{ emailModalSubtitle }}</div>
                         </div>
                     </div>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showEmailModal = false"></v-btn>
+                    <v-btn icon variant="text" density="comfortable" @click="showEmailModal = false">
+                        <X :size="24" />
+                    </v-btn>
                 </v-card-title>
 
                 <v-card-text class="pa-4">
@@ -232,13 +240,19 @@
                             <v-row>
                                 <v-col cols="12" sm="6">
                                     <v-text-field v-model="emailForm.email" label="Email Address"
-                                        placeholder="name@gmail.com" prepend-inner-icon="mdi-email-outline"
-                                        variant="outlined" required></v-text-field>
+                                        placeholder="name@gmail.com" variant="outlined" required>
+                                        <template v-slot:prepend-inner>
+                                            <Mail :size="18" class="text-medium-emphasis mr-2" />
+                                        </template>
+                                    </v-text-field>
                                 </v-col>
                                 <v-col cols="12" sm="6">
                                     <v-text-field v-model="emailForm.password" label="App Password" type="password"
-                                        placeholder="•••• •••• •••• ••••" prepend-inner-icon="mdi-lock-outline"
-                                        variant="outlined" required></v-text-field>
+                                        placeholder="•••• •••• •••• ••••" variant="outlined" required>
+                                        <template v-slot:prepend-inner>
+                                            <Lock :size="18" class="text-medium-emphasis mr-2" />
+                                        </template>
+                                    </v-text-field>
                                 </v-col>
                                 <v-col cols="12" sm="6">
                                     <v-text-field v-model="emailForm.host" label="IMAP Server"
@@ -249,7 +263,7 @@
                                         variant="outlined"></v-text-field>
                                 </v-col>
                             </v-row>
-                            <v-alert type="info" variant="tonal" density="compact" class="mt-2 text-caption">
+                            <v-alert type="info" variant="tonal" density="comfortable" class="mt-2 text-caption">
                                 Use a generated <strong>App Password</strong>, not your main password.
                             </v-alert>
                         </div>
@@ -290,7 +304,7 @@
                             <v-row align="end">
                                 <v-col cols="12" sm="6">
                                     <v-text-field v-model="emailForm.last_sync_at" label="Custom Sync Point"
-                                        type="datetime-local" variant="outlined" density="compact"
+                                        type="datetime-local" variant="outlined" density="comfortable"
                                         hide-details></v-text-field>
                                 </v-col>
                                 <v-col cols="12" sm="6" class="d-flex gap-2">
@@ -326,8 +340,9 @@
             <v-card class="rounded-xl">
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">Sync History</span>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showHistoryModal = false"></v-btn>
+                    <v-btn icon variant="text" density="comfortable" @click="showHistoryModal = false">
+                        <X :size="24" />
+                    </v-btn>
                 </v-card-title>
 
                 <div class="pa-0">
@@ -342,7 +357,11 @@
                         </thead>
                         <tbody>
                             <tr v-for="log in syncLogs" :key="log.id">
-                                <td>{{ getLogIcon(log.status) }}</td>
+                                <td>
+                                    <CheckCircle2 v-if="log.status === 'completed'" :size="16" class="text-success" />
+                                    <XCircle v-else-if="log.status === 'error'" :size="16" class="text-error" />
+                                    <Loader2 v-else :size="16" class="text-info animate-spin" />
+                                </td>
                                 <td class="text-caption">{{ formatDateFull(log.started_at) }}</td>
                                 <td class="text-caption font-mono">{{ log.items_processed || 0 }}</td>
                                 <td class="text-caption text-truncate" style="max-width: 250px;" :title="log.message">{{
@@ -363,7 +382,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { Settings, RefreshCw, Clock, Plus, Mail, Server, UserCheck } from 'lucide-vue-next'
+import { Settings, RefreshCw, Clock, Plus, Mail, Server, UserCheck, Search, Lock, X, CheckCircle2, XCircle, MailOpen, Loader2 } from 'lucide-vue-next'
 
 const emailConfigs = ref<any[]>([])
 const familyMembers = ref<any[]>([])
@@ -549,11 +568,7 @@ function formatDateFull(dateStr: string) {
     return new Date(dateStr).toLocaleString()
 }
 
-const getLogIcon = (status: string) => {
-    if (status === 'completed') return '✅'
-    if (status === 'error') return '❌'
-    return '⏳'
-}
+// function getLogIcon removed as it is replaced by inline icons
 
 onMounted(() => {
     fetchEmailLogs()
@@ -579,27 +594,7 @@ const fetchData = async () => {
 </script>
 
 <style scoped>
-.glass-card {
-    background: rgba(var(--v-theme-surface), 0.8) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(var(--v-border-color), 0.2);
-    border-radius: 16px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.email-card-premium {
-    position: relative;
-    border-radius: 16px;
-    border: 1px solid rgba(var(--v-border-color), 0.15);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-}
-
-.email-card-premium:hover {
-    border-color: rgb(var(--v-theme-primary));
-    box-shadow: 0 10px 20px -10px rgba(var(--v-theme-primary), 0.2);
-    transform: translateY(-2px);
-}
+/* glass-card and email-card-premium removed - using global premium-glass-card */
 
 .status-stripe-compact {
     position: absolute;

@@ -3,41 +3,49 @@
         <!-- Account Summary Widgets -->
         <v-row class="mb-6">
             <v-col cols="12" sm="6" md="3">
-                <v-card class="glass-card h-100 pa-4" elevation="0">
+                <v-card class="premium-glass-card h-100 pa-4" elevation="0">
                     <div class="d-flex justify-space-between align-center mb-2">
                         <span class="text-subtitle-2 text-medium-emphasis font-weight-bold text-uppercase ls-1">Total
                             Liquid</span>
-                        <div class="stat-icon-bg gray">⚖️</div>
+                        <div class="stat-icon-bg gray">
+                            <Scale :size="18" class="text-medium-emphasis" />
+                        </div>
                     </div>
                     <div class="text-h4 font-weight-black">{{ formatAmount(accountMetrics.total) }}</div>
                 </v-card>
             </v-col>
             <v-col cols="12" sm="6" md="3">
-                <v-card class="glass-card h-100 pa-4" elevation="0">
+                <v-card class="premium-glass-card h-100 pa-4" elevation="0">
                     <div class="d-flex justify-space-between align-center mb-2">
                         <span class="text-subtitle-2 text-medium-emphasis font-weight-bold text-uppercase ls-1">Bank
                             Balance</span>
-                        <div class="stat-icon-bg green">🏦</div>
+                        <div class="stat-icon-bg green">
+                            <Landmark :size="18" class="text-success" />
+                        </div>
                     </div>
                     <div class="text-h4 font-weight-black">{{ formatAmount(accountMetrics.bank) }}</div>
                 </v-card>
             </v-col>
             <v-col cols="12" sm="6" md="3">
-                <v-card class="glass-card h-100 pa-4" elevation="0">
+                <v-card class="premium-glass-card h-100 pa-4" elevation="0">
                     <div class="d-flex justify-space-between align-center mb-2">
                         <span class="text-subtitle-2 text-medium-emphasis font-weight-bold text-uppercase ls-1">Cash on
                             Hand</span>
-                        <div class="stat-icon-bg yellow">💵</div>
+                        <div class="stat-icon-bg yellow">
+                            <Banknote :size="18" class="text-warning" />
+                        </div>
                     </div>
                     <div class="text-h4 font-weight-black">{{ formatAmount(accountMetrics.cash) }}</div>
                 </v-card>
             </v-col>
             <v-col cols="12" sm="6" md="3">
-                <v-card class="glass-card h-100 pa-4" elevation="0">
+                <v-card class="premium-glass-card h-100 pa-4" elevation="0">
                     <div class="d-flex justify-space-between align-center mb-2">
                         <span class="text-subtitle-2 text-medium-emphasis font-weight-bold text-uppercase ls-1">Credit
                             Used</span>
-                        <div class="stat-icon-bg red">💳</div>
+                        <div class="stat-icon-bg red">
+                            <CreditCard :size="18" class="text-error" />
+                        </div>
                     </div>
                     <div class="text-h4 font-weight-black">{{ formatAmount(accountMetrics.credit) }}</div>
                 </v-card>
@@ -55,11 +63,11 @@
 
             <v-row>
                 <v-col v-for="acc in untrustedAccounts" :key="acc.id" cols="12" md="6" lg="4">
-                    <v-card class="glass-card untrusted-border" elevation="0">
+                    <v-card class="premium-glass-card untrusted-border" elevation="0">
                         <v-card-text>
                             <div class="d-flex justify-space-between align-start mb-4">
                                 <div class="acc-icon-wrapper" :class="acc.type.toLowerCase()">
-                                    {{ getAccountTypeIcon(acc.type) }}
+                                    <component :is="getAccountTypeIcon(acc.type)" :size="24" />
                                 </div>
                                 <div class="d-flex gap-2">
                                     <v-btn icon density="comfortable" variant="tonal" color="success"
@@ -96,7 +104,7 @@
         <div class="d-flex flex-column flex-sm-row align-center justify-space-between gap-4 mb-6">
             <v-text-field v-model="searchQuery" prepend-inner-icon="Search" placeholder="Search devices..."
                 variant="outlined" density="comfortable" hide-details class="flex-grow-1"
-                style="max-width: 400px; width: 100%;" bg-color="surface"></v-text-field>
+                style="max-width: 400px; width: 100%;" bg-color="surface" rounded="lg"></v-text-field>
 
             <div class="d-flex align-center gap-3">
                 <h3 class="text-subtitle-1 font-weight-bold">Tracked Accounts</h3>
@@ -109,12 +117,12 @@
         <!-- Verified Accounts Grid -->
         <v-row>
             <v-col v-for="acc in verifiedAccounts" :key="acc.id" cols="12" md="6" lg="4">
-                <v-card class="glass-card account-card h-100" elevation="0"
+                <v-card class="premium-glass-card account-card h-100" elevation="0"
                     :class="{ 'verified-highlight': acc.is_verified }" @click="openEditAccountModal(acc)">
                     <v-card-text class="h-100 d-flex flex-column">
                         <div class="d-flex justify-space-between align-start mb-4">
                             <div class="acc-icon-wrapper" :class="acc.type.toLowerCase()">
-                                {{ getAccountTypeIcon(acc.type) }}
+                                <component :is="getAccountTypeIcon(acc.type)" :size="20" />
                             </div>
                             <v-btn icon density="compact" variant="text" color="medium-emphasis">
                                 <Edit2 :size="16" />
@@ -207,7 +215,7 @@
             <v-card class="rounded-xl">
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">{{ editingAccountId ? 'Edit Account' : 'New Account'
-                    }}</span>
+                        }}</span>
                     <v-btn icon="X" variant="text" density="comfortable" @click="showAccountModal = false"></v-btn>
                 </v-card-title>
 
@@ -280,7 +288,7 @@
                         <!-- Balance Sync / Anchor Section -->
                         <div v-if="editingAccountId" class="pa-4 bg-grey-lighten-4 rounded-lg mb-4">
                             <div class="d-flex align-center gap-2 mb-2">
-                                <v-icon icon="Anchor" color="primary" size="small"></v-icon>
+                                <Anchor :size="16" class="text-primary" />
                                 <span class="text-subtitle-2 font-weight-bold">Balance Anchoring</span>
                             </div>
                             <p class="text-caption text-medium-emphasis mb-4">
@@ -290,13 +298,14 @@
                             <v-row dense>
                                 <v-col cols="12" sm="6">
                                     <v-text-field v-model.number="balanceOverrideForm.balance"
-                                        label="Actual Bank Balance" type="number" step="0.01" variant="solo"
-                                        density="compact" hide-details class="mb-2"></v-text-field>
+                                        label="Actual Bank Balance" type="number" step="0.01" variant="outlined"
+                                        density="comfortable" hide-details class="mb-2 font-weight-bold"
+                                        bg-color="surface"></v-text-field>
                                 </v-col>
                                 <v-col v-if="newAccount.type === 'CREDIT_CARD'" cols="12" sm="6">
                                     <v-text-field v-model.number="balanceOverrideForm.limit" label="Actual Credit Limit"
-                                        type="number" step="0.01" variant="solo" density="compact" hide-details
-                                        class="mb-2"></v-text-field>
+                                        type="number" step="0.01" variant="outlined" density="comfortable" hide-details
+                                        class="mb-2 font-weight-bold" bg-color="surface"></v-text-field>
                                 </v-col>
                             </v-row>
 
@@ -352,7 +361,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { Check, X, Edit2, Plus, Search, Anchor } from 'lucide-vue-next'
+import { Check, X, Edit2, Plus, Landmark, CreditCard, Banknote, Wallet, TrendingUp, Scale, Anchor } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 const { formatAmount } = useCurrency()
@@ -443,14 +452,14 @@ const accountGoalMap = computed(() => {
 })
 
 function getAccountTypeIcon(type: string) {
-    const icons: Record<string, string> = {
-        'BANK': '🏦',
-        'CREDIT_CARD': '💳',
-        'LOAN': '💸',
-        'WALLET': '👛',
-        'INVESTMENT': '📈'
+    const icons: Record<string, any> = {
+        'BANK': Landmark,
+        'CREDIT_CARD': CreditCard,
+        'LOAN': Banknote,
+        'WALLET': Wallet,
+        'INVESTMENT': TrendingUp
     }
-    return icons[type] || '💰'
+    return icons[type] || Wallet
 }
 
 function getAccountTypeLabel(type: string) {
@@ -616,13 +625,7 @@ async function confirmAccountDelete() {
 </script>
 
 <style scoped>
-.glass-card {
-    background: rgba(var(--v-theme-surface), 0.8) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(var(--v-border-color), 0.2);
-    border-radius: 16px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* glass-card removed - using global premium-glass-card */
 
 .account-card {
     cursor: pointer;
@@ -630,8 +633,6 @@ async function confirmAccountDelete() {
 
 .account-card:hover {
     border-color: rgb(var(--v-theme-primary));
-    transform: translateY(-4px);
-    box-shadow: 0 10px 20px -10px rgba(var(--v-theme-primary), 0.2);
 }
 
 .untrusted-border {

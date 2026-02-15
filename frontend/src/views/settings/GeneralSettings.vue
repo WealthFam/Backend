@@ -2,9 +2,11 @@
     <div class="animate-in">
         <v-row justify="center">
             <v-col cols="12" md="8" lg="6">
-                <v-card class="glass-card pa-6" elevation="0">
+                <v-card class="premium-glass-card pa-6" elevation="0">
                     <div class="text-center mb-6">
-                        <div class="text-h2 mb-4">🛡️</div>
+                        <div class="d-flex justify-center mb-4">
+                            <Shield :size="48" class="text-primary" />
+                        </div>
                         <h2 class="text-h5 font-weight-bold mb-2">Privacy & Anonymity</h2>
                         <p class="text-body-2 text-medium-emphasis">
                             Adjust how sensitive financial data is displayed across the application.
@@ -24,8 +26,10 @@
                         Divide all amounts by this number (e.g., 1, 10, 100)
                     </div>
 
-                    <v-alert icon="mdi-lightbulb-on-outline" variant="tonal" color="info" border="start"
-                        class="info-box">
+                    <v-alert variant="tonal" color="info" border="start" class="info-box">
+                        <template v-slot:prepend>
+                            <Lightbulb :size="24" class="text-info mr-2" />
+                        </template>
                         <div class="text-subtitle-2 font-weight-bold mb-1">How it works</div>
                         <div class="text-body-2">
                             If you set the factor to <strong>10</strong>, a transaction of
@@ -43,6 +47,7 @@
 import { ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useNotificationStore } from '@/stores/notification'
+import { Shield, Lightbulb } from 'lucide-vue-next'
 
 const settingsStore = useSettingsStore()
 const notify = useNotificationStore()
@@ -61,26 +66,5 @@ function handleSave() {
 </script>
 
 <style scoped>
-.glass-card {
-    background: rgba(var(--v-theme-surface), 0.8) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(var(--v-border-color), 0.2);
-    border-radius: 16px;
-}
-
-.animate-in {
-    animation: slideUp 0.4s ease-out forwards;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
+/* glass-card and animate-in removed - using global styles */
 </style>

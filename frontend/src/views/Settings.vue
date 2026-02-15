@@ -26,7 +26,7 @@ const activeTab = ref('general')
 
 <template>
     <MainLayout>
-        <v-container fluid class="settings-page pa-6 pa-md-10 relative-pos overflow-hidden">
+        <v-container fluid class="page-container dashboard-page">
             <!-- Animated Mesh Background -->
             <div class="mesh-blob blob-1"></div>
             <div class="mesh-blob blob-2"></div>
@@ -37,9 +37,9 @@ const activeTab = ref('general')
                 <v-row class="mb-6 align-center">
                     <v-col cols="12" md="4">
                         <div class="d-flex align-center">
-                            <h1 class="text-h4 font-weight-black text-content">Settings</h1>
+                            <h1 class="text-h6 font-weight-black text-content">Settings</h1>
                         </div>
-                        <p class="text-subtitle-1 text-medium-emphasis font-weight-bold mt-1 opacity-70">
+                        <p class="text-subtitle-2 text-medium-emphasis font-weight-bold mt-1 opacity-70">
                             Manage your preferences and configurations
                         </p>
                     </v-col>

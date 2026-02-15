@@ -28,7 +28,7 @@
 
         <v-row>
             <v-col v-for="member in familyMembers" :key="member.id" cols="12" md="6" lg="4">
-                <v-card class="glass-card member-profile-card h-100 pt-8" elevation="0">
+                <v-card class="premium-glass-card member-profile-card h-100 pt-8" elevation="0">
                     <v-btn icon density="comfortable" variant="text" color="medium-emphasis" class="edit-profile-btn"
                         @click="openEditMemberModal(member)">
                         <Edit2 :size="18" />
@@ -174,7 +174,7 @@
 import { ref, onMounted } from 'vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { Edit2, Plus, Shield, ShieldCheck, Baby, User, X, Eye, EyeOff } from 'lucide-vue-next'
+import { Edit2, Plus, Shield, ShieldCheck, Baby, User } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 
@@ -336,7 +336,7 @@ onMounted(() => {
 
 <style scoped>
 .family-hero {
-    background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, #7c3aed 100%);
+    background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-secondary)) 100%);
     position: relative;
     overflow: hidden;
     color: white;
@@ -348,7 +348,7 @@ onMounted(() => {
     right: 0;
     width: 250px;
     height: 250px;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(var(--v-theme-on-primary), 0.2) 0%, transparent 70%);
     transform: translate(30%, -30%);
     pointer-events: none;
 }
@@ -357,8 +357,8 @@ onMounted(() => {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: #eef2ff;
-    border: 3px solid rgba(255, 255, 255, 0.8);
+    background: rgba(var(--v-theme-primary), 0.1);
+    border: 3px solid rgba(var(--v-theme-on-surface), 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -366,13 +366,7 @@ onMounted(() => {
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-.glass-card {
-    background: rgba(var(--v-theme-surface), 0.8) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(var(--v-border-color), 0.2);
-    border-radius: 16px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* glass-card removed - using global premium-glass-card */
 
 .member-profile-card:hover {
     border-color: rgb(var(--v-theme-primary));
@@ -390,44 +384,36 @@ onMounted(() => {
     width: 80px;
     height: 80px;
     border-radius: 24px;
-    background: #f3f4f6;
+    background: rgba(var(--v-theme-on-surface), 0.05);
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 4px solid white;
+    border: 4px solid rgb(var(--v-theme-surface));
     box-shadow: 0 4px 10px -2px rgba(0, 0, 0, 0.1);
 }
 
 .ring-gold {
-    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    background: linear-gradient(135deg, rgba(var(--v-theme-warning), 0.2), rgba(var(--v-theme-warning), 0.1));
 }
 
 .ring-blue {
-    background: linear-gradient(135deg, #eff6ff, #dbeafe);
+    background: linear-gradient(135deg, rgba(var(--v-theme-info), 0.2), rgba(var(--v-theme-info), 0.1));
 }
 
 .ring-green {
-    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    background: linear-gradient(135deg, rgba(var(--v-theme-success), 0.2), rgba(var(--v-theme-success), 0.1));
 }
 
 .ring-gray {
-    background: #f3f4f6;
+    background: rgba(var(--v-theme-on-surface), 0.05);
 }
 
 .you-indicator {
     position: absolute;
     bottom: -8px;
     right: -8px;
-    background: white;
-    border-radius: 50%;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    border: 2px solid #e5e7eb;
+    background: rgb(var(--v-theme-surface));
+    border: 2px solid rgba(var(--v-border-color), 0.5);
 }
 
 .add-account-card {
@@ -448,11 +434,11 @@ onMounted(() => {
     width: 64px;
     height: 64px;
     border-radius: 50%;
-    background: white;
+    background: rgb(var(--v-theme-surface));
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .avatar-picker-grid {

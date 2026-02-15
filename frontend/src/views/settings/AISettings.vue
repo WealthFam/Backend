@@ -7,19 +7,20 @@
                 <v-card class="ai-toggle-banner mb-6 px-6 py-6 d-flex align-center justify-space-between" elevation="10"
                     rounded="xl">
                     <div class="d-flex flex-column text-white">
-                        <h3 class="text-h5 font-weight-bold">AI Transaction Safety Net</h3>
-                        <p class="text-body-2 opacity-90 mb-0">Automatically extract details when static rules fail.</p>
+                        <h3 class="text-h6 font-weight-black">AI Transaction Safety Net</h3>
+                        <p class="text-subtitle-2 opacity-90 mb-0">Automatically extract details when static rules fail.
+                        </p>
                     </div>
                     <v-switch v-model="aiStore.aiForm.is_enabled" color="white" inset hide-details
-                        density="compact"></v-switch>
+                        density="comfortable"></v-switch>
                 </v-card>
 
-                <v-card class="glass-card mb-6" elevation="0">
+                <v-card class="premium-glass-card mb-6" elevation="0">
                     <v-card-title class="d-flex align-center gap-3 py-4 px-6 border-b">
-                        <v-avatar color="indigo-lighten-5" variant="flat" size="40" rounded>
-                            <Cpu :size="24" class="text-indigo" />
+                        <v-avatar color="primary" variant="tonal" size="40" rounded="lg">
+                            <Cpu :size="24" class="text-primary" />
                         </v-avatar>
-                        <span class="text-h6 font-weight-bold">LLM Configuration</span>
+                        <span class="text-h6 font-weight-black font-family-premium">LLM Configuration</span>
                     </v-card-title>
 
                     <v-card-text class="pa-6">
@@ -27,8 +28,11 @@
                             <v-row>
                                 <v-col cols="12" sm="6">
                                     <v-select v-model="aiStore.aiForm.provider" label="AI Provider"
-                                        :items="[{ title: 'Google Gemini', value: 'gemini' }]" variant="outlined"
-                                        prepend-inner-icon="mdi-google"></v-select>
+                                        :items="[{ title: 'Google Gemini', value: 'gemini' }]" variant="outlined">
+                                        <template v-slot:prepend-inner>
+                                            <Sparkles :size="20" />
+                                        </template>
+                                    </v-select>
                                 </v-col>
                                 <v-col cols="12" sm="6">
                                     <div class="d-flex gap-2 align-center">
@@ -84,12 +88,12 @@
             <!-- Right Column: Playground -->
             <v-col cols="12" md="4">
                 <div class="sticky-top">
-                    <v-card class="glass-card" elevation="0">
-                        <v-card-title class="d-flex align-center gap-3 py-4 px-6 border-b bg-amber-lighten-5">
-                            <v-avatar color="amber-lighten-4" variant="flat" size="32" rounded>
-                                <Beaker :size="18" class="text-amber-darken-2" />
+                    <v-card class="premium-glass-card" elevation="0">
+                        <v-card-title class="d-flex align-center gap-3 py-4 px-6 border-b">
+                            <v-avatar color="warning" variant="tonal" size="32" rounded="lg">
+                                <Beaker :size="18" class="text-warning" />
                             </v-avatar>
-                            <span class="text-subtitle-1 font-weight-bold text-amber-darken-2">Test Playground</span>
+                            <span class="text-subtitle-1 font-weight-black">Test Playground</span>
                         </v-card-title>
 
                         <v-card-text class="pa-4">
@@ -129,7 +133,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAiStore } from '@/stores/ai'
-import { Cpu, RefreshCw, Beaker, Eye, EyeOff } from 'lucide-vue-next'
+import { Cpu, RefreshCw, Beaker, Eye, EyeOff, Sparkles } from 'lucide-vue-next'
 
 const aiStore = useAiStore()
 const showApiKey = ref(false)
@@ -150,16 +154,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.glass-card {
-    background: rgba(var(--v-theme-surface), 0.8) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(var(--v-border-color), 0.2);
-    border-radius: 16px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* glass-card removed - using global premium-glass-card */
 
 .ai-toggle-banner {
-    background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, #7c3aed 100%);
+    background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgba(var(--v-theme-primary), 0.8) 100%);
     border: none;
 }
 

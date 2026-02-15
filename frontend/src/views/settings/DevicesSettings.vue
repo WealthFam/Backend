@@ -25,7 +25,7 @@
             <v-row>
                 <v-col v-for="device in devices.filter(d => !d.is_approved && !d.is_ignored)" :key="device.id" cols="12"
                     sm="6" md="4" lg="3">
-                    <v-card class="device-card-premium unapproved h-100" elevation="0">
+                    <v-card class="premium-glass-card unapproved h-100" elevation="0">
                         <v-card-text>
                             <div class="d-flex align-center gap-3 mb-3">
                                 <div class="dev-icon-wrapper"
@@ -96,7 +96,7 @@
 
         <v-row class="mb-12">
             <v-col v-for="device in devices.filter(d => d.is_approved)" :key="device.id" cols="12" sm="6" md="4" lg="3">
-                <v-card class="device-card-premium h-100" elevation="0" :class="{
+                <v-card class="premium-glass-card h-100" elevation="0" :class="{
                     'ignored': device.is_ignored,
                     'online-accent': isOnline(device.last_seen_at),
                     'offline-accent': !isOnline(device.last_seen_at)
@@ -180,7 +180,7 @@
             <v-row>
                 <v-col v-for="device in devices.filter(d => d.is_ignored)" :key="device.id" cols="12" sm="6" md="4"
                     lg="3">
-                    <v-card class="device-card-premium ignored h-100" elevation="0">
+                    <v-card class="premium-glass-card ignored h-100" elevation="0">
                         <v-card-text>
                             <div class="d-flex align-center gap-3 mb-3">
                                 <div class="dev-icon-wrapper">
@@ -211,7 +211,7 @@
         </div>
 
         <!-- RECENT ACTIVITY LOG -->
-        <v-card class="mt-12 glass-card" elevation="0">
+        <v-card class="mt-12 premium-glass-card" elevation="0">
             <v-card-title class="d-flex align-center justify-space-between py-4 px-6">
                 <div class="d-flex align-center gap-3">
                     <v-avatar color="indigo-lighten-5" variant="flat" size="40" rounded>
@@ -357,7 +357,7 @@
 import { ref, onMounted } from 'vue'
 import { mobileApi, financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { Smartphone, Edit2, User, Clock, Copy, Trash2, RefreshCw, ClipboardList, Search, X } from 'lucide-vue-next'
+import { Smartphone, Edit2, User, Clock, Copy, Trash2, RefreshCw, ClipboardList } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 
@@ -539,70 +539,28 @@ const copyToClipboard = (text: string) => {
 </script>
 
 <style scoped>
-.glass-card {
-    background: rgba(var(--v-theme-surface), 0.8) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(var(--v-border-color), 0.2);
-    border-radius: 16px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.premium-glass-card.unapproved {
+    border-top: 3px solid rgb(var(--v-theme-warning)) !important;
+    background: rgba(var(--v-theme-warning), 0.05) !important;
 }
 
-.device-card-premium {
-    background: white;
-    border: 1px solid rgba(var(--v-border-color), 0.15);
-    border-radius: 12px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.device-card-premium:hover {
-    border-color: rgb(var(--v-theme-primary));
-    transform: translateY(-4px);
-    box-shadow: 0 10px 20px -10px rgba(var(--v-theme-primary), 0.2);
-}
-
-.device-card-premium.unapproved {
-    border-top: 3px solid rgb(var(--v-theme-warning));
-    background: #fffbeb;
-}
-
-.device-card-premium.ignored {
+.premium-glass-card.ignored {
     opacity: 0.7;
-    background: #f8fafc;
+    background: rgba(var(--v-theme-surface), 0.5) !important;
 }
 
-.device-card-premium.online-accent {
-    border-top: 3px solid rgb(var(--v-theme-success));
+.premium-glass-card.online-accent {
+    border-top: 3px solid rgb(var(--v-theme-success)) !important;
 }
 
-.device-card-premium.offline-accent {
-    border-top: 3px solid rgb(var(--v-theme-error));
-}
-
-.dev-icon-wrapper {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #f1f5f9;
-    color: #475569;
-}
-
-.dev-icon-wrapper.apple {
-    background: #e0f2fe;
-    color: #0284c7;
-}
-
-.dev-icon-wrapper.android {
-    background: #dcfce7;
-    color: #059669;
+.premium-glass-card.offline-accent {
+    border-top: 3px solid rgb(var(--v-theme-error)) !important;
 }
 
 .dev-id-footer {
     padding: 6px 8px;
-    background: #f8fafc;
+    background: rgba(var(--v-theme-surface-variant), 0.1);
     border-radius: 6px;
-    border: 1px solid #f1f5f9;
+    border: 1px solid rgba(var(--v-border-color), 0.1);
 }
 </style>

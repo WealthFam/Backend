@@ -3,7 +3,7 @@
         <!-- Status Cards -->
         <v-row class="mb-6">
             <v-col cols="12" md="4">
-                <v-card class="glass-card h-100 pa-4" elevation="0">
+                <v-card class="premium-glass-card h-100 pa-4" elevation="0">
                     <div class="d-flex align-center gap-4">
                         <v-avatar color="emerald-lighten-5" rounded="xl" size="56">
                             <CheckCircle :size="32" class="text-emerald-darken-1" />
@@ -19,7 +19,7 @@
                 </v-card>
             </v-col>
             <v-col cols="12" md="4">
-                <v-card class="glass-card h-100 pa-4" elevation="0">
+                <v-card class="premium-glass-card h-100 pa-4" elevation="0">
                     <div class="d-flex align-center gap-4">
                         <v-avatar color="indigo-lighten-5" rounded="xl" size="56">
                             <Zap :size="32" class="text-indigo-darken-1" />
@@ -35,7 +35,7 @@
                 </v-card>
             </v-col>
             <v-col cols="12" md="4">
-                <v-card class="glass-card h-100 pa-4" elevation="0">
+                <v-card class="premium-glass-card h-100 pa-4" elevation="0">
                     <div class="d-flex align-center gap-4">
                         <v-avatar color="amber-lighten-5" rounded="xl" size="56">
                             <ShieldCheck :size="32" class="text-amber-darken-3" />
@@ -55,23 +55,22 @@
         <v-row class="mb-12">
             <!-- Parser Configuration -->
             <v-col cols="12" md="8">
-                <v-card class="glass-card h-100" elevation="0">
+                <v-card class="premium-glass-card h-100" elevation="0">
                     <v-card-title class="d-flex align-center gap-3 py-4 px-6 border-b">
-                        <v-avatar color="indigo-lighten-5" variant="flat" size="40" rounded>
-                            <BrainCircuit :size="24" class="text-indigo" />
+                        <v-avatar color="primary" variant="tonal" size="40" rounded>
+                            <BrainCircuit :size="24" class="text-primary" />
                         </v-avatar>
                         <span class="text-h6 font-weight-bold">Parser AI Configuration</span>
                     </v-card-title>
                     <v-card-text class="pa-6">
-                        <v-alert v-if="appAiMatch" color="emerald-lighten-5" theme="light" class="mb-6 border-emerald"
-                            rounded="lg">
+                        <v-alert v-if="appAiMatch" color="success" variant="tonal" class="mb-6" rounded="lg">
                             <template v-slot:prepend>
-                                <span class="text-h5 mr-3">✨</span>
+                                <Sparkles :size="24" class="mr-3" />
                             </template>
                             <div class="d-flex align-center justify-space-between w-100">
-                                <span class="text-emerald-darken-3 font-weight-medium">Synced with App
+                                <span class="font-weight-medium">Synced with App
                                     Intelligence</span>
-                                <v-btn variant="text" density="compact" color="emerald-darken-3"
+                                <v-btn variant="text" density="comfortable" color="success"
                                     class="font-weight-bold text-uppercase" @click="handleSync">
                                     Force Resync
                                 </v-btn>
@@ -154,7 +153,7 @@
         </v-row>
 
         <!-- Parser History -->
-        <v-card class="glass-card mb-12" elevation="0">
+        <v-card class="premium-glass-card mb-12" elevation="0">
             <v-card-title class="d-flex align-center justify-space-between py-4 px-6">
                 <div class="d-flex align-center gap-3">
                     <v-avatar color="indigo-lighten-5" variant="flat" size="40" rounded>
@@ -282,7 +281,7 @@
                 </v-btn>
             </div>
 
-            <v-card class="glass-card" elevation="0">
+            <v-card class="premium-glass-card" elevation="0">
                 <v-card-text v-if="patternsLoading" class="text-center py-8">
                     <v-progress-circular indeterminate color="primary"></v-progress-circular>
                     <div class="mt-2 text-caption">Loading patterns...</div>
@@ -317,24 +316,24 @@
                             </td>
                             <td>
                                 <div class="d-flex flex-column gap-1">
-                                    <v-chip v-if="pattern.is_ai_generated" size="x-small" color="purple-lighten-4"
-                                        variant="flat" class="font-weight-bold text-purple-darken-2 w-fit">
-                                        🤖 AI
+                                    <v-chip v-if="pattern.is_ai_generated" size="x-small" color="secondary"
+                                        variant="tonal" class="font-weight-bold w-fit">
+                                        AI
                                     </v-chip>
-                                    <v-chip v-else size="x-small" color="grey-lighten-3" variant="flat"
-                                        class="font-weight-bold text-medium-emphasis w-fit">
-                                        ✏️ Manual
+                                    <v-chip v-else size="x-small" color="grey" variant="tonal"
+                                        class="font-weight-bold w-fit">
+                                        Manual
                                     </v-chip>
                                     <span class="text-caption font-mono text-disabled">{{ pattern.id.substring(0, 8)
                                         }}</span>
                                 </div>
                             </td>
                             <td class="text-right">
-                                <v-btn icon density="compact" variant="text" color="medium-emphasis"
+                                <v-btn icon density="comfortable" variant="text" color="medium-emphasis"
                                     @click.stop="openEditModal(pattern)">
                                     <Edit2 :size="16" />
                                 </v-btn>
-                                <v-btn icon density="compact" variant="text" color="error"
+                                <v-btn icon density="comfortable" variant="text" color="error"
                                     @click.stop="confirmDelete(pattern)">
                                     <Trash2 :size="16" />
                                 </v-btn>
@@ -343,7 +342,7 @@
                         <tr v-if="patterns.length === 0">
                             <td colspan="4" class="text-center py-8 text-medium-emphasis font-italic">
                                 <div class="d-flex flex-column align-center gap-2">
-                                    <span class="text-h4">📋</span>
+                                    <ClipboardList :size="48" class="opacity-20" />
                                     No patterns found
                                 </div>
                             </td>
@@ -407,7 +406,7 @@
                 </v-btn>
             </div>
 
-            <v-card class="glass-card" elevation="0">
+            <v-card class="premium-glass-card" elevation="0">
                 <v-card-text v-if="aliasesLoading" class="text-center py-8">
                     <v-progress-circular indeterminate color="primary"></v-progress-circular>
                 </v-card-text>
@@ -515,7 +514,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue'
 import {
-    CheckCircle, Zap, ShieldCheck, BrainCircuit, Activity, RefreshCw, ClipboardList, Edit2, Trash2
+    CheckCircle, Zap, ShieldCheck, BrainCircuit, Activity, RefreshCw, ClipboardList, Edit2, Trash2, Sparkles
 } from 'lucide-vue-next'
 import { parserApi, financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
