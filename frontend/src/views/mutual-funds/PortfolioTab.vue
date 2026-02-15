@@ -107,7 +107,7 @@
                             </div>
                             <div class="text-right">
                                 <div class="text-error font-weight-black text-body-2">{{ formatAmount(item.profit_loss)
-                                    }}</div>
+                                }}</div>
                                 <div class="text-error text-caption font-weight-bold">
                                     {{ ((item.profit_loss / (item.invested_value || 1)) * 100).toFixed(2) }}%
                                 </div>
@@ -157,9 +157,12 @@
         <v-card class="premium-glass-card" rounded="xl">
             <div class="px-6 py-4 border-b d-flex justify-space-between align-center">
                 <h3 class="text-h6 font-weight-black text-content">All Holdings</h3>
-                <v-text-field v-model="search" prepend-inner-icon="mdi-magnify" density="compact" variant="outlined"
-                    hide-details placeholder="Search funds..." style="max-width: 300px"
-                    class="glass-input"></v-text-field>
+                <v-text-field v-model="search" density="comfortable" variant="outlined" hide-details
+                    placeholder="Search funds..." style="max-width: 300px" class="glass-input">
+                    <template v-slot:prepend-inner>
+                        <Search :size="18" class="text-medium-emphasis mr-2" />
+                    </template>
+                </v-text-field>
             </div>
 
             <v-data-table :headers="headers" :items="sortedPortfolio" :search="search" hover
@@ -212,11 +215,11 @@
                 </template>
                 <template #[`item.invested_value`]="{ item }">
                     <span class="text-body-2 font-weight-bold text-medium-emphasis">{{ formatAmount(item.invested_value)
-                    }}</span>
+                        }}</span>
                 </template>
                 <template #[`item.current_value`]="{ item }">
                     <span class="text-body-2 font-weight-black text-content">{{ formatAmount(item.current_value)
-                        }}</span>
+                    }}</span>
                 </template>
 
                 <!-- Trend Column -->
@@ -358,7 +361,7 @@ import { ref, computed, watch } from 'vue'
 import { financeApi } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import {
-    Sparkles, Eye as EyeIconMain, ChevronDown, ChevronRight, Target, PieChart, TrendingUp
+    Sparkles, Eye as EyeIconMain, ChevronDown, ChevronRight, Target, PieChart, TrendingUp, Search
 } from 'lucide-vue-next'
 import DonutChart from '@/components/DonutChart.vue'
 import FundPerformanceChart from './components/FundPerformanceChart.vue'

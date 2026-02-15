@@ -4,8 +4,8 @@
             <!-- Grid lines -->
             <g class="grid">
                 <line v-for="i in 5" :key="`h-${i}`" :x1="padding.left" :y1="padding.top + (chartHeight / 4) * (i - 1)"
-                    :x2="width - padding.right" :y2="padding.top + (chartHeight / 4) * (i - 1)" stroke="#e5e7eb"
-                    stroke-width="1" />
+                    :x2="width - padding.right" :y2="padding.top + (chartHeight / 4) * (i - 1)" stroke="currentColor"
+                    stroke-width="1" class="chart-grid-line" />
             </g>
 
             <!-- Gradient definition for area fill -->
@@ -455,7 +455,8 @@ svg {
 
 .axis-label {
     font-size: 11px;
-    fill: #64748b;
+    fill: currentColor;
+    opacity: 0.6;
     font-weight: 500;
 }
 
@@ -480,7 +481,8 @@ svg {
     align-items: center;
     gap: 0.5rem;
     font-size: 0.875rem;
-    color: #475569;
+    color: rgb(var(--v-theme-on-surface));
+    opacity: 0.8;
 }
 
 .legend-line {
@@ -499,15 +501,16 @@ svg {
 
 .chart-tooltip {
     position: absolute;
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
+    background: rgb(var(--v-theme-surface));
+    border: 1px solid rgba(var(--v-border-color), 0.12);
+    border-radius: 12px;
     padding: 0.75rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
     pointer-events: none;
     z-index: 9999;
     min-width: 160px;
-    color: #1e293b;
+    color: rgb(var(--v-theme-on-surface));
 }
 
 .tooltip-date {
@@ -537,7 +540,7 @@ svg {
 }
 
 .tooltip-row.transaction {
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid rgba(var(--v-border-color), 0.12);
     margin-top: 0.5rem;
     padding-top: 0.5rem;
     font-weight: 600;
@@ -551,5 +554,9 @@ svg {
 .transaction-marker:hover {
     r: 8;
     opacity: 0.8;
+}
+
+.chart-grid-line {
+    color: rgba(var(--v-border-color), 0.1);
 }
 </style>

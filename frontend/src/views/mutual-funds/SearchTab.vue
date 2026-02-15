@@ -11,7 +11,7 @@
 
             <v-spacer class="d-none d-md-block"></v-spacer>
 
-            <v-text-field v-model="searchQuery" placeholder="Search funds or AMFI codes..." density="compact"
+            <v-text-field v-model="searchQuery" placeholder="Search funds or AMFI codes..." density="comfortable"
                 variant="outlined" rounded="lg" hide-details style="min-width: 300px; max-width: 100%;"
                 bg-color="rgba(var(--v-theme-surface), 0.8)" @keyup.enter="handleSearch">
                 <template v-slot:prepend-inner>

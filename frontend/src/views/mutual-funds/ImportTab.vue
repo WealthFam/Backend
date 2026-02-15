@@ -66,8 +66,10 @@
                         <label class="text-overline font-weight-black text-primary mb-2 d-block letter-spacing-2">CAS
                             STATEMENT PDF</label>
                         <v-file-input v-model="file" label="Drop CAS PDF here" variant="outlined" density="comfortable"
-                            rounded="lg" bg-color="surface" accept=".pdf" class="mb-4 font-weight-bold" prepend-icon=""
-                            prepend-inner-icon="mdi-file-pdf-box">
+                            rounded="lg" bg-color="surface" accept=".pdf" class="mb-4 font-weight-bold" prepend-icon="">
+                            <template v-slot:prepend-inner>
+                                <FileText :size="24" class="text-medium-emphasis mr-2" />
+                            </template>
                         </v-file-input>
 
                         <v-btn color="primary" block height="56" rounded="lg" class="font-weight-black elevation-4"
@@ -118,17 +120,15 @@
                         <tbody>
                             <tr v-for="(t, i) in previewResults" :key="i">
                                 <td>
-                                    <v-icon
-                                        :color="t.mapping_status === 'MAPPED' ? (t.is_duplicate ? 'warning' : 'success') : 'error'"
-                                        size="16">
-                                        {{ t.mapping_status === 'MAPPED' ? (t.is_duplicate ? 'mdi-alert' :
-                                            'mdi-check-circle') :
-                                            'mdi-help-circle' }}
-                                        <v-tooltip activator="parent" location="top">
-                                            {{ t.mapping_status === 'MAPPED' ? (t.is_duplicate ? 'Already exists' :
-                                                'Mapped successfully') : 'Unknown fund (MAPPING FAILED)' }}
-                                        </v-tooltip>
-                                    </v-icon>
+                                    <component
+                                        :is="t.mapping_status === 'MAPPED' ? (t.is_duplicate ? AlertTriangle : CheckCircle) : HelpCircle"
+                                        :size="16"
+                                        :class="t.mapping_status === 'MAPPED' ? (t.is_duplicate ? 'text-warning' : 'text-success') : 'text-error'">
+                                    </component>
+                                    <v-tooltip activator="parent" location="top">
+                                        {{ t.mapping_status === 'MAPPED' ? (t.is_duplicate ? 'Already exists' :
+                                            'Mapped successfully') : 'Unknown fund (MAPPING FAILED)' }}
+                                    </v-tooltip>
                                 </td>
                                 <td class="text-caption font-weight-bold opacity-70 white-space-nowrap">{{ t.date }}
                                 </td>
@@ -172,7 +172,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { Upload, FileText, Lock, CheckCircle, ArrowRight } from 'lucide-vue-next'
+import { Upload, FileText, Lock, CheckCircle, ArrowRight, AlertTriangle, HelpCircle } from 'lucide-vue-next'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'

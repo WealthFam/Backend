@@ -51,7 +51,7 @@ async function handleRegister() {
                 <v-row align="center" justify="center">
                     <v-col cols="12" sm="10" md="6" lg="5">
                         <v-card class="pa-8 pa-sm-12 rounded-xl border elevation-0"
-                            style="background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+                            style="background: rgba(var(--v-theme-surface), 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
                             <div class="text-center mb-8">
                                 <v-avatar size="64" rounded="lg" class="elevation-2 mb-6 bg-white">
                                     <v-img src="/logo.png" alt="WealthFam Logo" cover></v-img>
@@ -64,7 +64,7 @@ async function handleRegister() {
                             <v-form @submit.prevent="handleRegister">
                                 <v-text-field v-model="familyName" label="Family Name" placeholder="The Smiths"
                                     variant="outlined" color="primary" required class="mb-4" rounded="lg"
-                                    hide-details="auto">
+                                    hide-details="auto" density="comfortable">
                                     <template v-slot:prepend-inner>
                                         <Building :size="20" class="text-grey-lighten-1 mr-2" />
                                     </template>
@@ -72,7 +72,7 @@ async function handleRegister() {
 
                                 <v-text-field v-model="email" label="Email Address" placeholder="admin@family.com"
                                     variant="outlined" color="primary" required class="mb-6" rounded="lg"
-                                    hide-details="auto">
+                                    hide-details="auto" density="comfortable">
                                     <template v-slot:prepend-inner>
                                         <Mail :size="20" class="text-grey-lighten-1 mr-2" />
                                     </template>
@@ -85,7 +85,7 @@ async function handleRegister() {
                                                 class="text-caption font-weight-bold text-uppercase tracking-wider text-grey-darken-2 d-block mb-1 px-1">Password</span>
                                             <v-text-field v-model="password" placeholder="••••••••" variant="outlined"
                                                 color="primary" type="password" required rounded="lg"
-                                                hide-details="auto">
+                                                hide-details="auto" density="comfortable">
                                                 <template v-slot:prepend-inner>
                                                     <Lock :size="20" class="text-grey-lighten-1 mr-2" />
                                                 </template>
@@ -98,7 +98,7 @@ async function handleRegister() {
                                                 class="text-caption font-weight-bold text-uppercase tracking-wider text-grey-darken-2 d-block mb-1 px-1">Confirm</span>
                                             <v-text-field v-model="confirmPassword" placeholder="••••••••"
                                                 variant="outlined" color="primary" type="password" required rounded="lg"
-                                                hide-details="auto">
+                                                hide-details="auto" density="comfortable">
                                                 <template v-slot:prepend-inner>
                                                     <Lock :size="20" class="text-grey-lighten-1 mr-2" />
                                                 </template>
@@ -115,7 +115,7 @@ async function handleRegister() {
                                 </v-expand-transition>
 
                                 <v-btn type="submit" color="primary" size="x-large" block
-                                    class="rounded-lg font-weight-bold text-none elevation-4 mt-2" :loading="loading"
+                                    class="rounded-pill font-weight-black text-none elevation-4 mt-2" :loading="loading"
                                     style="height: 56px;">
                                     <div class="d-flex align-center gap-2">
                                         Get Started
@@ -158,7 +158,7 @@ async function handleRegister() {
     right: 0;
     bottom: 0;
     z-index: 0;
-    background: radial-gradient(circle at 50% 50%, #f1f5f9 0%, #e2e8f0 100%);
+    background: radial-gradient(circle at 50% 50%, rgb(var(--v-theme-surface)) 0%, rgba(var(--v-theme-on-surface), 0.05) 100%);
 }
 
 .mesh-blob {
@@ -171,7 +171,7 @@ async function handleRegister() {
 .blob-1 {
     width: 600px;
     height: 600px;
-    background: #4f46e5;
+    background: rgb(var(--v-theme-primary));
     top: -150px;
     left: -150px;
     animation: float 20s infinite alternate;
@@ -180,7 +180,7 @@ async function handleRegister() {
 .blob-2 {
     width: 500px;
     height: 500px;
-    background: #8b5cf6;
+    background: rgb(var(--v-theme-secondary));
     bottom: -100px;
     right: -100px;
     animation: float 25s infinite alternate-reverse;
@@ -189,7 +189,7 @@ async function handleRegister() {
 .blob-3 {
     width: 400px;
     height: 400px;
-    background: #0ea5e9;
+    background: rgb(var(--v-theme-info));
     top: 40%;
     right: 15%;
     animation: float 18s infinite alternate;
