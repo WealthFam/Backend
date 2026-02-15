@@ -15,10 +15,7 @@ import {
     LayoutList,
     Inbox,
     Map as MapIcon,
-    Bot,
-    X,
-    Brain,
-    Trash2
+    Bot
 } from 'lucide-vue-next'
 
 // Composables
@@ -196,20 +193,23 @@ onMounted(() => {
 
 <template>
     <MainLayout>
-        <v-container fluid class="settings-page pa-6 pa-md-10 relative-pos overflow-hidden">
+        <v-container fluid class="page-container dashboard-page">
             <!-- Animated Mesh Background -->
-            <div class="mesh-blob blob-1"></div>
-            <div class="mesh-blob blob-2"></div>
-            <div class="mesh-blob blob-3"></div>
+            <div class="mesh-blob blob-1"
+                style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
+            </div>
+            <div class="mesh-blob blob-2"
+                style="background: rgba(var(--v-theme-secondary), 0.05); width: 400px; height: 400px; bottom: -100px; left: -100px;">
+            </div>
 
             <div class="relative-pos z-10">
                 <!-- Premium Header -->
                 <v-row class="mb-6 align-center">
                     <v-col cols="12" md="4">
                         <div class="d-flex align-center">
-                            <h1 class="text-h4 font-weight-black text-content">Transactions</h1>
+                            <h1 class="text-h6 font-weight-black text-content">Transactions</h1>
                         </div>
-                        <p class="text-subtitle-1 text-medium-emphasis font-weight-bold mt-1 opacity-70">
+                        <p class="text-subtitle-2 text-medium-emphasis font-weight-bold mt-1 opacity-70">
                             Track and manage your family's spending
                         </p>
                     </v-col>
@@ -217,7 +217,7 @@ onMounted(() => {
                     <v-col cols="12" md="8" class="d-flex flex-column flex-md-row align-md-center justify-end gap-3">
                         <!-- Navigation Tabs -->
                         <div class="premium-pill-tabs flex-grow-1 flex-md-grow-0 d-flex overflow-x-auto">
-                            <v-tabs v-model="activeTab" color="primary" density="compact" hide-slider show-arrows
+                            <v-tabs v-model="activeTab" color="primary" density="comfortable" hide-slider show-arrows
                                 class="rounded-xl">
                                 <v-tab value="list" class="premium-tab" rounded="xl" @click="fetchData">
                                     <div class="d-flex align-center gap-2">
@@ -328,7 +328,7 @@ onMounted(() => {
         <v-dialog v-model="showLabelForm" persistent max-width="800">
             <v-card class="glass-card overflow-hidden" rounded="xl">
                 <v-toolbar color="warning" density="compact">
-                    <v-icon start icon="Bot" class="ml-4"></v-icon>
+                    <Bot :size="18" class="ml-4 text-primary" />
                     <v-toolbar-title class="text-subtitle-1 font-weight-bold">Train Transaction Parser</v-toolbar-title>
                     <v-spacer></v-spacer>
                     <v-btn icon="X" variant="text" @click="showLabelForm = false"></v-btn>
@@ -343,10 +343,10 @@ onMounted(() => {
                         </div>
                         <div class="raw-meta">
                             <div class="mb-1"><span class="font-weight-bold">Sender:</span> {{ selectedMessage?.sender
-                            }}
+                                }}
                             </div>
                             <div class="mb-1"><span class="font-weight-bold">Source:</span> {{ selectedMessage?.source
-                            }}
+                                }}
                             </div>
                             <div><span class="font-weight-bold">Received:</span> {{
                                 selectedMessage?.created_at ? new Date(selectedMessage.created_at).toLocaleString() :
@@ -360,25 +360,25 @@ onMounted(() => {
                         <v-row dense>
                             <v-col cols="12" md="6">
                                 <v-text-field v-model.number="labelForm.amount" label="Amount" prefix="₹" type="number"
-                                    density="compact" variant="outlined" hide-details class="mb-3"></v-text-field>
+                                    density="comfortable" variant="outlined" hide-details class="mb-3"></v-text-field>
                             </v-col>
                             <v-col cols="12" md="6">
                                 <v-select v-model="labelForm.type" label="Type" :items="['DEBIT', 'CREDIT']"
-                                    density="compact" variant="outlined" hide-details class="mb-3"></v-select>
+                                    density="comfortable" variant="outlined" hide-details class="mb-3"></v-select>
                             </v-col>
                             <v-col cols="12">
                                 <v-text-field v-model="labelForm.recipient" label="Merchant / Recipient"
-                                    placeholder="e.g. Amazon, Starbucks" density="compact" variant="outlined"
+                                    placeholder="e.g. Amazon, Starbucks" density="comfortable" variant="outlined"
                                     hide-details class="mb-3"></v-text-field>
                             </v-col>
                             <v-col cols="12" md="6">
                                 <v-text-field v-model="labelForm.account_mask" label="Account Mask"
-                                    placeholder="Last 4 digits" density="compact" variant="outlined" hide-details
+                                    placeholder="Last 4 digits" density="comfortable" variant="outlined" hide-details
                                     class="mb-3"></v-text-field>
                             </v-col>
                             <v-col cols="12" md="6">
                                 <v-text-field v-model="labelForm.ref_id" label="Reference ID" placeholder="Txn ID"
-                                    density="compact" variant="outlined" hide-details class="mb-3"></v-text-field>
+                                    density="comfortable" variant="outlined" hide-details class="mb-3"></v-text-field>
                             </v-col>
 
                             <v-divider class="my-2 w-100"></v-divider>
@@ -389,12 +389,12 @@ onMounted(() => {
 
                             <v-col cols="12" md="6">
                                 <v-text-field v-model.number="labelForm.balance" label="Bank Balance"
-                                    placeholder="Balance after txn" prefix="₹" type="number" density="compact"
+                                    placeholder="Balance after txn" prefix="₹" type="number" density="comfortable"
                                     variant="outlined" hide-details class="mb-3"></v-text-field>
                             </v-col>
                             <v-col cols="12" md="6">
                                 <v-text-field v-model.number="labelForm.credit_limit" label="Credit Limit"
-                                    placeholder="If card txn" prefix="₹" type="number" density="compact"
+                                    placeholder="If card txn" prefix="₹" type="number" density="comfortable"
                                     variant="outlined" hide-details class="mb-3"></v-text-field>
                             </v-col>
 

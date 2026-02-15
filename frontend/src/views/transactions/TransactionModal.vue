@@ -1,6 +1,11 @@
+```vue
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useCurrency } from '@/composables/useCurrency'
+import {
+    CheckCircle2, X, Pencil, Plus, Info, Tag,
+    Settings, ArrowLeftRight, Search, Link, SearchX, LineChart
+} from 'lucide-vue-next'
 
 const props = defineProps<{
     isOpen: boolean
@@ -69,7 +74,7 @@ function handleClose() {
                 <div class="modal-header-premium pa-4 px-6 d-flex align-center justify-space-between">
                     <div class="d-flex align-center gap-4">
                         <div class="header-icon-wrapper">
-                            <v-icon size="28" color="primary">{{ isEditing ? 'Pencil' : 'Plus' }}</v-icon>
+                            <component :is="isEditing ? Pencil : Plus" :size="28" class="text-primary" />
                         </div>
                         <div>
                             <h2 class="text-h5 font-weight-black mb-0">{{ isEditing ? 'Edit Transaction' :
@@ -80,7 +85,7 @@ function handleClose() {
                             </p>
                         </div>
                     </div>
-                    <v-btn icon="X" variant="tonal" color="medium-emphasis" density="comfortable" @click="handleClose"
+                    <v-btn :icon="X" variant="tonal" color="medium-emphasis" density="comfortable" @click="handleClose"
                         class="backdrop-blur-sm"></v-btn>
                 </div>
             </v-card-title>
@@ -91,7 +96,7 @@ function handleClose() {
                         <!-- Primary Info Section -->
                         <div class="section-group mb-5">
                             <div class="d-flex align-center gap-2 mb-4">
-                                <v-icon color="primary" size="20" icon="Info"></v-icon>
+                                <Info :size="20" class="text-primary" />
                                 <span class="text-overline font-weight-black text-primary letter-spacing-wide">Basic
                                     Details</span>
                             </div>
@@ -99,20 +104,23 @@ function handleClose() {
                             <v-row dense>
                                 <v-col cols="12" class="mb-1">
                                     <v-text-field v-model="form.description" label="Description"
-                                        placeholder="What was this for?" variant="solo" density="compact" flat
-                                        rounded="lg" class="premium-modal-input" hide-details autocomplete="off" />
+                                        placeholder="What was this for?" variant="outlined" density="comfortable"
+                                        rounded="lg" class="premium-modal-input font-weight-bold" hide-details
+                                        autocomplete="off" />
                                 </v-col>
 
                                 <v-col cols="12" md="6" class="mb-1">
                                     <v-text-field v-model="form.amount" label="Amount" type="number" placeholder="0.00"
-                                        variant="solo" density="compact" flat rounded="lg" class="premium-modal-input"
-                                        hide-details prepend-inner-icon="DollarSign" autocomplete="off" />
+                                        variant="outlined" density="comfortable" rounded="lg"
+                                        class="premium-modal-input font-weight-bold" hide-details
+                                        prepend-inner-icon="DollarSign" autocomplete="off" />
                                 </v-col>
 
                                 <v-col cols="12" md="6" class="mb-1">
                                     <v-text-field v-model="form.date" label="Date & Time" type="datetime-local"
-                                        variant="solo" density="compact" flat rounded="lg" class="premium-modal-input"
-                                        hide-details prepend-inner-icon="Calendar" />
+                                        variant="outlined" density="comfortable" rounded="lg"
+                                        class="premium-modal-input font-weight-bold" hide-details
+                                        prepend-inner-icon="Calendar" />
                                 </v-col>
                             </v-row>
                         </div>
@@ -120,7 +128,7 @@ function handleClose() {
                         <!-- Categorization Section -->
                         <div class="section-group mb-5">
                             <div class="d-flex align-center gap-2 mb-4">
-                                <v-icon color="secondary" size="20">Tag</v-icon>
+                                <Tag :size="20" class="text-secondary" />
                                 <span
                                     class="text-overline font-weight-black text-secondary letter-spacing-wide">Classification</span>
                             </div>
@@ -128,24 +136,25 @@ function handleClose() {
                             <v-row dense>
                                 <v-col cols="12" md="6" class="mb-1">
                                     <v-select v-model="form.account_id" :items="accountOptions" label="Account"
-                                        item-title="title" item-value="value" variant="solo" density="compact" flat
-                                        rounded="lg" class="premium-modal-input" hide-details
+                                        item-title="title" item-value="value" variant="outlined" density="comfortable"
+                                        rounded="lg" class="premium-modal-input font-weight-bold" hide-details
                                         prepend-inner-icon="Landmark" />
                                 </v-col>
 
                                 <v-col cols="12" md="6" class="mb-1">
                                     <v-autocomplete v-model="form.category" :items="categoryOptions" label="Category"
-                                        item-title="title" item-value="value" placeholder="Uncategorized" variant="solo"
-                                        density="compact" flat rounded="lg" class="premium-modal-input" hide-details
+                                        item-title="title" item-value="value" placeholder="Uncategorized"
+                                        variant="outlined" density="comfortable" rounded="lg"
+                                        class="premium-modal-input font-weight-bold" hide-details
                                         prepend-inner-icon="Tag" />
                                 </v-col>
 
                                 <v-col cols="12" class="mb-1">
                                     <v-select v-model="form.expense_group_id" :items="expenseGroupOptions"
                                         label="Life Event / Group" item-title="title" item-value="value"
-                                        placeholder="Add to a project or life event (Optional)" variant="solo"
-                                        density="compact" flat rounded="lg" class="premium-modal-input" hide-details
-                                        prepend-inner-icon="Folder" />
+                                        placeholder="Add to a project or life event (Optional)" variant="outlined"
+                                        density="comfortable" rounded="lg" class="premium-modal-input font-weight-bold"
+                                        hide-details prepend-inner-icon="Folder" />
                                 </v-col>
                             </v-row>
                         </div>
@@ -153,7 +162,7 @@ function handleClose() {
                         <!-- Advanced Options Section -->
                         <div class="section-group">
                             <div class="d-flex align-center gap-2 mb-4">
-                                <v-icon color="accent" size="20" icon="Settings"></v-icon>
+                                <Settings :size="20" class="text-accent" />
                                 <span class="text-overline font-weight-black text-accent letter-spacing-wide">Advanced
                                     Options</span>
                             </div>
@@ -168,7 +177,7 @@ function handleClose() {
                                             <template #label>
                                                 <div class="d-flex flex-column ml-2">
                                                     <span class="text-body-2 font-weight-bold">Internal Transfer</span>
-                                                    <span class="text-[10px] opacity-60">Between your accounts</span>
+                                                    <span class="text-tiny opacity-60">Between your accounts</span>
                                                 </div>
                                             </template>
                                         </v-switch>
@@ -180,7 +189,7 @@ function handleClose() {
                                                 <div class="d-flex flex-column ml-2">
                                                     <span class="text-body-2 font-weight-bold">Hide from
                                                         Analytics</span>
-                                                    <span class="text-[10px] opacity-60">Exclude from
+                                                    <span class="text-tiny opacity-60">Exclude from
                                                         budget/spending</span>
                                                 </div>
                                             </template>
@@ -194,7 +203,7 @@ function handleClose() {
                                     <v-card variant="flat" class="pa-4 border-opacity-10"
                                         style="background: rgba(var(--v-theme-primary), 0.05); border-radius: 20px !important;">
                                         <div class="d-flex align-center gap-2 mb-4">
-                                            <v-icon size="20" color="primary" icon="ArrowLeftRight"></v-icon>
+                                            <ArrowLeftRight :size="20" class="text-primary" />
                                             <span class="text-subtitle-2 font-weight-black">Match Transfer Pair</span>
                                         </div>
 
@@ -202,8 +211,9 @@ function handleClose() {
                                             <v-col cols="12" md="8">
                                                 <v-select v-model="form.to_account_id" :items="accountOptions"
                                                     item-title="title" item-value="value" label="Destination Account"
-                                                    placeholder="Select account" variant="solo" density="compact" flat
-                                                    rounded="lg" class="premium-modal-input" hide-details />
+                                                    placeholder="Select account" variant="outlined"
+                                                    density="comfortable" rounded="lg"
+                                                    class="premium-modal-input font-weight-bold" hide-details />
                                             </v-col>
                                             <v-col cols="12" md="4">
                                                 <v-btn color="primary" block height="40" rounded="lg" variant="flat"
@@ -216,7 +226,7 @@ function handleClose() {
                                         <div v-if="matchesSearched" class="mt-6">
                                             <p
                                                 class="text-caption font-weight-black mb-3 opacity-70 d-flex align-center gap-2">
-                                                <v-icon size="14" icon="Search"></v-icon>
+                                                <Search :size="14" />
                                                 Found {{ potentialMatches.length }} matches within 3-day window
                                             </p>
                                             <div class="d-flex flex-column gap-3">
@@ -230,14 +240,13 @@ function handleClose() {
                                                             <v-avatar size="32"
                                                                 :color="form.linked_transaction_id === match.id ? 'white' : 'primary'"
                                                                 class="opacity-80">
-                                                                <v-icon size="16"
-                                                                    :color="form.linked_transaction_id === match.id ? 'primary' : 'white'"
-                                                                    icon="Link"></v-icon>
+                                                                <Link :size="16"
+                                                                    :color="form.linked_transaction_id === match.id ? 'primary' : 'white'" />
                                                             </v-avatar>
                                                             <div>
                                                                 <div class="text-subtitle-2 font-weight-black">{{
                                                                     match.description }}</div>
-                                                                <div class="text-[10px] opacity-70 font-weight-bold">{{
+                                                                <div class="text-tiny opacity-70 font-weight-bold">{{
                                                                     match.date }}</div>
                                                             </div>
                                                         </div>
@@ -248,7 +257,7 @@ function handleClose() {
                                                 </v-card>
                                                 <div v-if="potentialMatches.length === 0"
                                                     class="text-center py-6 opacity-40">
-                                                    <v-icon size="32" class="mb-2" icon="SearchX"></v-icon>
+                                                    <SearchX :size="32" class="mb-2" />
                                                     <div class="text-caption font-weight-black">No matching txns found
                                                     </div>
                                                 </div>
@@ -266,7 +275,7 @@ function handleClose() {
                                     style="border-radius: 20px !important;">
                                     <template v-slot:prepend>
                                         <div class="bg-primary rounded-lg pa-1 mr-2 opacity-80">
-                                            <v-icon size="16" color="white" icon="LineChart"></v-icon>
+                                            <LineChart :size="16" class="text-white" />
                                         </div>
                                     </template>
                                     <div class="d-flex align-center justify-space-between w-100">
@@ -293,7 +302,7 @@ function handleClose() {
                 </v-btn>
                 <v-spacer></v-spacer>
                 <v-btn color="primary" variant="flat" rounded="pill" class="font-weight-black px-10 elevation-4"
-                    height="40" @click="handleSubmit" prepend-icon="CheckCircle2">
+                    height="40" @click="handleSubmit" :prepend-icon="CheckCircle2">
                     {{ isEditing ? 'Update Entry' : 'Create Transaction' }}
                 </v-btn>
             </v-card-actions>
@@ -333,10 +342,10 @@ function handleClose() {
 }
 
 .premium-modal-input :deep(.v-field) {
-    background: rgba(var(--v-theme-surface), 0.5) !important;
-    border: 1px solid rgba(var(--v-border-color), 0.1) !important;
+    /* background: rgba(var(--v-theme-surface), 0.5) !important; */
+    /* border: 1px solid rgba(var(--v-border-color), 0.1) !important; */
     box-shadow: none !important;
-    border-radius: 12px !important;
+    /* border-radius: 12px !important; */
     font-weight: 600;
 }
 
@@ -380,7 +389,7 @@ function handleClose() {
     gap: 16px;
 }
 
-.text-[10px] {
+.text-tiny {
     font-size: 10px;
 }
 </style>

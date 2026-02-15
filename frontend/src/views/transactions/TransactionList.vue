@@ -1,6 +1,17 @@
+```vue
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useCurrency } from '@/composables/useCurrency'
+import {
+    Search,
+    Trash2,
+    Upload,
+    Plus,
+    MapPin,
+    Pencil,
+    MoreVertical,
+    FileText
+} from 'lucide-vue-next'
 
 const { formatAmount } = useCurrency()
 
@@ -212,36 +223,14 @@ function handleReset() {
     }
 }
 
-.premium-glass-card {
-    background: rgba(var(--v-theme-surface), 0.7);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(var(--v-border-color), 0.1);
-    border-radius: 20px;
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+/* .premium-glass-card is now global */
+.gap-2 {
+    gap: 8px;
 }
 
-.account-select-premium,
-.time-range-select-premium,
-.category-select-premium,
-.date-input-premium,
-.search-input-premium {
-    min-width: 150px;
-}
 
-:deep(.v-field--variant-solo) {
-    background: rgba(var(--v-theme-surface), 0.5) !important;
-    border: 1px solid rgba(var(--v-border-color), 0.1);
-    box-shadow: none !important;
-    font-weight: 600;
-}
 
-:deep(.v-field--variant-solo:hover) {
-    border-color: rgba(var(--v-theme-primary), 0.3);
-}
 
-:deep(.v-field--variant-solo.v-field--focused) {
-    border-color: rgb(var(--v-theme-primary)) !important;
-}
 
 .gap-2 {
     gap: 8px;
@@ -327,15 +316,16 @@ function handleReset() {
 <template>
     <div class="transaction-list-container">
         <!-- Filter Bar -->
-        <v-card class="premium-glass-card mb-6 pa-4">
+        <v-card class="premium-glass-card mb-6 pa-4 border-thin">
             <v-row align="center" no-gutters class="gap-4">
                 <v-col cols="12" lg="auto">
                     <div class="d-flex align-center">
                         <span class="text-caption font-weight-bold text-uppercase opacity-70 mr-3">Account:</span>
                         <v-select :model-value="selectedAccount"
                             @update:model-value="emit('update:selectedAccount', $event)" :items="accountOptions"
-                            item-title="title" item-value="value" placeholder="All Accounts" density="compact"
-                            hide-details variant="solo" class="account-select-premium" rounded="lg" />
+                            item-title="title" item-value="value" placeholder="All Accounts" density="comfortable"
+                            hide-details variant="outlined" class="account-select-premium font-weight-bold" rounded="lg"
+                            bg-color="surface" />
                     </div>
                 </v-col>
 
@@ -343,8 +333,9 @@ function handleReset() {
                     <div class="d-flex align-center">
                         <span class="text-caption font-weight-bold text-uppercase opacity-70 mr-3">Time:</span>
                         <v-select :model-value="selectedTimeRange" @update:model-value="handleTimeRangeChange"
-                            :items="timeRangeOptions" item-title="title" item-value="value" density="compact"
-                            hide-details variant="solo" class="time-range-select-premium" rounded="lg" />
+                            :items="timeRangeOptions" item-title="title" item-value="value" density="comfortable"
+                            hide-details variant="outlined" class="time-range-select-premium font-weight-bold"
+                            rounded="lg" bg-color="surface" />
                     </div>
                 </v-col>
 
@@ -352,11 +343,13 @@ function handleReset() {
                     <div class="d-flex align-center gap-2">
                         <v-text-field :model-value="startDate"
                             @update:model-value="emit('update:startDate', $event); emit('fetchData')" type="date"
-                            density="compact" hide-details variant="solo" rounded="lg" class="date-input-premium" />
+                            density="comfortable" hide-details variant="outlined" rounded="lg"
+                            class="date-input-premium font-weight-bold" bg-color="surface" />
                         <span class="text-caption opacity-50">to</span>
                         <v-text-field :model-value="endDate"
                             @update:model-value="emit('update:endDate', $event); emit('fetchData')" type="date"
-                            density="compact" hide-details variant="solo" rounded="lg" class="date-input-premium" />
+                            density="comfortable" hide-details variant="outlined" rounded="lg"
+                            class="date-input-premium font-weight-bold" bg-color="surface" />
                     </div>
                 </v-col>
 
@@ -364,17 +357,21 @@ function handleReset() {
 
                 <v-col cols="12" md="4" lg="auto" class="flex-grow-1">
                     <v-text-field :model-value="searchQuery" @update:model-value="emit('update:searchQuery', $event)"
-                        placeholder="Search description or recipient..." density="compact" hide-details variant="solo"
-                        rounded="lg" prepend-inner-icon="Search" class="search-input-premium" clearable
-                        autocomplete="off" />
+                        placeholder="Search description or recipient..." density="comfortable" hide-details
+                        variant="outlined" rounded="lg" class="search-input-premium font-weight-bold" clearable
+                        autocomplete="off" bg-color="surface">
+                        <template v-slot:prepend-inner>
+                            <Search :size="18" class="text-primary mr-2" />
+                        </template>
+                    </v-text-field>
                 </v-col>
 
                 <v-col cols="12" sm="6" md="3" lg="auto">
                     <v-select :model-value="categoryFilter"
                         @update:model-value="emit('update:categoryFilter', $event); emit('fetchData')"
                         :items="[{ title: 'All Categories', value: '' }, ...categoryOptions]" item-title="title"
-                        item-value="value" placeholder="Category" density="compact" hide-details variant="solo"
-                        rounded="lg" class="category-select-premium" />
+                        item-value="value" placeholder="Category" density="comfortable" hide-details variant="outlined"
+                        rounded="lg" class="category-select-premium font-weight-bold" bg-color="surface" />
                 </v-col>
 
                 <v-col cols="auto" v-if="startDate || endDate || searchQuery || categoryFilter">
@@ -396,7 +393,10 @@ function handleReset() {
                         <v-divider vertical class="mx-2" />
                         <span class="text-caption font-weight-bold text-primary">{{ selectedIds.size }} Selected</span>
                         <v-btn color="error" variant="tonal" size="x-small" @click="emit('deleteSelected')"
-                            prepend-icon="Trash2" rounded="lg">
+                            rounded="lg">
+                            <template v-slot:prepend>
+                                <Trash2 :size="14" />
+                            </template>
                             Delete
                         </v-btn>
                     </div>
@@ -404,11 +404,17 @@ function handleReset() {
             </div>
 
             <div class="d-flex align-center gap-2">
-                <v-btn color="secondary" variant="tonal" size="small" @click="emit('importCsv')" prepend-icon="Upload"
-                    rounded="lg">
+                <v-btn color="secondary" variant="tonal" size="small" @click="emit('importCsv')" rounded="lg">
+                    <template v-slot:prepend>
+                        <Upload :size="16" />
+                    </template>
                     Import
                 </v-btn>
-                <v-btn color="primary" size="small" @click="emit('editTxn', null)" prepend-icon="Plus" rounded="lg">
+                <v-btn color="primary" size="small" @click="emit('editTxn', null)" rounded="pill"
+                    class="font-weight-black text-none">
+                    <template v-slot:prepend>
+                        <Plus :size="16" />
+                    </template>
                     Add
                 </v-btn>
             </div>
@@ -462,7 +468,7 @@ function handleReset() {
                             <v-tooltip v-if="item.latitude || item.location_name"
                                 :text="item.location_name || 'Location available'">
                                 <template #activator="{ props }">
-                                    <v-icon v-bind="props" size="14" color="error" class="ml-1" icon="MapPin"></v-icon>
+                                    <MapPin v-bind="props" :size="14" class="ml-1 text-primary" />
                                 </template>
                             </v-tooltip>
                         </div>
@@ -523,19 +529,27 @@ function handleReset() {
                     <div class="text-center">
                         <v-menu location="start">
                             <template v-slot:activator="{ props }">
-                                <v-btn icon="MoreVertical" size="x-small" variant="text" color="medium-emphasis"
-                                    v-bind="props" />
+                                <v-btn size="x-small" variant="text" color="medium-emphasis" v-bind="props">
+                                    <MoreVertical :size="18" />
+                                </v-btn>
                             </template>
                             <v-list density="compact" class="rounded-lg border" elevation="2">
-                                <v-list-item @click="emit('editTxn', item)" prepend-icon="Pencil" title="Edit"
-                                    value="edit">
+                                <v-list-item @click="emit('editTxn', item)" title="Edit" value="edit">
+                                    <template v-slot:prepend>
+                                        <Pencil :size="16" class="mr-2" />
+                                    </template>
                                 </v-list-item>
-                                <v-list-item @click="emit('mapVendor', item)" prepend-icon="MapPin" title="Map Vendor"
-                                    value="map">
+                                <v-list-item @click="emit('mapVendor', item)" title="Map Vendor" value="map">
+                                    <template v-slot:prepend>
+                                        <MapPin :size="16" class="mr-2" />
+                                    </template>
                                 </v-list-item>
                                 <v-divider class="my-1"></v-divider>
                                 <v-list-item @click="() => { selectedIds = new Set([item.id]); emit('deleteSelected') }"
-                                    prepend-icon="Trash2" title="Delete" value="delete" color="error">
+                                    title="Delete" value="delete" color="error">
+                                    <template v-slot:prepend>
+                                        <Trash2 :size="16" class="mr-2" />
+                                    </template>
                                 </v-list-item>
                             </v-list>
                         </v-menu>
@@ -544,12 +558,15 @@ function handleReset() {
 
                 <!-- Empty State -->
                 <template #no-data>
-                    <div class="d-flex flex-column align-center justify-center pa-10 text-center">
-                        <v-icon size="64" color="medium-emphasis" class="mb-4" icon="FileText"></v-icon>
-                        <h3 class="text-h6 font-weight-bold mb-1 opacity-70">No Transactions Found</h3>
-                        <p class="text-body-2 text-medium-emphasis">Adjust your filters or try a different search term.
+                    <div class="d-flex flex-column align-center justify-center pa-10 text-center animate-in">
+                        <v-avatar size="100" color="surface-variant" variant="tonal" class="mb-6">
+                            <FileText :size="48" class="opacity-50" />
+                        </v-avatar>
+                        <h3 class="text-h5 font-weight-black mb-1">No Transactions Found</h3>
+                        <p class="text-body-1 text-medium-emphasis">Adjust your filters or try a different search term.
                         </p>
-                        <v-btn color="primary" variant="text" class="mt-4" @click="handleReset">Clear All
+                        <v-btn color="primary" variant="text" class="mt-4 font-weight-bold" @click="handleReset">Clear
+                            All
                             Filters</v-btn>
                     </div>
                 </template>

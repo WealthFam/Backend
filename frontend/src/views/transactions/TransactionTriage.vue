@@ -2,6 +2,29 @@
 import { computed, ref, reactive } from 'vue'
 import VendorAliasModal from '@/components/VendorAliasModal.vue'
 import { useCurrency } from '@/composables/useCurrency'
+import {
+    Inbox,
+    Search,
+    ArrowUpNarrowWide,
+    ArrowDownNarrowWide,
+    ArrowLeftRight,
+    ArrowUp,
+    ArrowDown,
+    Trash2,
+    RotateCw,
+    Landmark,
+    ShieldAlert,
+    MapPin,
+    Info,
+    Check,
+    Sparkles,
+    X,
+    Target,
+    Zap,
+    CheckCircle2,
+    ShieldCheck,
+    RefreshCcw
+} from 'lucide-vue-next'
 // Props
 const props = defineProps<{
     activeSubTab: 'pending' | 'training'
@@ -245,7 +268,7 @@ const { formatAmount } = useCurrency()
             <v-tooltip text="Review and categorize auto-detected transactions" location="bottom" open-delay="400">
                 <template v-slot:activator="{ props }">
                     <v-tab v-bind="props" value="pending">
-                        <v-icon start icon="Inbox" class="mr-2"></v-icon>
+                        <Inbox :size="18" class="mr-2" />
                         Pending Inbox
                         <v-chip size="x-small" color="primary" class="ml-2" variant="flat">
                             {{ triagePagination.total }}
@@ -256,7 +279,7 @@ const { formatAmount } = useCurrency()
             <v-tooltip text="Label unparsed messages to train the detection engine" location="bottom" open-delay="400">
                 <template v-slot:activator="{ props }">
                     <v-tab v-bind="props" value="training">
-                        <v-icon start icon="Bot" class="mr-2"></v-icon>
+                        <Target :size="18" class="mr-2" />
                         Training Area
                         <v-chip size="x-small" color="warning" class="ml-2" variant="flat">
                             {{ trainingPagination.total }}
@@ -269,7 +292,10 @@ const { formatAmount } = useCurrency()
         <v-window v-model="activeTab">
             <!-- PENDING TAB -->
             <v-window-item value="pending">
-                <v-alert icon="ShieldAlert" type="info" variant="tonal" class="mb-1" border="start" density="compact">
+                <v-alert type="info" variant="tonal" class="mb-4 rounded-xl" border="start" density="compact">
+                    <template v-slot:prepend>
+                        <ShieldAlert :size="20" class="mr-2 text-info" />
+                    </template>
                     <strong>Review Intake</strong>: These transactions were auto-detected but require
                     categorization or confirmation before affecting your balance.
                 </v-alert>
@@ -280,9 +306,13 @@ const { formatAmount } = useCurrency()
                         <v-col cols="12" lg="auto" class="flex-grow-1">
                             <v-text-field :model-value="triageSearchQuery"
                                 @update:model-value="emit('update:triageSearchQuery', $event)"
-                                placeholder="Search description or recipient..." density="compact" hide-details
-                                variant="solo" rounded="lg" prepend-inner-icon="Search" class="search-input-premium"
-                                clearable autocomplete="off" />
+                                placeholder="Search description or recipient..." density="comfortable" hide-details
+                                variant="outlined" rounded="lg" class="font-weight-bold" clearable autocomplete="off"
+                                bg-color="surface">
+                                <template v-slot:prepend-inner>
+                                    <Search :size="18" class="text-primary mr-2" />
+                                </template>
+                            </v-text-field>
                         </v-col>
 
                         <v-divider vertical class="d-none d-lg-block mx-1" />
@@ -290,7 +320,7 @@ const { formatAmount } = useCurrency()
                         <v-col cols="auto">
                             <v-btn-toggle :model-value="triageSourceFilter"
                                 @update:model-value="emit('update:triageSourceFilter', $event || 'ALL')"
-                                density="compact" color="primary" variant="tonal" divided mandatory
+                                density="comfortable" color="primary" variant="tonal" divided mandatory
                                 class="rounded-lg border-thin">
                                 <v-btn value="ALL" size="small" class="px-4">All</v-btn>
                                 <v-btn value="SMS" size="small" class="px-4">SMS</v-btn>
@@ -304,8 +334,9 @@ const { formatAmount } = useCurrency()
                             <v-select :model-value="triageSortKey"
                                 @update:model-value="emit('update:triageSortKey', $event)"
                                 :items="[{ title: 'Date', value: 'date' }, { title: 'Amount', value: 'amount' }, { title: 'Description', value: 'description' }]"
-                                item-title="title" item-value="value" hide-details density="compact" variant="solo"
-                                label="Sort" style="width: 140px" rounded="lg" class="filter-field-premium"></v-select>
+                                item-title="title" item-value="value" hide-details density="comfortable"
+                                variant="outlined" label="Sort" style="width: 140px" rounded="lg"
+                                class="font-weight-bold" bg-color="surface"></v-select>
 
                             <v-tooltip :text="`Sort by ${triageSortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
                                 location="top" open-delay="400">
@@ -313,7 +344,9 @@ const { formatAmount } = useCurrency()
                                     <v-btn v-bind="props"
                                         @click="emit('update:triageSortOrder', triageSortOrder === 'asc' ? 'desc' : 'asc')"
                                         variant="tonal" size="small" height="40" width="40" color="primary"
-                                        class="rounded-lg" :icon="triageSortOrder === 'asc' ? 'ArrowUp' : 'ArrowDown'">
+                                        class="rounded-lg">
+                                        <ArrowUpNarrowWide v-if="triageSortOrder === 'asc'" :size="18" />
+                                        <ArrowDownNarrowWide v-else :size="18" />
                                     </v-btn>
                                 </template>
                             </v-tooltip>
@@ -335,8 +368,10 @@ const { formatAmount } = useCurrency()
                                 open-delay="400">
                                 <template v-slot:activator="{ props }">
                                     <v-btn v-bind="props" color="error" variant="tonal" size="small"
-                                        prepend-icon="Trash2" @click="emit('update:showDiscardConfirm', true)"
-                                        rounded="lg">
+                                        @click="emit('update:showDiscardConfirm', true)" rounded="lg">
+                                        <template v-slot:prepend>
+                                            <Trash2 :size="16" />
+                                        </template>
                                         Discard {{ selectedTriageIds.length }}
                                     </v-btn>
                                 </template>
@@ -345,8 +380,9 @@ const { formatAmount } = useCurrency()
                     </div>
                     <v-tooltip text="Refresh triage data" location="top" open-delay="400">
                         <template v-slot:activator="{ props }">
-                            <v-btn v-bind="props" icon="RotateCw" variant="text" size="small"
-                                @click="emit('refreshTriage')"></v-btn>
+                            <v-btn v-bind="props" variant="text" size="small" @click="emit('refreshTriage')">
+                                <RotateCw :size="18" />
+                            </v-btn>
                         </template>
                     </v-tooltip>
                 </div>
@@ -363,7 +399,7 @@ const { formatAmount } = useCurrency()
                             <div class="card-modern-header px-4 pt-4 pb-2">
                                 <div class="d-flex align-left gap-3 overflow-hidden">
                                     <v-checkbox-btn v-model="selectedTriageIds" :value="txn.id" color="primary"
-                                        density="compact" hide-details class="mt-n1"></v-checkbox-btn>
+                                        density="comfortable" hide-details class="mt-n1"></v-checkbox-btn>
 
                                     <div class="flex-grow-1 min-width-0">
                                         <div class="text-subtitle-2 font-weight-black text-truncate modern-header-title mb-0"
@@ -396,7 +432,7 @@ const { formatAmount } = useCurrency()
                                     <div class="modern-metadata">
                                         <div
                                             class="d-flex align-center gap-2 text-caption font-weight-bold opacity-60 mb-2">
-                                            <v-icon size="14">Landmark</v-icon>
+                                            <Zap :size="14" class="mr-1" />
                                             {{ getAccountName(txn.account_id) }}
                                         </div>
 
@@ -412,13 +448,15 @@ const { formatAmount } = useCurrency()
                                             open-delay="400">
                                             <template v-slot:activator="{ props }">
                                                 <v-btn-toggle v-bind="props" :model-value="txn.is_transfer"
-                                                    density="compact" variant="flat"
+                                                    density="comfortable" variant="flat"
                                                     class="tactile-toggle-group transfer-toggle"
                                                     @update:model-value="txn.is_transfer = !!$event; if ($event) txn.exclude_from_reports = true">
                                                     <v-btn :value="true" size="x-small"
                                                         class="text-none px-3 rounded-pill"
-                                                        :color="txn.is_transfer ? 'blue-darken-1' : ''"
-                                                        prepend-icon="ArrowLeftRight">
+                                                        :color="txn.is_transfer ? 'blue-darken-1' : ''">
+                                                        <template v-slot:prepend>
+                                                            <ArrowLeftRight :size="14" />
+                                                        </template>
                                                         Transfer
                                                     </v-btn>
                                                 </v-btn-toggle>
@@ -429,13 +467,15 @@ const { formatAmount } = useCurrency()
                                             location="top" open-delay="400">
                                             <template v-slot:activator="{ props }">
                                                 <v-btn-toggle v-bind="props" :model-value="txn.exclude_from_reports"
-                                                    density="compact" variant="flat"
+                                                    density="comfortable" variant="flat"
                                                     class="tactile-toggle-group hide-toggle"
                                                     @update:model-value="txn.exclude_from_reports = !!$event">
                                                     <v-btn :value="true" size="x-small"
                                                         class="text-none px-3 rounded-pill"
-                                                        :color="txn.exclude_from_reports ? 'grey-darken-2' : ''"
-                                                        prepend-icon="EyeOff">
+                                                        :color="txn.exclude_from_reports ? 'grey-darken-2' : ''">
+                                                        <template v-slot:prepend>
+                                                            <EyeOff :size="14" />
+                                                        </template>
                                                         Hide
                                                     </v-btn>
                                                 </v-btn-toggle>
@@ -449,8 +489,12 @@ const { formatAmount } = useCurrency()
                                                 style="width: 70px">Category</span>
                                             <v-autocomplete v-model="txn.category" :items="categoryOptions"
                                                 item-title="title" item-value="value" placeholder="Select Category"
-                                                variant="solo-filled" density="compact" rounded="lg" hide-details
-                                                prepend-inner-icon="Tag" class="flex-grow-1"></v-autocomplete>
+                                                variant="outlined" density="comfortable" rounded="lg" hide-details
+                                                class="flex-grow-1" bg-color="surface">
+                                                <template v-slot:prepend-inner>
+                                                    <Tag :size="18" class="text-primary mr-2" />
+                                                </template>
+                                            </v-autocomplete>
                                         </div>
                                     </div>
 
@@ -463,7 +507,7 @@ const { formatAmount } = useCurrency()
                                                 <v-select v-model="txn.to_account_id"
                                                     :items="accountOptions.filter(a => a.value !== txn.account_id)"
                                                     item-title="title" item-value="value" placeholder="Target Account"
-                                                    variant="solo-filled" density="compact" rounded="lg" hide-details
+                                                    variant="outlined" density="comfortable" rounded="lg" hide-details
                                                     class="flex-grow-1"></v-select>
                                             </div>
                                         </div>
@@ -477,7 +521,7 @@ const { formatAmount } = useCurrency()
                                             <v-btn v-bind="props" variant="tonal" size="small" color="error"
                                                 @click="emit('rejectTriage', txn.id)"
                                                 class="rounded-lg footer-action-btn">
-                                                <v-icon size="16">Trash2</v-icon>
+                                                <Trash2 :size="16" />
                                             </v-btn>
                                         </template>
                                     </v-tooltip>
@@ -487,7 +531,7 @@ const { formatAmount } = useCurrency()
                                         <template v-slot:activator="{ props }">
                                             <v-btn v-bind="props" variant="tonal" size="small" color="primary"
                                                 @click="openAliasModal(txn)" class="rounded-lg footer-action-btn">
-                                                <v-icon size="16">MapPin</v-icon>
+                                                <MapPin :size="16" />
                                             </v-btn>
                                         </template>
                                     </v-tooltip>
@@ -497,7 +541,7 @@ const { formatAmount } = useCurrency()
                                         <template v-slot:activator="{ props }">
                                             <v-btn v-bind="props" variant="tonal" size="small" color="secondary"
                                                 @click="openTriageDetails(txn)" class="rounded-lg footer-action-btn">
-                                                <v-icon size="16">Info</v-icon>
+                                                <Info :size="16" />
                                             </v-btn>
                                         </template>
                                     </v-tooltip>
@@ -511,7 +555,7 @@ const { formatAmount } = useCurrency()
                                                 class="rounded-lg footer-action-btn"
                                                 :disabled="!txn.category || txn.category === 'Uncategorized'"
                                                 @click="emit('approveTriage', txn)">
-                                                <v-icon size="16">Check</v-icon>
+                                                <Check :size="16" />
                                             </v-btn>
                                         </template>
                                     </v-tooltip>
@@ -521,10 +565,12 @@ const { formatAmount } = useCurrency()
                 </v-row>
 
                 <!-- Empty State -->
-                <div v-if="triagePagination.total === 0" class="text-center py-12">
-                    <v-icon size="64" color="success" class="mb-4">CheckCircle2</v-icon>
-                    <h3 class="text-h5 font-weight-bold">Inbox Zero!</h3>
-                    <p class="text-medium-emphasis">No new transactions waiting for review.</p>
+                <div v-if="triagePagination.total === 0" class="text-center py-16 animate-in">
+                    <v-avatar size="100" color="success" variant="tonal" class="mb-6">
+                        <CheckCircle2 :size="48" />
+                    </v-avatar>
+                    <h3 class="text-h4 font-weight-black">Inbox Zero!</h3>
+                    <p class="text-subtitle-1 text-medium-emphasis mt-2">No new transactions waiting for review.</p>
                 </div>
 
                 <v-row v-if="triagePagination.total > 0" class="mt-4 align-center">
@@ -536,14 +582,14 @@ const { formatAmount } = useCurrency()
                     <v-col cols="12" md="4" class="d-flex justify-center">
                         <v-pagination v-model="triageCurrentPage"
                             :length="Math.ceil(triagePagination.total / triagePagination.limit)" :total-visible="5"
-                            density="compact" active-color="primary" variant="text"
+                            density="comfortable" active-color="primary" variant="text"
                             class="modern-pagination"></v-pagination>
                     </v-col>
                     <v-col cols="12" md="4" class="d-flex justify-end align-center gap-2">
                         <span class="text-caption mr-2">Rows per page:</span>
                         <v-select :model-value="triagePagination.limit"
                             @update:model-value="handleTriagePaginationLimitChange($event)" :items="[12, 24, 60]"
-                            density="compact" variant="plain" hide-details class="rounded-lg rows-per-page-select"
+                            density="comfortable" variant="plain" hide-details class="rounded-lg rows-per-page-select"
                             style="width: 75px"></v-select>
                     </v-col>
                 </v-row>
@@ -551,7 +597,10 @@ const { formatAmount } = useCurrency()
 
             <!-- TRAINING TAB -->
             <v-window-item value="training">
-                <v-alert icon="Bot" type="warning" variant="tonal" class="mb-4" border="start" density="compact">
+                <v-alert type="warning" variant="tonal" class="mb-6 rounded-xl" border="start" density="comfortable">
+                    <template v-slot:prepend>
+                        <Info :size="18" class="mr-2 text-info" />
+                    </template>
                     <strong>Interactive Training</strong>: These messages look like transactions but could
                     not be parsed. Label them to help the system learn!
                 </v-alert>
@@ -563,7 +612,7 @@ const { formatAmount } = useCurrency()
                             <v-checkbox-btn
                                 :model-value="selectedTrainingIds.length === unparsedMessages.length && unparsedMessages.length > 0"
                                 @update:model-value="toggleSelectAllTraining" color="warning" label="Select All"
-                                hide-details density="compact" class="ml-1"></v-checkbox-btn>
+                                hide-details density="comfortable" class="ml-1"></v-checkbox-btn>
 
                             <v-fade-transition>
                                 <v-tooltip v-if="selectedTrainingIds.length > 0"
@@ -571,7 +620,10 @@ const { formatAmount } = useCurrency()
                                     open-delay="400">
                                     <template v-slot:activator="{ props }">
                                         <v-btn v-bind="props" color="error" variant="tonal" size="small"
-                                            prepend-icon="Trash2" @click="emit('bulkDismissTraining')" rounded="lg">
+                                            @click="emit('bulkDismissTraining')" rounded="lg">
+                                            <template v-slot:prepend>
+                                                <Trash2 :size="16" />
+                                            </template>
                                             Dismiss {{ selectedTrainingIds.length }}
                                         </v-btn>
                                     </template>
@@ -586,8 +638,9 @@ const { formatAmount } = useCurrency()
                             <v-select :model-value="trainingSortKey"
                                 @update:model-value="emit('update:trainingSortKey', $event)"
                                 :items="[{ title: 'Date', value: 'created_at' }, { title: 'Sender', value: 'sender' }]"
-                                item-title="title" item-value="value" hide-details density="compact" variant="solo"
-                                label="Sort" style="width: 140px" rounded="lg" class="filter-field-premium"></v-select>
+                                item-title="title" item-value="value" hide-details density="comfortable"
+                                variant="outlined" label="Sort" style="width: 140px" rounded="lg"
+                                class="font-weight-bold" bg-color="surface"></v-select>
 
                             <v-tooltip :text="`Sort by ${trainingSortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
                                 location="top" open-delay="400">
@@ -595,15 +648,17 @@ const { formatAmount } = useCurrency()
                                     <v-btn v-bind="props"
                                         @click="emit('update:trainingSortOrder', trainingSortOrder === 'asc' ? 'desc' : 'asc')"
                                         variant="tonal" size="small" height="40" width="40" color="warning"
-                                        class="rounded-lg"
-                                        :icon="trainingSortOrder === 'asc' ? 'ArrowUp' : 'ArrowDown'">
+                                        class="rounded-lg">
+                                        <ArrowUp v-if="trainingSortOrder === 'asc'" :size="18" />
+                                        <ArrowDown v-else :size="18" />
                                     </v-btn>
                                 </template>
                             </v-tooltip>
                             <v-tooltip text="Refresh training data" location="top" open-delay="400">
                                 <template v-slot:activator="{ props }">
-                                    <v-btn v-bind="props" icon="RefreshCcw" variant="text" size="small"
-                                        @click="emit('refreshTriage')"></v-btn>
+                                    <v-btn v-bind="props" variant="text" size="small" @click="emit('refreshTriage')">
+                                        <RefreshCcw :size="18" />
+                                    </v-btn>
                                 </template>
                             </v-tooltip>
                         </v-col>
@@ -620,7 +675,7 @@ const { formatAmount } = useCurrency()
                             <div class="card-modern-header px-4 pt-4 pb-2">
                                 <div class="d-flex align-center gap-3 overflow-hidden">
                                     <v-checkbox-btn v-model="selectedTrainingIds" :value="msg.id" color="warning"
-                                        density="compact" hide-details class="mt-n1"></v-checkbox-btn>
+                                        density="comfortable" hide-details class="mt-n1"></v-checkbox-btn>
 
                                     <div class="flex-grow-1 min-width-0">
                                         <div
@@ -657,7 +712,7 @@ const { formatAmount } = useCurrency()
                                         <v-btn v-bind="props" variant="tonal" color="grey" size="small"
                                             class="rounded-lg footer-action-btn"
                                             @click="emit('dismissTraining', msg.id)">
-                                            <v-icon size="16">Trash2</v-icon>
+                                            <Trash2 :size="16" />
                                         </v-btn>
                                     </template>
                                 </v-tooltip>
@@ -667,7 +722,7 @@ const { formatAmount } = useCurrency()
                                     <template v-slot:activator="{ props }">
                                         <v-btn v-bind="props" color="warning" variant="tonal" size="small"
                                             class="rounded-lg footer-action-btn" @click="emit('startLabeling', msg)">
-                                            <v-icon size="16">Sparkles</v-icon>
+                                            <Sparkles :size="16" />
                                         </v-btn>
                                     </template>
                                 </v-tooltip>
@@ -677,10 +732,12 @@ const { formatAmount } = useCurrency()
                 </v-row>
 
                 <!-- Empty State -->
-                <div v-if="trainingPagination.total === 0" class="text-center py-12">
-                    <v-icon size="64" color="success" class="mb-4">ShieldCheck</v-icon>
-                    <h3 class="text-h5 font-weight-bold">All Clear!</h3>
-                    <p class="text-medium-emphasis">No unparsed messages waiting for training.</p>
+                <div v-if="trainingPagination.total === 0" class="text-center py-16 animate-in">
+                    <v-avatar size="100" color="success" variant="tonal" class="mb-6">
+                        <ShieldCheck :size="48" />
+                    </v-avatar>
+                    <h3 class="text-h4 font-weight-black">All Clear!</h3>
+                    <p class="text-subtitle-1 text-medium-emphasis mt-2">No unparsed messages waiting for training.</p>
                 </div>
 
                 <v-row v-if="trainingPagination.total > 0" class="mt-4 align-center">
@@ -692,15 +749,15 @@ const { formatAmount } = useCurrency()
                     <v-col cols="12" md="4" class="d-flex justify-center">
                         <v-pagination v-model="trainingCurrentPage"
                             :length="Math.ceil(trainingPagination.total / trainingPagination.limit)" :total-visible="5"
-                            density="compact" active-color="warning" variant="text"
+                            density="comfortable" active-color="warning" variant="text"
                             class="modern-pagination"></v-pagination>
                     </v-col>
                     <v-col cols="12" md="4" class="d-flex justify-end align-center gap-2">
                         <span class="text-caption mr-2">Rows per page:</span>
                         <v-select :model-value="trainingPagination.limit"
                             @update:model-value="handleTrainingPaginationLimitChange($event)" :items="[12, 24, 60]"
-                            density="compact" variant="plain" hide-details class="d-inline-block rows-per-page-select"
-                            style="width: 70px"></v-select>
+                            density="comfortable" variant="plain" hide-details
+                            class="d-inline-block rows-per-page-select" style="width: 70px"></v-select>
                     </v-col>
                 </v-row>
             </v-window-item>
@@ -709,13 +766,13 @@ const { formatAmount } = useCurrency()
         <!-- Details Modal -->
         <v-dialog v-model="triageDetailsDialog" max-width="600" persistent transition="dialog-bottom-transition">
             <v-card v-if="selectedTriageTxn" class="rounded-xl overflow-hidden">
-                <v-toolbar color="primary" density="compact">
+                <v-toolbar color="primary" density="comfortable">
                     <v-toolbar-title class="text-subtitle-1 font-weight-bold">Transaction Details</v-toolbar-title>
                     <v-spacer></v-spacer>
                     <v-tooltip text="Close details" location="bottom" open-delay="400">
                         <template v-slot:activator="{ props }">
-                            <v-btn v-bind="props" icon variant="text" @click="triageDetailsDialog = false">
-                                <v-icon>X</v-icon>
+                            <v-btn v-bind="props" variant="text" @click="triageDetailsDialog = false">
+                                <X :size="20" />
                             </v-btn>
                         </template>
                     </v-tooltip>
@@ -747,15 +804,22 @@ const { formatAmount } = useCurrency()
                             <v-col cols="12">
                                 <v-label class="text-caption font-weight-bold mb-2">Account</v-label>
                                 <v-select v-model="selectedTriageTxn.account_id" :items="accountOptions"
-                                    item-title="title" item-value="value" density="compact" variant="outlined"
-                                    hide-details prepend-inner-icon="Landmark"></v-select>
+                                    item-title="title" item-value="value" density="comfortable" variant="outlined"
+                                    hide-details>
+                                    <template v-slot:prepend-inner>
+                                        <Landmark :size="18" class="opacity-60" />
+                                    </template>
+                                </v-select>
                             </v-col>
 
                             <v-col cols="12">
                                 <v-autocomplete v-model="selectedTriageTxn.category" :items="categoryOptions"
                                     item-title="title" item-value="value" placeholder="Select Category"
-                                    variant="solo-filled" density="compact" rounded="lg" hide-details
-                                    prepend-inner-icon="Tag"></v-autocomplete>
+                                    variant="outlined" density="comfortable" rounded="lg" hide-details>
+                                    <template v-slot:prepend-inner>
+                                        <Tag :size="18" class="opacity-60" />
+                                    </template>
+                                </v-autocomplete>
                             </v-col>
 
                             <v-col v-if="selectedTriageTxn.is_transfer" cols="12">
@@ -763,8 +827,8 @@ const { formatAmount } = useCurrency()
                                     {{ selectedTriageTxn.amount < 0 ? 'Transfer To' : 'Transfer From' }} </v-label>
                                         <v-select v-model="selectedTriageTxn.to_account_id"
                                             :items="accountOptions.filter(a => a.value !== selectedTriageTxn.account_id)"
-                                            item-title="title" item-value="value" density="compact" variant="outlined"
-                                            hide-details></v-select>
+                                            item-title="title" item-value="value" density="comfortable"
+                                            variant="outlined" hide-details></v-select>
                             </v-col>
                         </v-row>
 
@@ -772,11 +836,11 @@ const { formatAmount } = useCurrency()
 
                         <div class="d-flex flex-column gap-3">
                             <v-switch v-model="selectedTriageTxn.is_transfer" color="info" label="Internal Transfer"
-                                density="compact" hide-details inset
+                                density="comfortable" hide-details inset
                                 @update:model-value="selectedTriageTxn.exclude_from_reports = selectedTriageTxn.is_transfer"></v-switch>
 
                             <v-switch v-model="selectedTriageTxn.exclude_from_reports" color="warning"
-                                label="Hide in Reports" density="compact" hide-details inset></v-switch>
+                                label="Hide in Reports" density="comfortable" hide-details inset></v-switch>
                         </div>
 
                         <div v-if="selectedTriageTxn.raw_message" class="mt-6">
@@ -831,7 +895,7 @@ const { formatAmount } = useCurrency()
 
                     <v-checkbox :model-value="createIgnoreRule"
                         @update:model-value="emit('update:createIgnoreRule', !!$event)"
-                        label="Ignore this pattern in future" color="primary" density="compact" hide-details
+                        label="Ignore this pattern in future" color="primary" density="comfortable" hide-details
                         class="mb-4"></v-checkbox>
 
                     <div class="d-flex gap-3 justify-center">
@@ -870,7 +934,7 @@ const { formatAmount } = useCurrency()
 
                     <v-checkbox :model-value="createIgnoreRule"
                         @update:model-value="emit('update:createIgnoreRule', !!$event)"
-                        label="Don't show this sender again" color="primary" density="compact" hide-details
+                        label="Don't show this sender again" color="primary" density="comfortable" hide-details
                         class="mb-4"></v-checkbox>
 
                     <div class="d-flex gap-3 justify-center">
@@ -931,9 +995,9 @@ const { formatAmount } = useCurrency()
     background: rgba(var(--v-theme-primary), 0.05) !important;
 }
 
+/* Global .premium-glass-card hover is now subtler */
 .premium-glass-card:hover {
-    transform: translateY(-4px) scale(1.01);
-    box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.15) !important;
+    border-color: rgba(var(--v-theme-primary), 0.3) !important;
 }
 
 /* Dynamic Accent Glow */
@@ -1051,7 +1115,7 @@ const { formatAmount } = useCurrency()
 }
 
 .footer-action-btn:hover {
-    transform: scale(1.1);
+    color: rgb(var(--v-theme-primary)) !important;
 }
 
 /* Pagination Styling */
