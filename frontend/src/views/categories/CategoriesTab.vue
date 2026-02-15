@@ -135,46 +135,37 @@
             <v-col v-for="cat in categoriesStore.rootCategories" :key="cat.id" cols="12" sm="6" md="4" lg="3">
                 <v-card class="premium-glass-card h-100 d-flex flex-column overflow-hidden" rounded="xl">
                     <div class="pa-6 d-flex align-start relative-pos z-10">
-                        <v-avatar :color="cat.color + '25'" rounded="lg" size="52" border class="elevation-2 me-4">
-                            <span class="text-h4" :style="{ color: cat.color }">{{ cat.icon || '🏷️' }}</span>
-                        </v-avatar>
-                        <div class="min-w-0 flex-grow-1">
-                            <div class="text-h6 font-weight-black truncate mb-1">{{ cat.name }}</div>
-                            <v-chip density="comfortable" size="x-small"
-                                class="text-uppercase font-weight-black letter-spacing-1" variant="tonal"
-                                :color="cat.type === 'income' ? 'success' : (cat.type === 'transfer' ? 'info' : 'primary')"
-                                label>
-                                {{ cat.type || 'expense' }}
-                            </v-chip>
+                        <div class="category-icon-container me-4" :style="{ '--icon-color': cat.color }">
+                            <span class="text-h4 relative-pos z-2">{{ cat.icon || '🏷️' }}</span>
+                            <div class="icon-gradient-bg"></div>
+                        </div>
+                        <div class="flex-grow-1 min-width-0">
+                            <div class="text-h6 font-weight-black line-height-1 mb-1 truncate">{{ cat.name }}</div>
+                            <div class="text-caption font-weight-bold opacity-60">Primary Category</div>
                         </div>
                     </div>
 
                     <!-- Subcategories -->
                     <div class="px-4 pb-4 flex-grow-1">
                         <div v-if="categoriesStore.getChildren(cat.id).length > 0"
-                            class="d-flex flex-column gap-2 mt-2">
+                            class="d-flex flex-column gap-1 mt-2">
                             <div v-for="child in categoriesStore.getChildren(cat.id)" :key="child.id"
-                                class="inset-glass-metric pa-2 px-3 border-thin group cursor-pointer rounded-lg relative-pos overflow-hidden"
-                                style="background: rgba(var(--v-theme-surface), 0.4)" @click.stop="editCategory(child)">
+                                class="subcategory-pill pa-2 px-3 group cursor-pointer rounded-lg relative-pos overflow-hidden transition-all"
+                                :style="{ '--child-color': cat.color }" @click.stop="editCategory(child)">
                                 <div class="d-flex justify-space-between align-center relative-pos z-2">
                                     <div class="d-flex align-center gap-2">
                                         <span class="text-body-2">{{ child.icon }}</span>
-                                        <span class="text-body-2 font-weight-black truncate">{{ child.name }}</span>
+                                        <span class="text-caption font-weight-black truncate">{{ child.name }}</span>
                                     </div>
-                                    <div class="d-flex gap-1 transition-all duration-200">
-                                        <v-btn variant="outlined" size="x-small"
-                                            class="rounded-lg border-thin bg-surface-light opacity-60 hover-opacity-100"
-                                            style="min-width: 28px; width: 28px; height: 28px; padding: 0"
+                                    <div
+                                        class="d-flex gap-1 opacity-0 group-hover-opacity-100 transition-all duration-200">
+                                        <v-btn variant="text" size="x-small" class="rounded-lg action-btn"
                                             @click.stop="editCategory(child)">
                                             <Pencil :size="12" />
-                                            <v-tooltip activator="parent" location="top">Edit Sub</v-tooltip>
                                         </v-btn>
-                                        <v-btn variant="outlined" color="error" size="x-small"
-                                            class="rounded-lg border-thin bg-surface-light opacity-60 hover-opacity-100"
-                                            style="min-width: 28px; width: 28px; height: 28px; padding: 0"
+                                        <v-btn variant="text" color="error" size="x-small" class="rounded-lg action-btn"
                                             @click.stop="startDeleteCategory(child)">
                                             <Trash2 :size="12" />
-                                            <v-tooltip activator="parent" location="top">Delete Sub</v-tooltip>
                                         </v-btn>
                                     </div>
                                 </div>
@@ -584,6 +575,77 @@ defineExpose({
 .premium-modal-select:hover :deep(.v-field__outline) {
     --v-field-border-opacity: 0.4;
     border-color: rgb(var(--v-theme-primary)) !important;
+}
+
+.category-icon-container {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 18px;
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+    background: rgba(var(--v-theme-surface), 0.5);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.icon-gradient-bg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 140%;
+    height: 140%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, var(--icon-color) 0%, transparent 70%);
+    opacity: 0.15;
+    z-index: 1;
+    transition: all 0.3s ease;
+}
+
+.premium-glass-card:hover .category-icon-container {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.1);
+    border-color: var(--icon-color);
+}
+
+.premium-glass-card:hover .icon-gradient-bg {
+    opacity: 0.25;
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+.subcategory-pill {
+    background: rgba(var(--v-theme-on-surface), 0.02);
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.subcategory-pill:hover {
+    background: rgba(var(--v-theme-on-surface), 0.05);
+    border-left-color: var(--child-color);
+    transform: translateX(4px);
+}
+
+.group-hover-opacity-100 {
+    opacity: 0;
+}
+
+.group:hover .group-hover-opacity-100 {
+    opacity: 1;
+}
+
+.action-btn {
+    min-width: 28px !important;
+    width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    opacity: 0.6;
+}
+
+.action-btn:hover {
+    opacity: 1;
+    background: rgba(var(--v-theme-primary), 0.1);
 }
 
 .transition-all {
