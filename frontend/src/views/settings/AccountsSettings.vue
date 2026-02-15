@@ -94,7 +94,7 @@
 
         <!-- Verified Accounts Control Bar -->
         <div class="d-flex flex-column flex-sm-row align-center justify-space-between gap-4 mb-6">
-            <v-text-field v-model="searchQuery" prepend-inner-icon="mdi-magnify" placeholder="Search accounts..."
+            <v-text-field v-model="searchQuery" prepend-inner-icon="Search" placeholder="Search devices..."
                 variant="outlined" density="comfortable" hide-details class="flex-grow-1"
                 style="max-width: 400px; width: 100%;" bg-color="surface"></v-text-field>
 
@@ -207,9 +207,8 @@
             <v-card class="rounded-xl">
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">{{ editingAccountId ? 'Edit Account' : 'New Account'
-                        }}</span>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showAccountModal = false"></v-btn>
+                    }}</span>
+                    <v-btn icon="X" variant="text" density="comfortable" @click="showAccountModal = false"></v-btn>
                 </v-card-title>
 
                 <v-card-text class="pa-4">
@@ -281,7 +280,7 @@
                         <!-- Balance Sync / Anchor Section -->
                         <div v-if="editingAccountId" class="pa-4 bg-grey-lighten-4 rounded-lg mb-4">
                             <div class="d-flex align-center gap-2 mb-2">
-                                <v-icon icon="mdi-anchor" color="primary" size="small"></v-icon>
+                                <v-icon icon="Anchor" color="primary" size="small"></v-icon>
                                 <span class="text-subtitle-2 font-weight-bold">Balance Anchoring</span>
                             </div>
                             <p class="text-caption text-medium-emphasis mb-4">
@@ -353,7 +352,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { Check, X, Edit2, Plus } from 'lucide-vue-next'
+import { Check, X, Edit2, Plus, Search, Anchor } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 const { formatAmount } = useCurrency()

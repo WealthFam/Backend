@@ -277,7 +277,7 @@
                     <h2 class="text-h5 font-weight-bold mb-1">Parser Patterns</h2>
                     <p class="text-body-2 text-medium-emphasis">View and manage transaction parser patterns</p>
                 </div>
-                <v-btn color="primary" @click="openAddModal" prepend-icon="mdi-plus">
+                <v-btn color="primary" @click="openAddModal" prepend-icon="Plus">
                     Add Pattern
                 </v-btn>
             </div>
@@ -326,7 +326,7 @@
                                         ✏️ Manual
                                     </v-chip>
                                     <span class="text-caption font-mono text-disabled">{{ pattern.id.substring(0, 8)
-                                    }}</span>
+                                        }}</span>
                                 </div>
                             </td>
                             <td class="text-right">
@@ -358,9 +358,8 @@
             <v-card class="rounded-xl">
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">{{ isEditingPattern ? 'Edit Pattern' : 'New Pattern'
-                    }}</span>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showPatternModal = false"></v-btn>
+                        }}</span>
+                    <v-btn icon="X" variant="text" density="comfortable" @click="showPatternModal = false"></v-btn>
                 </v-card-title>
                 <v-card-text class="pa-6">
                     <v-form @submit.prevent="savePattern">
@@ -403,7 +402,7 @@
                     <p class="text-body-2 text-medium-emphasis">Normalize merchant names (e.g. "AMZN Mktp" -> "Amazon")
                     </p>
                 </div>
-                <v-btn color="secondary" @click="openAliasModal" prepend-icon="mdi-plus">
+                <v-btn color="secondary" @click="openAliasModal" prepend-icon="Plus">
                     Add Alias
                 </v-btn>
             </div>
@@ -454,8 +453,7 @@
             <v-card class="rounded-xl">
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">New Merchant Alias</span>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showAliasModal = false"></v-btn>
+                    <v-btn icon="X" variant="text" density="comfortable" @click="showAliasModal = false"></v-btn>
                 </v-card-title>
                 <v-card-text class="pa-6">
                     <v-form @submit.prevent="saveAlias">

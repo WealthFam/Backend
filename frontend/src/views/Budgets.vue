@@ -336,9 +336,9 @@ onMounted(() => {
                                             (spendingVelocity.status === 'warning' ? 'warning' : 'success')"
                                             variant="flat" class="elevation-4">
                                             <v-icon size="24" color="white">
-                                                {{ spendingVelocity.status === 'aggressive' ? 'mdi-alert-decagram' :
-                                                    (spendingVelocity.status === 'warning' ? 'mdi-bell-ring' :
-                                                        'mdi-check-decagram')
+                                                {{ spendingVelocity.status === 'aggressive' ? 'AlertOctagon' :
+                                                    (spendingVelocity.status === 'warning' ? 'BellRing' :
+                                                        'CheckCircle2')
                                                 }}
                                             </v-icon>
                                         </v-avatar>
@@ -595,7 +595,7 @@ onMounted(() => {
                                             <template v-slot:activator="{ props }">
                                                 <v-btn icon variant="text" size="small" v-bind="props"
                                                     color="slate-400">
-                                                    <v-icon>mdi-dots-vertical</v-icon>
+                                                    <v-icon>MoreVertical</v-icon>
                                                 </v-btn>
                                             </template>
                                             <v-list density="compact" rounded="lg" class="py-1">
@@ -653,8 +653,8 @@ onMounted(() => {
                                     <v-expansion-panels v-if="group.children.length > 0" variant="accordion"
                                         class="premium-accordion">
                                         <v-expansion-panel elevation="0" bg-color="transparent">
-                                            <v-expansion-panel-title class="px-0 py-2 min-h-0"
-                                                collapse-icon="mdi-chevron-up" expand-icon="mdi-chevron-down">
+                                            <v-expansion-panel-title class="px-0 py-2 min-h-0" collapse-icon="ChevronUp"
+                                                expand-icon="ChevronDown">
                                                 <span class="text-caption font-weight-bold opacity-70">
                                                     Breakdown ({{ group.children.length }})
                                                 </span>
@@ -704,7 +704,7 @@ onMounted(() => {
                                 </div>
 
                                 <!-- Subtle background icon -->
-                                <v-icon class="card-bg-icon-standard">mdi-chart-donut</v-icon>
+                                <v-icon class="card-bg-icon-standard">PieChart</v-icon>
                             </v-card>
                         </v-col>
                     </v-row>
@@ -712,7 +712,7 @@ onMounted(() => {
                     <!-- Inactive Groups Section -->
                     <div v-if="inactiveGroups.length > 0" class="mt-8">
                         <div class="d-flex align-center gap-3 mb-4">
-                            <v-icon color="slate-400">mdi-sleep</v-icon>
+                            <v-icon color="slate-400">Moon</v-icon>
                             <h3 class="text-h6 font-weight-bold opacity-60">Inactive Categories</h3>
                         </div>
                         <v-row>
@@ -790,7 +790,7 @@ onMounted(() => {
                         </div>
                     </div>
                     <v-btn icon variant="text" size="small" @click="showModal = false" color="slate-400">
-                        <v-icon>mdi-close</v-icon>
+                        <v-icon>X</v-icon>
                     </v-btn>
                 </v-card-title>
 

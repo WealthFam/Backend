@@ -85,8 +85,7 @@
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">{{ isEditingMember ? 'Edit Profile' : 'Add Family Member'
                     }}</span>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showMemberModal = false"></v-btn>
+                    <v-btn icon="X" variant="text" density="comfortable" @click="showMemberModal = false"></v-btn>
                 </v-card-title>
 
                 <v-card-text class="pa-4">
@@ -115,7 +114,7 @@
                             <v-col cols="6">
                                 <v-text-field v-model="memberForm.pan_number" label="PAN Number"
                                     :type="showPan ? 'text' : 'password'"
-                                    :append-inner-icon="showPan ? 'mdi-eye-off' : 'mdi-eye'"
+                                    :append-inner-icon="showPan ? 'EyeOff' : 'Eye'"
                                     @click:append-inner="showPan = !showPan" placeholder="ABCDE1234F" maxlength="10"
                                     variant="outlined"></v-text-field>
                             </v-col>
@@ -152,8 +151,7 @@
             <v-card class="rounded-xl">
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">Rename Family Circle</span>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showTenantModal = false"></v-btn>
+                    <v-btn icon="X" variant="text" density="comfortable" @click="showTenantModal = false"></v-btn>
                 </v-card-title>
 
                 <v-card-text class="pa-4">
@@ -176,7 +174,7 @@
 import { ref, onMounted } from 'vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { Edit2, Plus, Shield, ShieldCheck, Baby, User } from 'lucide-vue-next'
+import { Edit2, Plus, Shield, ShieldCheck, Baby, User, X, Eye, EyeOff } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 
