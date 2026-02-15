@@ -3,7 +3,7 @@
         <div class="pa-4 d-flex align-center justify-space-between">
             <div>
                 <div class="d-flex align-center gap-2 mb-1">
-                    <v-icon color="primary" size="20">MapPin</v-icon>
+                    <MapPin :size="20" class="text-primary" />
                     <h3 class="text-h6 font-weight-black">Spending Heatmap</h3>
                 </div>
                 <p class="text-caption font-weight-bold opacity-60">Visualizing expenses by location</p>
@@ -158,7 +158,7 @@ onUnmounted(() => {
     position: relative;
     flex: 1;
     min-height: 500px;
-    background: #0f172a;
+    background: rgba(var(--v-theme-surface), 1);
     /* Fallback for map loading */
 }
 
@@ -210,7 +210,7 @@ onUnmounted(() => {
 
 /* Leaflet Overrides */
 :deep(.leaflet-container) {
-    background: #0f172a !important;
+    background: rgba(var(--v-theme-surface), 1) !important;
 }
 
 :deep(.leaflet-popup-content-wrapper) {

@@ -62,18 +62,18 @@ const defaultOptions = computed(() => ({
       labels: {
         usePointStyle: true,
         padding: 20,
-        color: isDark.value ? '#ffffff' : '#64748b',
-        font: { size: 12 }
+        color: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)',
+        font: { size: 11, weight: 'bold' }
       }
     },
     tooltip: {
-      backgroundColor: isDark.value ? 'rgba(30, 41, 59, 0.9)' : 'rgba(15, 23, 42, 0.9)',
+      backgroundColor: isDark.value ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
       padding: 12,
       cornerRadius: 12,
       titleFont: { size: 14, weight: 'bold' },
-      bodyColor: '#ffffff',
-      titleColor: '#ffffff',
-      borderColor: isDark.value ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+      bodyColor: isDark.value ? '#ffffff' : '#0f172a',
+      titleColor: isDark.value ? '#ffffff' : '#0f172a',
+      borderColor: 'rgba(var(--v-border-color), 0.1)',
       borderWidth: 1
     }
   },
@@ -86,7 +86,8 @@ const defaultOptions = computed(() => ({
         color: isDark.value ? 'rgba(254,254,254,0.05)' : 'rgba(0, 0, 0, 0.05)'
       },
       ticks: {
-        color: isDark.value ? 'rgba(255,255,255,0.6)' : '#64748b',
+        color: isDark.value ? 'rgba(255, 255, 255, 0.5)' : 'rgba(15, 23, 42, 0.5)',
+        font: { size: 10, weight: 'bold' },
         callback: (value: any) => '₹' + value.toLocaleString()
       }
     },
@@ -95,7 +96,8 @@ const defaultOptions = computed(() => ({
         display: false
       },
       ticks: {
-        color: isDark.value ? 'rgba(255,255,255,0.6)' : '#64748b'
+        font: { size: 10, weight: 'bold' },
+        color: isDark.value ? 'rgba(255, 255, 255, 0.5)' : 'rgba(15, 23, 42, 0.5)'
       }
     }
   } : {}
