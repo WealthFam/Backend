@@ -30,14 +30,13 @@ function handleConfirm() {
             <div class="modal-header-gradient pa-6 text-white relative-pos">
                 <div class="d-flex align-center justify-space-between mb-2">
                     <div class="d-flex align-center gap-3">
-                        <v-icon icon="mdi-auto-fix" size="32" class="header-icon-glow"></v-icon>
+                        <v-icon icon="Sparkles" size="32" class="header-icon-glow"></v-icon>
                         <div>
                             <h2 class="text-h5 font-weight-black mb-0">Smart Action</h2>
                             <p class="text-caption opacity-80 font-weight-bold">Automate your categorization</p>
                         </div>
                     </div>
-                    <v-btn icon="mdi-close" variant="text" color="white" @click="emit('close')"
-                        density="compact"></v-btn>
+                    <v-btn icon="X" variant="text" color="white" @click="emit('close')" density="compact"></v-btn>
                 </div>
             </div>
 
@@ -45,7 +44,7 @@ function handleConfirm() {
                 <!-- Info Section -->
                 <div class="info-banner mb-6 d-flex align-center gap-4 pa-4 rounded-xl">
                     <div class="pattern-avatar d-flex align-center justify-center">
-                        <v-icon icon="mdi-tag-text-outline" color="primary"></v-icon>
+                        <v-icon icon="Tag" color="primary"></v-icon>
                     </div>
                     <div>
                         <div class="text-caption text-medium-emphasis font-weight-bold text-uppercase letter-spacing-1">
@@ -69,7 +68,7 @@ function handleConfirm() {
                             :class="{ 'active': data.createRule, 'hover': isHovering }"
                             @click="data.createRule = !data.createRule">
                             <div class="option-icon-box mr-4">
-                                <v-icon icon="mdi-shield-check"
+                                <v-icon icon="ShieldCheck"
                                     :color="data.createRule ? 'primary' : 'medium-emphasis'"></v-icon>
                             </div>
                             <div class="flex-grow-1">
@@ -87,7 +86,7 @@ function handleConfirm() {
                             :class="{ 'active': data.applyToSimilar, 'hover': isHovering }"
                             @click="data.applyToSimilar = !data.applyToSimilar">
                             <div class="option-icon-box mr-4">
-                                <v-icon icon="mdi-history"
+                                <v-icon icon="History"
                                     :color="data.applyToSimilar ? 'primary' : 'medium-emphasis'"></v-icon>
                             </div>
                             <div class="flex-grow-1">
@@ -106,7 +105,7 @@ function handleConfirm() {
                             :class="{ 'active': data.excludeFromReports, 'hover': isHovering }"
                             @click="data.excludeFromReports = !data.excludeFromReports">
                             <div class="option-icon-box mr-4">
-                                <v-icon icon="mdi-eye-off"
+                                <v-icon icon="EyeOff"
                                     :color="data.excludeFromReports ? 'primary' : 'medium-emphasis'"></v-icon>
                             </div>
                             <div class="flex-grow-1">

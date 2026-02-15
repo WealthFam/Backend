@@ -94,7 +94,7 @@
 
         <!-- Verified Accounts Control Bar -->
         <div class="d-flex flex-column flex-sm-row align-center justify-space-between gap-4 mb-6">
-            <v-text-field v-model="searchQuery" prepend-inner-icon="mdi-magnify" placeholder="Search accounts..."
+            <v-text-field v-model="searchQuery" prepend-inner-icon="Search" placeholder="Search devices..."
                 variant="outlined" density="comfortable" hide-details class="flex-grow-1"
                 style="max-width: 400px; width: 100%;" bg-color="surface"></v-text-field>
 
@@ -164,6 +164,10 @@
                                         <span v-if="acc.type === 'CREDIT_CARD'"
                                             class="text-caption text-medium-emphasis font-weight-bold ml-1">USED</span>
                                     </div>
+                                    <div v-if="acc.last_synced_at" class="text-caption text-medium-emphasis mt-1">
+                                        Synced: {{ formatAmount(acc.last_synced_balance, acc.currency) }} ({{ new
+                                            Date(acc.last_synced_at).toLocaleDateString() }})
+                                    </div>
                                 </div>
                             </div>
 
@@ -204,8 +208,7 @@
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">{{ editingAccountId ? 'Edit Account' : 'New Account'
                     }}</span>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showAccountModal = false"></v-btn>
+                    <v-btn icon="X" variant="text" density="comfortable" @click="showAccountModal = false"></v-btn>
                 </v-card-title>
 
                 <v-card-text class="pa-4">
@@ -241,11 +244,15 @@
                         <v-row>
                             <v-col :cols="newAccount.type === 'CREDIT_CARD' ? 6 : 12">
                                 <v-text-field v-model.number="newAccount.balance" :label="consumedLimitMsg"
-                                    type="number" step="0.01" variant="outlined"></v-text-field>
+                                    type="number" step="0.01" variant="outlined" :disabled="!!editingAccountId"
+                                    :hint="editingAccountId ? 'Use Balance Anchoring section below to update' : ''"
+                                    persistent-hint></v-text-field>
                             </v-col>
                             <v-col v-if="newAccount.type === 'CREDIT_CARD'" cols="6">
                                 <v-text-field v-model.number="newAccount.credit_limit" label="Total Credit Limit"
-                                    type="number" step="0.01" variant="outlined"></v-text-field>
+                                    type="number" step="0.01" variant="outlined" :disabled="!!editingAccountId"
+                                    :hint="editingAccountId ? 'Use Balance Anchoring section below to update' : ''"
+                                    persistent-hint></v-text-field>
                             </v-col>
                         </v-row>
 
@@ -266,6 +273,37 @@
                                 <div class="text-caption text-medium-emphasis">Trust transactions from this source</div>
                             </div>
                             <v-switch v-model="newAccount.is_verified" color="success" hide-details></v-switch>
+                        </div>
+
+                        <v-divider class="my-4"></v-divider>
+
+                        <!-- Balance Sync / Anchor Section -->
+                        <div v-if="editingAccountId" class="pa-4 bg-grey-lighten-4 rounded-lg mb-4">
+                            <div class="d-flex align-center gap-2 mb-2">
+                                <v-icon icon="Anchor" color="primary" size="small"></v-icon>
+                                <span class="text-subtitle-2 font-weight-bold">Balance Anchoring</span>
+                            </div>
+                            <p class="text-caption text-medium-emphasis mb-4">
+                                Manually override the current balance and create a "Ground Truth" anchor for analytics.
+                            </p>
+
+                            <v-row dense>
+                                <v-col cols="12" sm="6">
+                                    <v-text-field v-model.number="balanceOverrideForm.balance"
+                                        label="Actual Bank Balance" type="number" step="0.01" variant="solo"
+                                        density="compact" hide-details class="mb-2"></v-text-field>
+                                </v-col>
+                                <v-col v-if="newAccount.type === 'CREDIT_CARD'" cols="12" sm="6">
+                                    <v-text-field v-model.number="balanceOverrideForm.limit" label="Actual Credit Limit"
+                                        type="number" step="0.01" variant="solo" density="compact" hide-details
+                                        class="mb-2"></v-text-field>
+                                </v-col>
+                            </v-row>
+
+                            <v-btn color="primary" variant="tonal" block size="small" class="mt-2 font-weight-bold"
+                                @click="handleBalanceOverride" :loading="overridingBalance">
+                                Set New Ground Truth
+                            </v-btn>
                         </div>
 
                         <div class="d-flex gap-3 mt-6">
@@ -314,7 +352,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { Check, X, Edit2, Plus } from 'lucide-vue-next'
+import { Check, X, Edit2, Plus, Search, Anchor } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 const { formatAmount } = useCurrency()
@@ -342,6 +380,12 @@ const newAccount = ref({
     tenant_id: '',
     owner_id: ''
 })
+
+const balanceOverrideForm = ref({
+    balance: 0,
+    limit: null as number | null
+})
+const overridingBalance = ref(false)
 
 const showAccountDeleteConfirm = ref(false)
 const accountToDelete = ref<any>(null)
@@ -492,7 +536,30 @@ function openEditAccountModal(account: any, autoVerify: boolean = false) {
         tenant_id: account.tenant_id,
         is_verified: autoVerify ? true : account.is_verified
     }
+    // Pre-fill override form
+    balanceOverrideForm.value = {
+        balance: Number(account.balance || 0),
+        limit: account.credit_limit ? Number(account.credit_limit) : null
+    }
     showAccountModal.value = true
+}
+
+async function handleBalanceOverride() {
+    if (!editingAccountId.value) return
+    overridingBalance.value = true
+    try {
+        await financeApi.overrideAccountBalance(editingAccountId.value, {
+            balance: balanceOverrideForm.value.balance,
+            credit_limit: balanceOverrideForm.value.limit,
+            timestamp: new Date().toISOString()
+        })
+        notify.success("Account balance anchored and snapshot created")
+        fetchData()
+    } catch (e) {
+        notify.error("Failed to anchor balance")
+    } finally {
+        overridingBalance.value = false
+    }
 }
 
 async function handleAccountSubmit() {

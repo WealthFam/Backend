@@ -35,15 +35,21 @@
 
                 <!-- Filter Bar -->
                 <div class="d-flex flex-column flex-sm-row gap-4 mb-8">
-                    <v-text-field v-model="searchQuery" placeholder="Search groups..." prepend-inner-icon="mdi-magnify"
-                        variant="outlined" density="comfortable" hide-details class="premium-search-field flex-grow-1"
-                        bg-color="surface" rounded="lg">
+                    <v-text-field v-model="searchQuery" placeholder="Search groups..." variant="outlined"
+                        density="comfortable" hide-details class="premium-search-field flex-grow-1" bg-color="surface"
+                        rounded="lg">
+                        <template v-slot:prepend-inner>
+                            <Search :size="18" class="text-primary mr-2" />
+                        </template>
                     </v-text-field>
 
                     <div style="width: 160px">
                         <v-select v-model="selectedYear" :items="yearOptions" item-title="label" item-value="value"
-                            variant="outlined" density="comfortable" hide-details rounded="lg"
-                            append-inner-icon="mdi-chevron-down" bg-color="surface" class="premium-select">
+                            variant="outlined" density="comfortable" hide-details rounded="lg" bg-color="surface"
+                            class="premium-select" :menu-icon="null">
+                            <template v-slot:append-inner>
+                                <ChevronDown :size="16" class="text-primary opacity-70" />
+                            </template>
                         </v-select>
                     </div>
                 </div>
@@ -278,7 +284,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Plus, Trash2, Calendar, Wallet, Type, X, Pencil } from 'lucide-vue-next'
+import { Plus, Trash2, Calendar, Wallet, Type, X, Pencil, Search, ChevronDown } from 'lucide-vue-next'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'

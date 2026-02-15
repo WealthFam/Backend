@@ -2,7 +2,7 @@
     <div class="animate-in">
         <!-- Search Bar -->
         <div class="d-flex flex-column flex-sm-row align-center justify-space-between gap-4 mb-6">
-            <v-text-field v-model="searchQuery" prepend-inner-icon="mdi-magnify" placeholder="Search devices..."
+            <v-text-field v-model="searchQuery" prepend-inner-icon="Search" placeholder="Search devices..."
                 variant="outlined" density="comfortable" hide-details class="flex-grow-1"
                 style="max-width: 400px; width: 100%;" bg-color="surface"></v-text-field>
 
@@ -125,7 +125,7 @@
                                         <span v-else class="text-caption">👤</span>
                                     </v-avatar>
                                     {{ (getDeviceUser(device.user_id)?.full_name || getDeviceUser(device.user_id)?.email
-                                    || 'Unassigned').split('@')[0] }}
+                                        || 'Unassigned').split('@')[0] }}
                                 </div>
                                 <v-btn icon density="compact" variant="text" size="x-small" color="primary"
                                     @click="openAssignModal(device)">
@@ -190,7 +190,7 @@
                                     <div class="text-subtitle-2 font-weight-bold text-medium-emphasis text-truncate">{{
                                         device.device_name }}</div>
                                     <div class="text-caption font-mono text-disabled text-truncate">{{ device.device_id
-                                        }}</div>
+                                    }}</div>
                                 </div>
                                 <v-chip size="x-small" color="grey" variant="flat">Ignored</v-chip>
                             </div>
@@ -292,7 +292,7 @@
                 class="d-flex align-center justify-space-between pa-4 border-t">
                 <span class="text-caption text-medium-emphasis">
                     Showing {{ eventPagination.skip + 1 }} - {{ Math.min(eventPagination.skip + eventPagination.limit,
-                    eventPagination.total) }}
+                        eventPagination.total) }}
                 </span>
                 <div class="d-flex gap-2">
                     <v-btn size="small" variant="outlined" :disabled="eventPagination.skip === 0"
@@ -316,8 +316,7 @@
                         <Smartphone :size="20" class="text-primary" />
                         <span class="text-h6 font-weight-bold">Assign Device</span>
                     </div>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showDeviceAssignModal = false"></v-btn>
+                    <v-btn icon="X" variant="text" density="comfortable" @click="showDeviceAssignModal = false"></v-btn>
                 </v-card-title>
                 <v-card-text class="pa-4">
                     <v-form @submit.prevent="confirmAssignUser">
@@ -358,7 +357,7 @@
 import { ref, onMounted } from 'vue'
 import { mobileApi, financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { Smartphone, Edit2, User, Clock, Copy, Trash2, RefreshCw, ClipboardList } from 'lucide-vue-next'
+import { Smartphone, Edit2, User, Clock, Copy, Trash2, RefreshCw, ClipboardList, Search, X } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 

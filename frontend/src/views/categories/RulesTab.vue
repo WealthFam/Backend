@@ -5,9 +5,9 @@
             <v-row align="center">
                 <v-col cols="12" sm="4">
                     <v-text-field v-model="rulesStore.searchQuery" placeholder="Search rules..." hide-details
-                        density="comfortable" variant="plain" class="font-weight-black px-2">
+                        density="comfortable" variant="outlined" class="font-weight-black" bg-color="surface">
                         <template v-slot:prepend-inner>
-                            <Search :size="20" class="opacity-60" />
+                            <Search :size="20" class="text-primary mr-2" />
                         </template>
                     </v-text-field>
                 </v-col>
@@ -426,7 +426,7 @@
                                     <div class="min-w-0 pr-2">
                                         <div class="text-caption font-weight-black truncate">{{ txn.description ||
                                             txn.recipient
-                                            }}</div>
+                                        }}</div>
                                         <div class="text-extra-small opacity-50">
                                             {{ new Date(txn.date).toLocaleDateString() }}
                                             <v-chip v-if="txn.category && txn.category !== 'Uncategorized'"

@@ -170,3 +170,15 @@ body {
   z-index: 0;
   pointer-events: none;
 }
+
+/* Global Premium Input/Select Focus Glow */
+.v-field--focused {
+  border-color: rgb(var(--v-theme-primary)) !important;
+  box-shadow: 0 0 0 4px rgba(var(--v-theme-primary), 0.15) !important;
+  transition: all 0.2s ease !important;
+}
+
+.v-field--focused .v-field__outline {
+  --v-field-border-opacity: 1 !important;
+  color: rgb(var(--v-theme-primary)) !important;
+}

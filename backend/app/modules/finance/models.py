@@ -14,6 +14,18 @@ class AccountType(str, enum.Enum):
     WALLET = "WALLET"
     INVESTMENT = "INVESTMENT"
 
+class BalanceSnapshot(Base):
+    __tablename__ = "balance_snapshots"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=False, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    balance = Column(Numeric(15, 2), nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    source = Column(String, default="MANUAL") # SMS, EMAIL, MANUAL, CSV
+    
+    account = relationship("Account", backref=backref("snapshots", cascade="all, delete-orphan"))
+
 class Account(Base):
     __tablename__ = "accounts"
 
@@ -24,8 +36,14 @@ class Account(Base):
     type = Column(SqlEnum(AccountType), nullable=False)
     currency = Column(String, default="INR", nullable=False)
     account_mask = Column(String, nullable=True) # e.g. "XX1234" used for SMS matching
-    balance = Column(Numeric(15, 2), default=0.0) # Current Balance or Consumed Limit
-    credit_limit = Column(Numeric(15, 2), nullable=True) # For Credit Cards
+    balance = Column(Numeric(15, 2), default=0.0) # Current Running Balance
+    credit_limit = Column(Numeric(15, 2), nullable=True) # Current Credit Limit
+    
+    # Sync Anchors (Bank Reported)
+    last_synced_balance = Column(Numeric(15, 2), nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    last_synced_limit = Column(Numeric(15, 2), nullable=True)
+
     billing_day = Column(Numeric(2, 0), nullable=True) # 1-31
     due_day = Column(Numeric(2, 0), nullable=True) # 1-31
     is_verified = Column(Boolean, default=True, nullable=False) # False = Auto-detected from SMS

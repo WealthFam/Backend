@@ -43,6 +43,12 @@ def run_auto_migrations(engine: Engine):
             safe_add_column("transactions", "is_transfer", "BOOLEAN DEFAULT FALSE")
             safe_add_column("transactions", "linked_transaction_id", "VARCHAR")
 
+            # 1c. Balance Refactoring sync fields
+            safe_add_column("accounts", "last_synced_balance", "NUMERIC(15, 2)")
+            safe_add_column("accounts", "last_synced_at", "TIMESTAMP")
+            safe_add_column("accounts", "last_synced_limit", "NUMERIC(15, 2)")
+            safe_add_column("pending_transactions", "balance_is_synced", "BOOLEAN DEFAULT FALSE")
+
             # 2. Add mobile_devices table
             connection.execute(text("""
             CREATE TABLE IF NOT EXISTS mobile_devices (
@@ -251,6 +257,20 @@ def run_auto_migrations(engine: Engine):
 
             # 19. Benchmark Simulation (Absolute Corpus)
             safe_add_column("portfolio_timeline_cache", "benchmark_value", "NUMERIC(15, 2)")
+
+            # 20. Balance Snapshots table
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS balance_snapshots (
+                id VARCHAR PRIMARY KEY,
+                account_id VARCHAR NOT NULL,
+                tenant_id VARCHAR NOT NULL,
+                balance NUMERIC(15, 2) NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                source VARCHAR DEFAULT 'MANUAL',
+                FOREIGN KEY(account_id) REFERENCES accounts (id),
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+            );
+            """))
 
 
             # Explicitly commit the transaction!

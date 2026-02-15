@@ -45,6 +45,10 @@ class AccountRead(AccountBase):
     linked_goals: List[str] = []
 
     created_at: datetime
+    
+    last_synced_balance: Optional[Decimal] = None
+    last_synced_at: Optional[datetime] = None
+    last_synced_limit: Optional[Decimal] = None
 
     class Config:
         from_attributes = True
@@ -462,3 +466,20 @@ class BulkRenameRequest(BaseModel):
     old_name: str
     new_name: str
     sync_to_parser: bool = False
+
+class BalanceSnapshotBase(BaseModel):
+    account_id: Union[UUID, str]
+    balance: Decimal
+    credit_limit: Optional[Decimal] = None
+    timestamp: datetime
+    source: str = "MANUAL"
+
+class BalanceSnapshotCreate(BalanceSnapshotBase):
+    tenant_id: Optional[Union[UUID, str]] = None
+
+class BalanceSnapshotRead(BalanceSnapshotBase):
+    id: Union[UUID, str]
+    tenant_id: Union[UUID, str]
+
+    class Config:
+        from_attributes = True

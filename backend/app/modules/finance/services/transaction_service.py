@@ -15,7 +15,7 @@ from backend.app.modules.ingestion import models as ingestion_models
 
 class TransactionService:
     @staticmethod
-    def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None) -> models.Transaction:
+    def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None, update_balance: bool = True):
         # 1. Unified Deduplication Check (Ref ID, Hash-Fallback, and Fields)
         from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
         is_dup, reason, existing_id = TransactionDeduplicator.check_raw_duplicate(
@@ -93,16 +93,22 @@ class TransactionService:
         )
         
         # Update Account Balance
-        db_account = db.query(models.Account).filter(models.Account.id == str(transaction.account_id)).first()
-        if db_account:
-            current_bal = db_account.balance or 0
-            # If it's a liability (Loan/Credit Card), adding money (Credit) reduces the balance owed
-            # Spending money (Debit/Negative) increases the balance owed
-            if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                db_account.balance = current_bal - transaction.amount
-            else:
-                db_account.balance = current_bal + transaction.amount
-            db.add(db_account)
+        if update_balance:
+            db_account = db.query(models.Account).filter(models.Account.id == str(transaction.account_id)).first()
+            if db_account:
+                # ANCHOR CHECK: If this transaction is older than (or equal to) the last sync,
+                # we assume it's already factored into the anchored balance.
+                if db_account.last_synced_at and transaction.date <= db_account.last_synced_at:
+                    pass # Do not update balance
+                else:
+                    current_bal = db_account.balance or 0
+                    # If it's a liability (Loan/Credit Card), adding money (Credit) reduces the balance owed
+                    # Spending money (Debit/Negative) increases the balance owed
+                    if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                        db_account.balance = current_bal - transaction.amount
+                    else:
+                        db_account.balance = current_bal + transaction.amount
+                    db.add(db_account)
 
         db.add(db_transaction)
         db.commit()
@@ -244,11 +250,53 @@ class TransactionService:
     def bulk_delete_transactions(db: Session, transaction_ids: List[str], tenant_id: str) -> int:
         if not transaction_ids: return 0
         try:
-            query = db.query(models.Transaction).filter(
+            # 1. Fetch transactions to be deleted (we need details for balance update)
+            txns = db.query(models.Transaction).filter(
                 models.Transaction.id.in_(transaction_ids),
                 models.Transaction.tenant_id == tenant_id
-            )
-            count = query.delete(synchronize_session=False)
+            ).all()
+            
+            if not txns: return 0
+            
+            # 2. Group by account to minimize DB lookups
+            from collections import defaultdict
+            txns_by_account = defaultdict(list)
+            for t in txns:
+                txns_by_account[t.account_id].append(t)
+                
+            # 3. Update balances
+            for acc_id, account_txns in txns_by_account.items():
+                account = db.query(models.Account).filter(models.Account.id == acc_id).first()
+                if not account: continue
+                
+                balance_change = 0
+                anchor_date = account.last_synced_at
+                
+                for t in account_txns:
+                    # Only revert balance if txn is NEWER than anchor.
+                    # If older/equal, it's baked into the anchor snapshot.
+                    if not anchor_date or t.date > anchor_date:
+                        # Revert logic:
+                        # Create (Loan): bal = bal - amt  => Undo: bal = bal + amt
+                        # Create (Bank): bal = bal + amt  => Undo: bal = bal - amt
+                        if account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                            balance_change += t.amount
+                        else:
+                            balance_change -= t.amount
+                
+                if balance_change != 0:
+                    current = account.balance or 0
+                    account.balance = current + balance_change
+                    db.add(account)
+            
+            # 4. Perform Delete
+            # Since we fetched objects, we could delete them directly or use bulk delete.
+            # Bulk delete is still efficient for the deletion part.
+            count = db.query(models.Transaction).filter(
+                models.Transaction.id.in_(transaction_ids),
+                models.Transaction.tenant_id == tenant_id
+            ).delete(synchronize_session=False)
+            
             db.commit()
             return count
         except Exception as e:
@@ -265,8 +313,18 @@ class TransactionService:
         if not db_txn:
             return None
             
+        # Snapshot old state for balance adjustment
+        old_amount = db_txn.amount
+        old_date = db_txn.date
+        
         update_data = txn_update.model_dump(exclude_unset=True)
         
+        # ... (Transfer logic remains same) ...
+        # But we need to keep the code structure valid. 
+        # Since I'm replacing a huge block, I'll just insert the logic helper around the existing code
+        # implicitly by how I structure the replacement.
+        
+        # Re-implementing the transfer logic block matching original file...
         is_transfer_update = update_data.get('is_transfer')
         to_account_id = update_data.get('to_account_id')
         
@@ -279,8 +337,6 @@ class TransactionService:
                 # 1. Unlink any old one
                 if db_txn.linked_transaction_id:
                      old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
-                     # If the old one was auto-generated (same amount, diff sign, transfer category), maybe delete? 
-                     # For safety, let's just unlink it. User can delete manually if needed.
                      if old_linked:
                         old_linked.linked_transaction_id = None
                         db.add(old_linked)
@@ -294,7 +350,7 @@ class TransactionService:
                     target_txn.linked_transaction_id = db_txn.id
                     target_txn.is_transfer = True
                     target_txn.category = "Transfer"
-                    target_txn.exclude_from_reports = True # Ensure both are hidden
+                    target_txn.exclude_from_reports = True 
                     db.add(target_txn)
 
             # Case B: User selected an ACCOUNT to transfer to (Auto Create)
@@ -326,15 +382,10 @@ class TransactionService:
         elif is_transfer_update is False:
             db_txn.is_transfer = False
             if db_txn.linked_transaction_id:
-                # If we are un-marking transfer, check if the linked txn was auto-generated
                 linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
                 if linked:
-                    # HEURISTIC: If linked txn is also "Transfer" and "Hidden", unlink it. 
-                    # If it looks like a manual match, just unlink. 
-                    # If it looks like auto-gen, maybe delete? 
-                    # Safest is just to unlink and let user clean up. 
                     linked.linked_transaction_id = None
-                    linked.is_transfer = False # Should we reset? Maybe.
+                    linked.is_transfer = False 
                     db.add(linked)
 
                 db_txn.linked_transaction_id = None
@@ -347,6 +398,36 @@ class TransactionService:
                 setattr(db_txn, key, None)
             else:
                 setattr(db_txn, key, value)
+        
+        # --- Balance Adjustment Logic ---
+        # Did amount or date change?
+        new_amount = db_txn.amount
+        new_date = db_txn.date
+        
+        if new_amount != old_amount or new_date != old_date:
+            account = db.query(models.Account).filter(models.Account.id == db_txn.account_id).first()
+            if account:
+                anchor_date = account.last_synced_at
+                balance_delta = 0
+                
+                # 1. Revert Old (if it was contributing)
+                if not anchor_date or old_date > anchor_date:
+                    if account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                        balance_delta += old_amount
+                    else:
+                        balance_delta -= old_amount
+
+                # 2. Apply New (if it should contribute)
+                if not anchor_date or new_date > anchor_date:
+                    if account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                        balance_delta -= new_amount
+                    else:
+                        balance_delta += new_amount
+                        
+                if balance_delta != 0:
+                    account.balance = (account.balance or 0) + balance_delta
+                    db.add(account)
+        # -------------------------------
                 
         db.commit()
         db.refresh(db_txn)
@@ -487,15 +568,11 @@ class TransactionService:
             pending.exclude_from_reports = final_exclude
             real_txn = TransferService.approve_transfer(db, pending, tenant_id)
         else:
-            real_txn = TransactionService.create_transaction(db, txn_create, tenant_id, exclude_pending_id=pending_id)
-        
-        if pending.balance is not None or pending.credit_limit is not None:
-            account = db.query(models.Account).filter(models.Account.id == pending.account_id).first()
-            if account:
-                if pending.balance is not None:
-                    account.balance = pending.balance
-                if pending.credit_limit is not None:
-                    account.credit_limit = pending.credit_limit
+            real_txn = TransactionService.create_transaction(
+                db, txn_create, tenant_id, 
+                exclude_pending_id=pending_id,
+                update_balance=not getattr(pending, 'balance_is_synced', False)
+            )
 
         db.delete(pending)
         db.commit()

@@ -19,7 +19,7 @@ export function useTriageState(
 
     // Triage State
     const triageTransactions = ref<any[]>([])
-    const triagePagination = ref({ total: 0, limit: 10, skip: 0 })
+    const triagePagination = ref({ total: 0, limit: 12, skip: 0 })
     const triageSearchQuery = ref('')
     const triageSourceFilter = ref<'ALL' | 'SMS' | 'EMAIL'>('ALL')
     const triageSortKey = ref('date')
@@ -28,7 +28,7 @@ export function useTriageState(
 
     // Training State
     const unparsedMessages = ref<any[]>([])
-    const trainingPagination = ref({ total: 0, limit: 10, skip: 0 })
+    const trainingPagination = ref({ total: 0, limit: 12, skip: 0 })
     const trainingSortKey = ref('created_at')
     const trainingSortOrder = ref<'asc' | 'desc'>('desc')
     const selectedTrainingIds = ref<string[]>([])
@@ -46,6 +46,8 @@ export function useTriageState(
     const showLabelForm = ref(false)
     const labelForm = ref({
         amount: 0,
+        balance: null as number | null,
+        credit_limit: null as number | null,
         date: new Date().toISOString().slice(0, 16),
         account_mask: '',
         recipient: '',
@@ -198,6 +200,7 @@ export function useTriageState(
                 notify.success(`Discarded ${selectedTriageIds.value.length} items`)
             }
             createIgnoreRule.value = false
+            showDiscardConfirm.value = false
             fetchTriage()
         } catch (e) {
             notify.error('Bulk reject failed')
@@ -233,6 +236,8 @@ export function useTriageState(
 
         labelForm.value = {
             amount: suggestedAmt,
+            balance: null,
+            credit_limit: null,
             date: dateStr,
             account_mask: suggestedMask,
             recipient: '',

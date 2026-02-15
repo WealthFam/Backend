@@ -183,8 +183,10 @@
 
                             <v-select v-model="form.loan_type" :items="loanTypeOptions" item-title="label"
                                 item-value="value" label="Loan Type" variant="outlined" density="comfortable"
-                                hide-details rounded="lg" bg-color="surface" class="mb-4"
-                                append-inner-icon="mdi-chevron-down">
+                                hide-details rounded="lg" bg-color="surface" class="mb-4" :menu-icon="null">
+                                <template v-slot:append-inner>
+                                    <ChevronDown :size="16" class="text-primary opacity-70" />
+                                </template>
                                 <template v-slot:item="{ props, item }">
                                     <v-list-item v-bind="props" :prepend-icon="undefined">
                                         <template v-slot:prepend>
@@ -240,7 +242,7 @@
                                 class="mt-6 pa-4 bg-primary bg-opacity-10 rounded-lg border border-primary border-opacity-20 d-flex justify-space-between align-center">
                                 <span class="text-subtitle-2 font-weight-bold text-primary">Calculated EMI</span>
                                 <span class="text-h5 font-weight-black text-primary">{{ formatCurrency(form.emi_amount)
-                                }}</span>
+                                    }}</span>
                             </div>
                         </v-form>
                     </v-card-text>
@@ -300,7 +302,7 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi as api } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useCurrency } from '@/composables/useCurrency'
-import { Sparkles, Plus, Landmark, Calendar, X } from 'lucide-vue-next'
+import { Sparkles, Plus, Landmark, Calendar, X, ChevronDown } from 'lucide-vue-next'
 import { marked } from 'marked'
 
 const router = useRouter()

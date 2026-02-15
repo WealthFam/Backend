@@ -52,15 +52,43 @@ def seed_data():
             logger.info("Seeding accounts...")
             
             # Bank
-            acc_bank = Account(id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="HDFC Salary", type=AccountType.BANK, balance=50000)
+            acc_bank = Account(
+                id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="HDFC Salary", type=AccountType.BANK, 
+                balance=50000, last_synced_balance=50000, last_synced_at=datetime.utcnow()
+            )
             # Credit Card
-            acc_cc = Account(id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="Amazon Pay ICICI", type=AccountType.CREDIT_CARD, credit_limit=200000, balance=15000) # 15k used
+            acc_cc = Account(
+                id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="Amazon Pay ICICI", type=AccountType.CREDIT_CARD, 
+                credit_limit=200000, balance=15000, 
+                last_synced_balance=15000, last_synced_limit=200000, last_synced_at=datetime.utcnow()
+            )
             # Wallet
-            acc_wallet = Account(id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="Cash & Wallet", type=AccountType.WALLET, balance=2500)
+            acc_wallet = Account(
+                id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="Cash & Wallet", type=AccountType.WALLET, 
+                balance=2500, last_synced_balance=2500, last_synced_at=datetime.utcnow()
+            )
             # Loan Account
-            acc_loan = Account(id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="Home Loan", type=AccountType.LOAN, balance=0)
+            acc_loan = Account(
+                id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="Home Loan", type=AccountType.LOAN, 
+                balance=0, last_synced_balance=0, last_synced_at=datetime.utcnow()
+            )
             
             db.add_all([acc_bank, acc_cc, acc_wallet, acc_loan])
+            db.commit()
+
+            # Create Snapshots
+            from backend.app.modules.finance.models import BalanceSnapshot
+            snapshots = []
+            for acc in [acc_bank, acc_cc, acc_wallet, acc_loan]:
+                snapshots.append(BalanceSnapshot(
+                    account_id=acc.id,
+                    tenant_id=tenant_id,
+                    balance=acc.balance,
+                    credit_limit=acc.credit_limit,
+                    timestamp=acc.last_synced_at,
+                    source="SEEDER"
+                ))
+            db.add_all(snapshots)
             db.commit()
             
             accounts_dict = {

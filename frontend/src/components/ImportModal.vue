@@ -258,11 +258,11 @@ function close() {
             <v-card-title class="pa-0">
                 <div class="modal-header-premium pa-4 d-flex align-center justify-space-between text-white">
                     <div class="d-flex align-center ga-3">
-                        <v-icon color="white">mdi-file-import-outline</v-icon>
+                        <v-icon color="white">FileDown</v-icon>
                         <h2 class="text-h6 font-weight-black">Import Transactions</h2>
                     </div>
                     <v-btn icon variant="text" color="white" density="compact" @click="close">
-                        <v-icon size="24">mdi-close</v-icon>
+                        <v-icon size="24">X</v-icon>
                     </v-btn>
                 </div>
 
@@ -305,7 +305,7 @@ function close() {
                                         Excel</v-label>
                                     <v-file-input @change="handleFileUpload" accept=".csv, .xlsx, .xls" variant="solo"
                                         density="comfortable" flat class="premium-file-field"
-                                        prepend-inner-icon="mdi-cloud-upload-outline" prepend-icon=""
+                                        prepend-inner-icon="UploadCloud" prepend-icon=""
                                         placeholder="Drag and drop or click to browse" hide-details></v-file-input>
                                 </v-col>
                             </v-row>
@@ -313,7 +313,7 @@ function close() {
                             <v-alert border="start" border-color="primary" color="surface" elevation="1"
                                 class="mt-10 rounded-xl pa-6">
                                 <template v-slot:prepend>
-                                    <v-icon color="primary" size="32">mdi-lightbulb-outline</v-icon>
+                                    <v-icon color="primary" size="32">Lightbulb</v-icon>
                                 </template>
                                 <div class="ml-4">
                                     <h4 class="text-h6 font-weight-black mb-1">Pro Tip</h4>
@@ -375,7 +375,7 @@ function close() {
                                     <v-card variant="outlined"
                                         class="rounded-xl border-opacity-5 pa-4 h-100 bg-surface shadow-sm">
                                         <h4 class="text-subtitle-1 font-weight-black mb-6 d-flex align-center gap-2">
-                                            <v-icon color="primary">mdi-card-text-outline</v-icon>
+                                            <v-icon color="primary">FileText</v-icon>
                                             Transaction Details
                                         </h4>
 
@@ -388,11 +388,11 @@ function close() {
                                                         <div class="text-caption font-weight-black">{{ field.label }}
                                                         </div>
                                                         <div class="text-[10px] opacity-60 line-clamp-1">{{ field.desc
-                                                            }}</div>
+                                                        }}</div>
                                                     </div>
                                                 </div>
                                                 <div class="mapping-arrow mx-4 opacity-30">
-                                                    <v-icon size="small">mdi-arrow-right</v-icon>
+                                                    <v-icon size="small">ArrowRight</v-icon>
                                                 </div>
                                                 <div class="field-select-panel" style="width: 200px;">
                                                     <v-select v-model="mapping[field.key]" :items="csvHeaders"
@@ -413,7 +413,7 @@ function close() {
                                     <v-card variant="outlined"
                                         class="rounded-xl border-opacity-5 pa-4 h-100 bg-surface shadow-sm text-surface">
                                         <h4 class="text-subtitle-1 font-weight-black mb-4 d-flex align-center gap-2">
-                                            <v-icon color="success">mdi-cash-multiple</v-icon>
+                                            <v-icon color="success">Coins</v-icon>
                                             Financials
                                         </h4>
 
@@ -469,7 +469,7 @@ function close() {
                             <div
                                 class="verify-header pa-3 d-flex align-center justify-space-between bg-primary-lighten-5 rounded-lg mb-4">
                                 <span class="text-subtitle-2 font-weight-black d-flex align-center">
-                                    <v-icon start size="20">mdi-check-circle-outline</v-icon>
+                                    <v-icon start size="20">CheckCircle2</v-icon>
                                     {{ selectedTxns.size }} of {{ parsedTxns.length }} transactions selected
                                 </span>
                                 <v-btn size="x-small" variant="tonal" color="primary"
@@ -503,7 +503,7 @@ function close() {
                                             </td>
                                             <td class="text-caption">{{ txn.date }}</td>
                                             <td class="text-caption opacity-50">{{ txn.external_id || txn.ref_id || '-'
-                                                }}</td>
+                                            }}</td>
                                             <td>
                                                 <div class="font-weight-bold text-caption text-surface">{{ txn.recipient
                                                     || '-' }}</div>
@@ -515,8 +515,8 @@ function close() {
                                                 {{ formatAmount(txn.amount) }}
                                             </td>
                                             <td class="text-center">
-                                                <v-btn icon="mdi-trash-can-outline" size="x-small" variant="text"
-                                                    color="error" @click="removeTxn(idx)"></v-btn>
+                                                <v-btn icon="Trash2" size="x-small" variant="text" color="error"
+                                                    @click="removeTxn(idx)"></v-btn>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -528,7 +528,7 @@ function close() {
                         <v-window-item :value="5">
                             <div class="d-flex flex-column align-center justify-center py-10 text-center">
                                 <div class="success-icon-wrapper mb-6">
-                                    <v-icon color="success" size="100">mdi-check-circle</v-icon>
+                                    <v-icon color="success" size="100">CheckCircle</v-icon>
                                 </div>
                                 <h2 class="text-h4 font-weight-black mb-2">Import Successful!</h2>
                                 <p class="text-h6 opacity-70 mb-8">Successfully imported {{ importResult?.imported }}

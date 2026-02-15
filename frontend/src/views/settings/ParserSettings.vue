@@ -277,7 +277,7 @@
                     <h2 class="text-h5 font-weight-bold mb-1">Parser Patterns</h2>
                     <p class="text-body-2 text-medium-emphasis">View and manage transaction parser patterns</p>
                 </div>
-                <v-btn color="primary" @click="openAddModal" prepend-icon="mdi-plus">
+                <v-btn color="primary" @click="openAddModal" prepend-icon="Plus">
                     Add Pattern
                 </v-btn>
             </div>
@@ -359,8 +359,7 @@
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">{{ isEditingPattern ? 'Edit Pattern' : 'New Pattern'
                         }}</span>
-                    <v-btn icon="mdi-close" variant="text" density="comfortable"
-                        @click="showPatternModal = false"></v-btn>
+                    <v-btn icon="X" variant="text" density="comfortable" @click="showPatternModal = false"></v-btn>
                 </v-card-title>
                 <v-card-text class="pa-6">
                     <v-form @submit.prevent="savePattern">
@@ -395,6 +394,121 @@
                 </v-card-text>
             </v-card>
         </v-dialog>
+        <!-- Alias Management -->
+        <div class="mt-8 pt-8 border-t">
+            <div class="d-flex align-center justify-space-between mb-6">
+                <div>
+                    <h2 class="text-h5 font-weight-bold mb-1">Merchant Aliases</h2>
+                    <p class="text-body-2 text-medium-emphasis">Normalize merchant names (e.g. "AMZN Mktp" -> "Amazon")
+                    </p>
+                </div>
+                <v-btn color="secondary" @click="openAliasModal" prepend-icon="Plus">
+                    Add Alias
+                </v-btn>
+            </div>
+
+            <v-card class="glass-card" elevation="0">
+                <v-card-text v-if="aliasesLoading" class="text-center py-8">
+                    <v-progress-circular indeterminate color="primary"></v-progress-circular>
+                </v-card-text>
+
+                <v-table v-else>
+                    <thead>
+                        <tr>
+                            <th class="text-caption font-weight-bold text-medium-emphasis text-uppercase">Pattern</th>
+                            <th class="text-caption font-weight-bold text-medium-emphasis text-uppercase">Clean Alias
+                            </th>
+                            <th class="text-right text-caption font-weight-bold text-medium-emphasis text-uppercase">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="alias in aliases" :key="alias.id" class="hover-row">
+                            <td class="font-mono text-caption">{{ alias.pattern }}</td>
+                            <td class="font-weight-bold text-primary">{{ alias.alias }}</td>
+                            <td class="text-right">
+                                <v-btn icon density="compact" variant="text" color="medium-emphasis"
+                                    @click.stop="openAliasModal(alias)">
+                                    <Edit2 :size="16" />
+                                </v-btn>
+                                <v-btn icon density="compact" variant="text" color="error"
+                                    @click.stop="confirmDeleteAlias(alias)">
+                                    <Trash2 :size="16" />
+                                </v-btn>
+                            </td>
+                        </tr>
+                        <tr v-if="aliases.length === 0">
+                            <td colspan="3" class="text-center py-8 text-medium-emphasis font-italic">
+                                No aliases found
+                            </td>
+                        </tr>
+                    </tbody>
+                </v-table>
+            </v-card>
+        </div>
+
+        <!-- Add Alias Modal -->
+        <v-dialog v-model="showAliasModal" max-width="500">
+            <v-card class="rounded-xl">
+                <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
+                    <span class="text-h6 font-weight-bold">New Merchant Alias</span>
+                    <v-btn icon="X" variant="text" density="comfortable" @click="showAliasModal = false"></v-btn>
+                </v-card-title>
+                <v-card-text class="pa-6">
+                    <v-form @submit.prevent="saveAlias">
+                        <v-text-field v-model="aliasForm.pattern" label="Raw Text Pattern" placeholder="e.g. AMZN MKTP"
+                            variant="outlined" class="mb-4" hint="Matches if this text appears in description"
+                            persistent-hint required @update:model-value="checkAliasImpact"></v-text-field>
+
+                        <v-text-field v-model="aliasForm.alias" label="Clean Merchant Name" placeholder="e.g. Amazon"
+                            variant="outlined" class="mb-6" required></v-text-field>
+
+                        <v-checkbox v-model="aliasForm.update_past" color="primary" hide-details class="mb-2">
+                            <template v-slot:label>
+                                <div>
+                                    <div class="font-weight-bold">Update past transactions?</div>
+                                    <div class="text-caption text-medium-emphasis" v-if="aliasImpact !== null">
+                                        Will update approx. <strong>{{ aliasImpact }}</strong> transactions
+                                    </div>
+                                    <div class="text-caption text-medium-emphasis" v-else>
+                                        Select to verify impact on history
+                                    </div>
+                                </div>
+                            </template>
+                        </v-checkbox>
+
+                        <div class="d-flex justify-end gap-3 pt-4">
+                            <v-btn variant="text" @click="showAliasModal = false">Cancel</v-btn>
+                            <v-btn type="submit" color="primary" :loading="aliasSaving">
+                                Create Rule
+                            </v-btn>
+                        </div>
+                    </v-form>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
+
+        <!-- Alias Delete Confirmation -->
+        <v-dialog v-model="showAliasDeleteConfirm" max-width="400">
+            <v-card class="rounded-xl">
+                <v-card-text class="text-center pa-6">
+                    <div class="text-h2 mb-4">🗑️</div>
+                    <div class="text-h6 font-weight-bold mb-2">Delete Alias?</div>
+                    <p class="text-body-2 text-medium-emphasis mb-6">
+                        Are you sure you want to delete the alias for <span class="font-weight-bold text-primary">{{
+                            aliasToDelete?.alias }}</span>? This will not affect past transactions.
+                    </p>
+                    <div class="d-flex justify-center gap-3">
+                        <v-btn variant="text" @click="showAliasDeleteConfirm = false">Cancel</v-btn>
+                        <v-btn color="error" @click="executeDeleteAlias" prepend-icon="Trash2">
+                            Delete
+                        </v-btn>
+                    </div>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
+
     </div>
 </template>
 
@@ -620,7 +734,126 @@ onMounted(() => {
         aiStore.fetchAiSettings()
     }
     loadPatterns()
+    loadAliases()
 })
+
+// --- Alias Management ---
+const aliases = ref<any[]>([])
+const aliasesLoading = ref(false)
+const showAliasModal = ref(false)
+const aliasSaving = ref(false)
+const aliasImpact = ref<number | null>(null)
+const isEditingAlias = ref(false)
+const showAliasDeleteConfirm = ref(false)
+const aliasToDelete = ref<any>(null)
+
+const aliasForm = reactive({
+    id: null as string | null,
+    pattern: '',
+    alias: '',
+    update_past: false
+})
+
+async function loadAliases() {
+    aliasesLoading.value = true
+    try {
+        const res2 = await financeApi.getAliases()
+        aliases.value = res2.data
+    } catch (err) {
+        console.error('Failed to load aliases:', err)
+        aliases.value = []
+    } finally {
+        aliasesLoading.value = false
+    }
+}
+
+let impactDebounce: any = null
+function checkAliasImpact() {
+    if (!aliasForm.pattern) {
+        aliasImpact.value = null
+        return
+    }
+    if (impactDebounce) clearTimeout(impactDebounce)
+    impactDebounce = setTimeout(async () => {
+        try {
+            const res = await financeApi.previewAliasImpact(aliasForm.pattern)
+            aliasImpact.value = res.data.match_count
+        } catch (e) {
+            console.error(e)
+        }
+    }, 500)
+}
+
+function openAliasModal(alias?: any) {
+    if (alias) {
+        isEditingAlias.value = true
+        aliasForm.id = alias.id
+        aliasForm.pattern = alias.pattern
+        aliasForm.alias = alias.alias
+        aliasForm.update_past = false
+    } else {
+        isEditingAlias.value = false
+        aliasForm.id = null
+        aliasForm.pattern = ''
+        aliasForm.alias = ''
+        aliasForm.update_past = false
+    }
+    // Calculate impact immediately for both create and edit
+    aliasImpact.value = null
+    checkAliasImpact()
+    showAliasModal.value = true
+}
+
+async function saveAlias() {
+    aliasSaving.value = true
+    try {
+        if (isEditingAlias.value && aliasForm.id) {
+            await financeApi.updateAlias(aliasForm.id, {
+                pattern: aliasForm.pattern,
+                alias: aliasForm.alias,
+                update_past_transactions: aliasForm.update_past
+            })
+            notify.success("Alias updated successfully")
+        } else {
+            await financeApi.createAlias({
+                pattern: aliasForm.pattern,
+                alias: aliasForm.alias,
+                update_past_transactions: aliasForm.update_past
+            })
+            notify.success("Alias created successfully")
+        }
+
+        if (aliasForm.update_past) {
+            notify.info("Background update of transactions started")
+        }
+        showAliasModal.value = false
+        loadAliases()
+    } catch (err) {
+        notify.error(isEditingAlias.value ? "Failed to update alias" : "Failed to create alias")
+    } finally {
+        aliasSaving.value = false
+    }
+}
+
+function confirmDeleteAlias(alias: any) {
+    aliasToDelete.value = alias
+    showAliasDeleteConfirm.value = true
+}
+
+async function executeDeleteAlias() {
+    if (!aliasToDelete.value) return
+
+    try {
+        await financeApi.deleteAlias(aliasToDelete.value.id)
+        notify.success("Alias deleted")
+        loadAliases()
+    } catch (err) {
+        notify.error("Failed to delete alias rule")
+    } finally {
+        showAliasDeleteConfirm.value = false
+        aliasToDelete.value = null
+    }
+}
 </script>
 
 <style scoped>

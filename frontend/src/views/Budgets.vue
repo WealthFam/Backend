@@ -17,7 +17,12 @@ import {
     Wallet,
     TrendingUp,
     TrendingDown,
-    Ban
+    Ban,
+    AlertTriangle,
+    Flame,
+    Zap,
+    CheckCircle2,
+    Activity
 } from 'lucide-vue-next'
 
 const { formatAmount } = useCurrency()
@@ -336,9 +341,9 @@ onMounted(() => {
                                             (spendingVelocity.status === 'warning' ? 'warning' : 'success')"
                                             variant="flat" class="elevation-4">
                                             <v-icon size="24" color="white">
-                                                {{ spendingVelocity.status === 'aggressive' ? 'mdi-alert-decagram' :
-                                                    (spendingVelocity.status === 'warning' ? 'mdi-bell-ring' :
-                                                        'mdi-check-decagram')
+                                                {{ spendingVelocity.status === 'aggressive' ? 'AlertOctagon' :
+                                                    (spendingVelocity.status === 'warning' ? 'BellRing' :
+                                                        'CheckCircle2')
                                                 }}
                                             </v-icon>
                                         </v-avatar>
@@ -571,11 +576,12 @@ onMounted(() => {
                                     <!-- Card Header -->
                                     <div class="d-flex justify-space-between align-start mb-6">
                                         <div class="d-flex align-center ga-3">
-                                            <v-avatar
-                                                :color="group.parent.color ? group.parent.color + '15' : (activeTab === 'expense' ? 'rose-lighten-5' : 'emerald-lighten-5')"
-                                                rounded="lg" size="52" border class="elevation-2">
-                                                <span class="text-h4">{{ group.parent.icon || '🏷️' }}</span>
-                                            </v-avatar>
+                                            <div class="category-icon-container"
+                                                :style="{ '--icon-color': group.parent.color || (activeTab === 'expense' ? '#F43F5E' : '#10B981') }">
+                                                <span class="text-h4 relative-pos z-2">{{ group.parent.icon || '🏷️'
+                                                }}</span>
+                                                <div class="icon-gradient-bg"></div>
+                                            </div>
                                             <div>
                                                 <span class="text-h6 font-weight-black line-height-1 mb-1 d-block">{{
                                                     group.parent.category
@@ -586,7 +592,8 @@ onMounted(() => {
                                                         {{ group.children.length }} Sub-categories
                                                     </v-chip>
                                                     <v-chip v-if="group.parent.percentage > 100" color="error"
-                                                        size="x-small" variant="flat" class="font-weight-black">Over
+                                                        size="x-small" variant="flat"
+                                                        class="font-weight-black pulse-glow">Over
                                                         Limit</v-chip>
                                                 </div>
                                             </div>
@@ -595,7 +602,7 @@ onMounted(() => {
                                             <template v-slot:activator="{ props }">
                                                 <v-btn icon variant="text" size="small" v-bind="props"
                                                     color="slate-400">
-                                                    <v-icon>mdi-dots-vertical</v-icon>
+                                                    <v-icon>MoreVertical</v-icon>
                                                 </v-btn>
                                             </template>
                                             <v-list density="compact" rounded="lg" class="py-1">
@@ -612,20 +619,56 @@ onMounted(() => {
 
                                     <!-- Main Values (Parent Rollup) -->
                                     <div class="d-flex flex-column gap-3 mb-6">
-                                        <!-- Spent Metric -->
-                                        <div class="inset-glass-metric d-flex align-center gap-3 pa-4 border"
-                                            style="border-left: 4px solid #F43F5E !important;">
-                                            <v-avatar size="36" color="rose-lighten-5" rounded="lg">
-                                                <TrendingDown class="text-error" :size="18" />
-                                            </v-avatar>
-                                            <div>
-                                                <div
-                                                    class="text-overline font-weight-black opacity-60 line-height-1 mb-1">
-                                                    Total Spent</div>
-                                                <div class="text-h6 font-weight-black">
-                                                    {{ group.parent.spent > 0 ? formatAmount(group.parent.spent) : '₹0'
-                                                    }}
-                                                </div>
+                                        <!-- Spent & Limit Metric Grid -->
+                                        <div class="metrics-grid relative-pos overflow-hidden rounded-xl border">
+                                            <v-row no-gutters>
+                                                <!-- Spent Column -->
+                                                <v-col cols="6" class="metric-col pa-4 border-r">
+                                                    <div class="d-flex align-center gap-2 mb-1">
+                                                        <v-avatar size="24"
+                                                            :color="group.parent.percentage > 100 ? 'error' : 'primary'"
+                                                            variant="tonal" rounded="sm">
+                                                            <template v-if="group.parent.percentage > 100">
+                                                                <Flame :size="14" />
+                                                            </template>
+                                                            <template v-else-if="group.parent.percentage > 80">
+                                                                <Zap :size="14" />
+                                                            </template>
+                                                            <template v-else-if="group.parent.spent > 0">
+                                                                <Activity :size="14" />
+                                                            </template>
+                                                            <template v-else>
+                                                                <CheckCircle2 :size="14" />
+                                                            </template>
+                                                        </v-avatar>
+                                                        <span
+                                                            class="text-overline font-weight-black opacity-60">Actual</span>
+                                                    </div>
+                                                    <div class="text-h6 font-weight-black truncate">
+                                                        {{ group.parent.spent > 0 ? formatAmount(group.parent.spent) :
+                                                            (group.parent.income
+                                                                > 0 ? formatAmount(group.parent.income) : '₹0') }}
+                                                    </div>
+                                                </v-col>
+                                                <!-- Limit/Remaining Column -->
+                                                <v-col cols="6" class="metric-col pa-4 bg-surface-light">
+                                                    <div class="d-flex align-center gap-2 mb-1">
+                                                        <v-avatar size="24" color="slate-400" variant="tonal"
+                                                            rounded="sm">
+                                                            <Target :size="14" />
+                                                        </v-avatar>
+                                                        <span
+                                                            class="text-overline font-weight-black opacity-60">Limit</span>
+                                                    </div>
+                                                    <div class="text-h6 font-weight-black truncate">
+                                                        {{ group.parent.amount_limit ?
+                                                            formatAmount(group.parent.amount_limit) : '∞' }}
+                                                    </div>
+                                                </v-col>
+                                            </v-row>
+                                            <!-- Dynamic Health Glow -->
+                                            <div class="health-glow"
+                                                :class="{ 'is-overspent': group.parent.percentage > 100, 'is-warning': group.parent.percentage > 80 && group.parent.percentage <= 100 }">
                                             </div>
                                         </div>
                                     </div>
@@ -642,19 +685,12 @@ onMounted(() => {
                                             <span>{{ formatAmount(group.parent.amount_limit) }}</span>
                                         </div>
                                     </div>
-                                    <div v-else class="text-center pa-2 mb-4">
-                                        <v-btn variant="tonal" size="small" color="primary" rounded="pill"
-                                            @click="editBudget(group.parent)" class="text-none font-weight-black px-6">
-                                            Set Parent Limit
-                                        </v-btn>
-                                    </div>
-
                                     <!-- Sub-categories List (Accordion style) -->
                                     <v-expansion-panels v-if="group.children.length > 0" variant="accordion"
                                         class="premium-accordion">
                                         <v-expansion-panel elevation="0" bg-color="transparent">
-                                            <v-expansion-panel-title class="px-0 py-2 min-h-0"
-                                                collapse-icon="mdi-chevron-up" expand-icon="mdi-chevron-down">
+                                            <v-expansion-panel-title class="px-0 py-2 min-h-0" collapse-icon="ChevronUp"
+                                                expand-icon="ChevronDown">
                                                 <span class="text-caption font-weight-bold opacity-70">
                                                     Breakdown ({{ group.children.length }})
                                                 </span>
@@ -662,40 +698,43 @@ onMounted(() => {
                                             <v-expansion-panel-text class="pa-0">
                                                 <div class="d-flex flex-column gap-2 mt-2">
                                                     <div v-for="child in group.children" :key="child.category"
-                                                        class="glass-card pa-2 border-thin">
-                                                        <div class="d-flex justify-space-between align-center mb-1">
+                                                        class="subcategory-row pa-2 px-3 group/sub cursor-pointer rounded-lg relative-pos overflow-hidden transition-all mb-1"
+                                                        @click.stop="editBudget(child)">
+                                                        <div
+                                                            class="d-flex justify-space-between align-center mb-1 relative-pos z-2">
                                                             <div class="d-flex align-center gap-2">
-                                                                <span
-                                                                    class="text-caption font-weight-black text-no-wrap text-truncate"
-                                                                    style="max-width: 120px;">
-                                                                    {{ child.icon }} {{ child.category }}
+                                                                <span class="text-caption">{{ child.icon }}</span>
+                                                                <span class="text-caption font-weight-black truncate"
+                                                                    style="max-width: 140px;">
+                                                                    {{ child.category }}
                                                                 </span>
                                                             </div>
-                                                            <span class="text-caption font-weight-bold">{{
-                                                                formatAmount(child.spent)
-                                                                }}</span>
-                                                        </div>
-                                                        <div v-if="child.amount_limit">
-                                                            <v-progress-linear
-                                                                :model-value="Math.min(child.percentage, 100)"
-                                                                height="3" rounded="pill"
-                                                                :color="child.percentage > 100 ? 'error' : 'primary'"
-                                                                class="mb-1"></v-progress-linear>
-                                                            <div
-                                                                class="d-flex justify-space-between text-caption font-weight-medium opacity-60 line-height-1">
-                                                                <span style="font-size: 10px;">{{
-                                                                    child.percentage.toFixed(0) }}%</span>
-                                                                <span style="font-size: 10px;">{{
-                                                                    formatAmount(child.amount_limit) }}</span>
+                                                            <div class="text-caption font-weight-bold">
+                                                                {{ formatAmount(activeTab === 'expense' ? child.spent :
+                                                                    child.income) }}
                                                             </div>
                                                         </div>
-                                                        <div v-else class="d-flex justify-end">
+                                                        <div v-if="child.amount_limit" class="relative-pos z-2">
+                                                            <v-progress-linear
+                                                                :model-value="Math.min(child.percentage, 100)"
+                                                                height="4" rounded="pill"
+                                                                :color="child.percentage > 100 ? 'error' : 'primary'"
+                                                                class="mb-1"></v-progress-linear>
+                                                            <div class="d-flex justify-space-between text-caption font-weight-bold opacity-50"
+                                                                style="font-size: 10px;">
+                                                                <span>{{ child.percentage.toFixed(0) }}%</span>
+                                                                <span>{{ formatAmount(child.amount_limit) }}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div v-else class="d-flex justify-end relative-pos z-2">
                                                             <v-btn size="x-small" variant="text" color="primary"
-                                                                @click="editBudget(child)" class="px-0 text-none"
-                                                                style="height: 20px;">
+                                                                @click="editBudget(child)"
+                                                                class="px-0 text-none font-weight-black"
+                                                                style="height: 20px; font-size: 10px;">
                                                                 Set Limit
                                                             </v-btn>
                                                         </div>
+                                                        <div class="subcategory-hover-bg"></div>
                                                     </div>
                                                 </div>
                                             </v-expansion-panel-text>
@@ -704,7 +743,7 @@ onMounted(() => {
                                 </div>
 
                                 <!-- Subtle background icon -->
-                                <v-icon class="card-bg-icon-standard">mdi-chart-donut</v-icon>
+                                <v-icon class="card-bg-icon-standard">PieChart</v-icon>
                             </v-card>
                         </v-col>
                     </v-row>
@@ -712,7 +751,7 @@ onMounted(() => {
                     <!-- Inactive Groups Section -->
                     <div v-if="inactiveGroups.length > 0" class="mt-8">
                         <div class="d-flex align-center gap-3 mb-4">
-                            <v-icon color="slate-400">mdi-sleep</v-icon>
+                            <v-icon color="slate-400">Moon</v-icon>
                             <h3 class="text-h6 font-weight-bold opacity-60">Inactive Categories</h3>
                         </div>
                         <v-row>
@@ -790,7 +829,7 @@ onMounted(() => {
                         </div>
                     </div>
                     <v-btn icon variant="text" size="small" @click="showModal = false" color="slate-400">
-                        <v-icon>mdi-close</v-icon>
+                        <v-icon>X</v-icon>
                     </v-btn>
                 </v-card-title>
 
@@ -933,6 +972,142 @@ onMounted(() => {
 
 .hover-lift:hover {
     transform: translateY(-8px);
+}
+
+.category-icon-container {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 18px;
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+    background: rgba(var(--v-theme-surface), 0.5);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.icon-gradient-bg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 140%;
+    height: 140%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, var(--icon-color) 0%, transparent 70%);
+    opacity: 0.15;
+    z-index: 1;
+    transition: all 0.3s ease;
+}
+
+.premium-glass-card:hover .category-icon-container {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.1);
+    border-color: var(--icon-color);
+}
+
+.metrics-grid {
+    background: rgba(var(--v-theme-surface), 0.5);
+    transition: all 0.3s ease;
+}
+
+.metric-col {
+    position: relative;
+    z-index: 2;
+}
+
+.health-glow {
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(var(--v-theme-primary), 0.05) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 1;
+    transition: background 0.5s ease;
+}
+
+.health-glow.is-overspent {
+    background: radial-gradient(circle, rgba(var(--v-theme-error), 0.1) 0%, transparent 70%);
+}
+
+.health-glow.is-warning {
+    background: radial-gradient(circle, rgba(var(--v-theme-warning), 0.1) 0%, transparent 70%);
+}
+
+.metrics-grid:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.2);
+    border-color: rgba(var(--v-theme-primary), 0.3) !important;
+}
+
+.pulse-glow {
+    animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(var(--v-theme-error), 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(var(--v-theme-error), 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(var(--v-theme-error), 0);
+    }
+}
+
+.subcategory-row {
+    background: rgba(var(--v-theme-on-surface), 0.02);
+    border: 1px solid rgba(var(--v-border-color), 0.05);
+    transition: all 0.2s ease;
+}
+
+.subcategory-row:hover {
+    background: rgba(var(--v-theme-on-surface), 0.05);
+    transform: translateX(4px);
+    border-color: rgba(var(--v-theme-primary), 0.2);
+}
+
+.subcategory-hover-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: rgb(var(--v-theme-primary));
+    opacity: 0;
+    transition: all 0.2s ease;
+}
+
+.subcategory-row:hover .subcategory-hover-bg {
+    opacity: 1;
+}
+
+.pulse-glow {
+    animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(var(--v-theme-error), 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(var(--v-theme-error), 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(var(--v-theme-error), 0);
+    }
+}
+
+.premium-accordion :deep(.v-expansion-panel-title) {
+    min-height: 48px !important;
 }
 
 @media (max-width: 600px) {

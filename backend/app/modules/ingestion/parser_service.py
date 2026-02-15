@@ -151,6 +151,20 @@ class ExternalParserService:
             return False
 
     @staticmethod
+    def update_alias(alias_id: str, pattern: str, alias: str) -> bool:
+        """
+        Update an existing merchant alias.
+        """
+        try:
+            url = f"{settings.PARSER_SERVICE_URL}/config/aliases/{alias_id}"
+            payload = {"pattern": pattern, "alias": alias}
+            response = requests.put(url, json=payload, timeout=10)
+            return response.status_code == 200
+        except Exception as e:
+            logger.error(f"Error updating alias in external parser: {e}")
+            return False
+
+    @staticmethod
     def get_aliases() -> List[Dict[str, Any]]:
         """
         Get all merchant aliases from the microservice.
