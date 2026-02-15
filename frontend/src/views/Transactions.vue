@@ -14,7 +14,11 @@ import VendorAliasModal from '@/components/VendorAliasModal.vue'
 import {
     LayoutList,
     Inbox,
-    Map as MapIcon
+    Map as MapIcon,
+    Bot,
+    X,
+    Brain,
+    Trash2
 } from 'lucide-vue-next'
 
 // Composables
@@ -106,7 +110,17 @@ const {
     showLabelForm,
     labelForm,
     handleLabelSubmit,
-    selectedMessage
+    selectedMessage,
+    // Confirmation States
+    showDiscardConfirm,
+    showTrainingDiscardConfirm,
+    createIgnoreRule,
+    triageIdToDiscard,
+    trainingIdToDiscard,
+    // Methods
+    confirmDiscard,
+    confirmTrainingDiscard,
+    handleConfirmGlobalTrainingDismiss
 } = useTriageState(accounts, categories, showSmartPrompt, smartPromptData, fetchData)
 
 // Initialize Modals Composable
@@ -261,7 +275,10 @@ onMounted(() => {
                             triageTransactions, triagePagination, triageSearchQuery,
                             triageSourceFilter, triageSortKey, triageSortOrder,
                             unparsedMessages, trainingPagination, trainingSortKey,
-                            trainingSortOrder
+                            trainingSortOrder,
+                            // Confirmation States
+                            showDiscardConfirm, showTrainingDiscardConfirm, createIgnoreRule,
+                            triageIdToDiscard, trainingIdToDiscard
                         }" v-model:selectedTriageIds="selectedTriageIds"
                             v-model:selectedTrainingIds="selectedTrainingIds"
                             @update:activeSubTab="activeTriageSubTab = $event"
@@ -273,10 +290,16 @@ onMounted(() => {
                             @update:trainingSortKey="trainingSortKey = $event"
                             @update:trainingSortOrder="trainingSortOrder = $event"
                             @update:trainingPagination="trainingPagination = $event; fetchTriage()"
-                            @approveTriage="approveTriage" @rejectTriage="rejectTriage"
-                            @bulkRejectTriage="handleBulkRejectTriage" @startLabeling="startLabeling"
-                            @dismissTraining="dismissTraining" @bulkDismissTraining="handleBulkDismissTraining"
-                            @refreshTriage="fetchTriage" />
+                            @update:showDiscardConfirm="showDiscardConfirm = $event"
+                            @update:showTrainingDiscardConfirm="showTrainingDiscardConfirm = $event"
+                            @update:createIgnoreRule="createIgnoreRule = $event" @approveTriage="approveTriage"
+                            @rejectTriage="rejectTriage" @bulkRejectTriage="handleBulkRejectTriage"
+                            @startLabeling="startLabeling" @dismissTraining="dismissTraining"
+                            @bulkDismissTraining="handleBulkDismissTraining" @confirmDiscard="confirmDiscard"
+                            @confirmTrainingDiscard="confirmTrainingDiscard"
+                            @confirmBulkDiscard="handleBulkRejectTriage"
+                            @confirmBulkTrainingDiscard="handleConfirmGlobalTrainingDismiss"
+                            @refreshTriage="() => { fetchTriage(); fetchData(); }" />
                     </v-window-item>
 
                     <v-window-item value="heatmap">
@@ -299,16 +322,16 @@ onMounted(() => {
             @findMatches="findMatches" @selectMatch="selectMatch" />
 
         <VendorAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern" :initial-alias="aliasForm.alias"
-            @saved="fetchData" />
+            @saved="() => { fetchData(); fetchTriage(); }" />
 
         <!-- Labeling Message Modal (Interactive Training) -->
         <v-dialog v-model="showLabelForm" persistent max-width="800">
             <v-card class="glass-card overflow-hidden" rounded="xl">
                 <v-toolbar color="warning" density="compact">
-                    <v-icon start icon="mdi-robot-confused" class="ml-4"></v-icon>
+                    <v-icon start icon="Bot" class="ml-4"></v-icon>
                     <v-toolbar-title class="text-subtitle-1 font-weight-bold">Train Transaction Parser</v-toolbar-title>
                     <v-spacer></v-spacer>
-                    <v-btn icon="mdi-close" variant="text" @click="showLabelForm = false"></v-btn>
+                    <v-btn icon="X" variant="text" @click="showLabelForm = false"></v-btn>
                 </v-toolbar>
 
                 <div class="labeling-layout pa-4">
@@ -387,7 +410,7 @@ onMounted(() => {
 
                         <div class="d-flex justify-end gap-2 mt-4">
                             <v-btn variant="text" @click="showLabelForm = false">Cancel</v-btn>
-                            <v-btn color="warning" @click="handleLabelSubmit" prepend-icon="mdi-brain">Train &
+                            <v-btn color="warning" @click="handleLabelSubmit" prepend-icon="Brain">Train &
                                 Approve</v-btn>
                         </div>
                     </div>

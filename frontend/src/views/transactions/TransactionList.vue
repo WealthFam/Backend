@@ -334,8 +334,8 @@ function handleReset() {
                         <span class="text-caption font-weight-bold text-uppercase opacity-70 mr-3">Account:</span>
                         <v-select :model-value="selectedAccount"
                             @update:model-value="emit('update:selectedAccount', $event)" :items="accountOptions"
-                            placeholder="All Accounts" density="compact" hide-details variant="solo"
-                            class="account-select-premium" rounded="lg" />
+                            item-title="title" item-value="value" placeholder="All Accounts" density="compact"
+                            hide-details variant="solo" class="account-select-premium" rounded="lg" />
                     </div>
                 </v-col>
 
