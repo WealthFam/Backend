@@ -38,13 +38,13 @@
                 <v-col cols="12" md="auto" class="px-4 d-flex align-center">
                     <v-expand-x-transition>
                         <div v-if="selectedTimeRange === 'custom'" class="d-flex align-center gap-3">
-                            <v-text-field v-model="startDate" type="date" hide-details density="compact"
-                                variant="solo-filled" flat @change="fetchAnalyticsData"
+                            <v-text-field v-model="startDate" type="date" hide-details density="comfortable"
+                                variant="outlined" flat @change="fetchAnalyticsData"
                                 class="date-picker-compact rounded-lg" rounded="lg"
                                 style="background: rgba(var(--v-theme-surface-variant), 0.2);" />
                             <ArrowRight :size="16" class="text-medium-emphasis" />
-                            <v-text-field v-model="endDate" type="date" hide-details density="compact"
-                                variant="solo-filled" flat @change="fetchAnalyticsData"
+                            <v-text-field v-model="endDate" type="date" hide-details density="comfortable"
+                                variant="outlined" flat @change="fetchAnalyticsData"
                                 class="date-picker-compact rounded-lg" rounded="lg"
                                 style="background: rgba(var(--v-theme-surface-variant), 0.2);" />
                         </div>
@@ -65,9 +65,10 @@
                                     <Sparkles :size="24" color="white" />
                                 </div>
                                 <div>
-                                    <h3 class="text-h5 font-weight-black text-white">Financial Intelligence</h3>
-                                    <p class="text-caption text-blue-lighten-4">AI-driven spending vectors and strategy
-                                    </p>
+                                    <h3 class="text-h6 font-weight-black text-white">Financial Intelligence</h3>
+                                    <p class="text-caption text-blue-lighten-4 opacity-70">AI-driven spending vectors
+                                        and
+                                        strategy</p>
                                 </div>
                             </div>
                             <v-btn variant="tonal" color="white" rounded="lg" :loading="generatingAI"
@@ -255,18 +256,18 @@
                             <span class="text-h6 font-weight-black">Spending Dynamics</span>
                         </div>
                         <div class="d-flex align-center gap-4">
-                            <v-btn-toggle v-model="trendView" mandatory density="compact" color="primary"
+                            <v-btn-toggle v-model="trendView" mandatory density="comfortable" color="primary"
                                 variant="tonal">
                                 <v-btn value="daily" class="text-none">Daily</v-btn>
                                 <v-btn value="monthly" class="text-none">Monthly</v-btn>
                             </v-btn-toggle>
                             <v-select v-model="selectedTrendCategory"
                                 :items="categoryOptions.map(c => ({ title: c.label, value: c.value }))"
-                                density="compact" variant="outlined" hide-details class="trend-cat-premium"
+                                density="comfortable" variant="outlined" hide-details class="trend-cat-premium"
                                 rounded="pill" menu-icon=""
                                 style="background: rgba(var(--v-theme-surface), 0.7); width: 220px;">
                                 <template v-slot:prepend-inner>
-                                    <v-icon size="small" class="text-primary mr-1">mdi-filter-variant</v-icon>
+                                    <Filter :size="16" class="text-primary mr-1" />
                                 </template>
                                 <template v-slot:append-inner>
                                     <ChevronDown :size="16" class="text-primary opacity-70" />
@@ -279,7 +280,7 @@
                             <BaseChart v-if="filteredTrendData.length > 0" type="line" :data="trendChartData"
                                 :height="400" />
                             <div v-else class="empty-state d-flex flex-column align-center justify-center h-100">
-                                <v-icon size="64" color="medium-emphasis">mdi-chart-bubble-none</v-icon>
+                                <BarChart2 :size="64" class="text-medium-emphasis" />
                                 <p class="mt-4 text-medium-emphasis">No spending data found for these filters</p>
                             </div>
                         </div>
@@ -300,7 +301,7 @@
                             <div v-else class="d-flex items-center justify-center fill-height">Calculative Projection...
                             </div>
                         </div>
-                        <v-alert density="compact" variant="tonal" type="info" class="mt-4 text-caption rounded-lg"
+                        <v-alert density="comfortable" variant="tonal" type="info" class="mt-4 text-caption rounded-lg"
                             rounded="lg">
                             Projected based on recurring bills and 30-day burn rate.
                             <template #append>
@@ -380,7 +381,7 @@ import BudgetHistoryChart from '@/components/BudgetHistoryChart.vue'
 import { marked } from 'marked'
 import {
     TrendingUp, TrendingDown, Scale,
-    CalendarRange, ArrowRight, RefreshCcw
+    CalendarRange, ArrowRight, RefreshCcw, Filter, BarChart2
 } from 'lucide-vue-next'
 
 interface Props {
@@ -686,8 +687,8 @@ const trendChartData = computed(() => ({
     datasets: [{
         label: selectedTrendCategory.value || 'All Spending',
         data: filteredTrendData.value.map(d => d.value),
-        borderColor: selectedTrendCategory.value ? store.getCategoryColor(selectedTrendCategory.value) : '#6366f1',
-        backgroundColor: (selectedTrendCategory.value ? store.getCategoryColor(selectedTrendCategory.value) : '#6366f1') + '20',
+        borderColor: selectedTrendCategory.value ? store.getCategoryColor(selectedTrendCategory.value) : 'rgb(var(--v-theme-primary))',
+        backgroundColor: (selectedTrendCategory.value ? store.getCategoryColor(selectedTrendCategory.value) : 'rgb(var(--v-theme-primary))') + '20',
         fill: true,
         tension: 0.4,
         pointRadius: 4,
@@ -732,7 +733,7 @@ const merchantChartData = computed(() => ({
     datasets: [{
         label: 'Spending',
         data: analyticsData.value.merchants.map(m => m.value),
-        backgroundColor: '#6366f1',
+        backgroundColor: 'rgb(var(--v-theme-primary))',
         borderRadius: 6,
         borderSkipped: false,
     }]
@@ -742,7 +743,7 @@ const categoryChartData = computed(() => ({
     labels: analyticsData.value.categories.map(c => c.name),
     datasets: [{
         data: analyticsData.value.categories.map(c => c.value),
-        backgroundColor: analyticsData.value.categories.map(c => c.color || '#3B82F6'),
+        backgroundColor: analyticsData.value.categories.map(c => c.color || 'rgb(var(--v-theme-primary))'),
         hoverOffset: 4
     }]
 }))
@@ -752,8 +753,8 @@ const forecastChartData = computed(() => ({
     datasets: [{
         label: 'Projected Balance',
         data: forecastData.value.map(d => d.balance),
-        borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        borderColor: 'rgb(var(--v-theme-success))',
+        backgroundColor: 'rgba(var(--v-theme-success), 0.1)',
         fill: true,
         tension: 0.3,
         pointRadius: 0
@@ -764,7 +765,7 @@ const forecastChartData = computed(() => ({
 <style scoped>
 /* AI Premium Card */
 .premium-ai-card {
-    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+    background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgba(var(--v-theme-primary), 0.7) 100%);
     position: relative;
     overflow: hidden;
     border: none;

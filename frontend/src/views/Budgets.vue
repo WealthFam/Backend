@@ -18,11 +18,13 @@ import {
     TrendingUp,
     TrendingDown,
     Ban,
-    AlertTriangle,
     Flame,
     Zap,
     CheckCircle2,
-    Activity
+    Activity,
+    MoreVertical,
+    Moon,
+    PieChart
 } from 'lucide-vue-next'
 
 const { formatAmount } = useCurrency()
@@ -263,12 +265,12 @@ onMounted(() => {
 
 <template>
     <MainLayout>
-        <v-container fluid class="dashboard-page pa-6 pa-md-10">
+        <v-container fluid class="page-container dashboard-page">
             <!-- Header -->
             <v-row class="mb-10 align-center">
                 <v-col cols="12" md="6">
-                    <h1 class="text-h4 font-weight-black mb-1">Budgets & Activity</h1>
-                    <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold">Personal finance intelligence
+                    <h1 class="text-h6 font-weight-black mb-1">Budgets & Activity</h1>
+                    <p class="text-subtitle-2 text-on-surface opacity-70 font-weight-bold">Personal finance intelligence
                     </p>
                 </v-col>
 
@@ -307,10 +309,10 @@ onMounted(() => {
                         rounded="xl" elevation="12">
                         <!-- Animated Mesh Background -->
                         <div class="mesh-blob blob-1"
-                            style="background: rgba(255, 255, 255, 0.2); width: 600px; height: 600px; top: -200px; right: -100px;">
+                            style="background: rgba(var(--v-theme-on-primary), 0.2); width: 600px; height: 600px; top: -200px; right: -100px;">
                         </div>
                         <div class="mesh-blob blob-2"
-                            style="background: rgba(255, 255, 255, 0.1); width: 400px; height: 400px; bottom: -100px; left: -100px;">
+                            style="background: rgba(var(--v-theme-on-primary), 0.1); width: 400px; height: 400px; bottom: -100px; left: -100px;">
                         </div>
 
                         <div class="pa-8 pa-md-12 relative-pos z-10">
@@ -326,7 +328,7 @@ onMounted(() => {
                                     <div class="d-flex align-baseline ga-3 mb-8">
                                         <span class="text-h2 font-weight-black text-white letter-spacing-tight">{{
                                             formatAmount(overallBudget.spent)
-                                        }}</span>
+                                            }}</span>
                                         <span class="text-h4 text-white opacity-30">/</span>
                                         <span class="text-h4 font-weight-bold text-white opacity-60">
                                             {{ overallBudget.amount_limit ? formatAmount(overallBudget.amount_limit) :
@@ -340,12 +342,7 @@ onMounted(() => {
                                         <v-avatar size="44" :color="spendingVelocity.status === 'aggressive' ? 'error' :
                                             (spendingVelocity.status === 'warning' ? 'warning' : 'success')"
                                             variant="flat" class="elevation-4">
-                                            <v-icon size="24" color="white">
-                                                {{ spendingVelocity.status === 'aggressive' ? 'AlertOctagon' :
-                                                    (spendingVelocity.status === 'warning' ? 'BellRing' :
-                                                        'CheckCircle2')
-                                                }}
-                                            </v-icon>
+                                            <Sparkles :size="20" class="text-white" />
                                         </v-avatar>
                                         <div>
                                             <div
@@ -527,13 +524,13 @@ onMounted(() => {
                                         class="text-subtitle-2 font-weight-black opacity-60 d-flex justify-space-between align-center">
                                         <span>Outflow</span>
                                         <span class="text-subtitle-1">{{ formatAmount(overallBudget.total_excluded)
-                                        }}</span>
+                                            }}</span>
                                     </div>
                                     <div v-if="overallBudget.excluded_income > 0"
                                         class="text-subtitle-2 font-weight-black text-success d-flex justify-space-between align-center">
                                         <span>Inflow</span>
                                         <span class="text-subtitle-1">+{{ formatAmount(overallBudget.excluded_income)
-                                        }}</span>
+                                            }}</span>
                                     </div>
                                 </div>
                             </v-card>
@@ -544,7 +541,7 @@ onMounted(() => {
                     <div
                         class="mb-8 d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center ga-4">
                         <div>
-                            <h2 class="text-h5 font-weight-black mb-1">Category Intelligence</h2>
+                            <h2 class="text-h6 font-weight-black mb-1">Category Intelligence</h2>
                             <p class="text-subtitle-2 font-weight-bold opacity-60">Breakdown of your monthly activity
                             </p>
                         </div>
@@ -552,13 +549,13 @@ onMounted(() => {
                         <!-- Redesigned Tab Switcher (Segmented Control) -->
                         <div class="glass-card pa-1 border rounded-pill d-flex"
                             style="background: rgba(var(--v-theme-surface), 0.5)">
-                            <v-btn variant="flat" rounded="pill" height="40"
+                            <v-btn variant="flat" rounded="pill" height="36"
                                 class="text-none font-weight-black px-6 letter-spacing-1"
                                 :color="activeTab === 'expense' ? 'primary' : 'transparent'"
                                 :class="activeTab !== 'expense' ? 'text-disabled' : ''" @click="activeTab = 'expense'">
                                 Expense
                             </v-btn>
-                            <v-btn variant="flat" rounded="pill" height="40"
+                            <v-btn variant="flat" rounded="pill" height="36"
                                 class="text-none font-weight-black px-6 letter-spacing-1"
                                 :color="activeTab === 'income' ? 'primary' : 'transparent'"
                                 :class="activeTab !== 'income' ? 'text-disabled' : ''" @click="activeTab = 'income'">
@@ -579,13 +576,13 @@ onMounted(() => {
                                             <div class="category-icon-container"
                                                 :style="{ '--icon-color': group.parent.color || (activeTab === 'expense' ? '#F43F5E' : '#10B981') }">
                                                 <span class="text-h4 relative-pos z-2">{{ group.parent.icon || '🏷️'
-                                                }}</span>
+                                                    }}</span>
                                                 <div class="icon-gradient-bg"></div>
                                             </div>
                                             <div>
                                                 <span class="text-h6 font-weight-black line-height-1 mb-1 d-block">{{
                                                     group.parent.category
-                                                    }}</span>
+                                                }}</span>
                                                 <div class="d-flex gap-2">
                                                     <v-chip v-if="group.children.length > 0" size="x-small"
                                                         variant="tonal" color="primary" class="font-weight-bold">
@@ -602,7 +599,7 @@ onMounted(() => {
                                             <template v-slot:activator="{ props }">
                                                 <v-btn icon variant="text" size="small" v-bind="props"
                                                     color="slate-400">
-                                                    <v-icon>MoreVertical</v-icon>
+                                                    <MoreVertical :size="16" />
                                                 </v-btn>
                                             </template>
                                             <v-list density="compact" rounded="lg" class="py-1">
@@ -743,7 +740,7 @@ onMounted(() => {
                                 </div>
 
                                 <!-- Subtle background icon -->
-                                <v-icon class="card-bg-icon-standard">PieChart</v-icon>
+                                <PieChart class="card-bg-icon-standard" />
                             </v-card>
                         </v-col>
                     </v-row>
@@ -751,8 +748,8 @@ onMounted(() => {
                     <!-- Inactive Groups Section -->
                     <div v-if="inactiveGroups.length > 0" class="mt-8">
                         <div class="d-flex align-center gap-3 mb-4">
-                            <v-icon color="slate-400">Moon</v-icon>
-                            <h3 class="text-h6 font-weight-bold opacity-60">Inactive Categories</h3>
+                            <Moon color="rgb(var(--v-theme-primary))" opacity="0.6" :size="20" />
+                            <h3 class="text-h6 font-weight-black opacity-60">Inactive Categories</h3>
                         </div>
                         <v-row>
                             <v-col v-for="group in inactiveGroups"
@@ -870,94 +867,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.relative-pos {
-    position: relative;
-}
-
-.inset-glass-metric {
-    background: rgba(var(--v-theme-surface-variant), 0.1);
-    backdrop-filter: blur(8px);
-    border-radius: 12px;
-    transition: all 0.3s ease;
-}
-
-.inset-glass-metric:hover {
-    background: rgba(var(--v-theme-surface-variant), 0.2);
-    transform: translateX(4px);
-}
-
-.z-10 {
-    z-index: 10;
-}
-
-/* .gap-*, .ga-*, .no-scrollbar removed */
-
-.letter-spacing-1 {
-    letter-spacing: 0.1em;
-}
-
-.letter-spacing-tight {
-    letter-spacing: -0.04em;
-}
-
-.line-height-1 {
-    line-height: 1;
-}
-
-.line-height-relaxed {
-    line-height: 1.6;
-}
-
-.premium-progress-lg :deep(.v-progress-linear__determinate) {
-    background: linear-gradient(90deg, #fff 0%, #cbd5e1 100%) !important;
-}
-
-.month-progress-marker {
-    position: absolute;
-    top: -6px;
-    bottom: -25px;
-    width: 2px;
-    z-index: 5;
-    transition: left 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.marker-line-white {
-    height: 28px;
-    width: 2px;
-    background: white;
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.8);
-    position: relative;
-}
-
-.marker-line-white::after {
-    content: '';
-    position: absolute;
-    top: -4px;
-    left: -3px;
-    width: 8px;
-    height: 8px;
-    background: white;
-    border-radius: 50%;
-    box-shadow: 0 0 10px white;
-}
-
-.card-bg-icon-standard {
-    position: absolute;
-    bottom: -1.5rem;
-    right: -1rem;
-    font-size: 8rem;
-    opacity: 0.03;
-    pointer-events: none;
-    line-height: 1;
-    transform: rotate(-12deg);
-    transition: all 0.5s ease;
-}
-
-.premium-glass-card:hover .card-bg-icon-standard {
-    transform: rotate(0deg) scale(1.1);
-    opacity: 0.06;
-}
-
 .snap-x {
     scroll-snap-type: x mandatory;
 }
@@ -1086,24 +995,6 @@ onMounted(() => {
 
 .subcategory-row:hover .subcategory-hover-bg {
     opacity: 1;
-}
-
-.pulse-glow {
-    animation: pulse-red 2s infinite;
-}
-
-@keyframes pulse-red {
-    0% {
-        box-shadow: 0 0 0 0 rgba(var(--v-theme-error), 0.4);
-    }
-
-    70% {
-        box-shadow: 0 0 0 10px rgba(var(--v-theme-error), 0);
-    }
-
-    100% {
-        box-shadow: 0 0 0 0 rgba(var(--v-theme-error), 0);
-    }
 }
 
 .premium-accordion :deep(.v-expansion-panel-title) {

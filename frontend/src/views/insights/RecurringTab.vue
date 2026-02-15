@@ -64,25 +64,25 @@
                         <v-col cols="12">
                             <label class="text-caption font-weight-bold text-uppercase ml-1">Subscription Name</label>
                             <v-text-field v-model="newRecurrence.name" placeholder="Netflix, Rent, Salary..."
-                                variant="solo-filled" flat rounded="lg" />
+                                variant="outlined" density="comfortable" flat rounded="lg" />
                         </v-col>
 
                         <v-col cols="6">
                             <label class="text-caption font-weight-bold text-uppercase ml-1">Amount</label>
-                            <v-text-field v-model="newRecurrence.amount" type="number" prefix="₹" variant="solo-filled"
-                                flat rounded="lg" />
+                            <v-text-field v-model="newRecurrence.amount" type="number" prefix="₹" variant="outlined"
+                                density="comfortable" flat rounded="lg" />
                         </v-col>
 
                         <v-col cols="6">
                             <label class="text-caption font-weight-bold text-uppercase ml-1">Frequency</label>
-                            <v-select v-model="newRecurrence.frequency" :items="frequencyOptions" variant="solo-filled"
-                                flat rounded="lg" />
+                            <v-select v-model="newRecurrence.frequency" :items="frequencyOptions" variant="outlined"
+                                density="comfortable" flat rounded="lg" />
                         </v-col>
 
                         <v-col cols="6">
                             <label class="text-caption font-weight-bold text-uppercase ml-1">First Payment</label>
-                            <v-text-field v-model="newRecurrence.start_date" type="date" variant="solo-filled" flat
-                                rounded="lg" />
+                            <v-text-field v-model="newRecurrence.start_date" type="date" variant="outlined"
+                                density="comfortable" flat rounded="lg" />
                         </v-col>
 
                         <v-col cols="6">
