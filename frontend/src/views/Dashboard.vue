@@ -1,14 +1,14 @@
 <template>
     <MainLayout>
-        <v-container fluid class="dashboard-page pa-6 pa-md-10">
+        <v-container fluid class="page-container dashboard-page">
             <!-- Header -->
             <v-row class="mb-8 align-center">
                 <v-col cols="12">
-                    <h1 class="text-h4 font-weight-black mb-1 d-flex align-center">
+                    <h1 class="text-h6 font-weight-black mb-1 d-flex align-center">
                         <span class="mr-3">{{ greetingEmoji }}</span>
                         {{ getGreeting() }}, {{ (auth.user?.full_name || auth.user?.email || 'User').split(' ')[0] }}
                     </h1>
-                    <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold">
+                    <p class="text-subtitle-2 text-on-surface opacity-70 font-weight-bold">
                         Your family's financial state at a glance.
                     </p>
                 </v-col>
@@ -30,15 +30,15 @@
                     <v-card class="premium-glass-card pa-6 d-flex flex-column justify-space-between" height="170"
                         rounded="xl" elevation="2" @click="router.push('/')">
                         <div class="d-flex justify-space-between align-start">
-                            <v-avatar color="indigo-lighten-5" rounded="lg" size="48">
-                                <Landmark :size="24" class="text-indigo" />
+                            <v-avatar color="primary" variant="tonal" rounded="lg" size="48">
+                                <Landmark :size="24" />
                             </v-avatar>
                             <Sparkline v-if="netWorthTrend.length > 1" :data="netWorthTrend" color="#6366f1"
                                 :height="32" width="70" />
                         </div>
                         <div>
-                            <div class="text-overline text-slate-500 font-weight-black mb-1">Total Net Worth</div>
-                            <div class="text-h5 font-weight-black text-indigo-darken-1">{{ formatAmount(netWorth) }}
+                            <div class="text-overline opacity-60 font-weight-black mb-1">Total Net Worth</div>
+                            <div class="text-h5 font-weight-black text-primary">{{ formatAmount(netWorth) }}
                             </div>
                         </div>
                     </v-card>
@@ -48,14 +48,14 @@
                     <v-card class="premium-glass-card pa-6 d-flex flex-column justify-space-between" height="170"
                         rounded="xl" elevation="2" @click="router.push('/transactions')">
                         <div class="d-flex justify-space-between align-start">
-                            <v-avatar color="rose-lighten-5" rounded="lg" size="48">
-                                <Wallet :size="24" class="text-error" />
+                            <v-avatar color="error" variant="tonal" rounded="lg" size="48">
+                                <Wallet :size="24" />
                             </v-avatar>
                             <Sparkline v-if="spendingTrend.length > 1" :data="spendingTrend" color="#e11d48"
                                 :height="32" width="70" />
                         </div>
                         <div>
-                            <div class="text-overline text-slate-500 font-weight-black mb-1">Monthly Spending
+                            <div class="text-overline opacity-60 font-weight-black mb-1">Monthly Spending
                             </div>
                             <div class="text-h5 font-weight-black text-error">{{ formatAmount(metrics.monthly_spending,
                                 metrics.currency) }}</div>
@@ -67,18 +67,18 @@
                     <v-card class="premium-glass-card pa-6 d-flex flex-column justify-space-between" height="170"
                         rounded="xl" elevation="2" @click="router.push('/budgets')">
                         <div class="d-flex justify-space-between align-start">
-                            <v-avatar color="amber-lighten-5" rounded="lg" size="48">
-                                <PieChart :size="24" class="text-amber-darken-2" />
+                            <v-avatar color="warning" variant="tonal" rounded="lg" size="48">
+                                <PieChart :size="24" />
                             </v-avatar>
                             <div class="text-h6 font-weight-black"
-                                :class="metrics.budget_health.percentage > 90 ? 'text-error' : 'text-amber-darken-2'">
+                                :class="metrics.budget_health.percentage > 90 ? 'text-error' : 'text-warning'">
                                 {{ metrics.budget_health.percentage.toFixed(0) }}%
                             </div>
                         </div>
                         <div>
-                            <div class="text-overline text-slate-500 font-weight-black mb-1">Budget Health</div>
+                            <div class="text-overline opacity-60 font-weight-black mb-1">Budget Health</div>
                             <v-progress-linear :model-value="Math.min(metrics.budget_health.percentage, 100)" height="8"
-                                rounded="pill" color="amber" class="mt-2"></v-progress-linear>
+                                rounded="pill" color="warning" class="mt-2"></v-progress-linear>
                         </div>
                     </v-card>
                 </v-col>
@@ -87,8 +87,8 @@
                     <v-card class="premium-glass-card pa-6 d-flex flex-column justify-space-between" height="170"
                         rounded="xl" elevation="2" @click="router.push('/mutual-funds')">
                         <div class="d-flex justify-space-between align-start">
-                            <v-avatar color="emerald-lighten-5" rounded="lg" size="48">
-                                <Sparkles :size="24" class="text-success" />
+                            <v-avatar color="success" variant="tonal" rounded="lg" size="48">
+                                <Sparkles :size="24" />
                             </v-avatar>
                             <v-chip v-if="!mfPortfolio.loading && mfPortfolio.invested > 0" size="small" color="success"
                                 variant="flat" class="font-weight-black">
@@ -96,7 +96,7 @@
                             </v-chip>
                         </div>
                         <div>
-                            <div class="text-overline text-slate-500 font-weight-black mb-1">Investments</div>
+                            <div class="text-overline opacity-60 font-weight-black mb-1">Investments</div>
                             <div class="text-h5 font-weight-black text-success">{{ formatAmount(mfPortfolio.current) }}
                             </div>
                         </div>
@@ -107,7 +107,8 @@
                 <v-col cols="12" v-if="budgetPulse.length > 0" class="mt-4">
                     <div class="d-flex justify-space-between align-center mb-6">
                         <h2 class="text-h6 font-weight-black d-flex align-center">
-                            <v-icon color="primary" class="mr-2">mdi-chart-pie</v-icon> Budget Pulse
+                            <PieChart :size="20" class="text-primary mr-2" />
+                            Budget Pulse
                         </h2>
                         <v-btn variant="text" size="small" color="primary" @click="router.push('/budgets')"
                             class="font-weight-black text-none">Manage</v-btn>
@@ -121,9 +122,9 @@
                                     <div class="d-flex align-center ga-2">
                                         <v-avatar size="32" color="surface-variant" variant="tonal">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(b.category).icon
-                                                }}</span>
+                                            }}</span>
                                         </v-avatar>
-                                        <span class="text-subtitle-2 font-weight-black text-slate-700">
+                                        <span class="text-subtitle-2 font-weight-black">
                                             {{ b.category }}
                                         </span>
                                         <v-chip size="x-small"
@@ -140,7 +141,7 @@
                                 <v-progress-linear :model-value="Math.min(b.percentage, 100)" height="4" rounded="pill"
                                     :color="b.percentage > 100 ? 'error' : (b.percentage > 85 ? 'warning' : 'primary')"
                                     class="mb-3"></v-progress-linear>
-                                <div class="d-flex justify-space-between text-caption font-weight-bold text-slate-600">
+                                <div class="d-flex justify-space-between text-caption font-weight-bold opacity-60">
                                     <span>{{ formatAmount(b.spent, metrics.currency) }}</span>
                                     <span>of {{ formatAmount(b.amount_limit, metrics.currency) }}</span>
                                 </div>
@@ -154,7 +155,8 @@
                     <v-card class="premium-glass-card pa-6 pa-md-8 h-100" rounded="xl" elevation="1">
                         <div class="d-flex justify-space-between align-center mb-8">
                             <h2 class="text-h6 font-weight-black d-flex align-center">
-                                <v-icon color="primary" class="mr-2">mdi-pulse</v-icon> Recent Activity
+                                <Activity :size="20" class="text-primary mr-2" />
+                                Recent Activity
                             </h2>
                             <v-btn variant="tonal" rounded="pill" size="small" color="primary"
                                 @click="router.push('/transactions')" class="font-weight-black px-6 text-none">View
@@ -171,13 +173,13 @@
                                 </template>
                                 <v-list-item-title class="font-weight-bold text-subtitle-1">{{ txn.description ||
                                     'Transaction'
-                                    }}</v-list-item-title>
-                                <v-list-item-subtitle class="text-caption font-weight-bold text-slate-500 mt-1">
+                                }}</v-list-item-title>
+                                <v-list-item-subtitle class="text-caption font-weight-bold opacity-60 mt-1">
                                     {{ formatDate(txn.date).day }} • {{ txn.account_owner_name || 'Personal' }}
                                 </v-list-item-subtitle>
                                 <template v-slot:append>
                                     <div class="text-subtitle-1 font-weight-black"
-                                        :class="txn.amount > 0 ? 'text-success' : 'text-slate-700'">
+                                        :class="txn.amount > 0 ? 'text-success' : 'opacity-80'">
                                         {{ txn.amount > 0 ? '+' : '' }}{{ formatAmount(Math.abs(txn.amount),
                                             metrics.currency) }}
                                     </div>
@@ -191,7 +193,8 @@
                     <v-card class="premium-glass-card pa-6 pa-md-8 h-100" rounded="xl" elevation="1">
                         <div class="d-flex justify-space-between align-center mb-8">
                             <h2 class="text-h6 font-weight-black d-flex align-center">
-                                <v-icon color="primary" class="mr-2">mdi-calendar-clock</v-icon> Upcoming Bills
+                                <CalendarClock :size="20" class="text-primary mr-2" />
+                                Upcoming Bills
                             </h2>
                         </div>
                         <div v-if="upcomingBills.length > 0">
@@ -201,11 +204,11 @@
                                     <template v-slot:prepend>
                                         <v-avatar size="40" color="surface-variant" variant="tonal" class="mr-4">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(bill.category).icon
-                                                }}</span>
+                                            }}</span>
                                         </v-avatar>
                                     </template>
                                     <v-list-item-title class="font-weight-bold">{{ bill.description
-                                        }}</v-list-item-title>
+                                    }}</v-list-item-title>
                                     <v-list-item-subtitle class="text-caption font-weight-bold text-error">Due {{
                                         formatDate(bill.next_date).day }}</v-list-item-subtitle>
                                     <template v-slot:append>
@@ -217,7 +220,7 @@
                         </div>
                         <div v-else class="text-center py-10">
                             <div class="text-h2 mb-4 opacity-20">📅</div>
-                            <p class="text-slate-600 font-weight-bold">Relax, no bills due soon.</p>
+                            <p class="opacity-60 font-weight-bold">Relax, no bills due soon.</p>
                         </div>
                     </v-card>
                 </v-col>
@@ -228,13 +231,14 @@
                         <div
                             class="d-flex flex-column flex-md-row justify-space-between align-start align-md-center mb-8 ga-4">
                             <h2 class="text-h6 font-weight-black d-flex align-center">
-                                <v-icon color="primary" class="mr-2">mdi-credit-card</v-icon> Credit Intelligence
+                                <CreditCard :size="20" class="text-primary mr-2" />
+                                Credit Intelligence
                             </h2>
 
                             <div v-if="metrics.credit_intelligence.length > 0" class="flex-grow-1 ml-md-10"
                                 style="max-width: 400px; width: 100%;">
                                 <div class="d-flex justify-space-between mb-2">
-                                    <span class="text-overline text-slate-500 font-weight-black">TOTAL CREDIT
+                                    <span class="text-overline opacity-60 font-weight-black">TOTAL CREDIT
                                         OUTLOOK</span>
                                     <span class="text-caption font-weight-black text-primary">
                                         {{ formatAmount(creditSummary.totalDebt) }} utilized
@@ -244,8 +248,8 @@
                                     rounded="pill" color="primary">
                                 </v-progress-linear>
                                 <div class="d-flex justify-space-between mt-1">
-                                    <span class="text-caption font-weight-bold text-slate-500">0%</span>
-                                    <span class="text-caption font-weight-bold text-slate-500">Limit: {{
+                                    <span class="text-caption font-weight-bold opacity-50">0%</span>
+                                    <span class="text-caption font-weight-bold opacity-50">Limit: {{
                                         formatAmount(creditSummary.totalLimit) }}</span>
                                 </div>
                             </div>
@@ -273,7 +277,7 @@
                                     <div class="ml-4 overflow-hidden">
                                         <div class="text-subtitle-1 font-weight-black text-truncate">{{ card.name }}
                                         </div>
-                                        <div class="text-caption font-weight-bold text-slate-500">....{{
+                                        <div class="text-caption font-weight-bold opacity-60">....{{
                                             card.last_digits ||
                                             '0000' }}</div>
                                     </div>
@@ -282,8 +286,7 @@
                                 <v-col cols="12" md="4">
                                     <div class="d-flex justify-space-between mb-1">
                                         <div class="d-flex align-center ga-2">
-                                            <span
-                                                class="text-overline text-slate-500 font-weight-black">Utilization</span>
+                                            <span class="text-overline opacity-60 font-weight-black">Utilization</span>
                                             <v-chip size="x-small"
                                                 :color="card.utilization > 30 ? (card.utilization > 70 ? 'error' : 'warning') : 'success'"
                                                 variant="flat" class="font-weight-black">
@@ -306,14 +309,14 @@
                                     <div class="d-flex flex-md-column justify-space-between align-end">
                                         <div class="d-flex ga-6 mb-1">
                                             <div class="text-right">
-                                                <div class="text-overline text-slate-500 font-weight-black"
+                                                <div class="text-overline opacity-60 font-weight-black"
                                                     style="line-height:1">
                                                     Balance</div>
                                                 <div class="text-subtitle-1 font-weight-black">{{
                                                     formatAmount(card.balance) }}</div>
                                             </div>
                                             <div class="text-right">
-                                                <div class="text-overline text-slate-500 font-weight-black"
+                                                <div class="text-overline opacity-60 font-weight-black"
                                                     style="line-height:1">
                                                     Available</div>
                                                 <div class="text-subtitle-1 font-weight-black text-primary">{{
@@ -323,8 +326,8 @@
                                         </div>
                                         <div class="text-caption font-weight-black d-flex align-center"
                                             :class="card.days_until_due < 7 && card.days_until_due !== null ? 'text-error' : 'text-slate-500'">
-                                            <v-icon v-if="card.days_until_due < 7 && card.days_until_due !== null"
-                                                size="14" class="mr-1">mdi-alert-circle</v-icon>
+                                            <AlertCircle v-if="card.days_until_due < 7 && card.days_until_due !== null"
+                                                :size="14" class="mr-1" />
                                             <span v-if="card.days_until_due !== null">Due in {{ card.days_until_due }}
                                                 days</span>
                                             <span v-else>No Cycle Data</span>
@@ -337,7 +340,7 @@
                             </v-row>
                         </div>
                         <div v-else class="text-center py-12">
-                            <p class="text-slate-600 font-weight-bold italic">No credit lines detected in your
+                            <p class="opacity-60 font-weight-bold italic">No credit lines detected in your
                                 accounts.</p>
                         </div>
                     </v-card>
@@ -357,7 +360,14 @@ import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
 import Sparkline from '@/components/Sparkline.vue'
 import {
-    Wallet, PieChart, Landmark, Sparkles
+    Wallet,
+    PieChart,
+    Landmark,
+    Sparkles,
+    Activity,
+    CalendarClock,
+    CreditCard,
+    AlertCircle
 } from 'lucide-vue-next'
 
 const router = useRouter()

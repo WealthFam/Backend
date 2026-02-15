@@ -1,6 +1,6 @@
 <template>
     <MainLayout>
-        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
+        <v-container fluid class="page-container dashboard-page">
             <!-- Animated Mesh Background -->
             <div class="mesh-blob blob-1"
                 style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
@@ -13,8 +13,8 @@
                 <!-- Header -->
                 <v-row class="mb-10 align-center">
                     <v-col cols="12" md="6">
-                        <h1 class="text-h4 font-weight-black mb-1">Categories</h1>
-                        <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold">
+                        <h1 class="text-h6 font-weight-black mb-1">Categories</h1>
+                        <p class="text-subtitle-2 text-on-surface opacity-70 font-weight-bold">
                             Manage your spending categories and classification rules
                         </p>
                     </v-col>

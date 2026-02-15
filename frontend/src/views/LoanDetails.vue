@@ -1,6 +1,6 @@
 <template>
     <MainLayout>
-        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
+        <v-container fluid class="page-container dashboard-page">
             <!-- Animated Mesh Background -->
             <div class="mesh-blob blob-1"
                 style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
@@ -30,9 +30,9 @@
                                 <span class="text-h4">{{ getLoanIcon(loan.loan_type) }}</span>
                             </v-avatar>
                             <div>
-                                <h1 class="text-h4 font-weight-black text-content mb-1">{{ loan.name }}</h1>
+                                <h1 class="text-h6 font-weight-black text-content mb-1">{{ loan.name }}</h1>
                                 <div class="d-flex align-center gap-3 text-medium-emphasis font-weight-bold">
-                                    <v-chip size="small" variant="outlined" class="font-weight-bold text-uppercase">
+                                    <v-chip size="small" variant="outlined" class="font-weight-black text-uppercase">
                                         {{ loan.loan_type?.replace('_', ' ') || 'LOAN' }}
                                     </v-chip>
                                     <span>{{ loan.tenure_months }} Months</span>
@@ -235,8 +235,7 @@
 
                                 <v-select v-model="repaymentForm.bank_account_id" :items="accountOptions"
                                     item-title="label" item-value="value" label="Paid From" variant="outlined"
-                                    density="comfortable" hide-details rounded="lg" bg-color="surface" class="mb-4"
-                                    :menu-icon="null">
+                                    density="comfortable" hide-details rounded="lg" bg-color="surface" class="mb-4">
                                     <template v-slot:append-inner>
                                         <ChevronDown :size="16" class="text-primary opacity-70" />
                                     </template>

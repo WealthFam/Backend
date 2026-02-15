@@ -12,20 +12,15 @@ const activeTab = ref('portfolio')
 
 <template>
     <MainLayout>
-        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
-            <!-- Animated Mesh Background -->
-            <div class="mesh-blob blob-1"></div>
-            <div class="mesh-blob blob-2"></div>
-            <div class="mesh-blob blob-3"></div>
-
+        <v-container fluid class="page-container dashboard-page">
             <div class="relative-pos z-10">
                 <!-- Premium Header -->
                 <v-row class="mb-6 align-center">
                     <v-col cols="12" md="4">
                         <div class="d-flex align-center">
-                            <h1 class="text-h4 font-weight-black text-content">Mutual Funds</h1>
+                            <h1 class="text-h6 font-weight-black text-content">Mutual Funds</h1>
                         </div>
-                        <p class="text-subtitle-1 text-medium-emphasis font-weight-bold mt-1 opacity-70">
+                        <p class="text-subtitle-2 text-medium-emphasis font-weight-bold mt-1 opacity-70">
                             Track your portfolio and analyze performance
                         </p>
                     </v-col>
@@ -81,55 +76,7 @@ const activeTab = ref('portfolio')
 </template>
 
 <style scoped>
-.dashboard-page {
-    position: relative;
-    min-height: calc(100vh - 64px);
-}
-
-.mesh-blob {
-    position: absolute;
-    filter: blur(80px);
-    opacity: 0.15;
-    border-radius: 50%;
-    z-index: 0;
-    animation: blob-float 10s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.blob-1 {
-    background: rgb(var(--v-theme-primary));
-    width: 600px;
-    height: 600px;
-    top: -200px;
-    right: -100px;
-}
-
-.blob-2 {
-    background: rgb(var(--v-theme-secondary));
-    width: 400px;
-    height: 400px;
-    bottom: -100px;
-    left: -100px;
-    animation-delay: -5s;
-}
-
-.blob-3 {
-    background: rgb(var(--v-theme-success));
-    width: 300px;
-    height: 300px;
-    top: 40%;
-    left: 30%;
-    animation-delay: -8s;
-}
-
-@keyframes blob-float {
-    0% {
-        transform: translate(0, 0) scale(1);
-    }
-
-    100% {
-        transform: translate(20px, -20px) scale(1.1);
-    }
-}
+/* Relies on base.css dashboard-page */
 
 .relative-pos {
     position: relative;

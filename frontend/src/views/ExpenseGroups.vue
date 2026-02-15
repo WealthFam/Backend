@@ -1,6 +1,6 @@
 <template>
     <MainLayout>
-        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
+        <v-container fluid class="page-container dashboard-page">
             <!-- Animated Mesh Background -->
             <div class="mesh-blob blob-1"
                 style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
@@ -13,8 +13,8 @@
                 <!-- Header -->
                 <v-row class="mb-10 align-center">
                     <v-col cols="12" md="6">
-                        <h1 class="text-h4 font-weight-black mb-1">Expense Groups</h1>
-                        <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold d-flex align-center">
+                        <h1 class="text-h6 font-weight-black mb-1">Expense Groups</h1>
+                        <p class="text-subtitle-2 text-on-surface opacity-70 font-weight-bold d-flex align-center">
                             Organize and track your spending buckets
                         </p>
                     </v-col>
@@ -46,7 +46,7 @@
                     <div style="width: 160px">
                         <v-select v-model="selectedYear" :items="yearOptions" item-title="label" item-value="value"
                             variant="outlined" density="comfortable" hide-details rounded="lg" bg-color="surface"
-                            class="premium-select" :menu-icon="null">
+                            class="premium-select">
                             <template v-slot:append-inner>
                                 <ChevronDown :size="16" class="text-primary opacity-70" />
                             </template>
@@ -267,7 +267,7 @@
                     <h3 class="text-h5 font-weight-black mb-2">Delete Group?</h3>
                     <p class="text-medium-emphasis mb-8 px-4">
                         Are you sure you want to delete <strong class="text-high-emphasis">{{ groupToDelete?.name
-                        }}</strong>?
+                            }}</strong>?
                         This action cannot be undone.
                     </p>
                     <div class="d-flex gap-3 justify-center">
@@ -503,7 +503,6 @@ onMounted(() => {
 }
 
 .premium-glass-card:hover {
-    transform: translateY(-4px);
     border-color: rgba(var(--v-theme-primary), 0.3) !important;
     background: rgba(var(--v-theme-surface), 0.85) !important;
     box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1) !important;

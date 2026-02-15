@@ -1,6 +1,6 @@
 <template>
     <MainLayout>
-        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
+        <v-container fluid class="page-container dashboard-page">
             <!-- Animated Mesh Background (Consistent with Categories.vue) -->
             <div class="mesh-blob blob-1"
                 style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
@@ -13,8 +13,8 @@
                 <!-- Header (Title left, Tabs & Actions right) -->
                 <v-row class="mb-10 align-center">
                     <v-col cols="12" md="6">
-                        <h1 class="text-h4 font-weight-black mb-1">Insights</h1>
-                        <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold d-flex align-center">
+                        <h1 class="text-h6 font-weight-black mb-1">Insights</h1>
+                        <p class="text-subtitle-2 text-on-surface opacity-70 font-weight-bold d-flex align-center">
                             Strategy and forecasting
                             <v-chip v-if="authStore.selectedMemberId" size="x-small" color="primary" variant="flat"
                                 class="ml-3 font-weight-black letter-spacing-1">

@@ -252,15 +252,7 @@ watch(() => authStore.selectedMemberId, () => {
 
 <template>
     <MainLayout>
-        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
-            <!-- Animated Mesh Background (Consistent with Categories.vue) -->
-            <div class="mesh-blob blob-1"
-                style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
-            </div>
-            <div class="mesh-blob blob-2"
-                style="background: rgba(var(--v-theme-secondary), 0.05); width: 400px; height: 400px; bottom: -100px; left: -100px;">
-            </div>
-
+        <v-container fluid class="page-container dashboard-page">
             <div class="relative-pos z-10">
                 <!-- Header (Title left, Actions right) -->
                 <v-row class="mb-10 align-center">
@@ -319,7 +311,7 @@ watch(() => authStore.selectedMemberId, () => {
                                 <Plus :size="36" color="white" stroke-width="3" />
                             </v-avatar>
                             <span class="text-h6 font-weight-black text-primary">Add New Goal</span>
-                            <span class="text-caption font-weight-bold opacity-60 text-slate-500">Define your next
+                            <span class="text-caption font-weight-bold opacity-60">Define your next
                                 aspiration</span>
                         </v-card>
                     </v-col>
@@ -348,7 +340,8 @@ watch(() => authStore.selectedMemberId, () => {
                             </div>
 
                             <div class="px-5 pb-5">
-                                <h3 class="text-subtitle-1 font-weight-black text-truncate mb-0">{{ goal.name }}</h3>
+                                <h3 class="text-subtitle-1 font-weight-black text-truncate mb-0">{{ goal.name }}
+                                </h3>
                                 <div class="d-flex align-center text-tiny font-weight-bold text-medium-emphasis">
                                     <Calendar :size="12" class="mr-1" />
                                     {{ goal.target_date ? new Date(goal.target_date).toLocaleDateString() :
@@ -358,8 +351,9 @@ watch(() => authStore.selectedMemberId, () => {
                                 <div class="mt-4">
                                     <div class="d-flex justify-space-between align-end mb-1">
                                         <div>
-                                            <span class="text-h6 font-weight-black">{{ formatAmount(goal.current_amount)
-                                                }}</span>
+                                            <span class="text-h6 font-weight-black">{{
+                                                formatAmount(goal.current_amount)
+                                            }}</span>
                                             <span class="text-tiny font-weight-bold text-medium-emphasis ml-1">of {{
                                                 formatAmount(goal.target_amount) }}</span>
                                         </div>
@@ -398,7 +392,8 @@ watch(() => authStore.selectedMemberId, () => {
                                     <span class="text-tiny font-weight-black">
                                         Total Linked: {{ formatAmount(calculateGoalSummary(goal).total) }}
                                         <span class="mx-1 text-medium-emphasis">•</span>
-                                        {{ calculateGoalSummary(goal).count }} {{ calculateGoalSummary(goal).count === 1
+                                        {{ calculateGoalSummary(goal).count }} {{ calculateGoalSummary(goal).count
+                                            === 1
                                             ? 'source' : 'sources' }}
                                     </span>
                                 </div>
@@ -546,8 +541,7 @@ watch(() => authStore.selectedMemberId, () => {
                                     class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">OWNERSHIP</label>
                                 <v-select v-model="goalForm.owner_id" :items="memberOptions" item-title="title"
                                     item-value="value" variant="outlined" density="comfortable" hide-details
-                                    rounded="lg" bg-color="surface" placeholder="Assign Owner" color="primary"
-                                    :menu-icon="null">
+                                    rounded="lg" bg-color="surface" placeholder="Assign Owner" color="primary">
                                     <template v-slot:append-inner>
                                         <ChevronDown :size="16" class="text-primary opacity-70" />
                                     </template>
@@ -555,7 +549,8 @@ watch(() => authStore.selectedMemberId, () => {
                                         <v-list-item v-bind="props" :title="item.raw.title" class="rounded-lg ma-1">
                                             <template v-slot:prepend>
                                                 <v-avatar size="28" color="primary" variant="tonal" class="mr-2">
-                                                    <span class="text-caption font-weight-black">{{ item.raw.initials
+                                                    <span class="text-caption font-weight-black">{{
+                                                        item.raw.initials
                                                     }}</span>
                                                 </v-avatar>
                                             </template>
@@ -564,7 +559,8 @@ watch(() => authStore.selectedMemberId, () => {
                                     <template v-slot:selection="{ item }">
                                         <div class="d-flex align-center">
                                             <v-avatar size="24" color="primary" variant="tonal" class="mr-2">
-                                                <span class="text-tiny font-weight-black">{{ item.raw.initials }}</span>
+                                                <span class="text-tiny font-weight-black">{{ item.raw.initials
+                                                }}</span>
                                             </v-avatar>
                                             <span class="text-body-2 font-weight-bold">{{ item.raw.title }}</span>
                                         </div>
@@ -605,7 +601,8 @@ watch(() => authStore.selectedMemberId, () => {
                 <v-card rounded="xl" class="premium-glass-modal elevation-24">
                     <div class="px-6 pt-6 pb-2 d-flex justify-space-between align-center">
                         <div>
-                            <div class="text-overline font-weight-black text-primary mb-1 letter-spacing-2">Link Assets
+                            <div class="text-overline font-weight-black text-primary mb-1 letter-spacing-2">Link
+                                Assets
                             </div>
                             <h2 class="text-h5 font-weight-black text-content">Connect Wealth</h2>
                         </div>
@@ -654,8 +651,7 @@ watch(() => authStore.selectedMemberId, () => {
                                     ACCOUNT</label>
                                 <v-select v-model="assetForm.linked_account_id" :items="accountOptions"
                                     item-title="label" item-value="value" label="Select Account" variant="outlined"
-                                    density="comfortable" hide-details rounded="lg" bg-color="surface"
-                                    :menu-icon="null">
+                                    density="comfortable" hide-details rounded="lg" bg-color="surface">
                                     <template v-slot:append-inner>
                                         <ChevronDown :size="16" class="text-primary opacity-70" />
                                     </template>
@@ -682,8 +678,8 @@ watch(() => authStore.selectedMemberId, () => {
                                     FUND</label>
                                 <v-autocomplete v-model="assetForm.holding_id" :items="portfolioOptions"
                                     item-title="label" item-value="value" label="Search Mutual Fund" variant="outlined"
-                                    density="comfortable" hide-details rounded="lg" bg-color="surface" auto-select-first
-                                    :menu-icon="null">
+                                    density="comfortable" hide-details rounded="lg" bg-color="surface"
+                                    auto-select-first>
                                     <template v-slot:append-inner>
                                         <ChevronDown :size="16" class="text-primary opacity-70" />
                                     </template>
@@ -742,17 +738,7 @@ watch(() => authStore.selectedMemberId, () => {
 </template>
 
 <style scoped>
-.dashboard-page {
-    position: relative;
-    min-height: calc(100vh - 64px);
-}
-
-.mesh-blob {
-    position: absolute;
-    filter: blur(80px);
-    opacity: 0.15;
-    border-radius: 50%;
-}
+/* Relies on base.css dashboard-page */
 
 .relative-pos {
     position: relative;
@@ -766,12 +752,7 @@ watch(() => authStore.selectedMemberId, () => {
     gap: 12px;
 }
 
-.premium-glass-card {
-    background: rgba(var(--v-theme-surface), 0.7) !important;
-    backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(128, 128, 128, 0.15) !important;
-    box-shadow: none !important;
-}
+/* Relies on base.css premium-glass-card */
 
 .premium-glass-card:not(.border-dashed) {
     border-color: rgba(var(--v-border-color), 0.15) !important;
@@ -796,7 +777,6 @@ watch(() => authStore.selectedMemberId, () => {
 }
 
 .hover-lift:hover {
-    transform: translateY(-2px);
     background: rgba(var(--v-theme-surface), 1) !important;
     border-color: rgba(var(--v-theme-primary), 0.3) !important;
     box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1);

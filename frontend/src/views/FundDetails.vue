@@ -8,7 +8,7 @@ import FundPerformanceChart from './mutual-funds/components/FundPerformanceChart
 import { useCurrency } from '@/composables/useCurrency'
 import {
     History, Shield, Edit2, ChevronLeft, Check, TrendingUp,
-    Target, Briefcase, Globe, Fingerprint, AlertCircle
+    Target, Briefcase, Globe, Fingerprint, AlertCircle, Search
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import InvestModal from './mutual-funds/modals/InvestModal.vue'
@@ -145,7 +145,7 @@ function isImageUrl(url: string) {
 
 <template>
     <MainLayout>
-        <v-container fluid class="page-container pa-6 pa-md-10 relative-pos overflow-hidden">
+        <v-container fluid class="page-container">
             <!-- Mesh Background -->
             <div class="mesh-blob blob-1"></div>
             <div class="mesh-blob blob-2"></div>
@@ -158,10 +158,10 @@ function isImageUrl(url: string) {
                             <ChevronLeft :size="24" />
                         </v-btn>
                         <div>
-                            <h1 class="text-h5 font-weight-black text-content line-clamp-1">{{ holding.scheme_name }}
+                            <h1 class="text-h6 font-weight-black text-content line-clamp-1">{{ holding.scheme_name }}
                             </h1>
                             <div class="d-flex align-center gap-3 mt-1 flex-wrap">
-                                <v-chip size="x-small" label color="primary" variant="tonal" class="font-weight-bold">
+                                <v-chip size="x-small" label color="primary" variant="tonal" class="font-weight-black">
                                     {{ holding.category || 'Mutual Fund' }}
                                 </v-chip>
                                 <div
@@ -299,7 +299,7 @@ function isImageUrl(url: string) {
                                             <td class="text-right font-weight-medium text-body-2">{{
                                                 Number(t.units).toFixed(3) }}</td>
                                             <td class="text-right font-weight-medium text-body-2">{{ formatAmount(t.nav)
-                                                }}</td>
+                                            }}</td>
                                             <td class="text-right font-weight-black text-body-2">{{
                                                 formatAmount(t.amount) }}</td>
                                         </tr>
@@ -337,7 +337,7 @@ function isImageUrl(url: string) {
                                     </v-avatar>
                                     <div>
                                         <div class="text-subtitle-1 font-weight-black text-content">{{ holding.goal.name
-                                        }}</div>
+                                            }}</div>
                                         <div class="text-caption font-weight-bold opacity-60">TARGET: {{
                                             formatAmount(holding.goal.target_amount) }}</div>
                                     </div>
@@ -380,7 +380,7 @@ function isImageUrl(url: string) {
                                 <v-avatar color="primary" size="48" variant="tonal" rounded="lg">
                                     <img v-if="isImageUrl(holding.user_avatar)" :src="holding.user_avatar" alt="User" />
                                     <span v-else class="text-h6 font-weight-bold">{{ holding.user_name?.charAt(0)
-                                    }}</span>
+                                        }}</span>
                                 </v-avatar>
                                 <div>
                                     <div class="text-subtitle-1 font-weight-black text-content">{{ holding.user_name ||
@@ -432,7 +432,7 @@ function isImageUrl(url: string) {
                                     <span class="text-caption font-weight-bold text-medium-emphasis">Current
                                         Units</span>
                                     <span class="text-caption font-weight-bold text-content">{{ holding.units.toFixed(3)
-                                        }}</span>
+                                    }}</span>
                                 </div>
                             </div>
                         </v-card>
@@ -452,8 +452,12 @@ function isImageUrl(url: string) {
         <v-dialog v-model="showUserModal" max-width="400">
             <v-card class="premium-glass-card pa-4" rounded="xl">
                 <v-card-title class="font-weight-black">Assign Owner</v-card-title>
-                <v-text-field v-model="searchQuery" placeholder="Search members..." density="compact" variant="outlined"
-                    rounded="lg" prepend-inner-icon="mdi-magnify" class="mt-2"></v-text-field>
+                <v-text-field v-model="searchQuery" placeholder="Search members..." density="comfortable"
+                    variant="outlined" rounded="lg" class="mt-2">
+                    <template v-slot:prepend-inner>
+                        <Search :size="18" class="text-medium-emphasis mr-2" />
+                    </template>
+                </v-text-field>
                 <v-list bg-color="transparent">
                     <v-list-item v-for="user in filteredUsers" :key="user.id" @click="updateOwner(user.id)" rounded="lg"
                         class="mb-1">

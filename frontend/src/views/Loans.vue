@@ -1,6 +1,6 @@
 <template>
     <MainLayout>
-        <v-container fluid class="dashboard-page pa-6 pa-md-10 relative-pos overflow-hidden">
+        <v-container fluid class="page-container dashboard-page">
             <!-- Animated Mesh Background -->
             <div class="mesh-blob blob-1"
                 style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
@@ -13,8 +13,8 @@
                 <!-- Header -->
                 <div class="d-flex flex-column flex-md-row justify-space-between align-md-center mb-8">
                     <div class="mb-4 mb-md-0">
-                        <h1 class="text-h4 font-weight-black text-content mb-1">Loans</h1>
-                        <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold d-flex align-center">
+                        <h1 class="text-h6 font-weight-black text-content mb-1">Loans</h1>
+                        <p class="text-subtitle-2 text-on-surface opacity-70 font-weight-bold d-flex align-center">
                             Manage your debts and repayment schedules
                         </p>
                     </div>
@@ -149,8 +149,8 @@
                             </div>
                             <v-divider class="border-opacity-10"></v-divider>
                             <div class="px-5 py-3 bg-surface-variant bg-opacity-5 d-flex align-center">
-                                <Calendar :size="14" class="text-medium-emphasis mr-2" />
-                                <span class="text-caption font-weight-bold text-medium-emphasis">
+                                <Calendar :size="14" class="text-primary mr-2" />
+                                <span class="text-caption font-weight-black text-on-surface">
                                     Next Due: {{ getNextDueDate(loan.next_emi_date) }}
                                 </span>
                             </div>
@@ -183,7 +183,7 @@
 
                             <v-select v-model="form.loan_type" :items="loanTypeOptions" item-title="label"
                                 item-value="value" label="Loan Type" variant="outlined" density="comfortable"
-                                hide-details rounded="lg" bg-color="surface" class="mb-4" :menu-icon="null">
+                                hide-details rounded="lg" bg-color="surface" class="mb-4">
                                 <template v-slot:append-inner>
                                     <ChevronDown :size="16" class="text-primary opacity-70" />
                                 </template>
@@ -240,7 +240,7 @@
                             <!-- Calculated EMI Box -->
                             <div
                                 class="mt-6 pa-4 bg-primary bg-opacity-10 rounded-lg border border-primary border-opacity-20 d-flex justify-space-between align-center">
-                                <span class="text-subtitle-2 font-weight-bold text-primary">Calculated EMI</span>
+                                <span class="text-subtitle-2 font-weight-bold text-on-surface">Calculated EMI</span>
                                 <span class="text-h5 font-weight-black text-primary">{{ formatCurrency(form.emi_amount)
                                     }}</span>
                             </div>
@@ -483,7 +483,6 @@ onMounted(() => {
 }
 
 .hover-lift:hover {
-    transform: translateY(-4px);
     border-color: rgba(var(--v-theme-primary), 0.3) !important;
     background: rgba(var(--v-theme-surface), 0.85) !important;
     box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1) !important;
