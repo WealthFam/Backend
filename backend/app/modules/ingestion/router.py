@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File, Form
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
 
@@ -860,21 +861,33 @@ def create_alias(
 
     updated_count = 0
     if payload.update_past_transactions:
-        # 2. Retroactive Update: Find transactions where description/raw_message contains pattern (case-insensitive)
-        # We search 'description' as that's usually the raw merchant text or 'recipient' if it was already partly cleaned 
-        # but we want to map it further.
-        # Actually better to search 'description' as that is closer to source truth.
-        
-        # SQLA ILIKE
+        # 2. Retroactive Update: Find transactions where description or recipient contains pattern
         pattern_wildcard = f"%{payload.pattern}%"
         
+        # Update finalized transactions
         txns_to_update = db.query(finance_models.Transaction).filter(
             finance_models.Transaction.tenant_id == str(current_user.tenant_id),
-            finance_models.Transaction.description.ilike(pattern_wildcard)
+            or_(
+                finance_models.Transaction.description.ilike(pattern_wildcard),
+                finance_models.Transaction.recipient.ilike(pattern_wildcard)
+            )
         ).all()
         
         for txn in txns_to_update:
             txn.recipient = payload.alias
+            updated_count += 1
+
+        # Update pending transactions (triage)
+        pending_to_update = db.query(ingestion_models.PendingTransaction).filter(
+            ingestion_models.PendingTransaction.tenant_id == str(current_user.tenant_id),
+            or_(
+                ingestion_models.PendingTransaction.description.ilike(pattern_wildcard),
+                ingestion_models.PendingTransaction.recipient.ilike(pattern_wildcard)
+            )
+        ).all()
+
+        for p_txn in pending_to_update:
+            p_txn.recipient = payload.alias
             updated_count += 1
             
         db.commit()
@@ -906,13 +919,30 @@ def update_alias(
         # Retroactive Update
         pattern_wildcard = f"%{payload.pattern}%"
         
+        # Update finalized transactions
         txns_to_update = db.query(finance_models.Transaction).filter(
             finance_models.Transaction.tenant_id == str(current_user.tenant_id),
-            finance_models.Transaction.description.ilike(pattern_wildcard)
+            or_(
+                finance_models.Transaction.description.ilike(pattern_wildcard),
+                finance_models.Transaction.recipient.ilike(pattern_wildcard)
+            )
         ).all()
         
         for txn in txns_to_update:
             txn.recipient = payload.alias
+            updated_count += 1
+
+        # Update pending transactions (triage)
+        pending_to_update = db.query(ingestion_models.PendingTransaction).filter(
+            ingestion_models.PendingTransaction.tenant_id == str(current_user.tenant_id),
+            or_(
+                ingestion_models.PendingTransaction.description.ilike(pattern_wildcard),
+                ingestion_models.PendingTransaction.recipient.ilike(pattern_wildcard)
+            )
+        ).all()
+
+        for p_txn in pending_to_update:
+            p_txn.recipient = payload.alias
             updated_count += 1
             
         db.commit()
@@ -929,12 +959,24 @@ def preview_alias_impact(
     Check how many past transactions would match this pattern.
     """
     pattern_wildcard = f"%{payload.pattern}%"
-    count = db.query(finance_models.Transaction).filter(
+    
+    count_finalized = db.query(finance_models.Transaction).filter(
         finance_models.Transaction.tenant_id == str(current_user.tenant_id),
-        finance_models.Transaction.description.ilike(pattern_wildcard)
+        or_(
+            finance_models.Transaction.description.ilike(pattern_wildcard),
+            finance_models.Transaction.recipient.ilike(pattern_wildcard)
+        )
+    ).count()
+
+    count_pending = db.query(ingestion_models.PendingTransaction).filter(
+        ingestion_models.PendingTransaction.tenant_id == str(current_user.tenant_id),
+        or_(
+            ingestion_models.PendingTransaction.description.ilike(pattern_wildcard),
+            ingestion_models.PendingTransaction.recipient.ilike(pattern_wildcard)
+        )
     ).count()
     
-    return {"match_count": count}
+    return {"match_count": count_finalized + count_pending}
 
 @router.delete("/aliases/{alias_id}")
 def delete_alias(

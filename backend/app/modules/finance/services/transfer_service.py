@@ -43,6 +43,7 @@ class TransferService:
 
         source_txn = TransactionService.create_transaction(
             db, source_create, tenant_id, 
+            exclude_pending_id=pending.id,
             update_balance=update_source_balance
         )
         
@@ -64,6 +65,7 @@ class TransferService:
         
         target_txn = TransactionService.create_transaction(
             db, target_create, tenant_id,
+            exclude_pending_id=pending.id,
             update_balance=True 
         )
         

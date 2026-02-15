@@ -15,7 +15,7 @@ from backend.app.modules.ingestion import models as ingestion_models
 
 class TransactionService:
     @staticmethod
-    def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None):
+    def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None, update_balance: bool = True):
         # 1. Unified Deduplication Check (Ref ID, Hash-Fallback, and Fields)
         from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
         is_dup, reason, existing_id = TransactionDeduplicator.check_raw_duplicate(
