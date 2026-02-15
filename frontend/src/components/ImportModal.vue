@@ -359,7 +359,7 @@ function close() {
                                     <thead>
                                         <tr>
                                             <th v-for="h in csvHeaders" :key="h"
-                                                class="text-uppercase text-[10px] font-weight-black opacity-60">
+                                                class="text-uppercase text-tiny font-weight-black opacity-60">
                                                 {{ h }}
                                             </th>
                                         </tr>
@@ -394,8 +394,8 @@ function close() {
                                                     <div class="flex-grow-1">
                                                         <div class="text-caption font-weight-black">{{ field.label }}
                                                         </div>
-                                                        <div class="text-[10px] opacity-60 line-clamp-1">{{ field.desc
-                                                            }}</div>
+                                                        <div class="text-tiny opacity-60 line-clamp-1">{{ field.desc
+                                                        }}</div>
                                                     </div>
                                                 </div>
                                                 <div class="mapping-arrow mx-4 opacity-30">
@@ -494,10 +494,10 @@ function close() {
                                                     color="primary" hide-details
                                                     @update:model-value="toggleAllVerify"></v-checkbox-btn>
                                             </th>
-                                            <th class="font-weight-black text-[10px] opacity-60">DATE</th>
-                                            <th class="font-weight-black text-[10px] opacity-60">REF #</th>
-                                            <th class="font-weight-black text-[10px] opacity-60">RECIPIENT / SOURCE</th>
-                                            <th class="font-weight-black text-[10px] opacity-60 text-right">AMOUNT</th>
+                                            <th class="font-weight-black text-tiny opacity-60">DATE</th>
+                                            <th class="font-weight-black text-tiny opacity-60">REF #</th>
+                                            <th class="font-weight-black text-tiny opacity-60">RECIPIENT / SOURCE</th>
+                                            <th class="font-weight-black text-tiny opacity-60 text-right">AMOUNT</th>
                                             <th class="text-center" style="width: 50px;"></th>
                                         </tr>
                                     </thead>
@@ -511,11 +511,11 @@ function close() {
                                             </td>
                                             <td class="text-caption">{{ txn.date }}</td>
                                             <td class="text-caption opacity-50">{{ txn.external_id || txn.ref_id || '-'
-                                                }}</td>
+                                            }}</td>
                                             <td>
                                                 <div class="font-weight-bold text-caption text-surface">{{ txn.recipient
                                                     || '-' }}</div>
-                                                <div class="text-[10px] opacity-60 line-clamp-1">{{ txn.description }}
+                                                <div class="text-tiny opacity-60 line-clamp-1">{{ txn.description }}
                                                 </div>
                                             </td>
                                             <td class="text-right font-weight-black"
@@ -723,5 +723,9 @@ function close() {
 
 .bg-primary-lighten-5 {
     background-color: rgba(var(--v-theme-primary), 0.1);
+}
+
+.text-tiny {
+    font-size: 10px;
 }
 </style>
