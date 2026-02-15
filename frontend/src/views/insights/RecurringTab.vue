@@ -6,7 +6,7 @@
                     <div class="pa-5 d-flex align-center justify-space-between">
                         <div class="d-flex align-center">
                             <v-avatar color="surface-variant" size="56" rounded="lg" class="mr-4 elevation-2">
-                                <span class="text-h5">{{ store.getCategoryIcon(rec.category) }}</span>
+                                <component :is="getCategoryLucideIcon(rec.category)" :size="24" class="text-primary" />
                             </v-avatar>
                             <div>
                                 <h3 class="text-subtitle-1 font-weight-black mb-0">{{ rec.name }}</h3>
@@ -21,12 +21,10 @@
                         </div>
                         <div class="text-right">
                             <div class="text-h6 font-weight-black">{{ formatAmount(rec.amount) }}</div>
-                            <v-btn variant="text" size="small" color="error"
+                            <v-btn variant="text" size="small" color="error" icon
                                 class="opacity-0 group-hover-opacity-100 transition-all"
                                 @click="deleteRecurrence(rec.id)">
-                                <template v-slot:default>
-                                    <XCircle :size="20" />
-                                </template>
+                                <Trash2 :size="18" />
                             </v-btn>
                         </div>
                     </div>
@@ -64,7 +62,11 @@
                         <v-col cols="12">
                             <label class="text-caption font-weight-bold text-uppercase ml-1">Subscription Name</label>
                             <v-text-field v-model="newRecurrence.name" placeholder="Netflix, Rent, Salary..."
-                                variant="outlined" density="comfortable" flat rounded="lg" />
+                                variant="outlined" density="comfortable" flat rounded="lg">
+                                <template v-slot:prepend-inner>
+                                    <CreditCard :size="18" class="text-primary mr-2" />
+                                </template>
+                            </v-text-field>
                         </v-col>
 
                         <v-col cols="6">
@@ -76,7 +78,11 @@
                         <v-col cols="6">
                             <label class="text-caption font-weight-bold text-uppercase ml-1">Frequency</label>
                             <v-select v-model="newRecurrence.frequency" :items="frequencyOptions" variant="outlined"
-                                density="comfortable" flat rounded="lg" />
+                                density="comfortable" flat rounded="lg" menu-icon="">
+                                <template v-slot:append-inner>
+                                    <ChevronDown :size="16" class="text-primary opacity-70" />
+                                </template>
+                            </v-select>
                         </v-col>
 
                         <v-col cols="6">
@@ -91,6 +97,9 @@
                                 :items="store.accounts.map(a => ({ title: a.name, value: a.id }))" variant="outlined"
                                 density="comfortable" hide-details flat rounded="lg" class="premium-modal-select"
                                 menu-icon="" style="background: rgba(var(--v-theme-surface), 0.7);">
+                                <template v-slot:prepend-inner>
+                                    <Wallet :size="18" class="text-primary mr-2" />
+                                </template>
                                 <template v-slot:append-inner>
                                     <ChevronDown :size="16" class="text-primary opacity-70" />
                                 </template>
@@ -100,10 +109,14 @@
                         <v-col cols="12">
                             <label class="text-caption font-weight-bold text-uppercase ml-1">Category</label>
                             <v-select v-model="newRecurrence.category"
-                                :items="store.categories.map(c => ({ title: `${c.icon} ${c.name}`, value: c.name }))"
+                                :items="store.categories.map(c => ({ title: c.name, value: c.name }))"
                                 variant="outlined" density="comfortable" hide-details flat rounded="lg"
                                 class="premium-modal-select" menu-icon=""
                                 style="background: rgba(var(--v-theme-surface), 0.7);">
+                                <template v-slot:prepend-inner>
+                                    <component :is="getCategoryLucideIcon(newRecurrence.category)" :size="18"
+                                        class="text-primary mr-2" />
+                                </template>
                                 <template v-slot:append-inner>
                                     <ChevronDown :size="16" class="text-primary opacity-70" />
                                 </template>
@@ -137,7 +150,8 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
 import { financeApi } from '@/api/client'
-import { Plus, X, ChevronDown, CalendarClock, XCircle } from 'lucide-vue-next'
+import { Plus, X, ChevronDown, CalendarClock, Trash2, Wallet, CreditCard } from 'lucide-vue-next'
+import { getCategoryLucideIcon } from '@/utils/iconMapping'
 
 const store = useFinanceStore()
 const authStore = useAuthStore()

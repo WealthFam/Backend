@@ -37,11 +37,11 @@ const chartData = computed(() => {
       {
         label: 'Monthly Limit',
         data: limits,
-        backgroundColor: 'rgba(100, 116, 139, 0.1)',
-        borderColor: 'rgba(100, 116, 139, 0.2)',
+        backgroundColor: 'rgba(var(--v-theme-surface-variant), 0.3)',
+        borderColor: 'rgba(var(--v-theme-surface-variant), 0.5)',
         borderWidth: 1,
-        borderRadius: 6,
-        barPercentage: 0.8,
+        borderRadius: 8,
+        barPercentage: 0.9,
         categoryPercentage: 0.8
       },
       {
@@ -50,12 +50,11 @@ const chartData = computed(() => {
         backgroundColor: (context: any) => {
           const index = context.dataIndex
           const isOver = spent[index] > limits[index]
-          return isOver ? 'rgba(239, 68, 68, 0.7)' : 'rgba(99, 102, 241, 0.7)'
+          return isOver ? 'rgba(var(--v-theme-error), 0.8)' : 'rgba(var(--v-theme-primary), 0.8)'
         },
-        borderRadius: 6,
-        barPercentage: 0.5,
+        borderRadius: 8,
+        barPercentage: 0.6,
         categoryPercentage: 0.8,
-        // Overlay actual spending bar
         grouped: false,
       }
     ]

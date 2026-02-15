@@ -103,7 +103,126 @@ const defaultOptions = computed(() => ({
   } : {}
 }))
 
-const chartData = computed(() => props.data)
+const computedChartData = computed(() => {
+  if (!props.data) return props.data
+
+  // Non-destructive deep clone to preserve functions (scriptable properties)
+  const clone = (obj: any): any => {
+    if (obj === null || typeof obj !== 'object') return obj
+    if (typeof obj === 'function') return obj // Preserve functions
+    if (Array.isArray(obj)) return obj.map(clone)
+
+    const clonedObj: any = {}
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        clonedObj[key] = clone(obj[key])
+      }
+    }
+    return clonedObj
+  }
+
+  const d = clone(props.data)
+
+  if (d.datasets) {
+    d.datasets.forEach((dataset: any) => {
+      const color = dataset.borderColor || 'rgb(var(--v-theme-primary))'
+      const resolvedColor = typeof color === 'string' ? resolveColor(color) : color
+
+      dataset.borderColor = resolvedColor
+
+      // Handle Gradient for Line Charts
+      if (props.type === 'line' && dataset.fill) {
+        // We use a scriptable background color to create the gradient
+        if (typeof dataset.borderColor === 'string') {
+          dataset.backgroundColor = (context: any) => {
+            const chart = context.chart
+            const { ctx, chartArea } = chart
+            if (!chartArea) return null
+
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
+            // Resolve the primary color
+            const baseColor = resolveColor(dataset.borderColor)
+            // Convert to RGBA for gradient
+            const rgba = baseColor.startsWith('#') ? hexToRgb(baseColor) : baseColor.replace('rgb(', '').replace(')', '').replace('rgba(', '').split(',').slice(0, 3).join(',')
+
+            gradient.addColorStop(0, `rgba(${rgba}, 0.2)`)
+            gradient.addColorStop(1, `rgba(${rgba}, 0)`)
+            return gradient
+          }
+        }
+      }
+      if (typeof dataset.backgroundColor === 'function') {
+        const originalBg = dataset.backgroundColor
+        dataset.backgroundColor = (ctx: any) => {
+          const res = originalBg(ctx)
+          return typeof res === 'string' ? resolveColor(res) : res
+        }
+      } else if (typeof dataset.backgroundColor === 'string' && (dataset.backgroundColor.includes('var(') || dataset.backgroundColor.includes('rgb('))) {
+        dataset.backgroundColor = resolveColor(dataset.backgroundColor)
+      }
+
+      if (typeof dataset.pointBackgroundColor === 'function') {
+        const originalPbg = dataset.pointBackgroundColor
+        dataset.pointBackgroundColor = (ctx: any) => {
+          const res = originalPbg(ctx)
+          return typeof res === 'string' ? resolveColor(res) : res
+        }
+      } else if (typeof dataset.pointBackgroundColor === 'string' && (dataset.pointBackgroundColor.includes('var(') || dataset.pointBackgroundColor.includes('rgb('))) {
+        dataset.pointBackgroundColor = resolveColor(dataset.pointBackgroundColor)
+      }
+
+      if (typeof dataset.borderColor === 'function') {
+        const originalBc = dataset.borderColor
+        dataset.borderColor = (ctx: any) => {
+          const res = originalBc(ctx)
+          return typeof res === 'string' ? resolveColor(res) : res
+        }
+      }
+    })
+  }
+  return d
+})
+
+function resolveColor(colorStr: string): string {
+  if (!colorStr.includes('var(')) return colorStr
+
+  // Try to extract variable name for direct theme lookup first
+  const match = colorStr.match(/--v-theme-([a-z0-9-]+)/)
+  if (match && match[1]) {
+    // Convert kebab-case to camelCase (e.g., surface-variant to surfaceVariant)
+    const key = match[1].replace(/-([a-z])/g, (g) => g[1].toUpperCase())
+    const themeColor = (vTheme.global.current.value.colors as any)[key]
+    if (themeColor) {
+      if (colorStr.includes('rgba(')) {
+        const parts = colorStr.split(',')
+        const alpha = parts[parts.length - 1].replace(')', '').trim() || '1'
+        return `rgba(${hexToRgb(themeColor)}, ${alpha})`
+      }
+      return themeColor
+    }
+  }
+
+  // Fallback to DOM resolution for complex strings
+  try {
+    const temp = document.createElement('div')
+    temp.style.color = colorStr
+    document.body.appendChild(temp)
+    const resolved = window.getComputedStyle(temp).color
+    document.body.removeChild(temp)
+    return resolved || colorStr
+  } catch (e) {
+    return colorStr
+  }
+}
+
+function hexToRgb(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `${r}, ${g}, ${b}`
+}
+
+const chartData = computed(() => computedChartData.value)
 const chartOptions = computed(() => ({ ...defaultOptions.value, ...props.options }))
 const height = computed(() => props.height || 300)
 

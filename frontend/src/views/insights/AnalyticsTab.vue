@@ -100,14 +100,15 @@
 
             <!-- Summary Cards -->
             <v-col cols="12" md="4">
-                <v-card rounded="xl" class="stat-glass-card stat-income">
+                <v-card rounded="xl" class="stat-glass-card stat-income h-100">
                     <div class="d-flex align-center pa-4">
-                        <div class="stat-icon-glow mr-4">
-                            <TrendingUp :size="32" class="text-success" />
+                        <div class="stat-icon-glow income-glow mr-4">
+                            <TrendingUp :size="28" class="text-success" />
                         </div>
                         <div>
-                            <span class="text-overline font-weight-black text-medium-emphasis">Total Income</span>
-                            <h2 class="text-h4 font-weight-bold text-success">{{
+                            <span class="text-overline font-weight-black text-medium-emphasis letter-spacing-1">Total
+                                Income</span>
+                            <h2 class="text-h4 font-weight-black text-success mt-n1">{{
                                 formatAmount(analyticsMetrics?.monthly_income
                                     ?? analyticsData.income) }}
                             </h2>
@@ -117,14 +118,15 @@
             </v-col>
 
             <v-col cols="12" md="4">
-                <v-card rounded="xl" class="stat-glass-card stat-expense">
+                <v-card rounded="xl" class="stat-glass-card stat-expense h-100">
                     <div class="d-flex align-center pa-4">
-                        <div class="stat-icon-glow mr-4">
-                            <TrendingDown :size="32" class="text-error" />
+                        <div class="stat-icon-glow expense-glow mr-4">
+                            <TrendingDown :size="28" class="text-error" />
                         </div>
                         <div>
-                            <span class="text-overline font-weight-black text-medium-emphasis">Total Expenses</span>
-                            <h2 class="text-h4 font-weight-bold text-error">{{
+                            <span class="text-overline font-weight-black text-medium-emphasis letter-spacing-1">Total
+                                Expenses</span>
+                            <h2 class="text-h4 font-weight-black text-error mt-n1">{{
                                 formatAmount(analyticsMetrics?.monthly_total ??
                                     analyticsData.expense) }}
                             </h2>
@@ -134,14 +136,15 @@
             </v-col>
 
             <v-col cols="12" md="4">
-                <v-card rounded="xl" class="stat-glass-card stat-net">
+                <v-card rounded="xl" class="stat-glass-card stat-net h-100">
                     <div class="d-flex align-center pa-4">
-                        <div class="stat-icon-glow mr-4">
-                            <Scale :size="32" class="text-primary" />
+                        <div class="stat-icon-glow net-glow mr-4">
+                            <Scale :size="28" class="text-primary" />
                         </div>
                         <div>
-                            <span class="text-overline font-weight-black text-medium-emphasis">Net Cashflow</span>
-                            <h2 class="text-h4 font-weight-bold"
+                            <span class="text-overline font-weight-black text-medium-emphasis letter-spacing-1">Net
+                                Cashflow</span>
+                            <h2 class="text-h4 font-weight-black mt-n1"
                                 :class="(analyticsMetrics?.monthly_income ?? 0) >= (analyticsMetrics?.monthly_total ?? 0) ? 'text-primary' : 'text-error'">
                                 {{ formatAmount((analyticsMetrics?.monthly_income ?? 0) -
                                     (analyticsMetrics?.monthly_total ??
@@ -196,7 +199,8 @@
                                     <div
                                         class="d-flex align-center pa-3 rounded-lg bg-surface-variant bg-opacity-10 border">
                                         <v-avatar size="32" class="mr-3" color="surface-variant" rounded="lg">
-                                            <span class="text-caption">{{ cat.icon }}</span>
+                                            <component :is="getCategoryLucideIcon(cat.name)" :size="16"
+                                                class="text-primary" />
                                         </v-avatar>
                                         <div class="overflow-hidden">
                                             <div class="text-caption font-weight-bold text-truncate">{{ cat.name }}
@@ -343,7 +347,11 @@
                                     <div v-for="h in heatmapData.hours" :key="h" class="hour-label">{{ h }}h</div>
                                 </div>
                                 <div v-for="cat in heatmapData.categories" :key="cat" class="heatmap-data-row">
-                                    <div class="heatmap-label-cell truncate">{{ cat }}</div>
+                                    <div class="heatmap-label-cell truncate">
+                                        <component :is="getCategoryLucideIcon(cat)" :size="14"
+                                            class="mr-2 text-primary opacity-70" />
+                                        {{ cat }}
+                                    </div>
                                     <v-tooltip v-for="h in heatmapData.hours" :key="h" location="top">
                                         <template #activator="{ props }">
                                             <div v-bind="props" class="heatmap-square" :style="{
@@ -381,8 +389,10 @@ import BudgetHistoryChart from '@/components/BudgetHistoryChart.vue'
 import { marked } from 'marked'
 import {
     TrendingUp, TrendingDown, Scale,
-    CalendarRange, ArrowRight, RefreshCcw, Filter, BarChart2
+    CalendarRange, ArrowRight, RefreshCcw, Filter, BarChart2,
+    ShieldAlert, Sparkles, Brain, ChevronDown
 } from 'lucide-vue-next'
+import { getCategoryLucideIcon } from '@/utils/iconMapping'
 
 interface Props {
     selectedAccount?: string
@@ -682,19 +692,25 @@ const filteredTrendData = computed(() => {
         .map(([label, value]) => ({ label, value }))
 })
 
-const trendChartData = computed(() => ({
-    labels: filteredTrendData.value.map(d => trendView.value === 'daily' ? d.label.slice(5) : d.label),
-    datasets: [{
-        label: selectedTrendCategory.value || 'All Spending',
-        data: filteredTrendData.value.map(d => d.value),
-        borderColor: selectedTrendCategory.value ? store.getCategoryColor(selectedTrendCategory.value) : 'rgb(var(--v-theme-primary))',
-        backgroundColor: (selectedTrendCategory.value ? store.getCategoryColor(selectedTrendCategory.value) : 'rgb(var(--v-theme-primary))') + '20',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 4,
-        pointBackgroundColor: selectedTrendCategory.value ? store.getCategoryColor(selectedTrendCategory.value) : '#6366f1'
-    }]
-}))
+const trendChartData = computed(() => {
+    const color = selectedTrendCategory.value ? store.getCategoryColor(selectedTrendCategory.value) : 'rgb(var(--v-theme-primary))'
+    // Safely handle alpha for both hex and rgb(var)
+    const bgColor = color.startsWith('#') ? color + '20' : color.replace('rgb(', 'rgba(').replace(')', ', 0.1)')
+
+    return {
+        labels: filteredTrendData.value.map(d => trendView.value === 'daily' ? d.label.slice(5) : d.label),
+        datasets: [{
+            label: selectedTrendCategory.value || 'All Spending',
+            data: filteredTrendData.value.map(d => d.value),
+            borderColor: color,
+            backgroundColor: bgColor,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 4,
+            pointBackgroundColor: color
+        }]
+    }
+})
 
 
 const heatmapData = computed(() => {
@@ -827,7 +843,7 @@ const forecastChartData = computed(() => ({
 .blob-blue {
     width: 300px;
     height: 300px;
-    background: #3b82f6;
+    background: rgba(var(--v-theme-primary), 1);
     top: -100px;
     right: -100px;
 }
@@ -835,7 +851,7 @@ const forecastChartData = computed(() => ({
 .blob-purple {
     width: 250px;
     height: 250px;
-    background: #8b5cf6;
+    background: rgba(var(--v-theme-secondary), 1);
     bottom: -80px;
     left: -50px;
 }
@@ -907,7 +923,26 @@ const forecastChartData = computed(() => ({
     padding: 12px;
     border-radius: 16px;
     background: rgba(var(--v-theme-surface-variant), 0.5);
-    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+}
+
+.income-glow {
+    background: rgba(var(--v-theme-success), 0.1);
+    box-shadow: 0 0 15px rgba(var(--v-theme-success), 0.2);
+}
+
+.expense-glow {
+    background: rgba(var(--v-theme-error), 0.1);
+    box-shadow: 0 0 15px rgba(var(--v-theme-error), 0.2);
+}
+
+.net-glow {
+    background: rgba(var(--v-theme-primary), 0.1);
+    box-shadow: 0 0 15px rgba(var(--v-theme-primary), 0.2);
 }
 
 /* Charts */
