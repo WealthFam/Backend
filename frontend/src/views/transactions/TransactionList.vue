@@ -240,7 +240,7 @@ function handleReset() {
 }
 
 :deep(.v-field--variant-solo.v-field--focused) {
-    border-color: rgb(var(--v-theme-primary));
+    border-color: rgb(var(--v-theme-primary)) !important;
 }
 
 .gap-2 {

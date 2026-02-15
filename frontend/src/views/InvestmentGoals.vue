@@ -15,7 +15,8 @@ import {
     X,
     Target,
     Activity,
-    Wallet
+    Wallet,
+    ChevronDown
 } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
@@ -546,7 +547,10 @@ watch(() => authStore.selectedMemberId, () => {
                                 <v-select v-model="goalForm.owner_id" :items="memberOptions" item-title="title"
                                     item-value="value" variant="outlined" density="comfortable" hide-details
                                     rounded="lg" bg-color="surface" placeholder="Assign Owner" color="primary"
-                                    append-inner-icon="mdi-chevron-down">
+                                    :menu-icon="null">
+                                    <template v-slot:append-inner>
+                                        <ChevronDown :size="16" class="text-primary opacity-70" />
+                                    </template>
                                     <template v-slot:item="{ props, item }">
                                         <v-list-item v-bind="props" :title="item.raw.title" class="rounded-lg ma-1">
                                             <template v-slot:prepend>
@@ -649,8 +653,12 @@ watch(() => authStore.selectedMemberId, () => {
                                 <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">SELECT
                                     ACCOUNT</label>
                                 <v-select v-model="assetForm.linked_account_id" :items="accountOptions"
-                                    label="Select Account" variant="outlined" density="comfortable" hide-details
-                                    rounded="lg" bg-color="surface" append-inner-icon="mdi-chevron-down">
+                                    item-title="label" item-value="value" label="Select Account" variant="outlined"
+                                    density="comfortable" hide-details rounded="lg" bg-color="surface"
+                                    :menu-icon="null">
+                                    <template v-slot:append-inner>
+                                        <ChevronDown :size="16" class="text-primary opacity-70" />
+                                    </template>
                                     <template v-slot:item="{ props, item }">
                                         <v-list-item v-bind="props" :title="item.raw.label" class="rounded-lg ma-1">
                                             <template v-slot:prepend>
@@ -673,9 +681,12 @@ watch(() => authStore.selectedMemberId, () => {
                                 <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">SELECT
                                     FUND</label>
                                 <v-autocomplete v-model="assetForm.holding_id" :items="portfolioOptions"
-                                    label="Search Mutual Fund" variant="outlined" density="comfortable" hide-details
-                                    rounded="lg" bg-color="surface" append-inner-icon="mdi-chevron-down"
-                                    auto-select-first>
+                                    item-title="label" item-value="value" label="Search Mutual Fund" variant="outlined"
+                                    density="comfortable" hide-details rounded="lg" bg-color="surface" auto-select-first
+                                    :menu-icon="null">
+                                    <template v-slot:append-inner>
+                                        <ChevronDown :size="16" class="text-primary opacity-70" />
+                                    </template>
                                     <template v-slot:item="{ props, item }">
                                         <v-list-item v-bind="props" :title="item.raw.label" class="rounded-lg ma-1">
                                             <template v-slot:prepend>

@@ -8,7 +8,7 @@
                     <div class="d-flex justify-space-between align-center mb-4">
                         <span class="text-overline font-weight-black opacity-60 letter-spacing-1">Total</span>
                         <v-avatar color="indigo-lighten-5" rounded="lg" size="44">
-                            <span class="text-h5">📊</span>
+                            <BarChart3 :size="24" class="text-indigo-600" />
                         </v-avatar>
                     </div>
                     <div class="text-h4 font-weight-black">
@@ -24,7 +24,7 @@
                     <div class="d-flex justify-space-between align-center mb-4">
                         <span class="text-overline font-weight-black opacity-60 letter-spacing-1">Expenses</span>
                         <v-avatar color="rose-lighten-5" rounded="lg" size="44">
-                            <span class="text-h5">💸</span>
+                            <TrendingDown :size="24" class="text-rose-600" />
                         </v-avatar>
                     </div>
                     <div class="text-h4 font-weight-black"
@@ -41,7 +41,7 @@
                     <div class="d-flex justify-space-between align-center mb-4">
                         <span class="text-overline font-weight-black opacity-60 letter-spacing-1">Income</span>
                         <v-avatar color="emerald-lighten-5" rounded="lg" size="44">
-                            <span class="text-h5">💰</span>
+                            <TrendingUp :size="24" class="text-emerald-600" />
                         </v-avatar>
                     </div>
                     <div class="text-h4 font-weight-black"
@@ -58,7 +58,7 @@
                     <div class="d-flex justify-space-between align-center mb-4">
                         <span class="text-overline font-weight-black opacity-60 letter-spacing-1">Transfers</span>
                         <v-avatar color="cyan-lighten-5" rounded="lg" size="44">
-                            <span class="text-h5">🔄</span>
+                            <Repeat :size="24" class="text-cyan-600" />
                         </v-avatar>
                     </div>
                     <div class="text-h4 font-weight-black"
@@ -74,9 +74,9 @@
             <v-row align="center">
                 <v-col cols="12" md="4">
                     <v-text-field v-model="categoriesStore.searchQuery" placeholder="Search categories..." hide-details
-                        density="comfortable" variant="plain" class="font-weight-bold px-2">
+                        density="comfortable" variant="outlined" class="font-weight-bold" bg-color="surface">
                         <template v-slot:prepend-inner>
-                            <Search :size="20" class="text-slate-400" />
+                            <Search :size="20" class="text-primary mr-2" />
                         </template>
                     </v-text-field>
                 </v-col>
@@ -357,7 +357,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useCategoriesStore } from '@/stores/finance/categories'
 import {
     Search, Plus, Pencil, Trash2, Folder, Layers,
-    Download, Upload, AlertCircle, X, ChevronDown
+    Download, Upload, AlertCircle, X, ChevronDown,
+    BarChart3, TrendingDown, TrendingUp, Repeat
 } from 'lucide-vue-next'
 
 const categoriesStore = useCategoriesStore()

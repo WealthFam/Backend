@@ -183,8 +183,10 @@
 
                             <v-select v-model="form.loan_type" :items="loanTypeOptions" item-title="label"
                                 item-value="value" label="Loan Type" variant="outlined" density="comfortable"
-                                hide-details rounded="lg" bg-color="surface" class="mb-4"
-                                append-inner-icon="ChevronDown">
+                                hide-details rounded="lg" bg-color="surface" class="mb-4" :menu-icon="null">
+                                <template v-slot:append-inner>
+                                    <ChevronDown :size="16" class="text-primary opacity-70" />
+                                </template>
                                 <template v-slot:item="{ props, item }">
                                     <v-list-item v-bind="props" :prepend-icon="undefined">
                                         <template v-slot:prepend>
@@ -300,7 +302,7 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi as api } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useCurrency } from '@/composables/useCurrency'
-import { Sparkles, Plus, Landmark, Calendar, X } from 'lucide-vue-next'
+import { Sparkles, Plus, Landmark, Calendar, X, ChevronDown } from 'lucide-vue-next'
 import { marked } from 'marked'
 
 const router = useRouter()

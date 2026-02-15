@@ -236,7 +236,10 @@
                                 <v-select v-model="repaymentForm.bank_account_id" :items="accountOptions"
                                     item-title="label" item-value="value" label="Paid From" variant="outlined"
                                     density="comfortable" hide-details rounded="lg" bg-color="surface" class="mb-4"
-                                    append-inner-icon="ChevronDown">
+                                    :menu-icon="null">
+                                    <template v-slot:append-inner>
+                                        <ChevronDown :size="16" class="text-primary opacity-70" />
+                                    </template>
                                 </v-select>
 
                                 <v-text-field v-model="repaymentForm.description" label="Notes (Optional)"
@@ -275,7 +278,7 @@ import { useCurrency } from '@/composables/useCurrency'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { Pie } from 'vue-chartjs'
 import { marked } from 'marked'
-import { ChevronLeft, Sparkles, X } from 'lucide-vue-next'
+import { ChevronLeft, Sparkles, X, ChevronDown } from 'lucide-vue-next'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
