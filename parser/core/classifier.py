@@ -7,7 +7,7 @@ class FinancialClassifier:
         r"\bdebited\b", r"\bcredited\b", r"\bspent\b", r"\bpaid\b", r"\bsent\b", 
         r"\breceived\b", r"\btxn\b", r"\btransaction\b", r"\bacct\b", r"\ba/c\b", 
         r"\bbank\b", r"\bupi\b", r"\bwithdraw\b", r"\bpurchase\b", r"\bbill\b", 
-        r"\bpayment\b"
+        r"\bpayment\b", r"\btransfer\b"
     ]
 
     # Keywords that suggest noise (OTP, Promos, Notifications)
