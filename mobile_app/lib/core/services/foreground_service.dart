@@ -60,15 +60,17 @@ class ForegroundServiceWrapper {
         return true;
       }
 
-      debugPrint("ForegroundService: Starting new service [dataSync]");
+      debugPrint("ForegroundService: Starting new service");
       final result = await FlutterForegroundTask.startService(
-        serviceId: 256,
-        serviceTypes: [ForegroundServiceTypes.dataSync],
         notificationTitle: 'WealthFam Guard',
         notificationText: 'Initializing tracker...',
         notificationIcon: const NotificationIcon(
           metaDataName: 'com.wealthfam.notification_icon',
         ),
+        notificationButtons: [
+          const NotificationButton(id: 'toggle_mask', text: 'Toggle Mask'),
+          const NotificationButton(id: 'refresh', text: 'Refresh'),
+        ],
         callback: startCallback,
       );
       

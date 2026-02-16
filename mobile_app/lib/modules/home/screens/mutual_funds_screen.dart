@@ -5,6 +5,8 @@ import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/home/services/funds_service.dart';
 import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 import 'package:mobile_app/modules/home/models/fund_models.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'dart:math' as math;
 
 class MutualFundsScreen extends StatefulWidget {
   const MutualFundsScreen({super.key});
@@ -32,15 +34,39 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
     final theme = Theme.of(context);
     
     // Masking Helper
-    final currencyFormat = NumberFormat.simpleCurrency(name: 'INR');
+    final currencyFormat = NumberFormat.currency(symbol: '₹', decimalDigits: 0);
     String formatAmount(double amount) {
        return currencyFormat.format(amount / dashboardService.maskingFactor);
     }
-
+ 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Investments'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Investments'),
+            if (dashboardService.maskingFactor > 1.0) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.warning.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppTheme.warning.withOpacity(0.5)),
+                ),
+                child: const Text(
+                  'PRIVACY',
+                  style: TextStyle(
+                    color: AppTheme.warning,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
             if (dashboardService.members.isNotEmpty) 
                PopupMenuButton<String>(
@@ -77,6 +103,8 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         _buildSummaryCard(context, portfolio, format),
+        const SizedBox(height: 24),
+        _buildPortfolioCharts(context, portfolio),
         const SizedBox(height: 24),
         const Text(
           "Holdings",
@@ -122,7 +150,21 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                   ),
                 ],
               ),
-              // XIRR could go here if available
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text("Total Returns %", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  const SizedBox(height: 4),
+                  Text(
+                    "${(p.totalPl / p.totalInvested * 100).toStringAsFixed(2)}%",
+                    style: TextStyle(
+                      color: isProfit ? Colors.greenAccent : Colors.redAccent,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -153,6 +195,92 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPortfolioCharts(BuildContext context, PortfolioSummary portfolio) {
+    if (portfolio.holdings.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final List<Color> colors = [
+      AppTheme.primary,
+      AppTheme.success,
+      AppTheme.warning,
+      AppTheme.danger,
+      Colors.purple,
+      Colors.orange,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("Asset Allocation", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        Container(
+          height: 200,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 1,
+                child: PieChart(
+                  PieChartData(
+                    sectionsSpace: 2,
+                    centerSpaceRadius: 30,
+                    sections: portfolio.holdings.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final h = entry.value;
+                      final percentage = (h.currentValue / portfolio.totalCurrent) * 100;
+                      return PieChartSectionData(
+                        color: colors[index % colors.length],
+                        value: h.currentValue,
+                        radius: 40,
+                        showTitle: percentage > 10,
+                        title: '${percentage.toStringAsFixed(0)}%',
+                        titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                flex: 1,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: math.min(portfolio.holdings.length, 5),
+                  itemBuilder: (context, index) {
+                    final h = portfolio.holdings[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          Container(width: 10, height: 10, color: colors[index % colors.length]),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              h.schemeName,
+                              style: const TextStyle(fontSize: 10),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

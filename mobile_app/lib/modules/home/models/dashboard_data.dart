@@ -6,6 +6,7 @@ class DashboardData {
   final List<SpendingTrendItem> spendingTrend;
   final List<CategoryPieItem> categoryDistribution;
   final List<RecentTransaction> recentTransactions;
+  final int pendingTriageCount;
 
   DashboardData({
     required this.summary,
@@ -13,6 +14,7 @@ class DashboardData {
     required this.spendingTrend,
     required this.categoryDistribution,
     required this.recentTransactions,
+    this.pendingTriageCount = 0,
   });
 
   factory DashboardData.fromJson(Map<String, dynamic> json) {
@@ -28,6 +30,7 @@ class DashboardData {
       recentTransactions: (json['recent_transactions'] as List)
           .map((i) => RecentTransaction.fromJson(i))
           .toList(),
+      pendingTriageCount: json['pending_triage_count'] ?? 0,
     );
   }
 }
@@ -127,7 +130,9 @@ class RecentTransaction {
   final String description;
   final double amount;
   final String category;
+  final String? accountName;
   final String? accountOwnerName;
+  final bool isHidden;
 
   RecentTransaction({
     required this.id,
@@ -135,7 +140,9 @@ class RecentTransaction {
     required this.description,
     required this.amount,
     required this.category,
+    this.accountName,
     this.accountOwnerName,
+    this.isHidden = false,
   });
 
   factory RecentTransaction.fromJson(Map<String, dynamic> json) {
@@ -145,7 +152,9 @@ class RecentTransaction {
       description: json['description'],
       amount: (json['amount'] as num).toDouble(),
       category: json['category'],
+      accountName: json['account_name'],
       accountOwnerName: json['account_owner_name'],
+      isHidden: json['is_hidden'] ?? false,
     );
   }
 

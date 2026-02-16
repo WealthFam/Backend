@@ -62,7 +62,11 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final List newItems = data['items'];
+        final List items = data['items'];
+        
+        // Filter out hidden transactions
+        final List newItems = items.where((item) => item['is_hidden'] != true).toList();
+        
         final nextPage = data['next_page'];
 
         setState(() {
@@ -139,8 +143,14 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                 title: Text(txn['description'], maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Row(
                   children: [
-                    Text(DateFormat('MMM d, h:mm a').format(date)),
-                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${DateFormat('MMM d').format(date)} • ${txn['account_owner_name'] != null ? "${txn['account_owner_name']} - " : ""}${txn['account_name'] ?? 'Account'}',
+                        style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     Icon(Icons.edit, size: 12, color: theme.disabledColor),
                   ],
                 ),

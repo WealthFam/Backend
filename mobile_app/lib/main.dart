@@ -13,9 +13,13 @@ import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 import 'package:mobile_app/modules/home/services/funds_service.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/core/services/foreground_service.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize communication port for Foreground Task (v9.0+)
+  FlutterForegroundTask.initCommunicationPort();
   
   // 1. Critical Services (Blocking)
   final config = AppConfig();
@@ -36,6 +40,13 @@ void main() async {
   final dashboard = DashboardService(config, auth);
   final funds = FundsService(config, auth);
   final categories = CategoriesService(config, auth);
+  
+  // Listen for data from Foreground Task Isolate
+  FlutterForegroundTask.addTaskDataCallback((data) {
+    if (data is Map && data['type'] == 'masking_update') {
+      dashboard.updateMaskingFromForeground(data['value']);
+    }
+  });
 
   runApp(MyApp(
     config: config, 

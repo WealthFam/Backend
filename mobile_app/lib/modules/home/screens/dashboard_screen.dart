@@ -7,6 +7,7 @@ import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/models/dashboard_data.dart';
 import 'package:mobile_app/modules/home/screens/transaction_list_screen.dart';
 import 'package:mobile_app/modules/home/screens/mutual_funds_screen.dart';
+import 'package:mobile_app/modules/ingestion/screens/triage_screen.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/modules/home/models/transaction_category.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -51,9 +52,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   floating: true,
                   pinned: true,
                   flexibleSpace: FlexibleSpaceBar(
-                    title: Text(
-                      'Overview',
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    title: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Overview',
+                          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        if (dashboard.maskingFactor > 1.0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.warning.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppTheme.warning.withOpacity(0.5)),
+                            ),
+                            child: const Text(
+                              'PRIVACY',
+                              style: TextStyle(
+                                color: AppTheme.warning,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     centerTitle: false,
                     titlePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -104,6 +130,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (dashboard.data != null) ...[
                   SliverToBoxAdapter(child: _buildSummarySection(context, dashboard.data!.summary, formatAmount)),
                   SliverToBoxAdapter(child: _buildInvestmentsEntry(context)), // New Entry Point
+                
+                // Triage Banner
+                if (dashboard.data!.pendingTriageCount > 0)
+                  SliverToBoxAdapter(
+                    child: _buildTriageBanner(context, dashboard.data!.pendingTriageCount),
+                  ),
+
                   SliverToBoxAdapter(child: _buildBudgetSection(context, dashboard.data!.budget, formatAmount)),
                   SliverToBoxAdapter(child: _buildTopCategoriesSection(context, dashboard.data!, formatAmount)),
                   SliverToBoxAdapter(
@@ -594,12 +627,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         subtitle: Row(
           children: [
-            Text(
-              '${txn.category} • ${txn.formattedDate}',
-              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+            Expanded(
+              child: Text(
+                '${txn.category} • ${txn.accountName ?? 'Account'} • ${txn.formattedDate}',
+                style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-             const SizedBox(width: 4),
-             // Edit icon removed since navigation is disabled
           ],
         ),
         trailing: Text(
@@ -689,6 +724,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: const Text('Save'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTriageBanner(BuildContext context, int count) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const TriageScreen()));
+        },
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.warning.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.warning.withOpacity(0.5)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.warning.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.info_outline, color: AppTheme.warning, size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$count Transactions to Review',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    Text(
+                      'Tap to triage unverified items',
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.warning),
+            ],
+          ),
+        ),
       ),
     );
   }
