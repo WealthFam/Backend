@@ -19,7 +19,7 @@ class ExternalParserService:
             if received_at:
                 payload["received_at"] = received_at.isoformat()
                 
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, timeout=30)
             
             if response.status_code == 200:
                 return response.json()
@@ -44,7 +44,7 @@ class ExternalParserService:
             if received_at:
                 payload["received_at"] = received_at.isoformat()
                 
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, timeout=30)
             
             if response.status_code == 200:
                 return response.json()

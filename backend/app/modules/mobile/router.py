@@ -13,6 +13,7 @@ from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.services import IngestionService
 from backend.app.modules.mobile import schemas
+from backend.app.modules.notifications import NotificationService, Alert
 from backend.app.modules.finance.services.analytics_service import AnalyticsService
 
 router = APIRouter(tags=["Mobile"])
@@ -487,6 +488,11 @@ def get_mobile_dashboard(
             daily_limit=daily_budget_limit
         ))
         
+    # --- 3. Pending Triage Count ---
+    pending_count = db.query(ingestion_models.PendingTransaction).filter(
+        ingestion_models.PendingTransaction.tenant_id == str(current_user.tenant_id)
+    ).count()
+
     # Filter recent transactions to match dashboard logic (Safe display)
     # Filtered by service
     filtered_recent = metrics["recent_transactions"]
@@ -500,8 +506,42 @@ def get_mobile_dashboard(
         "budget": metrics["budget_health"],
         "spending_trend": spending_trend,
         "category_distribution": category_distribution,
-        "recent_transactions": filtered_recent
+        "recent_transactions": [
+            {
+                **txn,
+                "account_name": db.query(models.Account.name).filter(models.Account.id == txn['account_id']).scalar()
+            }
+            for txn in filtered_recent
+        ],
+        "pending_triage_count": pending_count
     }
+
+@router.get("/triage", response_model=List[schemas.RecentTransaction])
+def list_mobile_triage(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all pending transactions for the mobile app to review.
+    """
+    from backend.app.modules.finance.services.transaction_service import TransactionService
+    items, total = TransactionService.get_pending_transactions(
+        db, str(current_user.tenant_id), limit=100, sort_order="desc"
+    )
+    
+    enriched = []
+    from backend.app.modules.finance import models
+    for txn in items:
+        enriched.append({
+            "id": txn.id,
+            "date": txn.date,
+            "description": txn.description or "Review Required",
+            "amount": float(txn.amount),
+            "category": txn.category,
+            "account_name": txn.account.name if txn.account else "Unknown",
+            "account_owner_name": txn.account.owner.full_name if (txn.account and txn.account.owner) else None
+        })
+    return enriched
 
 @router.get("/transactions", response_model=schemas.TransactionResponse)
 def list_mobile_transactions(
@@ -552,7 +592,9 @@ def list_mobile_transactions(
             "date": txn.date,
             "description": txn.description,
             "amount": float(txn.amount),
-            "category": txn.category
+            "category": txn.category,
+            "account_name": txn.account.name if txn.account else "Unknown",
+            "account_owner_name": txn.account.owner.full_name if (txn.account and txn.account.owner) else None
         })
         
     has_next = (page * page_size) < total_count
@@ -719,3 +761,61 @@ def update_transaction_category(
         "amount": float(txn.amount),
         "category": txn.category
     }
+
+from backend.app.modules.notifications.schemas import AlertSchema
+
+@router.get("/alerts", response_model=List[AlertSchema])
+def get_mobile_alerts(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Fetch unread/pending alerts for the mobile app.
+    Real-time push alternative for foreground polling.
+    """
+    from backend.app.modules.notifications.models import Alert
+    from sqlalchemy import or_
+
+    # Get alerts for this user or all family
+    alerts = db.query(Alert).filter(
+        Alert.tenant_id == str(current_user.tenant_id),
+        or_(Alert.user_id == str(current_user.id), Alert.user_id == None),
+        Alert.is_read == False
+    ).order_by(Alert.created_at.desc()).limit(10).all()
+
+    # Mark as read after delivery (polling logic)
+    for alert in alerts:
+        alert.is_read = True
+    
+    db.commit()
+    return alerts
+
+@router.post("/devices/{device_id}/test-notification")
+def test_device_notification(
+    device_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger a test notification for a specific device (via Alert system).
+    """
+    device = db.query(ingestion_models.MobileDevice).filter(
+        (ingestion_models.MobileDevice.id == device_id) | (ingestion_models.MobileDevice.device_id == device_id),
+        ingestion_models.MobileDevice.tenant_id == str(current_user.tenant_id)
+    ).first()
+    
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    from backend.app.modules.notifications import NotificationService
+    
+    NotificationService.create_alert(
+        db, 
+        str(current_user.tenant_id),
+        title="🧪 Test Notification",
+        body=f"Sent to {device.device_name} at {datetime.now().strftime('%H:%M:%S')}",
+        user_id=device.user_id,
+        category="INFO"
+    )
+    
+    return {"status": "sent", "message": "Test alert created"}

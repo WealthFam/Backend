@@ -131,12 +131,14 @@ class IngestionService:
         # If the category came from the parser (not None), we treat it as high confidence
         is_auto_ingest = (category and category != "Uncategorized")
         
+        from backend.app.modules.notifications import NotificationService
+        balance_synced = False
+
         if is_auto_ingest:
             # High confidence -> Directly to transactions
             # --- BALANCE ANCHORING ---
             # If parsed data has a balance, we anchor the account balance immediately as the "New Reality"
             # but only if the message is newer than or same date as last sync.
-            balance_synced = False
             if parsed.balance is not None:
                 # Check if this message is newer than the current anchor
                 is_newer = True
@@ -166,64 +168,83 @@ class IngestionService:
                     db.add(snapshot)
                     balance_synced = True
 
-            # Decide implementation
-            if True:
-                # High confidence -> Post Transaction
-                txn_create = schemas.TransactionCreate(
-                    account_id=str(account.id),
-                    amount=final_amount,
-                    date=parsed.date,
-                    description=parsed.description,
-                    recipient=parsed.recipient,
-                    category=category,
-                    external_id=parsed.ref_id,
-                    source=parsed.source,
-                    tags=[],
-                    latitude=extra_data.get("latitude") if extra_data else None,
-                    longitude=extra_data.get("longitude") if extra_data else None,
-                    location_name=None, 
-                    content_hash=message_hash,
-                    is_transfer=is_transfer,
-                    to_account_id=to_account_id,
-                    exclude_from_reports=is_transfer
+            # High confidence -> Post Transaction
+            txn_create = finance_schemas.TransactionCreate(
+                account_id=str(account.id),
+                amount=final_amount,
+                date=parsed.date,
+                description=parsed.description,
+                recipient=parsed.recipient,
+                category=category,
+                external_id=parsed.ref_id,
+                source=parsed.source,
+                tags=[],
+                latitude=extra_data.get("latitude") if extra_data else None,
+                longitude=extra_data.get("longitude") if extra_data else None,
+                location_name=None, 
+                content_hash=message_hash,
+                is_transfer=is_transfer,
+                to_account_id=to_account_id,
+                exclude_from_reports=is_transfer
+            )
+            try:
+                # If we already anchored the balance (balance_synced=True), 
+                # we must NOT update the balance again in create_transaction.
+                db_txn = TransactionService.create_transaction(
+                    db, txn_create, tenant_id, 
+                    update_balance=not balance_synced
                 )
-                try:
-                    # If we already anchored the balance (balance_synced=True), 
-                    # we must NOT update the balance again in create_transaction.
-                    db_txn = TransactionService.create_transaction(
-                        db, txn_create, tenant_id, 
-                        update_balance=not balance_synced
-                    )
-                    db.commit()
-                    return {"status": "success", "transaction_id": db_txn.id, "account": account.name}
-                except Exception as e:
-                    db.rollback()
-                    raise e
-            else:
-                # Low confidence -> Move to Triage
-                pending = ingestion_models.PendingTransaction(
-                    tenant_id=tenant_id,
-                    account_id=str(account.id),
-                    amount=final_amount,
-                    date=parsed.date,
-                    description=parsed.description,
-                    recipient=parsed.recipient,
-                    category="Uncategorized",
-                    source=parsed.source,
-                    raw_message=parsed.raw_message,
-                    content_hash=message_hash,
-                    external_id=parsed.ref_id,
-                    is_transfer=is_transfer,
-                    to_account_id=to_account_id,
-                    exclude_from_reports=is_transfer,
-                    balance_is_synced=balance_synced,
-                    latitude=extra_data.get("latitude") if extra_data else None,
-                    longitude=extra_data.get("longitude") if extra_data else None,
-                    location_name=None 
-                )
-                db.add(pending)
                 db.commit()
-                return {"status": "triage", "message": "Low confidence, entry moved to triage."}
+
+                # Trigger Real-time Mobile Notification
+                NotificationService.notify_transaction(
+                    db, 
+                    tenant_id, 
+                    final_amount, 
+                    parsed.description or parsed.recipient, 
+                    account.name,
+                    user_id=account.owner_id
+                )
+
+                return {"status": "success", "transaction_id": db_txn.id, "account": account.name}
+            except Exception as e:
+                db.rollback()
+                raise e
+        else:
+            # Low confidence -> Move to Triage
+            pending = ingestion_models.PendingTransaction(
+                tenant_id=tenant_id,
+                account_id=str(account.id),
+                amount=final_amount,
+                date=parsed.date,
+                description=parsed.description,
+                recipient=parsed.recipient,
+                category="Uncategorized",
+                source=parsed.source,
+                raw_message=parsed.raw_message,
+                content_hash=message_hash,
+                external_id=parsed.ref_id,
+                is_transfer=is_transfer,
+                to_account_id=to_account_id,
+                exclude_from_reports=is_transfer,
+                balance_is_synced=balance_synced,
+                latitude=extra_data.get("latitude") if extra_data else None,
+                longitude=extra_data.get("longitude") if extra_data else None,
+                location_name=None 
+            )
+            db.add(pending)
+            db.commit()
+            
+            # Notify about pending transaction requiring triage
+            NotificationService.notify_triage(
+                db, 
+                tenant_id, 
+                final_amount, 
+                parsed.description or parsed.recipient or "Merchant",
+                account.name
+            )
+            
+            return {"status": "triage", "message": "Low confidence, entry moved to triage."}
 
     @staticmethod
     def capture_unparsed(db: Session, tenant_id: str, source: str, raw_content: str, subject: Optional[str] = None, sender: Optional[str] = None):

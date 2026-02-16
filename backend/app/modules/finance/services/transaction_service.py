@@ -504,9 +504,9 @@ class TransactionService:
             sort_column = ingestion_models.PendingTransaction.date
         
         if sort_order == "asc":
-            query = query.order_by(sort_column.asc())
+            query = query.order_by(sort_column.asc(), ingestion_models.PendingTransaction.created_at.asc())
         else:
-            query = query.order_by(sort_column.desc())
+            query = query.order_by(sort_column.desc(), ingestion_models.PendingTransaction.created_at.desc())
             
         return query.offset(skip).limit(limit).all(), total
 

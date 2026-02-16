@@ -71,6 +71,9 @@ class RecentTransaction(BaseModel):
     description: str
     amount: float
     category: str
+    account_name: Optional[str] = None
+    account_owner_name: Optional[str] = None
+    is_hidden: bool = False
 
 class SpendingTrendItem(BaseModel):
     date: str
@@ -88,6 +91,7 @@ class MobileDashboardResponse(BaseModel):
     spending_trend: List[SpendingTrendItem]
     category_distribution: List[CategoryPieItem]
     recent_transactions: List[RecentTransaction]
+    pending_triage_count: int = 0
 
 class MemberResponse(BaseModel):
     id: str
