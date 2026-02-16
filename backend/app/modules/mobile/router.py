@@ -4,7 +4,7 @@ import uuid
 from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from backend.app.core.database import get_db
 from backend.app.core.config import settings
 from backend.app.modules.auth import models as auth_models
@@ -532,6 +532,11 @@ def list_mobile_triage(
     enriched = []
     from backend.app.modules.finance import models
     for txn in items:
+        # Use relationship for owner info
+        owner_name = "Unknown"
+        if txn.account and txn.account.owner:
+            owner_name = txn.account.owner.full_name or "Unknown"
+
         enriched.append({
             "id": txn.id,
             "date": txn.date,
@@ -539,7 +544,7 @@ def list_mobile_triage(
             "amount": float(txn.amount),
             "category": txn.category,
             "account_name": txn.account.name if txn.account else "Unknown",
-            "account_owner_name": txn.account.owner.full_name if (txn.account and txn.account.owner) else None
+            "account_owner_name": owner_name
         })
     return enriched
 
@@ -558,7 +563,9 @@ def list_mobile_transactions(
     from backend.app.modules.finance import models
     from sqlalchemy import or_
     
-    query = db.query(models.Transaction).filter(
+    query = db.query(models.Transaction).options(
+        joinedload(models.Transaction.account)
+    ).filter(
         models.Transaction.tenant_id == str(current_user.tenant_id),
         models.Transaction.is_transfer == False,
         models.Transaction.exclude_from_reports == False
@@ -587,6 +594,11 @@ def list_mobile_transactions(
     # Enrich with owner info (simplified) or mapped
     enriched = []
     for txn in transactions:
+        # Use relationship for owner info
+        owner_name = None
+        if txn.account and txn.account.owner:
+            owner_name = txn.account.owner.full_name
+
         enriched.append({
             "id": txn.id,
             "date": txn.date,
@@ -594,7 +606,7 @@ def list_mobile_transactions(
             "amount": float(txn.amount),
             "category": txn.category,
             "account_name": txn.account.name if txn.account else "Unknown",
-            "account_owner_name": txn.account.owner.full_name if (txn.account and txn.account.owner) else None
+            "account_owner_name": owner_name
         })
         
     has_next = (page * page_size) < total_count

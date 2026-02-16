@@ -9,8 +9,13 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     )
 
 async def generic_exception_handler(request: Request, exc: Exception):
-    # In production, log the error here
+    import traceback
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.error(f"Unhandled exception: {exc}")
+    logger.error(traceback.format_exc())
+    
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal Server Error"},
+        content={"detail": str(exc)},
     )

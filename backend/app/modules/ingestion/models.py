@@ -44,8 +44,8 @@ class PendingTransaction(Base):
     account = relationship("Account", 
                           primaryjoin="PendingTransaction.account_id == foreign(remote(Account.id))",
                           viewonly=True,
-                          sync_backref=False,
-                          overlaps="account")
+                          uselist=False,
+                          sync_backref=False)
     amount = Column(Numeric(15, 2), nullable=False)
     date = Column(DateTime, nullable=False)
     description = Column(String, nullable=True)

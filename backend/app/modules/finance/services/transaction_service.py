@@ -2,7 +2,7 @@ from typing import List, Optional
 from datetime import datetime
 import json
 import uuid
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 import logging
 from backend.app.modules.finance import models, schemas
@@ -140,7 +140,9 @@ class TransactionService:
         # logger = logging.getLogger(__name__)
         # logger.info(f"get_transactions: tenant_id={tenant_id}, user_id={user_id}, account_id={account_id}")
 
-        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+        query = db.query(models.Transaction).options(
+            joinedload(models.Transaction.account)
+        ).filter(models.Transaction.tenant_id == tenant_id)
         
         if user_role == "CHILD":
             query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
@@ -467,7 +469,9 @@ class TransactionService:
     ):
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
-        query = db.query(ingestion_models.PendingTransaction).filter(
+        query = db.query(ingestion_models.PendingTransaction).options(
+            joinedload(ingestion_models.PendingTransaction.account)
+        ).filter(
             ingestion_models.PendingTransaction.tenant_id == tenant_id
         )
 

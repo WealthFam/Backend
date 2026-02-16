@@ -272,6 +272,9 @@ def run_auto_migrations(engine: Engine):
             );
             """))
 
+            # 21. Account owner field
+            safe_add_column("accounts", "owner_id", "VARCHAR")
+
 
             # Explicitly commit the transaction!
             connection.commit()
