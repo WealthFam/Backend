@@ -281,7 +281,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildTrendChart(BuildContext context, List<SpendingTrendItem> trend, Function(double) format) {
     if (trend.isEmpty) return const Center(child: Text("No Data"));
     
-    final dashboard = context.read<DashboardService>(); // Need for factor in tooltips if desired
+    final dashboard = context.read<DashboardService>(); 
 
     // Find max Y for scaling
     double maxY = 0;
@@ -289,100 +289,104 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (item.amount > maxY) maxY = item.amount;
       if (item.dailyLimit > maxY) maxY = item.dailyLimit;
     }
-    maxY = maxY * 1.2; // Add some headroom
-    
-    // Scale down for chart display if needed, but easier to keep raw and format labels
-    // But FL Chart Y axis needs to be consistent. 
-    // Let's pass RAW values to chart but FORMAT the tooltips and axis.
-    
+    maxY = maxY * 1.2; 
+
     return Padding(
-      padding: const EdgeInsets.only(right: 16, left: 16, top: 24, bottom: 12),
-      child: BarChart(
-        BarChartData(
+      padding: const EdgeInsets.only(right: 16, left: 12, top: 24, bottom: 12),
+      child: LineChart(
+        LineChartData(
           maxY: maxY,
-          barTouchData: BarTouchData(
-            touchTooltipData: BarTouchTooltipData(
-              getTooltipColor: (group) => Colors.blueGrey,
-              getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                 final item = trend[group.x.toInt()];
-                 return BarTooltipItem(
-                   '${DateFormat('MMM d').format(item.dateTime)}\n',
-                   const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                   children: [
-                     TextSpan(
-                       text: format(item.amount),
-                       style: const TextStyle(color: Colors.yellowAccent),
-                     ),
-                   ],
-                 );
-              },
-            ),
-          ),
+          minY: 0,
           titlesData: FlTitlesData(
-            show: true,
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true, 
+                reservedSize: 40,
+                getTitlesWidget: (value, meta) {
+                   if (value == 0) return const SizedBox.shrink();
+                   final val = value / dashboard.maskingFactor;
+                   return Text(
+                     NumberFormat.compact().format(val), 
+                     style: const TextStyle(fontSize: 10, color: Colors.grey),
+                   );
+                },
+              ),
+            ),
             rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
                 getTitlesWidget: (value, meta) {
-                   final idx = value.toInt();
-                   if (idx >= 0 && idx < trend.length) {
-                      // Show every 5th day to avoid clutter
-                      if (idx % 5 == 0) {
-                         return Padding(
-                           padding: const EdgeInsets.only(top: 8.0),
-                           child: Text(
-                             DateFormat('d').format(trend[idx].dateTime), 
-                             style: const TextStyle(fontSize: 10)
-                           ),
-                         );
-                      }
-                   }
-                   return const SizedBox.shrink();
-                },
-              ),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 40,
-                getTitlesWidget: (value, meta) {
-                  // We show compact format but respect masking if needed
-                  // For simplicity on axis we use compact without currency symbol but WITH masking factor
-                  final val = value / dashboard.maskingFactor;
-                  return Text(
-                    NumberFormat.compact().format(val), 
-                    style: const TextStyle(fontSize: 10),
-                  );
+                  int idx = value.toInt();
+                  if (idx >= 0 && idx < trend.length) {
+                     // Check if it's start or end or reasonable step to avoid clutter
+                     if (idx % 2 != 0 && idx != trend.length - 1) return const SizedBox.shrink(); 
+                     
+                     DateTime date = DateTime.parse(trend[idx].date);
+                     return Padding(
+                       padding: const EdgeInsets.only(top: 8.0),
+                       child: Text(
+                         DateFormat('d').format(date), 
+                         style: const TextStyle(fontSize: 10, color: Colors.grey),
+                       ),
+                     );
+                  }
+                  return const SizedBox.shrink();
                 },
               ),
             ),
           ),
           borderData: FlBorderData(show: false),
           gridData: const FlGridData(show: true, drawVerticalLine: false),
-          barGroups: trend.asMap().entries.map((entry) {
-            final index = entry.key;
-            final item = entry.value;
-            final isOverLimit = item.amount > item.dailyLimit;
-            
-            return BarChartGroupData(
-              x: index,
-              barRods: [
-                BarChartRodData(
-                  toY: item.amount,
-                  color: isOverLimit ? AppTheme.danger : AppTheme.primary,
-                  width: 6,
-                  borderRadius: BorderRadius.circular(2),
-                  backDrawRodData: BackgroundBarChartRodData(
-                     show: true,
-                     toY: item.dailyLimit,
-                     color: AppTheme.success.withOpacity(0.2), 
-                  ),
+          lineBarsData: [
+            // Spending Line
+            LineChartBarData(
+              spots: trend.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.amount)).toList(),
+              isCurved: true,
+              color: AppTheme.primary,
+              barWidth: 3,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: true),
+              belowBarData: BarAreaData(
+                show: true,
+                color: AppTheme.primary.withOpacity(0.15),
+                gradient: LinearGradient(
+                  colors: [AppTheme.primary.withOpacity(0.3), AppTheme.primary.withOpacity(0.05)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                 ),
-              ],
-            );
-          }).toList(),
+              ),
+            ),
+            // Daily Limit Line (dashed)
+            LineChartBarData(
+              spots: trend.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.dailyLimit)).toList(),
+              isCurved: false, 
+              color: AppTheme.success.withOpacity(0.5),
+              barWidth: 2,
+              dashArray: [5, 5],
+              dotData: const FlDotData(show: false),
+            ),
+          ],
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipItems: (touchedSpots) {
+                return touchedSpots.map((LineBarSpot touchedSpot) {
+                   if (touchedSpot.barIndex == 1) return null; // Skip limit tooltip
+                   final idx = touchedSpot.x.toInt();
+                   if (idx < 0 || idx >= trend.length) return null;
+                   
+                   final date = DateTime.parse(trend[idx].date);
+                   final amount = trend[idx].amount / dashboard.maskingFactor;
+                   
+                   return LineTooltipItem(
+                     '${DateFormat('MMM d').format(date)}\n${NumberFormat.compactCurrency(symbol: '₹').format(amount)}',
+                     const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                   );
+                }).toList();
+              },
+            ),
+          ),
         ),
       ),
     );

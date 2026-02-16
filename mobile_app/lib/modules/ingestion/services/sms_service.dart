@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile_app/core/config/app_config.dart';
@@ -19,6 +20,7 @@ extension PlatformCheck on TargetPlatform {
 // Top-level function for background execution
 @pragma('vm:entry-point')
 void backgroundMessageHandler(SmsMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
   if (message.body == null || message.address == null) return;
   debugPrint("Background SMS: ${message.body}");
   
@@ -257,6 +259,7 @@ class SmsService extends ChangeNotifier {
   }
 
   Future<void> _handleSms(SmsMessage message) async {
+    debugPrint("Foreground SMS Received: ${message.address} - ${message.body}");
     if (message.body == null || message.address == null) return;
     await processSms(message.address!, message.body!, message.date ?? DateTime.now().millisecondsSinceEpoch);
   }
@@ -464,12 +467,44 @@ class SmsService extends ChangeNotifier {
 
   Future<List<SmsMessage>> getAllMessages() async {
     if (kIsWeb || !defaultTargetPlatform.shouldUseTelephony) return [];
+    
+    final bool? perms = await _telephony.requestPhoneAndSmsPermissions;
+    if (perms != true) {
+      debugPrint("SmsService: READ_SMS permission denied");
+      return [];
+    }
+
     try {
-      return await _telephony.getInboxSms(
-        columns: [SmsColumn.ADDRESS, SmsColumn.BODY, SmsColumn.DATE],
+      final msgs = await _telephony.getInboxSms(
+        sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
       );
+      debugPrint("SmsService: Fetched ${msgs.length} messages");
+      for (var i = 0; i < (msgs.length > 5 ? 5 : msgs.length); i++) {
+        debugPrint("Msg[$i]: ${msgs[i].address} (Date: ${msgs[i].date})");
+      }
+      return msgs;
     } catch (e) {
       debugPrint("Error fetching SMS: $e");
+      return [];
+    }
+  }
+
+  Future<List<SmsMessage>> querySpecificAddress(String address) async {
+    if (kIsWeb || !defaultTargetPlatform.shouldUseTelephony) return [];
+     final bool? perms = await _telephony.requestPhoneAndSmsPermissions;
+    if (perms != true) return [];
+
+    try {
+      debugPrint("SmsService: Deep querying for address: $address");
+      // Use getInboxSms with like filter for flexibility
+      final msgs = await _telephony.getInboxSms(
+        filter: SmsFilter.where(SmsColumn.ADDRESS).like("%$address%"),
+        sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
+      );
+      debugPrint("SmsService: Deep query found ${msgs.length} messages");
+      return msgs;
+    } catch (e) {
+      debugPrint("SmsService: Deep query error: $e");
       return [];
     }
   }

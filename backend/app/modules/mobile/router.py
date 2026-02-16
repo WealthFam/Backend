@@ -693,29 +693,56 @@ def get_mobile_funds(
     
     clean_holdings = []
     
+    today_total_change = 0.0
+    
     for h in holdings:
         inv = float(h.get('invested_value', 0))
         cur = float(h.get('current_value', 0))
         
+        # Calculate Day Change using Sparkline (Last 2 points)
+        # Sparkline is [..., T-2, T-1, T] 
+        # But in get_portfolio logic: sparkline = [float(d.get("nav", 0.0)) for d in sparkline_data if d.get("nav")]
+        # And it says: sparkline_data.reverse() # Reverse to chronological order (Oldest -> Newest)
+        # So sparkline[-1] is Latest NAV, sparkline[-2] is Previous Day NAV
+        
+        day_change = 0.0
+        day_change_limit = 0.0
+        
+        sparkline = h.get('sparkline', [])
+        units = float(h.get('units', 0))
+        
+        if len(sparkline) >= 2 and units > 0:
+            latest_nav = sparkline[-1]
+            prev_nav = sparkline[-2]
+            day_change = (latest_nav - prev_nav) * units
+            
+        today_total_change += day_change
+
         total_invested += inv
         total_current += cur
         
         clean_holdings.append(schemas.FundHolding(
             scheme_code=h['scheme_code'],
             scheme_name=h['scheme_name'],
-            units=float(h.get('units', 0)),
+            units=units,
             current_value=cur,
             invested_value=inv,
             profit_loss=cur - inv,
             last_updated=h.get('last_updated', ''),
-            xirr=None # Individual XIRR requires expensive calc, skipping for list view
+            day_change=day_change,
+            day_change_percentage=(day_change / (cur - day_change) * 100) if (cur - day_change) > 0 else 0.0,
+            xirr=None 
         ))
+
+    day_change_pct = (today_total_change / (total_current - today_total_change) * 100) if (total_current - today_total_change) > 0 else 0.0
         
     return {
         "total_invested": total_invested,
         "total_current": total_current,
         "total_pl": total_current - total_invested,
-        "xirr": None, # Global XIRR requires full logic
+        "day_change": today_total_change,
+        "day_change_percentage": day_change_pct,
+        "xirr": None, 
         "holdings": clean_holdings
     }
 

@@ -8,6 +8,7 @@ import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/modules/home/models/transaction_category.dart';
+import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 
 class TransactionListScreen extends StatefulWidget {
   const TransactionListScreen({super.key});
@@ -154,12 +155,16 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                     Icon(Icons.edit, size: 12, color: theme.disabledColor),
                   ],
                 ),
-                trailing: Text(
-                  NumberFormat.simpleCurrency(name: 'INR').format(amount),
-                  style: TextStyle(
-                    color: amount < 0 ? AppTheme.danger : AppTheme.success,
-                    fontWeight: FontWeight.bold,
-                  ),
+                trailing: Consumer<DashboardService>(
+                  builder: (context, dashboard, _) {
+                    return Text(
+                      NumberFormat.simpleCurrency(name: 'INR').format(amount / dashboard.maskingFactor),
+                      style: TextStyle(
+                        color: amount < 0 ? AppTheme.danger : AppTheme.success,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    );
+                  }
                 ),
               ),
            );

@@ -17,6 +17,26 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
   bool _isLoading = true;
   bool _isProcessing = false;
   final Set<String> _selectedHashes = {};
+  
+  final TextEditingController _filterController = TextEditingController();
+  List<SmsMessage> _filteredMessages = [];
+
+  @override
+  void dispose() {
+    _filterController.dispose();
+    super.dispose();
+  }
+
+  void _filterMessages() {
+    final query = _filterController.text.toLowerCase();
+    setState(() {
+      _filteredMessages = _messages.where((msg) {
+        final address = (msg.address ?? '').toLowerCase();
+        final body = (msg.body ?? '').toLowerCase();
+        return address.contains(query) || body.contains(query);
+      }).toList();
+    });
+  }
 
   @override
   void initState() {
@@ -152,42 +172,104 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
     }
   }
 
+  Future<void> _deepQueryAddress() async {
+    final controller = TextEditingController();
+    final address = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Deep Search Address"),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: "Enter Sender Address / Number"),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text("Search")),
+        ],
+      ),
+    );
+
+    if (address != null && address.isNotEmpty && mounted) {
+      setState(() => _isLoading = true);
+      final msgs = await context.read<SmsService>().querySpecificAddress(address);
+      if (mounted) {
+        setState(() {
+          _messages = msgs;
+          _isLoading = false;
+          _filterController.clear(); // Clear local filter to show results
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Found ${msgs.length} messages from $address")));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final smsService = context.watch<SmsService>();
     final theme = Theme.of(context);
+    
+    // Choose list to display
+    final displayList = _filterController.text.isEmpty ? _messages : _filteredMessages;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('SMS Management'),
+        title: Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.onSurface.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: TextField(
+            controller: _filterController,
+            onChanged: (_) => _filterMessages(),
+            style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16, height: 1.0),
+            cursorColor: theme.colorScheme.primary,
+            textAlignVertical: TextAlignVertical.center,
+            decoration: InputDecoration(
+               hintText: "Search SMS...",
+               hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+               border: InputBorder.none,
+               prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant, size: 20),
+               contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+               isDense: true,
+            ),
+          ),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.calendar_month),
+            icon: Icon(Icons.saved_search, color: theme.colorScheme.onSurface),
+            tooltip: 'Deep Search Address',
+            onPressed: _isProcessing ? null : _deepQueryAddress,
+          ),
+          IconButton(
+            icon: Icon(Icons.calendar_month, color: theme.colorScheme.onSurface),
             tooltip: 'Sync from Date',
             onPressed: _isProcessing ? null : _pickAndSyncDate,
           ),
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh, color: theme.colorScheme.onSurface),
             onPressed: _isLoading ? null : _loadMessages,
           ),
           if (_selectedHashes.isNotEmpty)
             TextButton(
               onPressed: _isProcessing ? null : _pushBulk,
-              child: Text('PUSH (${_selectedHashes.length})', style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold)),
+              child: Text('PUSH (${_selectedHashes.length})', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
             ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _messages.isEmpty
-              ? Center(child: Text('No SMS messages found', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)))
+          : displayList.isEmpty
+              ? Center(child: Text(_filterController.text.isEmpty ? 'No SMS messages found' : 'No matching SMS found', 
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant)))
               : ListView.separated(
                   padding: const EdgeInsets.all(16),
-                  itemCount: _messages.length,
+                  itemCount: displayList.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
-                    final msg = _messages[index];
+                    final msg = displayList[index];
                     final hash = smsService.computeHash(msg.address ?? '', (msg.date ?? 0).toString(), msg.body ?? '');
                     final isSynced = smsService.isCached(hash);
                     final isSelected = _selectedHashes.contains(hash);
@@ -200,7 +282,7 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
 
   Widget _buildSmsCard(SmsMessage msg, String hash, bool isSynced, bool isSelected) {
     final theme = Theme.of(context);
-    final date = DateTime.fromMillisecondsSinceEpoch(msg.date ?? 0);
+    final date = msg.date != null ? DateTime.fromMillisecondsSinceEpoch(msg.date!) : DateTime.now();
     final dateStr = DateFormat('dd MMM yyyy, hh:mm a').format(date);
 
     return InkWell(

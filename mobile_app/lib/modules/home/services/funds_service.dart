@@ -62,5 +62,51 @@ class FundsService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+    // Fetch chart data in background after main data
+    fetchPerformance();
+  }
+
+  // --- Performance Chart Data ---
+  List<Map<String, dynamic>> _timeline = [];
+  List<Map<String, dynamic>> get timeline => _timeline;
+  bool _isChartLoading = false;
+  bool get isChartLoading => _isChartLoading;
+
+  Future<void> fetchPerformance() async {
+    if (_auth.accessToken == null) return;
+    
+    _isChartLoading = true;
+    notifyListeners();
+
+    try {
+      final url = Uri.parse('${_config.backendUrl}/api/v1/finance/mutual-funds/analytics/performance-timeline')
+           .replace(queryParameters: {
+             'period': '1y',
+             'granularity': '1w',
+             if (_selectedMemberId != null) 'user_id': _selectedMemberId,
+           });
+           
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${_auth.accessToken}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final dynamic data = jsonDecode(response.body);
+        if (data is Map && data['timeline'] != null) {
+          _timeline = List<Map<String, dynamic>>.from(data['timeline']);
+        } else if (data is List) {
+           _timeline = List<Map<String, dynamic>>.from(data);
+        }
+      }
+    } catch (e) {
+      debugPrint('Chart Error: $e');
+    } finally {
+      _isChartLoading = false;
+      notifyListeners();
+    }
   }
 }

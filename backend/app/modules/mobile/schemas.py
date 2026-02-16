@@ -110,6 +110,8 @@ class FundHolding(BaseModel):
     current_value: float
     invested_value: float
     profit_loss: float
+    day_change: Optional[float] = 0.0
+    day_change_percentage: Optional[float] = 0.0
     last_updated: str
     xirr: Optional[float] = None
     allocation_percentage: Optional[float] = None # Calculated on fly
@@ -117,6 +119,8 @@ class FundHolding(BaseModel):
 class MobileFundsResponse(BaseModel):
     total_invested: float
     total_current: float
+    day_change: Optional[float] = 0.0
+    day_change_percentage: Optional[float] = 0.0
     total_pl: float
     xirr: Optional[float] = None
     holdings: List[FundHolding]

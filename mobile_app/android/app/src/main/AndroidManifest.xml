@@ -41,7 +41,7 @@
             </intent-filter>
         </activity>
         
-        <receiver android:name="com.it_nomads.telephony.SmsReceiver"
+        <receiver android:name="com.shounakmulay.telephony.sms.IncomingSmsReceiver"
             android:permission="android.permission.BROADCAST_SMS"
             android:exported="true">
             <intent-filter>
