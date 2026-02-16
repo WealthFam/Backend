@@ -7,6 +7,9 @@ from parser.db.models import AIConfig
 from parser.schemas.transaction import Transaction, TransactionType, AccountInfo, MerchantInfo
 from datetime import datetime
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 class GeminiParser:
     def __init__(self, db: Session):
@@ -140,15 +143,14 @@ class GeminiParser:
             )
 
         except errors.ClientError as e:
-            # The SDK might use 'code' or 'status_code' depending on version
             status_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             if status_code == 429:
-                print(f"AI Quota Exhausted (429): {e}")
+                logger.error(f"AI Quota Exhausted (429): {e}")
             else:
-                print(f"AI Client Error ({status_code}): {e}")
+                logger.error(f"AI Client Error ({status_code}): {e}")
             return None
         except Exception as e:
-            print(f"AI Parse Error: {e}")
+            logger.error(f"AI Parse Error: {e}")
             return None
 
     def parse_with_pattern(self, content: str, source: str, date_hint: Optional[Any] = None) -> Optional[Dict[str, Any]]:
@@ -225,11 +227,11 @@ class GeminiParser:
             status_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             if status_code == 429:
                 msg = "Gemini API quota exceeded. Please check your plan or retry later."
-                print(f"AI Pattern Gen Quota Error: {msg}")
+                logger.error(f"AI Pattern Gen Quota Error: {msg}")
                 return {"error": "quota_exhausted", "message": msg}
             return {"error": str(e)}
         except Exception as e:
-            print(f"AI Pattern Gen Error: {e}")
+            logger.error(f"AI Pattern Gen Error: {e}")
             import traceback
             traceback.print_exc()
             return {"error": str(e)}

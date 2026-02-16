@@ -14,6 +14,22 @@ from parser.parsers.ai.gemini_parser import GeminiParser
 from parser.core.normalizer import MerchantNormalizer
 from parser.core.validator import TransactionValidator
 from parser.core.guesser import CategoryGuesser
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_decimal(val):
+    """Utility to safely convert string/float/int to Decimal by cleaning non-numeric characters."""
+    try:
+        # Remove commas/currency symbols but keep dot and minus
+        clean_val = "".join(c for c in str(val) if c.isdigit() or c in ".-") if val is not None else "0"
+        return Decimal(clean_val or "0")
+    except:
+        return Decimal("0")
+
+def get_digits(s):
+    """Extract digits from a string and return the last 4."""
+    return "".join(filter(str.isdigit, str(s or "")))[-4:]
 
 class IngestionPipeline:
 
@@ -35,8 +51,8 @@ class IngestionPipeline:
                     return pt.get(key, default)
                 return getattr(pt, key, default)
 
-            # Handle CAS/MF specific mappings
-            raw_type = str(safe_pt_get("type", "DEBIT")).upper()
+
+            raw_type = str(safe_pt_get("type") or "DEBIT").upper()
             txn_type = TransactionType.DEBIT
             if raw_type in ["CREDIT", "SELL", "REDEMPTION"]:
                 txn_type = TransactionType.CREDIT
@@ -52,10 +68,10 @@ class IngestionPipeline:
             if isinstance(pt_date, str):
                 final_date = datetime.fromisoformat(pt_date)
             else:
-                final_date = pt_date
+                final_date = pt_date or datetime.now()
 
             return Transaction(
-                amount=Decimal(str(safe_pt_get("amount", 0))),
+                amount=get_decimal(safe_pt_get("amount")),
                 type=txn_type,
                 date=final_date,
                 account=AccountInfo(mask=safe_pt_get("account_mask") or safe_pt_get("folio_number") or safe_pt_get("external_id")),
@@ -110,7 +126,7 @@ class IngestionPipeline:
                 self.db.add(new_rule)
                 self.db.commit()
         except Exception as e:
-            print(f"Error saving AI pattern: {e}")
+            logger.error(f"Error saving AI pattern: {e}")
             self.db.rollback()
 
     def run(self, content: str, source: str, sender: Optional[str] = None, subject: Optional[str] = None, date_hint: Optional[str] = None) -> IngestionResult:
@@ -141,7 +157,7 @@ class IngestionPipeline:
             return IngestionResult(status="ignored", results=[], logs=["Classified as non-financial"])
 
         # 3. Extraction Chain
-        potential_matches: List[Any] = [] # List of ParsedTransaction
+        potential_matches: list[Any] = [] # List of ParsedTransaction
         parsed_txn = None
         
         # A. Static Bank Parsers
@@ -206,10 +222,17 @@ class IngestionPipeline:
                 if ai_data and ai_data.get("transaction"):
                     tx_data = ai_data["transaction"]
                     
+
+                    raw_type = str(tx_data.get("type") or "DEBIT").upper()
+                    try:
+                        txn_type = TransactionType(raw_type)
+                    except:
+                        txn_type = TransactionType.DEBIT
+
                     # Create Transaction object
                     pt = Transaction(
-                        amount=Decimal(str(tx_data.get("amount", 0))),
-                        type=TransactionType(tx_data.get("type", "DEBIT")),
+                        amount=get_decimal(tx_data.get("amount")),
+                        type=txn_type,
                         date=datetime.fromisoformat(tx_data["date"]) if tx_data.get("date") else datetime.now(),
                         account=AccountInfo(mask=tx_data.get("account_mask"), provider=source),
                         merchant=MerchantInfo(raw=tx_data.get("merchant"), cleaned=tx_data.get("merchant")),
@@ -245,8 +268,7 @@ class IngestionPipeline:
                         parsed_txn = self._convert_to_schema_txn(best_regex_match)
                         parser_used = "Best Regex (AI Failed)"
             except Exception as e:
-                import traceback
-                traceback.print_exc()
+                logger.error(f"AI Parser failed: {str(e)}")
                 logs.append(f"AI Parser failed: {str(e)}")
                 if best_regex_match:
                     parsed_txn = self._convert_to_schema_txn(best_regex_match)
@@ -298,9 +320,8 @@ class IngestionPipeline:
                  RequestLog.input_hash != input_hash # Not ourselves
              ).all()
 
-             is_cross_duplicate = False
-             def get_digits(s): return "".join(filter(str.isdigit, str(s or "")))[-4:]
              
+             is_cross_duplicate = False
              for rs in recent_successes:
                  try:
                      payload = rs.output_payload or {}

@@ -26,12 +26,10 @@ def cleanup_old_logs():
             db.commit()
             
             deleted_count = result.rowcount
-            logger.info(f"🧹 Cleaned up {deleted_count} old logs (>24 hours)")
-            print(f"🧹 Cleaned up {deleted_count} old logs (>24 hours)")
+            logger.info(f"[CLEANUP] Cleaned up {deleted_count} old logs (>24 hours)")
         
     except Exception as e:
-        logger.error(f"❌ Log cleanup failed: {e}")
-        print(f"❌ Log cleanup failed: {e}")
+        logger.error(f"[ERROR] Log cleanup failed: {e}")
 
 def start_cleanup_job():
     """Start the background cleanup scheduler. Runs every hour."""
@@ -46,20 +44,16 @@ def start_cleanup_job():
         )
         
         scheduler.start()
-        logger.info("✅ Cleanup scheduler started (runs every 1 hour)")
-        print("✅ Cleanup scheduler started (runs every 1 hour)")
+        logger.info("[SUCCESS] Cleanup scheduler started (runs every 1 hour)")
         
     except Exception as e:
-        logger.error(f"❌ Failed to start cleanup scheduler: {e}")
-        print(f"❌ Failed to start cleanup scheduler: {e}")
+        logger.error(f"[ERROR] Failed to start cleanup scheduler: {e}")
 
 def stop_cleanup_job():
     """Stop the cleanup scheduler gracefully."""
     try:
         if scheduler.running:
             scheduler.shutdown(wait=False)
-            logger.info("🛑 Cleanup scheduler stopped")
-            print("🛑 Cleanup scheduler stopped")
+            logger.info("[STOP] Cleanup scheduler stopped")
     except Exception as e:
-        logger.error(f"❌ Failed to stop cleanup scheduler: {e}")
-        print(f"❌ Failed to stop cleanup scheduler: {e}")
+        logger.error(f"[ERROR] Failed to stop cleanup scheduler: {e}")
