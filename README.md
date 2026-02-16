@@ -19,7 +19,7 @@
 [![Docker Hub](https://img.shields.io/docker/v/wglabz/wealthfam?label=Docker%20Hub&logo=docker&color=2496ED)](https://hub.docker.com/r/wglabz/wealthfam)
 [![Docker Pulls](https://img.shields.io/docker/pulls/wglabz/wealthfam?logo=docker&color=2496ED)](https://hub.docker.com/r/wglabz/wealthfam)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Download Mobile APK](https://img.shields.io/badge/Download-Mobile%20APK-success?logo=android&logoColor=white)](mobile_app/build/app/outputs/flutter-apk/app-release.apk)
+[![Download Mobile APK](https://img.shields.io/badge/Download-Mobile%20APK-success?logo=android&logoColor=white)](app-release.apk)
 [![Deploy to Koyeb](https://img.shields.io/badge/Deploy-Koyeb-121212?logo=koyeb)](https://app.koyeb.com/deploy?type=git&repository=github.com/oksbwn/wealthfam&branch=main&name=wealthfam)
 [![Deploy to Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?logo=railway)](https://railway.app/template/wealthfam)
 
