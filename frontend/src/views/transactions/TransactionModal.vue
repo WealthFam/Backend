@@ -283,7 +283,7 @@ function handleClose() {
                                             {{ currentCategoryBudget.name }} Budget Info
                                         </div>
                                         <div class="text-caption font-weight-black opacity-80">
-                                            Remaining: {{ formatAmount(currentCategoryBudget.balance) }}
+                                            Remaining: {{ formatAmount(currentCategoryBudget.remaining) }}
                                         </div>
                                     </div>
                                 </v-alert>
