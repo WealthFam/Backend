@@ -339,31 +339,43 @@
                                 </v-col>
 
                                 <v-col cols="12" md="4" class="text-md-right">
-                                    <div class="d-flex flex-md-column justify-space-between align-end">
-                                        <div class="d-flex ga-6 mb-1">
-                                            <div class="text-right">
-                                                <div class="text-overline opacity-60 font-weight-black"
-                                                    style="line-height:1">
-                                                    Balance</div>
-                                                <div class="text-subtitle-1 font-weight-black">{{
-                                                    formatAmount(card.balance) }}</div>
+                                    <div class="d-flex flex-md-column justify-space-between align-end h-100">
+                                        <!-- Statement Info -->
+                                        <div class="text-right mb-2">
+                                            <div class="text-caption font-weight-bold opacity-60">Statement Balance
+                                                <v-icon v-if="card.statement_balance < 0 && card.days_until_due < 5"
+                                                    color="error" size="12" class="ml-1">AlertCircle</v-icon>
                                             </div>
-                                            <div class="text-right">
-                                                <div class="text-overline opacity-60 font-weight-black"
-                                                    style="line-height:1">
-                                                    Available</div>
-                                                <div class="text-subtitle-1 font-weight-black text-primary">{{
-                                                    formatAmount((card.limit
-                                                        || 0) - (card.balance || 0)) }}</div>
+                                            <div class="text-h6 font-weight-black"
+                                                :class="card.statement_balance < 0 ? 'text-error' : 'text-success'">
+                                                {{ formatAmount(card.statement_balance) }}
+                                            </div>
+                                            <div v-if="card.unbilled_spend > 0"
+                                                class="text-tiny font-weight-bold opacity-50 mt-1">
+                                                +{{ formatAmount(card.unbilled_spend) }} unbilled
                                             </div>
                                         </div>
-                                        <div class="text-caption font-weight-black d-flex align-center"
-                                            :class="card.days_until_due < 7 && card.days_until_due !== null ? 'text-error' : 'text-slate-500'">
-                                            <AlertCircle v-if="card.days_until_due < 7 && card.days_until_due !== null"
-                                                :size="14" class="mr-1" />
-                                            <span v-if="card.days_until_due !== null">Due in {{ card.days_until_due }}
-                                                days</span>
-                                            <span v-else>No Cycle Data</span>
+
+                                        <!-- Due Date Info -->
+                                        <div class="text-right">
+                                            <div v-if="card.days_until_due !== null">
+                                                <div class="d-flex align-center justify-end"
+                                                    :class="card.days_until_due < 5 ? 'text-error' : 'text-primary'">
+                                                    <span class="text-subtitle-2 font-weight-black">
+                                                        Due in {{ card.days_until_due }} days
+                                                    </span>
+                                                </div>
+                                                <div class="text-tiny font-weight-bold opacity-60">
+                                                    {{ formatDate(card.next_due_date).day }}
+                                                </div>
+                                                <div v-if="card.minimum_due > 0"
+                                                    class="text-tiny font-weight-bold text-error mt-1">
+                                                    Min: {{ formatAmount(card.minimum_due) }}
+                                                </div>
+                                            </div>
+                                            <div v-else class="text-caption font-weight-bold opacity-40">
+                                                No Cycle Data
+                                            </div>
                                         </div>
                                     </div>
                                 </v-col>
@@ -400,8 +412,7 @@ import {
     Sparkles,
     Activity,
     CalendarClock,
-    CreditCard,
-    AlertCircle
+    CreditCard
 } from 'lucide-vue-next'
 
 const router = useRouter()

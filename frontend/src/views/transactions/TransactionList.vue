@@ -42,6 +42,7 @@ const props = defineProps<{
             net_worth: number
         }
     }
+    txnSortKey: string
 }>()
 
 // Emits

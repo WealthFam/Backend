@@ -242,19 +242,88 @@ class AnalyticsService:
                 raw_util = (current_debt / intel["limit"]) * 100
                 intel["utilization"] = max(0, raw_util)
             
-            if intel["due_day"]:
-                today = datetime.utcnow()
+            # Billing Cycle Logic
+            last_statement_date = None
+            statement_balance = 0.0
+            unbilled_purchases = 0.0
+            minimum_due = 0.0
+            
+            if intel["billing_day"]:
+                billing_day = int(intel["billing_day"])
+                today = datetime.utcnow().date()
+                
+                # Determine Last Statement Date
+                # 1. Try date in current month
                 try:
-                    due_date = datetime(today.year, today.month, intel["due_day"])
-                    if due_date < today:
-                        # Move to next month
-                        if today.month == 12:
-                            due_date = datetime(today.year + 1, 1, intel["due_day"])
-                        else:
-                            due_date = datetime(today.year, today.month + 1, intel["due_day"])
-                    intel["days_until_due"] = (due_date - today).days
+                    this_month_stmt = date(today.year, today.month, billing_day)
                 except ValueError:
-                    # Handle Feb 30 etc.
+                    # Fallback for short months (e.g. Feb)
+                    import calendar
+                    last_day = calendar.monthrange(today.year, today.month)[1]
+                    this_month_stmt = date(today.year, today.month, last_day)
+
+                if today >= this_month_stmt:
+                    last_statement_date = this_month_stmt
+                else:
+                    # Statement was last month
+                    first_of_month = today.replace(day=1)
+                    prev_month_end = first_of_month - timedelta(days=1)
+                    try:
+                        last_statement_date = date(prev_month_end.year, prev_month_end.month, billing_day)
+                    except ValueError:
+                         import calendar
+                         last_day = calendar.monthrange(prev_month_end.year, prev_month_end.month)[1]
+                         last_statement_date = date(prev_month_end.year, prev_month_end.month, last_day)
+            
+            if last_statement_date:
+                intel["last_statement_date"] = last_statement_date.isoformat()
+                
+                # Calculate Unbilled Spending (Debits after statement date)
+                # Note: We query DB here. For optimization in future, bulk fetch can be used.
+                unbilled_query = db.query(func.sum(models.Transaction.amount)).filter(
+                    models.Transaction.account_id == card.id,
+                    models.Transaction.date > last_statement_date,
+                    models.Transaction.amount < 0, # Debits only (Purchases)
+                    models.Transaction.exclude_from_reports == False
+                )
+                unbilled_raw = unbilled_query.scalar()
+                unbilled_purchases = float(unbilled_raw) if unbilled_raw else 0.0
+                
+                # Statement Balance = Current Balance - Unbilled Purchases
+                # Example: Balance -25k. Unbilled -5k. Result -20k.
+                # Example: Balance -25k. Unbilled 0. Result -25k.
+                statement_balance = intel["balance"] - unbilled_purchases
+                
+                # Heuristic for Minimum Due (5% of statement balance)
+                # Only if we owe money (negative)
+                if statement_balance < 0:
+                    minimum_due = abs(statement_balance) * 0.05
+                    
+            intel["statement_balance"] = statement_balance
+            intel["unbilled_spend"] = abs(unbilled_purchases)
+            intel["minimum_due"] = minimum_due
+
+            if intel["due_day"]:
+                today = datetime.utcnow().date() # Ensure date object
+                try:
+                    # If we have a last statement date, Due Date is strictly next month from that?
+                    # Or same month? Usually 20-50 days grace.
+                    # Simple logic: If today > due_day (this month), show next month.
+                    # Better logic relative to Last Statement: Statement + ~20 days?
+                    # But we maintain explicit Due Day.
+                    
+                    # Let's stick to "Next Due Date relative to Today"
+                    due_date = date(today.year, today.month, int(intel["due_day"]))
+                    if due_date < today:
+                         # Move to next month
+                        if today.month == 12:
+                            due_date = date(today.year + 1, 1, int(intel["due_day"]))
+                        else:
+                            due_date = date(today.year, today.month + 1, int(intel["due_day"]))
+                            
+                    intel["days_until_due"] = (due_date - today).days
+                    intel["next_due_date"] = due_date.isoformat()
+                except ValueError:
                     pass
 
             credit_intelligence.append(intel)

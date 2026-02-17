@@ -58,6 +58,31 @@ const currentCategoryBudget = computed(() => {
     return props.budgets.find(b => b.category === props.form.category) || null
 })
 
+// Auto-detect Credit Card Payment
+import { watch } from 'vue'
+watch(() => props.form.category, (newVal) => {
+    if (!newVal) return;
+
+    // Check if category implies credit card payment
+    const lower = newVal.toLowerCase();
+    if (lower.includes('credit card') || lower.includes('cc payment') || lower.includes('card payment')) {
+        // Find if we have credit card accounts
+        const ccAccounts = props.accounts.filter(a => a.type === 'CREDIT_CARD');
+
+        if (ccAccounts.length > 0) {
+            // Suggest Transfer mode
+            if (!props.form.is_transfer) {
+                props.form.is_transfer = true;
+
+                // If only one card, auto-select it
+                if (ccAccounts.length === 1) {
+                    props.form.to_account_id = ccAccounts[0].id;
+                }
+            }
+        }
+    }
+})
+
 function handleSubmit() {
     emit('submit')
 }
