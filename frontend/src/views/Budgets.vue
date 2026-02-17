@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
+import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import { financeApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
 import { useNotificationStore } from '@/stores/notification'
@@ -135,6 +136,10 @@ const inactiveGroups = computed(() => {
     })
 })
 
+const overspentGroups = computed(() => {
+    return groupedBudgets.value.filter(g => g.parent.percentage > 100)
+})
+
 const totalIncome = computed(() => {
     if (overallBudget.value) return Number(overallBudget.value.income || 0)
     return budgets.value
@@ -258,6 +263,12 @@ async function saveBudget() {
 
 
 
+function getBudgetHealthClass(percentage: number) {
+    if (percentage > 90) return 'health-danger'
+    if (percentage > 70) return 'health-warning'
+    return 'health-success'
+}
+
 onMounted(() => {
     fetchData()
 })
@@ -296,11 +307,32 @@ onMounted(() => {
                 </v-col>
             </v-row>
 
-            <v-row v-if="loading" class="mb-8">
-                <v-col cols="12">
-                    <v-skeleton-loader type="card" height="300" rounded="xl"></v-skeleton-loader>
-                </v-col>
-            </v-row>
+            <!-- Premium Skeleton Loading State -->
+            <div v-if="loading">
+                <v-row class="mb-10">
+                    <v-col cols="12">
+                        <PremiumSkeleton type="hero" height="360" glass />
+                    </v-col>
+                </v-row>
+
+                <v-row class="mb-10">
+                    <v-col v-for="i in 4" :key="`summary-skel-${i}`" cols="12" sm="6" lg="3">
+                        <PremiumSkeleton type="stat-card" glass />
+                    </v-col>
+                </v-row>
+
+                <div class="mb-10">
+                    <div class="d-flex align-center ga-3 mb-6">
+                        <v-skeleton-loader type="avatar" size="44"></v-skeleton-loader>
+                        <v-skeleton-loader type="heading" width="200"></v-skeleton-loader>
+                    </div>
+                    <v-row>
+                        <v-col v-for="i in 3" :key="`cat-skel-${i}`" cols="12" sm="6" lg="4">
+                            <PremiumSkeleton type="category-card" glass />
+                        </v-col>
+                    </v-row>
+                </div>
+            </div>
 
             <v-fade-transition v-else>
                 <div v-show="!loading">
@@ -382,12 +414,21 @@ onMounted(() => {
                             </v-row>
 
                             <div v-if="overallBudget.amount_limit" class="mt-8">
-                                <div class="relative-pos mb-4">
+                                <div class="relative-pos mb-4 progress-container-premium">
                                     <v-progress-linear :model-value="Math.min(overallBudget.percentage, 100)"
-                                        height="16" rounded="pill" :color="overallBudget.percentage > 100 ? 'error' :
-                                            (overallBudget.percentage > 80 ? 'warning' : 'white')"
-                                        class="premium-progress-lg elevation-4">
+                                        height="16" rounded="pill"
+                                        :class="['premium-progress-lg elevation-4', getBudgetHealthClass(overallBudget.percentage)]">
                                     </v-progress-linear>
+
+                                    <!-- 100% Goal Marker -->
+                                    <div class="progress-goal-marker" :style="{ left: '100%' }"></div>
+
+                                    <!-- Overspent Overflow -->
+                                    <div v-if="overallBudget.percentage > 100" class="overspent-indicator"
+                                        :style="{ left: '100%' }">
+                                        <div class="overflow-pulse"></div>
+                                        <Flame :size="14" class="text-white" />
+                                    </div>
                                     <!-- Today marker -->
                                     <div v-if="spendingVelocity.status !== 'neutral'"
                                         class="month-progress-marker d-flex flex-column align-center"
@@ -435,7 +476,12 @@ onMounted(() => {
                             </v-btn>
                         </div>
 
-                        <div v-if="insights.length > 0" class="d-flex flex-column ga-4">
+                        <div v-if="loadingInsights" class="d-flex flex-column ga-4">
+                            <v-skeleton-loader v-for="i in 2" :key="`insight-skel-${i}`" type="article" height="120"
+                                rounded="xl" class="premium-glass-card"></v-skeleton-loader>
+                        </div>
+
+                        <div v-else-if="insights.length > 0" class="d-flex flex-column ga-4">
                             <v-card v-for="insight in insights" :key="insight.id" class="premium-glass-card pa-6"
                                 rounded="xl" elevation="2"
                                 @click="insight.action === 'settings' ? router.push('/settings') : null"
@@ -536,6 +582,49 @@ onMounted(() => {
                             </v-card>
                         </v-col>
                     </v-row>
+
+                    <!-- Budget Alerts (Dynamic) -->
+                    <v-expand-transition>
+                        <div v-if="overspentGroups.length > 0" class="mb-10">
+                            <div class="d-flex align-center ga-3 mb-4">
+                                <v-avatar color="error" variant="tonal" size="44">
+                                    <Flame class="text-error" :size="24" />
+                                </v-avatar>
+                                <div>
+                                    <h3 class="text-h6 font-weight-black line-height-1 mb-1">Budget Alerts</h3>
+                                    <p class="text-caption font-weight-bold opacity-60">High-priority awareness items
+                                    </p>
+                                </div>
+                            </div>
+                            <v-row>
+                                <v-col v-for="group in overspentGroups" :key="`alert-${group.parent.category}`"
+                                    cols="12" sm="6" lg="4">
+                                    <v-card border="error" variant="outlined"
+                                        class="pa-4 bg-error-lighten-5 rounded-xl border-opacity-25 h-100"
+                                        @click="editBudget(group.parent)">
+                                        <div class="d-flex align-center justify-space-between">
+                                            <div class="d-flex align-center ga-3">
+                                                <v-avatar size="44" color="error" variant="tonal" rounded="lg">
+                                                    <span class="text-h5">{{ group.parent.icon }}</span>
+                                                </v-avatar>
+                                                <div>
+                                                    <div class="text-subtitle-1 font-weight-black">{{
+                                                        group.parent.category }}</div>
+                                                    <div class="text-caption font-weight-bold text-error">
+                                                        Overspent by {{ formatAmount(group.parent.spent -
+                                                            group.parent.amount_limit) }}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <v-btn variant="tonal" size="small" icon color="error">
+                                                <Pencil :size="16" />
+                                            </v-btn>
+                                        </div>
+                                    </v-card>
+                                </v-col>
+                            </v-row>
+                        </div>
+                    </v-expand-transition>
 
                     <!-- Category Intelligence -->
                     <div
@@ -671,11 +760,16 @@ onMounted(() => {
                                     </div>
 
                                     <!-- Parent Progress -->
-                                    <div v-if="group.parent.amount_limit" class="mb-6">
+                                    <div v-if="group.parent.amount_limit" class="mb-6 progress-container-premium">
                                         <v-progress-linear :model-value="Math.min(group.parent.percentage, 100)"
-                                            height="8" rounded="pill"
-                                            :color="group.parent.percentage > 100 ? 'error' : (group.parent.percentage > 80 ? 'warning' : 'primary')"
-                                            class="mb-3 elevation-1"></v-progress-linear>
+                                            height="12" rounded="pill"
+                                            :class="['mb-3 elevation-1', getBudgetHealthClass(group.parent.percentage)]"></v-progress-linear>
+
+                                        <!-- Overspent Marker -->
+                                        <div v-if="group.parent.percentage > 100" class="overspent-indicator mini"
+                                            :style="{ left: '100%' }">
+                                            <Flame :size="10" class="text-white" />
+                                        </div>
                                         <div class="d-flex justify-space-between text-caption font-weight-black opacity-50"
                                             :class="{ 'text-error opacity-100': group.parent.percentage > 100 }">
                                             <span>{{ group.parent.percentage.toFixed(0) }}% OF LIMIT</span>
@@ -715,8 +809,7 @@ onMounted(() => {
                                                             <v-progress-linear
                                                                 :model-value="Math.min(child.percentage, 100)"
                                                                 height="4" rounded="pill"
-                                                                :color="child.percentage > 100 ? 'error' : 'primary'"
-                                                                class="mb-1"></v-progress-linear>
+                                                                :class="['mb-1', getBudgetHealthClass(child.percentage)]"></v-progress-linear>
                                                             <div class="d-flex justify-space-between text-caption font-weight-bold opacity-50"
                                                                 style="font-size: 10px;">
                                                                 <span>{{ child.percentage.toFixed(0) }}%</span>
@@ -875,6 +968,82 @@ onMounted(() => {
     scroll-snap-align: start;
 }
 
+/* Premium Progress Gradients */
+:deep(.health-success .v-progress-linear__determinate) {
+    background: linear-gradient(90deg, #059669 0%, #10b981 50%, #34d399 100%) !important;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+}
+
+:deep(.health-warning .v-progress-linear__determinate) {
+    background: linear-gradient(90deg, #d97706 0%, #f59e0b 50%, #fbbf24 100%) !important;
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.2);
+}
+
+:deep(.health-danger .v-progress-linear__determinate) {
+    background: linear-gradient(90deg, #991b1b 0%, #ef4444 50%, #f87171 100%) !important;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+}
+
+.progress-container-premium {
+    position: relative;
+}
+
+.progress-goal-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.3);
+    z-index: 5;
+    pointer-events: none;
+}
+
+.overspent-indicator {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 28px;
+    height: 28px;
+    background: #ef4444;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
+}
+
+.overspent-indicator.mini {
+    width: 20px;
+    height: 20px;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+.overflow-pulse {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 50%;
+    background: inherit;
+    animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+    opacity: 0.4;
+}
+
+@keyframes ping {
+
+    75%,
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+.premium-progress-lg :deep(.v-progress-linear__background) {
+    opacity: 0.15 !important;
+}
+
 .hover-lift {
     transition: all 0.3s ease;
 }
@@ -1009,5 +1178,23 @@ onMounted(() => {
     .text-h2 {
         font-size: 2.5rem !important;
     }
+}
+
+.card-bg-icon-standard {
+    position: absolute;
+    bottom: -1.5rem;
+    right: -1rem;
+    font-size: 8rem;
+    opacity: 0.03;
+    pointer-events: none;
+    line-height: 1;
+    transform: rotate(-12deg);
+    transition: all 0.5s ease;
+    z-index: 0;
+}
+
+.premium-glass-card:hover .card-bg-icon-standard {
+    transform: rotate(0deg) scale(1.1);
+    opacity: 0.05;
 }
 </style>

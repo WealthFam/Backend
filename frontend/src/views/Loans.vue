@@ -34,7 +34,10 @@
 
                 <!-- Summary Stats -->
                 <v-row class="mb-8">
-                    <v-col cols="12" md="4">
+                    <v-col cols="12" md="4" v-if="loading">
+                        <PremiumSkeleton type="stat-card" glass />
+                    </v-col>
+                    <v-col cols="12" md="4" v-else>
                         <v-card class="premium-glass-card pa-6 h-100" elevation="0">
                             <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-2">Total
                                 Outstanding</div>
@@ -42,7 +45,11 @@
                             </div>
                         </v-card>
                     </v-col>
-                    <v-col cols="12" md="4">
+
+                    <v-col cols="12" md="4" v-if="loading">
+                        <PremiumSkeleton type="stat-card" glass />
+                    </v-col>
+                    <v-col cols="12" md="4" v-else>
                         <v-card class="premium-glass-card pa-6 h-100" elevation="0">
                             <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-2">Monthly
                                 Commitment</div>
@@ -50,7 +57,11 @@
                             </div>
                         </v-card>
                     </v-col>
-                    <v-col cols="12" md="4">
+
+                    <v-col cols="12" md="4" v-if="loading">
+                        <PremiumSkeleton type="stat-card" glass />
+                    </v-col>
+                    <v-col cols="12" md="4" v-else>
                         <v-card class="premium-glass-card pa-6 h-100" elevation="0">
                             <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase mb-2">Active
                                 Loans</div>
@@ -59,10 +70,12 @@
                     </v-col>
                 </v-row>
 
-                <!-- Loading State -->
-                <div v-if="loading" class="d-flex justify-center align-center py-16">
-                    <v-progress-circular indeterminate color="primary" size="64" width="6" />
-                </div>
+                <!-- Loading Grid -->
+                <v-row v-if="loading" class="pb-16">
+                    <v-col v-for="i in 3" :key="`skel-${i}`" cols="12" sm="6" lg="4">
+                        <PremiumSkeleton type="category-card" glass />
+                    </v-col>
+                </v-row>
 
                 <!-- Empty State -->
                 <div v-else-if="loans.length === 0"
@@ -127,8 +140,9 @@
                                         <span class="text-medium-emphasis">Progress</span>
                                         <span class="text-primary">{{ loan.progress_percentage }}%</span>
                                     </div>
-                                    <v-progress-linear :model-value="loan.progress_percentage" color="primary"
-                                        height="8" rounded="pill" class="opacity-90"></v-progress-linear>
+                                    <v-progress-linear :model-value="loan.progress_percentage" height="10"
+                                        rounded="pill" class="loan-progress-premium">
+                                    </v-progress-linear>
                                 </div>
 
                                 <v-row dense class="mt-2">
@@ -153,6 +167,11 @@
                                 <span class="text-caption font-weight-black text-on-surface">
                                     Next Due: {{ getNextDueDate(loan.next_emi_date) }}
                                 </span>
+                            </div>
+
+                            <!-- Subtle background icon -->
+                            <div class="card-bg-icon-standard">
+                                <Landmark :size="120" />
                             </div>
                         </v-card>
                     </v-col>
@@ -302,6 +321,7 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi as api } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useCurrency } from '@/composables/useCurrency'
+import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import { Sparkles, Plus, Landmark, Calendar, X, ChevronDown } from 'lucide-vue-next'
 import { marked } from 'marked'
 
@@ -442,6 +462,15 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.loan-progress-premium :deep(.v-progress-linear__determinate) {
+    background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%) !important;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+.loan-progress-premium :deep(.v-progress-linear__background) {
+    opacity: 0.1 !important;
+}
+
 .dashboard-page {
     position: relative;
     min-height: calc(100vh - 64px);
@@ -535,5 +564,23 @@ onMounted(() => {
 
 .premium-markdown :deep(li) {
     margin-bottom: 0.5rem;
+}
+
+.card-bg-icon-standard {
+    position: absolute;
+    bottom: -1.5rem;
+    right: -1rem;
+    font-size: 8rem;
+    opacity: 0.03;
+    pointer-events: none;
+    line-height: 1;
+    transform: rotate(-12deg);
+    transition: all 0.5s ease;
+    z-index: 0;
+}
+
+.premium-glass-card:hover .card-bg-icon-standard {
+    transform: rotate(0deg) scale(1.1);
+    opacity: 0.05;
 }
 </style>

@@ -14,15 +14,41 @@
                 </v-col>
             </v-row>
 
-            <!-- Loading State -->
-            <v-row v-if="loading">
-                <v-col v-for="i in 4" :key="`skel-${i}`" cols="12" sm="6" lg="3">
-                    <v-skeleton-loader type="card" height="170" rounded="xl"></v-skeleton-loader>
-                </v-col>
-                <v-col cols="12" md="6" v-for="i in 2" :key="`skel-list-${i}`">
-                    <v-skeleton-loader type="article" height="400" rounded="xl"></v-skeleton-loader>
-                </v-col>
-            </v-row>
+            <!-- Premium Loading State -->
+            <div v-if="loading">
+                <v-row>
+                    <!-- Metric Cards Skel -->
+                    <v-col v-for="i in 4" :key="`skel-${i}`" cols="12" sm="6" lg="3">
+                        <PremiumSkeleton type="stat-card" glass />
+                    </v-col>
+
+                    <!-- Budget Pulse Skel -->
+                    <v-col cols="12" class="mt-4">
+                        <div class="d-flex align-center ga-3 mb-6">
+                            <v-skeleton-loader type="avatar" size="32"></v-skeleton-loader>
+                            <v-skeleton-loader type="heading" width="200"></v-skeleton-loader>
+                        </div>
+                        <v-row>
+                            <v-col v-for="i in 4" :key="`pulse-skel-${i}`" cols="12" sm="6" md="4" lg="3">
+                                <PremiumSkeleton type="stat-card" height="100" glass />
+                            </v-col>
+                        </v-row>
+                    </v-col>
+
+                    <!-- Activity & Bills Skel -->
+                    <v-col cols="12" lg="7">
+                        <PremiumSkeleton type="insight-card" height="400" glass />
+                    </v-col>
+                    <v-col cols="12" lg="5">
+                        <PremiumSkeleton type="insight-card" height="400" glass />
+                    </v-col>
+
+                    <!-- Credit Intelligence Skel -->
+                    <v-col cols="12">
+                        <PremiumSkeleton type="hero" height="300" glass />
+                    </v-col>
+                </v-row>
+            </div>
 
             <v-row v-else>
                 <!-- ROW 1: Metric Cards -->
@@ -77,8 +103,9 @@
                         </div>
                         <div>
                             <div class="text-overline opacity-60 font-weight-black mb-1">Budget Health</div>
-                            <v-progress-linear :model-value="Math.min(metrics.budget_health.percentage, 100)" height="8"
-                                rounded="pill" color="warning" class="mt-2"></v-progress-linear>
+                            <v-progress-linear :model-value="Math.min(metrics.budget_health.percentage, 100)"
+                                height="10" rounded="pill" class="mt-2 budget-progress-premium"
+                                :class="metrics.budget_health.percentage > 90 ? 'health-danger' : 'health-warning'"></v-progress-linear>
                         </div>
                     </v-card>
                 </v-col>
@@ -122,7 +149,7 @@
                                     <div class="d-flex align-center ga-2">
                                         <v-avatar size="32" color="surface-variant" variant="tonal">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(b.category).icon
-                                            }}</span>
+                                                }}</span>
                                         </v-avatar>
                                         <span class="text-subtitle-2 font-weight-black">
                                             {{ b.category }}
@@ -138,12 +165,18 @@
                                         {{ b.percentage.toFixed(0) }}%
                                     </span>
                                 </div>
-                                <v-progress-linear :model-value="Math.min(b.percentage, 100)" height="4" rounded="pill"
-                                    :color="b.percentage > 100 ? 'error' : (b.percentage > 85 ? 'warning' : 'primary')"
-                                    class="mb-3"></v-progress-linear>
+                                <v-progress-linear :model-value="Math.min(b.percentage, 100)" height="6" rounded="pill"
+                                    class="mb-3 budget-progress-premium"
+                                    :class="b.percentage > 100 ? 'health-danger' : (b.percentage > 85 ? 'health-warning' : 'health-success')">
+                                </v-progress-linear>
                                 <div class="d-flex justify-space-between text-caption font-weight-bold opacity-60">
                                     <span>{{ formatAmount(b.spent, metrics.currency) }}</span>
                                     <span>of {{ formatAmount(b.amount_limit, metrics.currency) }}</span>
+                                </div>
+
+                                <!-- Subtle background icon -->
+                                <div class="card-bg-icon-standard">
+                                    <PieChart :size="120" />
                                 </div>
                             </v-card>
                         </v-col>
@@ -173,7 +206,7 @@
                                 </template>
                                 <v-list-item-title class="font-weight-bold text-subtitle-1">{{ txn.description ||
                                     'Transaction'
-                                }}</v-list-item-title>
+                                    }}</v-list-item-title>
                                 <v-list-item-subtitle class="text-caption font-weight-bold opacity-60 mt-1">
                                     {{ formatDate(txn.date).day }} • {{ txn.account_owner_name || 'Personal' }}
                                 </v-list-item-subtitle>
@@ -204,11 +237,11 @@
                                     <template v-slot:prepend>
                                         <v-avatar size="40" color="surface-variant" variant="tonal" class="mr-4">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(bill.category).icon
-                                            }}</span>
+                                                }}</span>
                                         </v-avatar>
                                     </template>
                                     <v-list-item-title class="font-weight-bold">{{ bill.description
-                                    }}</v-list-item-title>
+                                        }}</v-list-item-title>
                                     <v-list-item-subtitle class="text-caption font-weight-bold text-error">Due {{
                                         formatDate(bill.next_date).day }}</v-list-item-subtitle>
                                     <template v-slot:append>
@@ -244,8 +277,8 @@
                                         {{ formatAmount(creditSummary.totalDebt) }} utilized
                                     </span>
                                 </div>
-                                <v-progress-linear :model-value="Math.min(creditSummary.utilization, 100)" height="8"
-                                    rounded="pill" color="primary">
+                                <v-progress-linear :model-value="Math.min(creditSummary.utilization, 100)" height="10"
+                                    rounded="pill" class="credit-progress-premium">
                                 </v-progress-linear>
                                 <div class="d-flex justify-space-between mt-1">
                                     <span class="text-caption font-weight-bold opacity-50">0%</span>
@@ -301,8 +334,8 @@
                                         </span>
                                     </div>
                                     <v-progress-linear :model-value="Math.min(card.utilization, 100)" height="10"
-                                        rounded="pill"
-                                        :color="card.utilization > 70 ? 'error' : 'primary'"></v-progress-linear>
+                                        rounded="pill" class="credit-progress-premium"
+                                        :class="card.utilization > 70 ? 'health-danger' : ''"></v-progress-linear>
                                 </v-col>
 
                                 <v-col cols="12" md="4" class="text-md-right">
@@ -358,6 +391,7 @@ import { useTransactionHelpers } from '@/composables/useTransactionHelpers'
 import { useDashboardHelpers } from '@/composables/useDashboardHelpers'
 import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
+import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import {
     Wallet,
@@ -589,5 +623,52 @@ watch(() => auth.selectedMemberId, async () => {
     font-size: 1rem;
     font-weight: 700;
     color: rgb(var(--v-theme-on-surface));
+}
+
+/* Premium Progress Gradients */
+.budget-progress-premium :deep(.v-progress-linear__determinate) {
+    transition: all 0.5s ease;
+}
+
+.budget-progress-premium.health-success :deep(.v-progress-linear__determinate) {
+    background: linear-gradient(90deg, #059669 0%, #10b981 50%, #34d399 100%) !important;
+}
+
+.budget-progress-premium.health-warning :deep(.v-progress-linear__determinate) {
+    background: linear-gradient(90deg, #d97706 0%, #f59e0b 50%, #fbbf24 100%) !important;
+}
+
+.budget-progress-premium.health-danger :deep(.v-progress-linear__determinate) {
+    background: linear-gradient(90deg, #991b1b 0%, #ef4444 50%, #f87171 100%) !important;
+}
+
+.credit-progress-premium :deep(.v-progress-linear__determinate) {
+    background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%) !important;
+}
+
+.credit-progress-premium.health-danger :deep(.v-progress-linear__determinate) {
+    background: linear-gradient(90deg, #991b1b 0%, #ef4444 100%) !important;
+}
+
+:deep(.v-progress-linear__background) {
+    opacity: 0.1 !important;
+}
+
+.card-bg-icon-standard {
+    position: absolute;
+    bottom: -1.5rem;
+    right: -1rem;
+    font-size: 8rem;
+    opacity: 0.03;
+    pointer-events: none;
+    line-height: 1;
+    transform: rotate(-12deg);
+    transition: all 0.5s ease;
+    z-index: 0;
+}
+
+.premium-glass-card:hover .card-bg-icon-standard {
+    transform: rotate(0deg) scale(1.1);
+    opacity: 0.05;
 }
 </style>
