@@ -80,6 +80,7 @@ const {
     selectedIds,
     showDeleteConfirm,
     fetchData,
+    fetchModalData, // [NEW] Lazy load budgets/loans
     handleTimeRangeChange,
     toggleTxnSort,
     refreshAccounts,
@@ -168,6 +169,8 @@ const auth = useAuthStore()
 watch(() => auth.selectedMemberId, () => {
     // Reset data and re-fetch everything
     accounts.value = [] // Force re-fetch of filtered accounts
+    budgets.value = [] // Clear lazy-loaded data
+    loans.value = []
     page.value = 1
     fetchData()
     fetchTriage()
@@ -265,7 +268,7 @@ onMounted(() => {
                             @update:selectedTimeRange="selectedTimeRange = $event; handleTimeRangeChange($event)"
                             @update:page="page = $event; fetchData()"
                             @update:pageSize="pageSize = $event; page = 1; fetchData()" @sortChange="toggleTxnSort"
-                            @editTxn="openEditModal" @mapVendor="openAliasModal"
+                            @editTxn="(t) => { fetchModalData(); openEditModal(t) }" @mapVendor="openAliasModal"
                             @deleteSelected="showDeleteConfirm = true" @importCsv="showImportModal = true"
                             @fetchData="fetchData"
                             @resetFilters="selectedTimeRange = 'all'; startDate = ''; endDate = ''; searchQuery = ''; categoryFilter = ''; fetchData()" />

@@ -83,18 +83,16 @@ export function useTransactionState(
         loading.value = true
         try {
             // Load master data if not already loaded OR if we need to refresh based on member
+            // OPTIMIZATION: Only fetch essential data for list view. 
+            // Budgets and Loans are lazy-loaded when modal opens.
             if (accounts.value.length === 0) {
-                const [accRes, catRes, budgetRes, loanRes, groupRes] = await Promise.all([
+                const [accRes, catRes, groupRes] = await Promise.all([
                     financeApi.getAccounts(auth.selectedMemberId || undefined),
                     financeApi.getCategories(true),
-                    financeApi.getBudgets(undefined, undefined, auth.selectedMemberId || undefined),
-                    financeApi.getLoans(auth.selectedMemberId || undefined),
                     financeApi.getExpenseGroups(auth.selectedMemberId || undefined)
                 ])
                 accounts.value = accRes.data
                 categories.value = catRes.data
-                budgets.value = budgetRes.data
-                loans.value = loanRes.data
                 expenseGroups.value = groupRes.data
             }
 
@@ -294,6 +292,21 @@ export function useTransactionState(
 
         // Methods
         fetchData,
+        fetchModalData: async () => {
+            // Lazy load heavy data for modals
+            if (budgets.value.length === 0 || loans.value.length === 0) {
+                try {
+                    const [budgetRes, loanRes] = await Promise.all([
+                        financeApi.getBudgets(undefined, undefined, auth.selectedMemberId || undefined),
+                        financeApi.getLoans(auth.selectedMemberId || undefined)
+                    ])
+                    budgets.value = budgetRes.data
+                    loans.value = loanRes.data
+                } catch (e) {
+                    console.error('Failed to load modal data', e)
+                }
+            }
+        },
         handleTimeRangeChange,
         toggleTxnSort,
         changePage,

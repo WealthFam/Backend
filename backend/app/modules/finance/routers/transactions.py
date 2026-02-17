@@ -29,6 +29,7 @@ def read_transactions(
     category: Optional[str] = None,
     sort_by: Optional[str] = "date",
     sort_order: Optional[str] = "desc",
+    user_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -36,11 +37,11 @@ def read_transactions(
     items = TransactionService.get_transactions(
         db, str(current_user.tenant_id), account_id, skip, limit, start_date, end_date, 
         search=search, category=category, user_role=current_user.role,
-        sort_by=sort_by, sort_order=sort_order
+        sort_by=sort_by, sort_order=sort_order, user_id=user_id
     )
     total = TransactionService.count_transactions(
         db, str(current_user.tenant_id), account_id, start_date, end_date, 
-        search=search, category=category, user_role=current_user.role
+        search=search, category=category, user_role=current_user.role, user_id=user_id
     )
     
     return {
