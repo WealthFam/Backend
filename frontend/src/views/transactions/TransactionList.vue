@@ -10,7 +10,10 @@ import {
     MapPin,
     Pencil,
     MoreVertical,
-    FileText
+    FileText,
+    TrendingUp,
+    TrendingDown,
+    Wallet
 } from 'lucide-vue-next'
 
 const { formatAmount } = useCurrency()
@@ -31,8 +34,14 @@ const props = defineProps<{
     selectedTimeRange: string
     page: number
     pageSize: number
-    txnSortKey: string
     txnSortOrder: 'asc' | 'desc'
+    metrics: {
+        monthly_income: number
+        monthly_spending: number
+        breakdown: {
+            net_worth: number
+        }
+    }
 }>()
 
 // Emits
@@ -79,25 +88,43 @@ const accountOptions = computed(() => {
     return [{ title: 'All Accounts', value: '' }, ...props.accounts.map(a => ({ title: a.name, value: a.id }))]
 })
 
-const categoryOptions = computed(() => {
+const flatCategories = computed(() => {
     const list: any[] = []
-    const flatten = (cats: any[], depth = 0) => {
+    const flatten = (cats: any[]) => {
         cats.forEach(c => {
-            const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : ''
-            list.push({
-                label: `${prefix}${c.icon || '🏷️'} ${c.name}`,
-                value: c.name
-            })
+            list.push(c)
             if (c.subcategories && c.subcategories.length > 0) {
-                flatten(c.subcategories, depth + 1)
+                flatten(c.subcategories)
             }
         })
     }
     flatten(props.categories)
-    if (!list.find(o => o.value === 'Uncategorized')) {
-        list.push({ label: '🏷️ Uncategorized', value: 'Uncategorized' })
+    return list
+})
+
+const categoryOptions = computed(() => {
+    const options = flatCategories.value.map(c => {
+        // Find depth for indentation
+        let depth = 0
+        let current = c
+        while (current.parent_id) {
+            depth++
+            const parent = flatCategories.value.find(p => p.id === current.parent_id)
+            if (!parent) break
+            current = parent
+        }
+
+        const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : ''
+        return {
+            title: `${prefix}${c.icon || '🏷️'} ${c.name}`,
+            value: c.name
+        }
+    })
+
+    if (!options.find(o => o.value === 'Uncategorized')) {
+        options.push({ title: '🏷️ Uncategorized', value: 'Uncategorized' })
     }
-    return list.map(o => ({ title: o.label, value: o.value }))
+    return options
 })
 
 const timeRangeOptions = [
@@ -179,11 +206,13 @@ function getAccountName(id: string) {
 function getCategoryDisplay(name: string) {
     if (!name || name === 'Uncategorized') return { icon: '🏷️', text: 'Uncategorized', color: '#9ca3af' }
 
-    const cat = props.categories.find(c => c.name === name)
+    const cat = flatCategories.value.find(c => c.name === name)
     if (cat) {
         let text = cat.name
-        if (cat.parent_name) {
-            text = `${cat.parent_name} › ${cat.name}`
+        // Try to find parent name from flat list
+        const parent = cat.parent_id ? flatCategories.value.find(p => p.id === cat.parent_id) : null
+        if (parent) {
+            text = `${parent.name} › ${cat.name}`
         }
         return { icon: cat.icon || '🏷️', text: text, color: cat.color || '#3B82F6' }
     }
@@ -419,7 +448,51 @@ function handleReset() {
                 </v-btn>
             </div>
         </div>
-
+        <!-- Transaction KPIs -->
+        <v-row class="mb-6">
+            <v-col cols="12" sm="4">
+                <v-card class="glass-card pa-4 d-flex align-center border-thin" rounded="xl">
+                    <v-avatar color="success" variant="tonal" class="mr-4" rounded="lg">
+                        <TrendingUp :size="20" />
+                    </v-avatar>
+                    <div>
+                        <div class="text-caption font-weight-bold opacity-60 text-uppercase">Income</div>
+                        <div class="text-h6 font-weight-black text-success">{{
+                            formatAmount(props.metrics.monthly_income) }}
+                        </div>
+                    </div>
+                </v-card>
+            </v-col>
+            <v-col cols="12" sm="4">
+                <v-card class="glass-card pa-4 d-flex align-center border-thin" rounded="xl">
+                    <v-avatar color="error" variant="tonal" class="mr-4" rounded="lg">
+                        <TrendingDown :size="20" />
+                    </v-avatar>
+                    <div>
+                        <div class="text-caption font-weight-bold opacity-60 text-uppercase">Expenses</div>
+                        <div class="text-h6 font-weight-black text-error">{{
+                            formatAmount(Math.abs(props.metrics.monthly_spending)) }}
+                        </div>
+                    </div>
+                </v-card>
+            </v-col>
+            <v-col cols="12" sm="4">
+                <v-card class="glass-card pa-4 d-flex align-center border-thin" rounded="xl">
+                    <v-avatar
+                        :color="(props.metrics.monthly_income - props.metrics.monthly_spending) >= 0 ? 'primary' : 'warning'"
+                        variant="tonal" class="mr-4" rounded="lg">
+                        <Wallet :size="20" />
+                    </v-avatar>
+                    <div>
+                        <div class="text-caption font-weight-bold opacity-60 text-uppercase">Net Flow</div>
+                        <div class="text-h6 font-weight-black"
+                            :class="(props.metrics.monthly_income - props.metrics.monthly_spending) >= 0 ? 'text-primary' : 'text-warning'">
+                            {{ formatAmount(props.metrics.monthly_income - props.metrics.monthly_spending) }}
+                        </div>
+                    </div>
+                </v-card>
+            </v-col>
+        </v-row>
         <!-- Transaction Table -->
         <v-card class="premium-glass-card overflow-hidden">
             <v-data-table-server v-model="tableSelection" :headers="headers" :items="transactions" :items-length="total"
@@ -443,9 +516,14 @@ function handleReset() {
                 <!-- Recipient Column -->
                 <template #[`item.recipient`]="{ item }">
                     <div class="d-flex align-center gap-3 py-2">
-                        <v-avatar size="36" :color="getCategoryDisplay(item.category).color + '20'" rounded="lg">
-                            <span class="text-h6 pb-1">{{ getCategoryDisplay(item.category).icon }}</span>
-                        </v-avatar>
+                        <v-tooltip :text="getCategoryDisplay(item.category).text" location="top">
+                            <template v-slot:activator="{ props }">
+                                <v-avatar v-bind="props" size="36"
+                                    :color="getCategoryDisplay(item.category).color + '20'" rounded="lg">
+                                    <span class="text-h6 pb-1">{{ getCategoryDisplay(item.category).icon }}</span>
+                                </v-avatar>
+                            </template>
+                        </v-tooltip>
                         <div>
                             <div class="text-subtitle-2 font-weight-bold text-truncate" style="max-width: 200px;">
                                 {{ item.recipient || item.description }}
@@ -495,10 +573,7 @@ function handleReset() {
                                 🏦 EMI
                             </v-chip>
 
-                            <v-chip size="x-small" variant="outlined" :color="getCategoryDisplay(item.category).color"
-                                class="font-weight-bold">
-                                {{ getCategoryDisplay(item.category).text }}
-                            </v-chip>
+
 
                             <v-chip v-if="item.expense_group_id" size="x-small" color="secondary" variant="tonal"
                                 class="font-weight-bold">

@@ -23,6 +23,13 @@ export function useTransactionState(
     const transactions = ref<any[]>([])
     const loading = ref(true)
     const total = ref(0)
+    const metrics = ref({
+        monthly_income: 0,
+        monthly_spending: 0,
+        breakdown: {
+            net_worth: 0
+        }
+    })
 
     // Filter State
     const selectedAccount = ref<string>('')
@@ -119,6 +126,19 @@ export function useTransactionState(
 
             transactions.value = res.data.items
             total.value = res.data.total
+
+            // Fetch metrics for the same filters
+            try {
+                const metricsRes = await financeApi.getMetrics(
+                    selectedAccount.value || undefined,
+                    startDate.value || undefined,
+                    endDate.value || undefined,
+                    auth.selectedMemberId || undefined
+                )
+                metrics.value = metricsRes.data
+            } catch (e) {
+                console.error('[Transactions] Failed to fetch metrics', e)
+            }
 
             // If current page exceeds total pages, reset to page 1
             if (page.value > Math.ceil(total.value / pageSize.value) && page.value > 1) {
@@ -255,6 +275,7 @@ export function useTransactionState(
         transactions,
         loading,
         total,
+        metrics,
         selectedAccount,
         searchQuery,
         categoryFilter,
