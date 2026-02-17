@@ -1,10 +1,13 @@
 from typing import List, Dict, Any, Optional
+import logging
 import casparser
 import tempfile
 import os
 from datetime import datetime, date
 from decimal import Decimal
 from parser.schemas.transaction import Transaction, TransactionType, AccountInfo, MerchantInfo
+
+logger = logging.getLogger(__name__)
 
 class CasParser:
     """
@@ -62,7 +65,7 @@ class CasParser:
                     try:
                         return process_nsdl_text(text)
                     except Exception as e:
-                        print(f"DEBUG: Patched CDSL routing failed, falling back: {e}")
+                        logger.debug(f"Patched CDSL routing failed, falling back: {e}")
                 return original_proc(text, file_type)
                 
             casparser.process.process_cas_text = safe_patched_process
@@ -94,7 +97,7 @@ class CasParser:
 
             # 3. Handle Depository Statements (NSDL/CDSL) which use 'accounts' instead of 'folios'
             if "accounts" in data and not data.get("folios"):
-                print("DEBUG: Normalizing depository account structure...")
+                logger.debug("Normalizing depository account structure...")
                 folios = []
                 # Statement period for virtual transaction dates
                 period = data.get("statement_period", {})

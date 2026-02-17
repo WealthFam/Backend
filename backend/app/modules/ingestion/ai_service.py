@@ -115,7 +115,7 @@ class GeminiProvider:
                     "icon": "key_off",
                     "action": "settings"
                 }]
-            print(f"AI ClientError: {e}")
+            logger.error(f"AI ClientError: {e}")
             pass
         except ResourceExhausted:
             return [{
@@ -135,7 +135,7 @@ class GeminiProvider:
                 "action": "settings"
             }]
         except Exception as e:
-            print(f"AI Generation Error: {e}")
+            logger.error(f"AI Generation Error: {e}")
             traceback.print_exc()
             pass
         return None

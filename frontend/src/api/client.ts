@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from 'axios'
+import { useNotificationStore } from '@/stores/notification'
 
 // Create Axios instance
 const apiClient: AxiosInstance = axios.create({
@@ -24,13 +25,30 @@ apiClient.interceptors.request.use(
 
 // Response interceptor for API calls
 apiClient.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        const method = response.config.method?.toLowerCase()
+        if (['post', 'put', 'delete'].includes(method || '')) {
+            // Show success for some non-GET requests if needed, 
+            // but usually specific components handle success messages.
+            // We'll focus on global error handling for now.
+        }
+        return response
+    },
     async (error) => {
+        const notification = useNotificationStore()
+        
         // Handle 401 Unauthorized (e.g., token expired)
         if (error.response && error.response.status === 401) {
             // Clear token and redirect to login if not already there
             localStorage.removeItem('access_token')
             window.location.href = '/login'
+            notification.error('Session expired. Please login again.')
+        } else if (error.response) {
+            // Generic error handling
+            const message = error.response.data?.detail || error.response.data?.message || 'Server error occurred'
+            notification.error(message)
+        } else {
+            notification.error('Network error or server unreachable')
         }
         return Promise.reject(error)
     }
@@ -272,5 +290,6 @@ export const mobileApi = {
     assignUser: (id: string, userId: string | null) => apiClient.patch(`/mobile/devices/${id}/assign`, { user_id: userId }),
     updateDevice: (id: string, data: { device_name?: string, is_enabled?: boolean, is_ignored?: boolean, user_id?: string | null }) =>
         apiClient.patch(`/mobile/devices/${id}`, data),
+    testNotification: (id: string) => apiClient.post(`/mobile/devices/${id}/test-notification`),
     deleteDevice: (id: string) => apiClient.delete(`/mobile/devices/${id}`)
 }

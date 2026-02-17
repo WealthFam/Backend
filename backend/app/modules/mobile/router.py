@@ -4,7 +4,7 @@ import uuid
 from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from backend.app.core.database import get_db
 from backend.app.core.config import settings
 from backend.app.modules.auth import models as auth_models
@@ -13,6 +13,7 @@ from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.services import IngestionService
 from backend.app.modules.mobile import schemas
+from backend.app.modules.notifications import NotificationService, Alert
 from backend.app.modules.finance.services.analytics_service import AnalyticsService
 
 router = APIRouter(tags=["Mobile"])
@@ -487,6 +488,11 @@ def get_mobile_dashboard(
             daily_limit=daily_budget_limit
         ))
         
+    # --- 3. Pending Triage Count ---
+    pending_count = db.query(ingestion_models.PendingTransaction).filter(
+        ingestion_models.PendingTransaction.tenant_id == str(current_user.tenant_id)
+    ).count()
+
     # Filter recent transactions to match dashboard logic (Safe display)
     # Filtered by service
     filtered_recent = metrics["recent_transactions"]
@@ -500,8 +506,47 @@ def get_mobile_dashboard(
         "budget": metrics["budget_health"],
         "spending_trend": spending_trend,
         "category_distribution": category_distribution,
-        "recent_transactions": filtered_recent
+        "recent_transactions": [
+            {
+                **txn,
+                "account_name": db.query(models.Account.name).filter(models.Account.id == txn['account_id']).scalar()
+            }
+            for txn in filtered_recent
+        ],
+        "pending_triage_count": pending_count
     }
+
+@router.get("/triage", response_model=List[schemas.RecentTransaction])
+def list_mobile_triage(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all pending transactions for the mobile app to review.
+    """
+    from backend.app.modules.finance.services.transaction_service import TransactionService
+    items, total = TransactionService.get_pending_transactions(
+        db, str(current_user.tenant_id), limit=100, sort_order="desc"
+    )
+    
+    enriched = []
+    from backend.app.modules.finance import models
+    for txn in items:
+        # Use relationship for owner info
+        owner_name = "Unknown"
+        if txn.account and txn.account.owner:
+            owner_name = txn.account.owner.full_name or "Unknown"
+
+        enriched.append({
+            "id": txn.id,
+            "date": txn.date,
+            "description": txn.description or "Review Required",
+            "amount": float(txn.amount),
+            "category": txn.category,
+            "account_name": txn.account.name if txn.account else "Unknown",
+            "account_owner_name": owner_name
+        })
+    return enriched
 
 @router.get("/transactions", response_model=schemas.TransactionResponse)
 def list_mobile_transactions(
@@ -518,7 +563,9 @@ def list_mobile_transactions(
     from backend.app.modules.finance import models
     from sqlalchemy import or_
     
-    query = db.query(models.Transaction).filter(
+    query = db.query(models.Transaction).options(
+        joinedload(models.Transaction.account)
+    ).filter(
         models.Transaction.tenant_id == str(current_user.tenant_id),
         models.Transaction.is_transfer == False,
         models.Transaction.exclude_from_reports == False
@@ -547,12 +594,19 @@ def list_mobile_transactions(
     # Enrich with owner info (simplified) or mapped
     enriched = []
     for txn in transactions:
+        # Use relationship for owner info
+        owner_name = None
+        if txn.account and txn.account.owner:
+            owner_name = txn.account.owner.full_name
+
         enriched.append({
             "id": txn.id,
             "date": txn.date,
             "description": txn.description,
             "amount": float(txn.amount),
-            "category": txn.category
+            "category": txn.category,
+            "account_name": txn.account.name if txn.account else "Unknown",
+            "account_owner_name": owner_name
         })
         
     has_next = (page * page_size) < total_count
@@ -639,29 +693,56 @@ def get_mobile_funds(
     
     clean_holdings = []
     
+    today_total_change = 0.0
+    
     for h in holdings:
         inv = float(h.get('invested_value', 0))
         cur = float(h.get('current_value', 0))
         
+        # Calculate Day Change using Sparkline (Last 2 points)
+        # Sparkline is [..., T-2, T-1, T] 
+        # But in get_portfolio logic: sparkline = [float(d.get("nav", 0.0)) for d in sparkline_data if d.get("nav")]
+        # And it says: sparkline_data.reverse() # Reverse to chronological order (Oldest -> Newest)
+        # So sparkline[-1] is Latest NAV, sparkline[-2] is Previous Day NAV
+        
+        day_change = 0.0
+        day_change_limit = 0.0
+        
+        sparkline = h.get('sparkline', [])
+        units = float(h.get('units', 0))
+        
+        if len(sparkline) >= 2 and units > 0:
+            latest_nav = sparkline[-1]
+            prev_nav = sparkline[-2]
+            day_change = (latest_nav - prev_nav) * units
+            
+        today_total_change += day_change
+
         total_invested += inv
         total_current += cur
         
         clean_holdings.append(schemas.FundHolding(
             scheme_code=h['scheme_code'],
             scheme_name=h['scheme_name'],
-            units=float(h.get('units', 0)),
+            units=units,
             current_value=cur,
             invested_value=inv,
             profit_loss=cur - inv,
             last_updated=h.get('last_updated', ''),
-            xirr=None # Individual XIRR requires expensive calc, skipping for list view
+            day_change=day_change,
+            day_change_percentage=(day_change / (cur - day_change) * 100) if (cur - day_change) > 0 else 0.0,
+            xirr=None 
         ))
+
+    day_change_pct = (today_total_change / (total_current - today_total_change) * 100) if (total_current - today_total_change) > 0 else 0.0
         
     return {
         "total_invested": total_invested,
         "total_current": total_current,
         "total_pl": total_current - total_invested,
-        "xirr": None, # Global XIRR requires full logic
+        "day_change": today_total_change,
+        "day_change_percentage": day_change_pct,
+        "xirr": None, 
         "holdings": clean_holdings
     }
 
@@ -719,3 +800,61 @@ def update_transaction_category(
         "amount": float(txn.amount),
         "category": txn.category
     }
+
+from backend.app.modules.notifications.schemas import AlertSchema
+
+@router.get("/alerts", response_model=List[AlertSchema])
+def get_mobile_alerts(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Fetch unread/pending alerts for the mobile app.
+    Real-time push alternative for foreground polling.
+    """
+    from backend.app.modules.notifications.models import Alert
+    from sqlalchemy import or_
+
+    # Get alerts for this user or all family
+    alerts = db.query(Alert).filter(
+        Alert.tenant_id == str(current_user.tenant_id),
+        or_(Alert.user_id == str(current_user.id), Alert.user_id == None),
+        Alert.is_read == False
+    ).order_by(Alert.created_at.desc()).limit(10).all()
+
+    # Mark as read after delivery (polling logic)
+    for alert in alerts:
+        alert.is_read = True
+    
+    db.commit()
+    return alerts
+
+@router.post("/devices/{device_id}/test-notification")
+def test_device_notification(
+    device_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger a test notification for a specific device (via Alert system).
+    """
+    device = db.query(ingestion_models.MobileDevice).filter(
+        (ingestion_models.MobileDevice.id == device_id) | (ingestion_models.MobileDevice.device_id == device_id),
+        ingestion_models.MobileDevice.tenant_id == str(current_user.tenant_id)
+    ).first()
+    
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    from backend.app.modules.notifications import NotificationService
+    
+    NotificationService.create_alert(
+        db, 
+        str(current_user.tenant_id),
+        title="🧪 Test Notification",
+        body=f"Sent to {device.device_name} at {datetime.now().strftime('%H:%M:%S')}",
+        user_id=device.user_id,
+        category="INFO"
+    )
+    
+    return {"status": "sent", "message": "Test alert created"}

@@ -57,7 +57,7 @@ class Account(Base):
                                sync_backref=False)
                                
     loan_details = relationship("Loan", uselist=False, back_populates="account")
-
+    owner = relationship("User", foreign_keys=[owner_id])
 
 
 class TransactionType(str, enum.Enum):

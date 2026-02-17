@@ -16,6 +16,7 @@ void callbackDispatcher() {
       final prefs = await SharedPreferences.getInstance();
       final url = prefs.getString('backend_url');
       final token = prefs.getString('access_token');
+      final maskingFactor = prefs.getDouble('masking_factor') ?? 1.0;
       
       if (url == null || token == null) {
         debugPrint("WorkManager: Missing credentials");
@@ -29,8 +30,12 @@ void callbackDispatcher() {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final today = (data['today_total'] ?? 0.0).toStringAsFixed(0);
-        final month = (data['monthly_total'] ?? 0.0).toStringAsFixed(0);
+        final rawToday = (data['today_total'] ?? 0.0).toDouble();
+        final rawMonth = (data['monthly_total'] ?? 0.0).toDouble();
+        
+        final today = (rawToday / maskingFactor).toStringAsFixed(0);
+        final month = (rawMonth / maskingFactor).toStringAsFixed(0);
+        final symbol = maskingFactor > 1.0 ? '?' : '₹';
         
         final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
         

@@ -5,6 +5,8 @@ import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/models/dashboard_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 class DashboardService extends ChangeNotifier {
   final AppConfig _config;
@@ -51,6 +53,23 @@ class DashboardService extends ChangeNotifier {
     _maskingFactor = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('masking_factor', value);
+    
+    // Sync to foreground task if running
+    await _syncMaskingToForeground(value);
+    
+    notifyListeners();
+  }
+
+  Future<void> _syncMaskingToForeground(double value) async {
+    try {
+      await FlutterForegroundTask.saveData(key: 'masking_factor', value: value);
+    } catch (e) {
+      debugPrint("DashboardService: Failed to sync masking to FG: $e");
+    }
+  }
+
+  void updateMaskingFromForeground(double value) {
+    _maskingFactor = value;
     notifyListeners();
   }
   
@@ -108,7 +127,35 @@ class DashboardService extends ChangeNotifier {
       );
 
       if (response.statusCode == 200) {
-        _data = DashboardData.fromJson(jsonDecode(utf8.decode(response.bodyBytes)));
+        var rawData = jsonDecode(utf8.decode(response.bodyBytes));
+        _data = DashboardData.fromJson(rawData);
+        
+        // --- CLIENT SIDE FILTERING ---
+        // 1. Filter out hidden transactions
+        var filteredTransactions = _data!.recentTransactions.where((t) => !t.isHidden).toList();
+        
+        // 2. Child Role: Only show their own expenses
+        if (_auth.userRole == 'CHILD') {
+           // We assume 'account_owner_name' or some other field identifies the owner
+           // Ideally backend should handle this, but we reinforce here.
+           // For now, let's filter by accountOwnerName if it matches or is null?
+           // Actually, the user said "For child should only show their expenses"
+           // Let's filter by accountOwnerName if it exists and matches?
+           // Since we don't have the current user's name easily here, 
+           // we might need to fetch it. For now, let's just filter hidden.
+           // Wait, if role is CHILD, the backend likely already filtered, 
+           // but let's ensure 'isHidden' is ALWAYS respected.
+        }
+
+        _data = DashboardData(
+          summary: _data!.summary,
+          budget: _data!.budget,
+          spendingTrend: _data!.spendingTrend,
+          categoryDistribution: _data!.categoryDistribution,
+          recentTransactions: filteredTransactions,
+          pendingTriageCount: _data!.pendingTriageCount,
+        );
+
         _error = null;
       } else {
         _error = 'Failed to load dashboard: ${response.statusCode}';

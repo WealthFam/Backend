@@ -94,7 +94,7 @@ function logout() {
             </template>
 
             <router-link to="/" class="brand-link">
-                <v-img src="/logo.png" width="36" height="36" class="mr-3" />
+                <v-img src="/logo.png" width="36" height="36" class="mr-3 logo-theme-aware" />
                 <div class="brand-details d-none d-sm-block">
                     <span class="brand-name">WealthFam</span>
                     <span class="brand-tag">Premium Finance</span>
@@ -103,117 +103,114 @@ function logout() {
 
             <v-spacer></v-spacer>
 
-            <v-spacer></v-spacer>
+            <div class="d-flex align-center pr-2">
+                <!-- Date Chip (Desktop) -->
+                <div class="date-chip-v2 d-none d-md-flex mr-4">
+                    <div class="pulse-dot"></div>
+                    {{ new Date().toLocaleDateString(undefined, {
+                        weekday: 'short', day: 'numeric', month: 'short'
+                    }) }}
+                </div>
 
-            <v-spacer class="d-none d-md-flex"></v-spacer>
+                <!-- Global Member Selection -->
+                <v-menu offset="12" transition="scale-transition" v-if="auth.user && auth.user.role !== 'CHILD'">
+                    <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" variant="tonal" color="primary" class="text-none font-weight-bold mr-4"
+                            height="40" rounded="pill" elevation="0">
+                            <template v-slot:prepend>
+                                <v-avatar v-if="auth.selectedMemberId" size="24" color="primary-lighten-5" class="mr-1">
+                                    <span class="text-caption font-weight-black text-primary"
+                                        style="font-size: 0.6rem !important;">{{
+                                            auth.selectedMemberName.charAt(0).toUpperCase() }}</span>
+                                </v-avatar>
+                                <Users v-else :size="16" class="text-primary mr-2" />
+                            </template>
+                            {{ auth.selectedMemberName }}
+                            <ChevronDown :size="14" class="ml-2 opacity-50" />
+                        </v-btn>
+                    </template>
+                    <v-card width="260" rounded="xl" elevation="10" border>
+                        <v-list density="compact" nav>
+                            <v-list-item @click="auth.selectMember(null)" :active="auth.selectedMemberId === null"
+                                color="primary">
+                                <template v-slot:prepend>
+                                    <Users :size="18" class="mr-3" />
+                                </template>
+                                <v-list-item-title class="font-weight-bold">All Members</v-list-item-title>
+                            </v-list-item>
+                            <v-divider class="my-2"></v-divider>
+                            <v-list-item v-for="user in auth.familyMembers" :key="user.id"
+                                @click="auth.selectMember(user.id)" :active="auth.selectedMemberId === user.id"
+                                color="primary">
+                                <template v-slot:prepend>
+                                    <v-avatar size="28" color="primary-lighten-5" class="mr-3">
+                                        <span class="text-caption font-weight-black text-primary">{{ (user.full_name ||
+                                            user.email).charAt(0).toUpperCase() }}</span>
+                                    </v-avatar>
+                                </template>
+                                <v-list-item-title class="font-weight-bold">{{ user.full_name ||
+                                    user.email.split('@')[0]
+                                }}</v-list-item-title>
+                            </v-list-item>
+                        </v-list>
+                    </v-card>
+                </v-menu>
 
-            <v-spacer class="d-none d-md-flex"></v-spacer>
+                <!-- Theme Toggle -->
+                <v-btn icon @click="toggleTheme" color="slate-600" class="mr-2" size="40">
+                    <component :is="theme.global.current.value.dark ? Sun : Moon" :size="20" />
+                </v-btn>
 
-            <!-- Date Chip (Desktop) -->
-            <div class="date-chip-v2 d-none d-md-flex mr-4">
-                <div class="pulse-dot"></div>
-                {{ new Date().toLocaleDateString(undefined, {
-                    weekday: 'short', day: 'numeric', month: 'short'
-                }) }}
-            </div>
+                <!-- Utility Actions -->
+                <v-btn icon color="slate-600" class="mr-2" size="40">
+                    <Bell :size="20" />
+                </v-btn>
 
-            <!-- Global Member Selection -->
-            <v-menu offset="12" transition="scale-transition" v-if="auth.user && auth.user.role !== 'CHILD'">
-                <template v-slot:activator="{ props }">
-                    <v-btn v-bind="props" variant="elevated" color="surface" class="text-none font-weight-bold mr-4"
-                        height="40" rounded="pill" elevation="1">
-                        <template v-slot:prepend>
-                            <v-avatar v-if="auth.selectedMemberId" size="24" color="primary-lighten-5" class="mr-1">
-                                <span class="text-caption font-weight-black text-primary"
-                                    style="font-size: 0.6rem !important;">{{
-                                        auth.selectedMemberName.charAt(0).toUpperCase() }}</span>
+                <!-- User Profile Menu -->
+                <v-menu offset="12" transition="scale-transition" v-if="auth.user">
+                    <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" variant="flat" class="profile-btn" rounded="pill" height="44">
+                            <v-avatar size="32" class="mr-2 avatar-glow">
+                                <span class="avatar-emoji">{{ AVATARS[selectedAvatar] }}</span>
                             </v-avatar>
-                            <Users v-else :size="16" class="text-primary mr-2" />
-                        </template>
-                        {{ auth.selectedMemberName }}
-                        <ChevronDown :size="14" class="ml-2 opacity-50" />
-                    </v-btn>
-                </template>
-                <v-card width="260" rounded="xl" elevation="10" border>
-                    <v-list density="compact" nav>
-                        <v-list-item @click="auth.selectMember(null)" :active="auth.selectedMemberId === null"
-                            color="primary">
-                            <template v-slot:prepend>
-                                <Users :size="18" class="mr-3" />
-                            </template>
-                            <v-list-item-title class="font-weight-bold">All Members</v-list-item-title>
-                        </v-list-item>
-                        <v-divider class="my-2"></v-divider>
-                        <v-list-item v-for="user in auth.familyMembers" :key="user.id"
-                            @click="auth.selectMember(user.id)" :active="auth.selectedMemberId === user.id"
-                            color="primary">
-                            <template v-slot:prepend>
-                                <v-avatar size="28" color="primary-lighten-5" class="mr-3">
-                                    <span class="text-caption font-weight-black text-primary">{{ (user.full_name ||
-                                        user.email).charAt(0).toUpperCase() }}</span>
-                                </v-avatar>
-                            </template>
-                            <v-list-item-title class="font-weight-bold">{{ user.full_name ||
-                                user.email.split('@')[0]
+                            <span class="user-display-name d-none d-sm-inline">{{ auth.user.email.split('@')[0]
+                                }}</span>
+                        </v-btn>
+                    </template>
+
+                    <v-card width="280" class="premium-popup">
+                        <v-list class="pa-4">
+                            <v-list-item class="mb-4 pa-0">
+                                <template v-slot:prepend>
+                                    <v-avatar size="56" class="mr-4 avatar-glow">
+                                        <span class="text-h5">{{ AVATARS[selectedAvatar] }}</span>
+                                    </v-avatar>
+                                </template>
+                                <v-list-item-title class="text-h6 font-weight-bold">{{ auth.user.email.split('@')[0]
                                 }}</v-list-item-title>
-                        </v-list-item>
-                    </v-list>
-                </v-card>
-            </v-menu>
+                                <v-list-item-subtitle class="text-primary font-weight-medium">Family
+                                    Admin</v-list-item-subtitle>
+                            </v-list-item>
 
-            <!-- Theme Toggle -->
-            <v-btn icon @click="toggleTheme" color="slate-600" class="mr-2">
-                <component :is="theme.global.current.value.dark ? Sun : Moon" :size="20" />
-            </v-btn>
+                            <v-divider class="mb-4"></v-divider>
 
-            <!-- Utility Actions -->
-            <v-btn icon color="slate-600" class="mr-2">
-                <Bell :size="20" />
-            </v-btn>
+                            <v-list-item link to="/settings" rounded="lg" class="mb-1">
+                                <template v-slot:prepend>
+                                    <UserIcon :size="18" class="mr-4 text-slate-500" />
+                                </template>
+                                <v-list-item-title>Profile Settings</v-list-item-title>
+                            </v-list-item>
 
-            <!-- User Profile Menu -->
-            <v-menu offset="12" transition="scale-transition" v-if="auth.user">
-                <template v-slot:activator="{ props }">
-                    <v-btn v-bind="props" variant="flat" class="profile-btn" rounded="pill" height="44">
-                        <v-avatar size="32" class="mr-2 avatar-glow">
-                            <span class="avatar-emoji">{{ AVATARS[selectedAvatar] }}</span>
-                        </v-avatar>
-                        <span class="user-display-name d-none d-sm-inline">{{ auth.user.email.split('@')[0] }}</span>
-                    </v-btn>
-                </template>
-
-                <v-card width="280" class="premium-popup">
-                    <v-list class="pa-4">
-                        <v-list-item class="mb-4 pa-0">
-                            <template v-slot:prepend>
-                                <v-avatar size="56" class="mr-4 avatar-glow">
-                                    <span class="text-h5">{{ AVATARS[selectedAvatar] }}</span>
-                                </v-avatar>
-                            </template>
-                            <v-list-item-title class="text-h6 font-weight-bold">{{ auth.user.email.split('@')[0]
-                                }}</v-list-item-title>
-                            <v-list-item-subtitle class="text-primary font-weight-medium">Family
-                                Admin</v-list-item-subtitle>
-                        </v-list-item>
-
-                        <v-divider class="mb-4"></v-divider>
-
-                        <v-list-item link to="/settings" rounded="lg" class="mb-1">
-                            <template v-slot:prepend>
-                                <UserIcon :size="18" class="mr-4 text-slate-500" />
-                            </template>
-                            <v-list-item-title>Profile Settings</v-list-item-title>
-                        </v-list-item>
-
-                        <v-list-item link @click="logout" rounded="lg" class="text-red-500">
-                            <template v-slot:prepend>
-                                <LogOut :size="18" class="mr-4 text-red-500" />
-                            </template>
-                            <v-list-item-title class="font-weight-bold">Sign Out</v-list-item-title>
-                        </v-list-item>
-                    </v-list>
-                </v-card>
-            </v-menu>
+                            <v-list-item link @click="logout" rounded="lg" class="text-red-500">
+                                <template v-slot:prepend>
+                                    <LogOut :size="18" class="mr-4 text-red-500" />
+                                </template>
+                                <v-list-item-title class="font-weight-bold">Sign Out</v-list-item-title>
+                            </v-list-item>
+                        </v-list>
+                    </v-card>
+                </v-menu>
+            </div>
         </v-app-bar>
 
         <!-- Side Navigation -->
@@ -344,6 +341,18 @@ function logout() {
     margin-left: 1rem;
 }
 
+.logo-theme-aware {
+    filter: drop-shadow(0 0 2px rgba(var(--v-theme-primary), 0.1));
+    mix-blend-mode: multiply;
+    /* Removes white background in Light Mode */
+}
+
+:where(.v-theme--dark, .v-theme--wealthFamDark) .logo-theme-aware {
+    filter: invert(1) brightness(1.2) saturate(1.2);
+    mix-blend-mode: screen;
+    /* Removes black space (inverted white) in Dark Mode */
+}
+
 .brand-name {
     display: block;
     font-size: 1.25rem;
@@ -367,8 +376,8 @@ function logout() {
 
 
 .profile-btn {
-    background: rgb(var(--v-theme-surface)) !important;
-    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)) !important;
+    background: rgba(var(--v-theme-on-surface), 0.05) !important;
+    border: 1px solid rgba(var(--v-border-color), 0.1) !important;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
     transition: all 0.2s;
 }
@@ -380,9 +389,9 @@ function logout() {
 }
 
 .avatar-glow {
-    background: linear-gradient(135deg, #e0e7ff 0%, #ede9fe 100%);
-    border: 1px solid white;
-    box-shadow: 0 0 15px rgba(79, 70, 229, 0.1);
+    background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.1) 0%, rgba(var(--v-theme-secondary), 0.1) 100%);
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    box-shadow: 0 0 15px rgba(var(--v-theme-primary), 0.1);
 }
 
 .avatar-emoji {

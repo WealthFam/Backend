@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, Any
 from parser.core.classifier import FinancialClassifier
 from parser.parsers.registry import ParserRegistry
-from parser.db.models import RequestLog, PatternRule
+from parser.db.models import RequestLog, PatternRule, AICallCache
 import hashlib
 import json
 from datetime import datetime, timedelta
@@ -14,6 +14,22 @@ from parser.parsers.ai.gemini_parser import GeminiParser
 from parser.core.normalizer import MerchantNormalizer
 from parser.core.validator import TransactionValidator
 from parser.core.guesser import CategoryGuesser
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_decimal(val):
+    """Utility to safely convert string/float/int to Decimal by cleaning non-numeric characters."""
+    try:
+        # Remove commas/currency symbols but keep dot and minus
+        clean_val = "".join(c for c in str(val) if c.isdigit() or c in ".-") if val is not None else "0"
+        return Decimal(clean_val or "0")
+    except:
+        return Decimal("0")
+
+def get_digits(s):
+    """Extract digits from a string and return the last 4."""
+    return "".join(filter(str.isdigit, str(s or "")))[-4:]
 
 class IngestionPipeline:
 
@@ -35,8 +51,8 @@ class IngestionPipeline:
                     return pt.get(key, default)
                 return getattr(pt, key, default)
 
-            # Handle CAS/MF specific mappings
-            raw_type = str(safe_pt_get("type", "DEBIT")).upper()
+
+            raw_type = str(safe_pt_get("type") or "DEBIT").upper()
             txn_type = TransactionType.DEBIT
             if raw_type in ["CREDIT", "SELL", "REDEMPTION"]:
                 txn_type = TransactionType.CREDIT
@@ -52,10 +68,10 @@ class IngestionPipeline:
             if isinstance(pt_date, str):
                 final_date = datetime.fromisoformat(pt_date)
             else:
-                final_date = pt_date
+                final_date = pt_date or datetime.now()
 
             return Transaction(
-                amount=Decimal(str(safe_pt_get("amount", 0))),
+                amount=get_decimal(safe_pt_get("amount")),
                 type=txn_type,
                 date=final_date,
                 account=AccountInfo(mask=safe_pt_get("account_mask") or safe_pt_get("folio_number") or safe_pt_get("external_id")),
@@ -110,7 +126,7 @@ class IngestionPipeline:
                 self.db.add(new_rule)
                 self.db.commit()
         except Exception as e:
-            print(f"Error saving AI pattern: {e}")
+            logger.error(f"Error saving AI pattern: {e}")
             self.db.rollback()
 
     def run(self, content: str, source: str, sender: Optional[str] = None, subject: Optional[str] = None, date_hint: Optional[str] = None) -> IngestionResult:
@@ -141,7 +157,7 @@ class IngestionPipeline:
             return IngestionResult(status="ignored", results=[], logs=["Classified as non-financial"])
 
         # 3. Extraction Chain
-        potential_matches: List[Any] = [] # List of ParsedTransaction
+        potential_matches: list[Any] = [] # List of ParsedTransaction
         parsed_txn = None
         
         # A. Static Bank Parsers
@@ -185,7 +201,7 @@ class IngestionPipeline:
                 pt = p_parser.parse(content)
                 if pt:
                     if not hasattr(pt, 'confidence') or pt.confidence is None:
-                        pt.confidence = 0.7 # User patterns usually slightly lower confidence than bank-specific regex
+                        pt.confidence = 0.9  # Learned patterns are actually quite high confidence
                     potential_matches.append(pt)
             except Exception as e:
                 logs.append(f"Pattern Parser failed: {str(e)}")
@@ -199,17 +215,35 @@ class IngestionPipeline:
         if not best_regex_match or best_regex_match.confidence < 0.9:
             try:
                 logs.append(f"Low confidence ({best_regex_match.confidence if best_regex_match else 0}) - Triggering AI Fallback")
-                ai_parser = GeminiParser(self.db)
-                # Use extended parse to get suggested patterns
-                ai_data = ai_parser.parse_with_pattern(content, source, date_hint=date_hint)
+                
+                ai_data = None
+                
+                # Check permanent AI Cache first
+                cached = self.db.query(AICallCache).filter(
+                    AICallCache.content_hash == input_hash
+                ).first()
+                
+                if cached:
+                    logs.append("Reusing cached AI response")
+                    ai_data = cached.response_json
+                else:
+                    ai_parser = GeminiParser(self.db)
+                    ai_data = ai_parser.parse_with_pattern(content, source, date_hint=date_hint)
                 
                 if ai_data and ai_data.get("transaction"):
                     tx_data = ai_data["transaction"]
                     
+
+                    raw_type = str(tx_data.get("type") or "DEBIT").upper()
+                    try:
+                        txn_type = TransactionType(raw_type)
+                    except:
+                        txn_type = TransactionType.DEBIT
+
                     # Create Transaction object
                     pt = Transaction(
-                        amount=Decimal(str(tx_data.get("amount", 0))),
-                        type=TransactionType(tx_data.get("type", "DEBIT")),
+                        amount=get_decimal(tx_data.get("amount")),
+                        type=txn_type,
                         date=datetime.fromisoformat(tx_data["date"]) if tx_data.get("date") else datetime.now(),
                         account=AccountInfo(mask=tx_data.get("account_mask"), provider=source),
                         merchant=MerchantInfo(raw=tx_data.get("merchant"), cleaned=tx_data.get("merchant")),
@@ -221,6 +255,21 @@ class IngestionPipeline:
 
                     ai_confidence = pt.confidence
                     
+                    # --- AI RESPONSE CACHE ---
+                    # Save a permanent copy of the AI response to avoid re-parsing
+                    try:
+                        new_cache = AICallCache(
+                            content_hash=input_hash,
+                            source=source,
+                            response_json=ai_data
+                        )
+                        self.db.add(new_cache)
+                        self.db.commit()
+                        logs.append("AI response saved to cache")
+                    except Exception as e:
+                        logger.error(f"Error saving AI cache: {e}")
+                        self.db.rollback()
+
                     # Logic to save the new pattern if it's very high confidence
                     suggested_regex = ai_data.get("suggested_regex")
                     field_mapping = ai_data.get("field_mapping")
@@ -245,8 +294,7 @@ class IngestionPipeline:
                         parsed_txn = self._convert_to_schema_txn(best_regex_match)
                         parser_used = "Best Regex (AI Failed)"
             except Exception as e:
-                import traceback
-                traceback.print_exc()
+                logger.error(f"AI Parser failed: {str(e)}")
                 logs.append(f"AI Parser failed: {str(e)}")
                 if best_regex_match:
                     parsed_txn = self._convert_to_schema_txn(best_regex_match)
@@ -298,9 +346,8 @@ class IngestionPipeline:
                  RequestLog.input_hash != input_hash # Not ourselves
              ).all()
 
-             is_cross_duplicate = False
-             def get_digits(s): return "".join(filter(str.isdigit, str(s or "")))[-4:]
              
+             is_cross_duplicate = False
              for rs in recent_successes:
                  try:
                      payload = rs.output_payload or {}

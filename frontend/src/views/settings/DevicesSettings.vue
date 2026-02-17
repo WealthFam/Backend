@@ -154,6 +154,11 @@
                                 class="flex-grow-1" @click="toggleDeviceEnabled(device)">
                                 {{ device.is_enabled ? 'Pause' : 'Resume' }}
                             </v-btn>
+                            <v-btn color="indigo-lighten-4" variant="flat" size="small"
+                                style="min-width: 36px; padding: 0;" @click="testNotification(device)"
+                                :loading="isTestingDevice === device.id" title="Test Notification">
+                                <Bell v-if="isTestingDevice !== device.id" :size="14" class="text-indigo" />
+                            </v-btn>
                             <v-btn color="error" variant="tonal" size="small" style="min-width: 36px; padding: 0;"
                                 @click="deleteDeviceRequest(device)">
                                 <Trash2 :size="14" />
@@ -190,7 +195,7 @@
                                     <div class="text-subtitle-2 font-weight-bold text-medium-emphasis text-truncate">{{
                                         device.device_name }}</div>
                                     <div class="text-caption font-mono text-disabled text-truncate">{{ device.device_id
-                                    }}</div>
+                                        }}</div>
                                 </div>
                                 <v-chip size="x-small" color="grey" variant="flat">Ignored</v-chip>
                             </div>
@@ -357,7 +362,7 @@
 import { ref, onMounted } from 'vue'
 import { mobileApi, financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { Smartphone, Edit2, User, Clock, Copy, Trash2, RefreshCw, ClipboardList } from 'lucide-vue-next'
+import { Smartphone, Edit2, User, Clock, Copy, Trash2, RefreshCw, ClipboardList, Bell } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
 
@@ -382,6 +387,7 @@ const ingestionEvents = ref<any[]>([])
 const eventPagination = ref({ total: 0, limit: 10, skip: 0 })
 const selectedEvents = ref<string[]>([])
 const isDeletingEvents = ref(false)
+const isTestingDevice = ref<string | null>(null)
 
 function formatDate(dateStr: string) {
     if (!dateStr) return { day: 'N/A', meta: '' }
@@ -496,6 +502,18 @@ const toggleDeviceEnabled = async (device: any) => {
         fetchData()
     } catch (e) {
         notify.error("Failed to update device status")
+    }
+}
+
+const testNotification = async (device: any) => {
+    isTestingDevice.value = device.id
+    try {
+        await mobileApi.testNotification(device.id)
+        notify.success(`Test notification sent to ${device.device_name}`)
+    } catch (e) {
+        notify.error("Failed to send test notification")
+    } finally {
+        isTestingDevice.value = null
     }
 }
 

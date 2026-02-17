@@ -58,3 +58,12 @@ class MerchantAlias(Base):
     pattern = Column(String, nullable=False, unique=True) # The raw string to match (e.g. "BUNDL TECHNOLOGIES")
     alias = Column(String, nullable=False) # The clean name (e.g. "Swiggy")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class AICallCache(Base):
+    __tablename__ = "ai_call_cache"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    content_hash = Column(String, index=True, nullable=False)
+    source = Column(String, nullable=False)
+    response_json = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

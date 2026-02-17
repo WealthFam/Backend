@@ -71,6 +71,9 @@ class RecentTransaction(BaseModel):
     description: str
     amount: float
     category: str
+    account_name: Optional[str] = None
+    account_owner_name: Optional[str] = None
+    is_hidden: bool = False
 
 class SpendingTrendItem(BaseModel):
     date: str
@@ -88,6 +91,7 @@ class MobileDashboardResponse(BaseModel):
     spending_trend: List[SpendingTrendItem]
     category_distribution: List[CategoryPieItem]
     recent_transactions: List[RecentTransaction]
+    pending_triage_count: int = 0
 
 class MemberResponse(BaseModel):
     id: str
@@ -106,6 +110,8 @@ class FundHolding(BaseModel):
     current_value: float
     invested_value: float
     profit_loss: float
+    day_change: Optional[float] = 0.0
+    day_change_percentage: Optional[float] = 0.0
     last_updated: str
     xirr: Optional[float] = None
     allocation_percentage: Optional[float] = None # Calculated on fly
@@ -113,6 +119,8 @@ class FundHolding(BaseModel):
 class MobileFundsResponse(BaseModel):
     total_invested: float
     total_current: float
+    day_change: Optional[float] = 0.0
+    day_change_percentage: Optional[float] = 0.0
     total_pl: float
     xirr: Optional[float] = None
     holdings: List[FundHolding]

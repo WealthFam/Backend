@@ -91,17 +91,19 @@
                                 <div v-if="config.last_sync_at" class="text-caption font-weight-medium">
                                     {{ formatDate(config.last_sync_at).meta }}
                                     <span class="text-medium-emphasis">({{ formatDate(config.last_sync_at).day
-                                    }})</span>
+                                        }})</span>
                                 </div>
                                 <div v-else class="text-caption text-warning font-weight-bold">Never</div>
                             </div>
 
                             <v-btn size="small" variant="outlined"
-                                :color="syncStatus && syncStatus.status === 'running' ? 'indigo' : undefined"
-                                :loading="syncStatus && syncStatus.status === 'running'" @click="handleSync(config.id)"
-                                class="font-weight-bold">
-                                {{ syncStatus && syncStatus.status === 'running' ? 'Scanning...' : 'Sync' }}
-                                <template v-slot:append v-if="!(syncStatus && syncStatus.status === 'running')">
+                                :color="syncStatus && syncStatus.status === 'running' && syncStatus.configId === config.id ? 'indigo' : undefined"
+                                :loading="syncStatus && syncStatus.status === 'running' && syncStatus.configId === config.id"
+                                @click="handleSync(config.id)" class="font-weight-bold">
+                                {{ syncStatus && syncStatus.status === 'running' && syncStatus.configId === config.id ?
+                                'Scanning...' : 'Sync' }}
+                                <template v-slot:append
+                                    v-if="!(syncStatus && syncStatus.status === 'running' && syncStatus.configId === config.id)">
                                     <RefreshCw :size="12" class="ml-1" />
                                 </template>
                             </v-btn>

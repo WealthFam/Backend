@@ -4,6 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import sys
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Allow running from inside the 'parser' directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,13 +18,13 @@ from parser.api import ingestion, config, analytics, system, patterns
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Init DB, Start Scheduler
-    print("Starting Parser Service...")
+    logger.info("Starting Parser Service...")
     init_db()
-    start_cleanup_job()  # ✅ Enable cleanup scheduler
+    start_cleanup_job()  # [SUCCESS] Enable cleanup scheduler
     yield
     # Shutdown
-    print("Shutting down Parser Service...")
-    stop_cleanup_job()  # ✅ Stop scheduler gracefully
+    logger.info("Shutting down Parser Service...")
+    stop_cleanup_job()  # [STOP] Stop scheduler gracefully
 
 app = FastAPI(
     title="Financial Parser Microservice",

@@ -18,6 +18,7 @@ import {
     Bot
 } from 'lucide-vue-next'
 
+
 // Composables
 
 import { useTransactionState } from '@/composables/useTransactionState'
@@ -29,7 +30,7 @@ import { financeApi } from '@/api/client'
 // Global State
 const route = useRoute()
 
-// const { formatAmount } = useCurrency()
+
 
 // Master Data (shared across composables)
 const accounts = ref<any[]>([])
@@ -64,6 +65,7 @@ const {
     transactions,
     loading,
     total,
+    metrics,
     selectedAccount,
     searchQuery,
     categoryFilter,
@@ -78,6 +80,7 @@ const {
     selectedIds,
     showDeleteConfirm,
     fetchData,
+    fetchModalData, // [NEW] Lazy load budgets/loans
     handleTimeRangeChange,
     toggleTxnSort,
     refreshAccounts,
@@ -166,6 +169,8 @@ const auth = useAuthStore()
 watch(() => auth.selectedMemberId, () => {
     // Reset data and re-fetch everything
     accounts.value = [] // Force re-fetch of filtered accounts
+    budgets.value = [] // Clear lazy-loaded data
+    loans.value = []
     page.value = 1
     fetchData()
     fetchTriage()
@@ -253,7 +258,7 @@ onMounted(() => {
                             transactions, accounts, categories, expenseGroups,
                             loading, total, selectedAccount, categoryFilter,
                             searchQuery, startDate, endDate, selectedTimeRange,
-                            page, pageSize, txnSortKey, txnSortOrder
+                            page, pageSize, txnSortKey, txnSortOrder, metrics
                         }" v-model:selectedIds="selectedIds"
                             @update:selectedAccount="selectedAccount = $event; page = 1; fetchData()"
                             @update:categoryFilter="categoryFilter = $event; page = 1; fetchData()"
@@ -263,7 +268,7 @@ onMounted(() => {
                             @update:selectedTimeRange="selectedTimeRange = $event; handleTimeRangeChange($event)"
                             @update:page="page = $event; fetchData()"
                             @update:pageSize="pageSize = $event; page = 1; fetchData()" @sortChange="toggleTxnSort"
-                            @editTxn="openEditModal" @mapVendor="openAliasModal"
+                            @editTxn="(t) => { fetchModalData(); openEditModal(t) }" @mapVendor="openAliasModal"
                             @deleteSelected="showDeleteConfirm = true" @importCsv="showImportModal = true"
                             @fetchData="fetchData"
                             @resetFilters="selectedTimeRange = 'all'; startDate = ''; endDate = ''; searchQuery = ''; categoryFilter = ''; fetchData()" />
@@ -343,10 +348,10 @@ onMounted(() => {
                         </div>
                         <div class="raw-meta">
                             <div class="mb-1"><span class="font-weight-bold">Sender:</span> {{ selectedMessage?.sender
-                                }}
+                            }}
                             </div>
                             <div class="mb-1"><span class="font-weight-bold">Source:</span> {{ selectedMessage?.source
-                                }}
+                            }}
                             </div>
                             <div><span class="font-weight-bold">Received:</span> {{
                                 selectedMessage?.created_at ? new Date(selectedMessage.created_at).toLocaleString() :
