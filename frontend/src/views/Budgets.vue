@@ -360,7 +360,7 @@ onMounted(() => {
                                     <div class="d-flex align-baseline ga-3 mb-8">
                                         <span class="text-h2 font-weight-black text-white letter-spacing-tight">{{
                                             formatAmount(overallBudget.spent)
-                                            }}</span>
+                                        }}</span>
                                         <span class="text-h4 text-white opacity-30">/</span>
                                         <span class="text-h4 font-weight-bold text-white opacity-60">
                                             {{ overallBudget.amount_limit ? formatAmount(overallBudget.amount_limit) :
@@ -570,13 +570,13 @@ onMounted(() => {
                                         class="text-subtitle-2 font-weight-black opacity-60 d-flex justify-space-between align-center">
                                         <span>Outflow</span>
                                         <span class="text-subtitle-1">{{ formatAmount(overallBudget.total_excluded)
-                                            }}</span>
+                                        }}</span>
                                     </div>
                                     <div v-if="overallBudget.excluded_income > 0"
                                         class="text-subtitle-2 font-weight-black text-success d-flex justify-space-between align-center">
                                         <span>Inflow</span>
                                         <span class="text-subtitle-1">+{{ formatAmount(overallBudget.excluded_income)
-                                            }}</span>
+                                        }}</span>
                                     </div>
                                 </div>
                             </v-card>
@@ -665,13 +665,13 @@ onMounted(() => {
                                             <div class="category-icon-container"
                                                 :style="{ '--icon-color': group.parent.color || (activeTab === 'expense' ? '#F43F5E' : '#10B981') }">
                                                 <span class="text-h4 relative-pos z-2">{{ group.parent.icon || '🏷️'
-                                                    }}</span>
+                                                }}</span>
                                                 <div class="icon-gradient-bg"></div>
                                             </div>
                                             <div>
                                                 <span class="text-h6 font-weight-black line-height-1 mb-1 d-block">{{
                                                     group.parent.category
-                                                }}</span>
+                                                    }}</span>
                                                 <div class="d-flex gap-2">
                                                     <v-chip v-if="group.children.length > 0" size="x-small"
                                                         variant="tonal" color="primary" class="font-weight-bold">
@@ -1061,7 +1061,7 @@ onMounted(() => {
     justify-content: center;
     border-radius: 18px;
     border: 1px solid rgba(var(--v-border-color), 0.1);
-    background: rgba(var(--v-theme-surface), 0.5);
+    background: rgba(var(--v-theme-on-surface), 0.05);
     overflow: hidden;
     transition: all 0.3s ease;
 }
@@ -1185,7 +1185,8 @@ onMounted(() => {
     bottom: -1.5rem;
     right: -1rem;
     font-size: 8rem;
-    opacity: 0.03;
+    color: rgb(var(--v-theme-on-surface));
+    opacity: 0.04;
     pointer-events: none;
     line-height: 1;
     transform: rotate(-12deg);

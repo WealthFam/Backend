@@ -149,7 +149,7 @@
                                     <div class="d-flex align-center ga-2">
                                         <v-avatar size="32" color="surface-variant" variant="tonal">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(b.category).icon
-                                                }}</span>
+                                            }}</span>
                                         </v-avatar>
                                         <span class="text-subtitle-2 font-weight-black">
                                             {{ b.category }}
@@ -206,7 +206,7 @@
                                 </template>
                                 <v-list-item-title class="font-weight-bold text-subtitle-1">{{ txn.description ||
                                     'Transaction'
-                                    }}</v-list-item-title>
+                                }}</v-list-item-title>
                                 <v-list-item-subtitle class="text-caption font-weight-bold opacity-60 mt-1">
                                     {{ formatDate(txn.date).day }} • {{ txn.account_owner_name || 'Personal' }}
                                 </v-list-item-subtitle>
@@ -237,11 +237,11 @@
                                     <template v-slot:prepend>
                                         <v-avatar size="40" color="surface-variant" variant="tonal" class="mr-4">
                                             <span class="text-subtitle-2">{{ getCategoryDetails(bill.category).icon
-                                                }}</span>
+                                            }}</span>
                                         </v-avatar>
                                     </template>
                                     <v-list-item-title class="font-weight-bold">{{ bill.description
-                                        }}</v-list-item-title>
+                                    }}</v-list-item-title>
                                     <v-list-item-subtitle class="text-caption font-weight-bold text-error">Due {{
                                         formatDate(bill.next_date).day }}</v-list-item-subtitle>
                                     <template v-slot:append>
@@ -659,7 +659,8 @@ watch(() => auth.selectedMemberId, async () => {
     bottom: -1.5rem;
     right: -1rem;
     font-size: 8rem;
-    opacity: 0.03;
+    color: rgb(var(--v-theme-on-surface));
+    opacity: 0.04;
     pointer-events: none;
     line-height: 1;
     transform: rotate(-12deg);
