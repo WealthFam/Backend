@@ -30,6 +30,19 @@ def run_auto_migrations(engine: Engine):
             safe_add_column("pattern_rules", "is_ai_generated", "BOOLEAN DEFAULT FALSE")
             safe_add_column("pattern_rules", "confidence", "JSON")
 
+            # 3. Create ai_call_cache table if not exists
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS ai_call_cache (
+                id VARCHAR PRIMARY KEY,
+                content_hash VARCHAR NOT NULL,
+                source VARCHAR NOT NULL,
+                response_json JSON NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """))
+            # Index for performance
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ai_call_cache_content_hash ON ai_call_cache (content_hash);"))
+
             # Explicitly commit if needed (DuckDB depends on connection mode)
             connection.commit()
             print("Parser Service migrations complete.")

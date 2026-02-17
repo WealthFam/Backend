@@ -131,7 +131,24 @@ class EmailSyncService:
                             except: pass
 
                             # --- QUICK FILTER: Ignore obvious non-transactional noise ---
-                            noise_keywords = ["otp", "login alert", "successful login", "welcome", "your statement is ready", "appointment", "newsletter", "verify your email"]
+                            noise_keywords = [
+                                "otp", "login alert", "successful login", "welcome", "your statement is ready", 
+                                "appointment", "newsletter", "verify your email", "marketing", "offer", 
+                                "cashback on your next", "security alert", "password reset", "kyc", 
+                                "application update", "scheduled maintenance", "privacy policy",
+                                # Social
+                                "linkedin", "facebook", "instagram", "twitter", "youtube", "reddit", "pinterest", 
+                                "follower", "connection request", "mentioned in", "tagged in", "commented on",
+                                # Career
+                                "job alert", "recruitment", "interview", "career", "naukri", "indeed", "glassdoor", 
+                                "application status", "resume", "hiring", "talent acquisition",
+                                # Marketing/News
+                                "promotional", "subscription", "digest", "discount", "coupon", "clearance", 
+                                "deals of the day", "cashback rewards", "gift card", "points statement",
+                                # Administrative/General
+                                "invitation", "webinar", "workshop", "survey", "feedback", "joined", 
+                                "weekly roundup", "daily briefing", "activity update", "unsubscribed"
+                            ]
                             subject_lower = subject.lower()
                             if any(nk in subject_lower for nk in noise_keywords):
                                 stats["failed"] += 1
@@ -196,10 +213,18 @@ class EmailSyncService:
                                 stats["errors"].append(err_msg)
                                 
                                 # --- INTERACTIVE TRAINING CAPTURE ---
-                                # Check for transaction-related keywords
-                                keywords = ["bill", "mutual fund", "paid", "sent", "upi", "rs", "spent", "debited", "vpa", "txn", "transaction"]
+                                # Check for transaction-related keywords with more precision
+                                # We skip emails that matched the QUICK FILTER above (noise_keywords)
+                                keywords = ["bill", "mutual fund", "paid", "upi", "spent", "debited", "vpa", "txn", "transaction", "amount"]
                                 combined_text = (subject + " " + body).lower()
-                                if any(k in combined_text for k in keywords):
+                                
+                                # Use a regex to check for currency-like patterns
+                                has_money = bool(re.search(r'(?i)(?:Rs\.?|INR|₹)\s*[\d,]+', combined_text))
+                                
+                                # Re-run noise check here just in case (though it should have been caught in QUICK FILTER)
+                                is_noise = any(nk in combined_text for nk in noise_keywords)
+                                
+                                if not is_noise and (any(k in combined_text for k in keywords) or has_money):
                                     IngestionService.capture_unparsed(
                                         db=db,
                                         tenant_id=tenant_id,

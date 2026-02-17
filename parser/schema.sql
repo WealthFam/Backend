@@ -54,3 +54,13 @@ CREATE TABLE merchant_aliases (
 	PRIMARY KEY (id), 
 	UNIQUE (pattern)
 );
+
+CREATE TABLE ai_call_cache (
+	id VARCHAR NOT NULL, 
+	content_hash VARCHAR NOT NULL, 
+	source VARCHAR NOT NULL, 
+	response_json JSON NOT NULL, 
+	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
+	PRIMARY KEY (id)
+);
+CREATE INDEX ix_ai_call_cache_content_hash ON ai_call_cache (content_hash);

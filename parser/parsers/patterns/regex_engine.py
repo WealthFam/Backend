@@ -69,7 +69,8 @@ class PatternParser:
                     merchant=MerchantInfo(raw=merchant_str, cleaned=merchant_str),
                     description=merchant_str,
                     recipient=merchant_str,
-                    raw_message=content
+                    raw_message=content,
+                    confidence=float(rule.confidence) if rule.confidence else 0.95
                 )
 
             except Exception as e:

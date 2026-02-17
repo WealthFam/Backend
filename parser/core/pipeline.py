@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, Any
 from parser.core.classifier import FinancialClassifier
 from parser.parsers.registry import ParserRegistry
-from parser.db.models import RequestLog, PatternRule
+from parser.db.models import RequestLog, PatternRule, AICallCache
 import hashlib
 import json
 from datetime import datetime, timedelta
@@ -201,7 +201,7 @@ class IngestionPipeline:
                 pt = p_parser.parse(content)
                 if pt:
                     if not hasattr(pt, 'confidence') or pt.confidence is None:
-                        pt.confidence = 0.7 # User patterns usually slightly lower confidence than bank-specific regex
+                        pt.confidence = 0.9  # Learned patterns are actually quite high confidence
                     potential_matches.append(pt)
             except Exception as e:
                 logs.append(f"Pattern Parser failed: {str(e)}")
@@ -215,9 +215,20 @@ class IngestionPipeline:
         if not best_regex_match or best_regex_match.confidence < 0.9:
             try:
                 logs.append(f"Low confidence ({best_regex_match.confidence if best_regex_match else 0}) - Triggering AI Fallback")
-                ai_parser = GeminiParser(self.db)
-                # Use extended parse to get suggested patterns
-                ai_data = ai_parser.parse_with_pattern(content, source, date_hint=date_hint)
+                
+                ai_data = None
+                
+                # Check permanent AI Cache first
+                cached = self.db.query(AICallCache).filter(
+                    AICallCache.content_hash == input_hash
+                ).first()
+                
+                if cached:
+                    logs.append("Reusing cached AI response")
+                    ai_data = cached.response_json
+                else:
+                    ai_parser = GeminiParser(self.db)
+                    ai_data = ai_parser.parse_with_pattern(content, source, date_hint=date_hint)
                 
                 if ai_data and ai_data.get("transaction"):
                     tx_data = ai_data["transaction"]
@@ -244,6 +255,21 @@ class IngestionPipeline:
 
                     ai_confidence = pt.confidence
                     
+                    # --- AI RESPONSE CACHE ---
+                    # Save a permanent copy of the AI response to avoid re-parsing
+                    try:
+                        new_cache = AICallCache(
+                            content_hash=input_hash,
+                            source=source,
+                            response_json=ai_data
+                        )
+                        self.db.add(new_cache)
+                        self.db.commit()
+                        logs.append("AI response saved to cache")
+                    except Exception as e:
+                        logger.error(f"Error saving AI cache: {e}")
+                        self.db.rollback()
+
                     # Logic to save the new pattern if it's very high confidence
                     suggested_regex = ai_data.get("suggested_regex")
                     field_mapping = ai_data.get("field_mapping")
