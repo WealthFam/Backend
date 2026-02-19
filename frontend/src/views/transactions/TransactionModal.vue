@@ -1,11 +1,13 @@
-```vue
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useTheme } from 'vuetify'
 import { useCurrency } from '@/composables/useCurrency'
 import {
-    CheckCircle2, X, Pencil, Plus, Info, Tag,
-    Settings, ArrowLeftRight, Search, Link, SearchX, LineChart
+    CheckCircle2, X, Pencil, Plus, Minus, Info, Tag,
+    Settings, ArrowLeftRight, Search, Link, SearchX, LineChart, IndianRupee, Calendar
 } from 'lucide-vue-next'
+import { VueDatePicker } from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
 
 const props = defineProps<{
     isOpen: boolean
@@ -23,6 +25,8 @@ const props = defineProps<{
 const emit = defineEmits(['close', 'submit', 'findMatches', 'selectMatch'])
 
 const { formatAmount } = useCurrency()
+const theme = useTheme()
+const isDark = computed(() => theme.global.current.value.dark)
 
 const categoryOptions = computed(() => {
     const list: any[] = []
@@ -83,7 +87,16 @@ watch(() => props.form.category, (newVal) => {
     }
 })
 
+const isFormValid = computed(() => {
+    const basicValid = props.form.amount > 0 && props.form.date && props.form.account_id && props.form.category
+    if (props.form.is_transfer) {
+        return basicValid && props.form.to_account_id
+    }
+    return basicValid
+})
+
 function handleSubmit() {
+    if (!isFormValid.value) return
     emit('submit')
 }
 
@@ -134,18 +147,49 @@ function handleClose() {
                                         autocomplete="off" />
                                 </v-col>
 
-                                <v-col cols="12" md="6" class="mb-1">
+                                <v-col cols="4" md="3" class="mb-1">
+                                    <v-select v-model="form.type" :items="['DEBIT', 'CREDIT']" label="Type"
+                                        variant="outlined" density="comfortable" rounded="lg"
+                                        class="premium-modal-input font-weight-bold" hide-details>
+                                        <template v-slot:selection="{ item }">
+                                            <span :class="item.value === 'DEBIT' ? 'text-error' : 'text-success'">{{
+                                                item.value === 'DEBIT' ? 'Debit' : 'Credit' }}</span>
+                                        </template>
+                                        <template v-slot:item="{ props, item }">
+                                            <v-list-item v-bind="props"
+                                                :title="item.value === 'DEBIT' ? 'Debit' : 'Credit'"
+                                                :class="item.value === 'DEBIT' ? 'text-error' : 'text-success'">
+                                                <template v-slot:prepend>
+                                                    <component :is="item.value === 'DEBIT' ? Minus : Plus" :size="16"
+                                                        class="mr-2" />
+                                                </template>
+                                            </v-list-item>
+                                        </template>
+                                    </v-select>
+                                </v-col>
+
+                                <v-col cols="8" md="5" class="mb-1">
                                     <v-text-field v-model="form.amount" label="Amount" type="number" placeholder="0.00"
                                         variant="outlined" density="comfortable" rounded="lg"
                                         class="premium-modal-input font-weight-bold" hide-details
-                                        prepend-inner-icon="DollarSign" autocomplete="off" />
+                                        :prepend-inner-icon="IndianRupee" autocomplete="off" />
                                 </v-col>
 
-                                <v-col cols="12" md="6" class="mb-1">
-                                    <v-text-field v-model="form.date" label="Date & Time" type="datetime-local"
-                                        variant="outlined" density="comfortable" rounded="lg"
-                                        class="premium-modal-input font-weight-bold" hide-details
-                                        prepend-inner-icon="Calendar" />
+                                <v-col cols="12" md="4" class="mb-1">
+                                    <div class="date-picker-wrapper">
+                                        <VueDatePicker v-model="form.date" :dark="isDark" auto-apply
+                                            :enable-time-picker="true" model-type="yyyy-MM-dd'T'HH:mm"
+                                            format="dd MMM yyyy HH:mm" placeholder="Date & Time" :teleport="true"
+                                            input-class-name="premium-date-input">
+                                            <template #trigger>
+                                                <v-text-field
+                                                    :model-value="form.date ? new Date(form.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''"
+                                                    label="Date & Time" variant="outlined" density="comfortable"
+                                                    rounded="lg" class="premium-modal-input font-weight-bold"
+                                                    hide-details :prepend-inner-icon="Calendar" readonly />
+                                            </template>
+                                        </VueDatePicker>
+                                    </div>
                                 </v-col>
                             </v-row>
                         </div>
@@ -168,10 +212,10 @@ function handleClose() {
 
                                 <v-col cols="12" md="6" class="mb-1">
                                     <v-autocomplete v-model="form.category" :items="categoryOptions" label="Category"
-                                        item-title="title" item-value="value" placeholder="Uncategorized"
+                                        item-title="title" item-value="value" placeholder="Select Category"
                                         variant="outlined" density="comfortable" rounded="lg"
                                         class="premium-modal-input font-weight-bold" hide-details
-                                        prepend-inner-icon="Tag" />
+                                        :prepend-inner-icon="!form.category ? 'Tag' : undefined" />
                                 </v-col>
 
                                 <v-col cols="12" class="mb-1">
@@ -327,7 +371,7 @@ function handleClose() {
                 </v-btn>
                 <v-spacer></v-spacer>
                 <v-btn color="primary" variant="flat" rounded="pill" class="font-weight-black px-10 elevation-4"
-                    height="40" @click="handleSubmit" :prepend-icon="CheckCircle2">
+                    height="40" @click="handleSubmit" :prepend-icon="CheckCircle2" :disabled="!isFormValid">
                     {{ isEditing ? 'Update Entry' : 'Create Transaction' }}
                 </v-btn>
             </v-card-actions>
@@ -416,5 +460,39 @@ function handleClose() {
 
 .text-tiny {
     font-size: 10px;
+}
+
+/* DatePicker Customization */
+.dp__theme_dark {
+    --dp-background-color: rgb(var(--v-theme-surface));
+    --dp-text-color: rgba(var(--v-theme-on-surface), 0.87);
+    --dp-hover-color: rgba(var(--v-theme-primary), 0.1);
+    --dp-hover-text-color: rgb(var(--v-theme-on-surface));
+    --dp-hover-icon-color: rgb(var(--v-theme-on-surface));
+    --dp-primary-color: rgb(var(--v-theme-primary));
+    --dp-primary-text-color: #ffffff;
+    --dp-secondary-color: #a0a0a0;
+    --dp-border-color: rgba(var(--v-border-color), 0.15);
+    --dp-menu-border-color: rgba(var(--v-border-color), 0.15);
+    --dp-border-color-hover: rgba(var(--v-border-color), 0.3);
+    --dp-disabled-color: #f6f6f6;
+    --dp-scroll-bar-background: #f3f3f3;
+    --dp-scroll-bar-color: #959595;
+    --dp-success-color: #76d275;
+    --dp-success-color-disabled: #a3d9b1;
+    --dp-icon-color: rgba(var(--v-theme-on-surface), 0.6);
+    --dp-danger-color: #ff6f60;
+    --dp-marker-color: #ff6f60;
+    --dp-tooltip-color: #fafafa;
+    --dp-disabled-color-text: #8e8e8e;
+    --dp-highlight-color: rgb(25 118 210 / 10%);
+    --dp-range-between-dates-background-color: var(--dp-hover-color, #484848);
+    --dp-range-between-dates-text-color: var(--dp-hover-text-color, #fff);
+    --dp-range-between-border-color: var(--dp-hover-color, #fff);
+    font-family: inherit;
+}
+
+.date-picker-wrapper :deep(.dp__input_wrap) {
+    display: none;
 }
 </style>

@@ -41,7 +41,22 @@ export function useTransactionModals(
     })
 
     // Form State
-    const defaultForm = {
+    const defaultForm: {
+        type: string
+        description: string
+        category: string
+        amount: number | null
+        date: string
+        account_id: string
+        is_transfer: boolean
+        to_account_id: string
+        linked_transaction_id: string
+        exclude_from_reports: boolean
+        is_emi: boolean
+        loan_id: string
+        expense_group_id: string
+    } = {
+        type: 'DEBIT',
         description: '',
         category: '',
         amount: null,
@@ -82,6 +97,7 @@ export function useTransactionModals(
         editingTxnId.value = null
         form.value = {
             ...defaultForm,
+            type: 'DEBIT',
             account_id: selectedAccount.value || (accounts.value[0]?.id || ''),
             date: new Date().toISOString().slice(0, 16),
             is_transfer: false,
@@ -109,10 +125,12 @@ export function useTransactionModals(
         originalCategory.value = txn.category
         originalDescription.value = txn.description || ''
         originalExclude.value = txn.exclude_from_reports || false
+        const isDebit = txn.amount < 0
         form.value = {
+            type: isDebit ? 'DEBIT' : 'CREDIT',
             description: txn.description,
             category: txn.category,
-            amount: txn.amount,
+            amount: Math.abs(txn.amount),
             date: txn.date ? txn.date.slice(0, 16) : new Date().toISOString().slice(0, 16),
             account_id: txn.account_id,
             is_transfer: txn.is_transfer || false,
@@ -147,10 +165,12 @@ export function useTransactionModals(
                 return
             }
 
+            const finalAmount = Math.abs(Number(form.value.amount)) * (form.value.type === 'DEBIT' ? -1 : 1)
+
             const payload = {
                 description: form.value.description,
                 category: form.value.category,
-                amount: Number(form.value.amount),
+                amount: finalAmount,
                 date: new Date(form.value.date).toISOString(),
                 account_id: form.value.account_id,
                 is_transfer: form.value.is_transfer,
