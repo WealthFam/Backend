@@ -133,6 +133,20 @@ export function useTransactionModals(
      */
     async function handleSubmit() {
         try {
+            // Validation
+            if (!form.value.account_id) {
+                notify.error('Please select an account')
+                return
+            }
+            if (!form.value.amount || Number(form.value.amount) === 0) {
+                notify.error('Please enter a valid amount')
+                return
+            }
+            if (!form.value.date) {
+                notify.error('Please select a date')
+                return
+            }
+
             const payload = {
                 description: form.value.description,
                 category: form.value.category,
@@ -226,9 +240,10 @@ export function useTransactionModals(
             showModal.value = false
             fetchData()
             refreshAccounts()
-        } catch (e) {
+        } catch (e: any) {
             console.error(e)
-            notify.error('Failed to save transaction')
+            const msg = e.response?.data?.detail || 'Failed to save transaction'
+            notify.error(msg)
         }
     }
 

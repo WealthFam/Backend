@@ -42,6 +42,7 @@ CREATE TABLE pattern_rules (
 	is_active BOOLEAN DEFAULT TRUE, 
 	is_ai_generated BOOLEAN DEFAULT FALSE, 
 	confidence JSON, 
+	date_format VARCHAR,
 	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
 	PRIMARY KEY (id)
 );

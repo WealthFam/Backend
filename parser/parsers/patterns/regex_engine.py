@@ -59,7 +59,7 @@ class PatternParser:
                 
                 txn_date = datetime.now()
                 if date_str:
-                    txn_date = self._parse_date(str(date_str)) or datetime.now()
+                    txn_date = self._parse_date(str(date_str), getattr(rule, 'date_format', None)) or datetime.now()
 
                 return Transaction(
                     amount=amount,
@@ -84,8 +84,14 @@ class PatternParser:
         try: return Decimal(clean)
         except: return Decimal(0)
 
-    def _parse_date(self, val: str) -> Optional[datetime]:
-        formats = ["%d-%m-%y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%d%b%y", "%d%b%Y"]
+    def _parse_date(self, val: str, custom_fmt: Optional[str] = None) -> Optional[datetime]:
+        if custom_fmt:
+            try:
+                return datetime.strptime(val, custom_fmt)
+            except:
+                pass
+
+        formats = ["%d-%m-%y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%d%b%y", "%d%b%Y", "%d-%b-%y", "%d-%b-%Y"]
         for fmt in formats:
             try: return datetime.strptime(val, fmt)
             except: pass

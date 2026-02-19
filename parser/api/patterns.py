@@ -18,6 +18,7 @@ class PatternBase(BaseModel):
     bank_name: str = Field(..., min_length=1, max_length=50)
     regex_pattern: str = Field(..., min_length=1)
     field_mapping: Dict[str, Any] = Field(default_factory=dict) # Allow int (group index) or str (static value)
+    date_format: Optional[str] = None
     confidence: Optional[Any] = None
     
     @validator('regex_pattern')
@@ -36,6 +37,7 @@ class PatternCreate(PatternBase):
 class PatternUpdate(BaseModel):
     regex_pattern: Optional[str] = None
     field_mapping: Optional[Dict[str, Any]] = None
+    date_format: Optional[str] = None
     confidence: Optional[Any] = None
     
     @validator('regex_pattern')
@@ -52,6 +54,7 @@ class PatternResponse(PatternBase):
     id: str
     is_ai_generated: bool
     created_at: datetime
+    date_format: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -103,6 +106,7 @@ async def list_patterns(
             "bank_name": p.source,  # Map source to bank_name
             "regex_pattern": p.regex_pattern,
             "field_mapping": p.mapping_json,  # Map mapping_json to field_mapping
+            "date_format": p.date_format,
             "confidence": p.confidence,
             "is_ai_generated": p.is_ai_generated,
             "created_at": p.created_at
@@ -129,6 +133,7 @@ async def get_pattern(pattern_id: str, db: Session = Depends(get_db)):
         "bank_name": pattern.source,
         "regex_pattern": pattern.regex_pattern,
         "field_mapping": pattern.mapping_json,
+        "date_format": pattern.date_format,
         "confidence": pattern.confidence,
         "is_ai_generated": pattern.is_ai_generated,
         "created_at": pattern.created_at
@@ -142,6 +147,7 @@ async def create_pattern(pattern: PatternCreate, db: Session = Depends(get_db)):
         source=pattern.bank_name,  # Store bank_name as source
         regex_pattern=pattern.regex_pattern,
         mapping_json=pattern.field_mapping,  # Store field_mapping as mapping_json
+        date_format=pattern.date_format,
         confidence=pattern.confidence,
         is_ai_generated=False,
         is_active=True
@@ -156,6 +162,7 @@ async def create_pattern(pattern: PatternCreate, db: Session = Depends(get_db)):
         "bank_name": new_pattern.source,
         "regex_pattern": new_pattern.regex_pattern,
         "field_mapping": new_pattern.mapping_json,
+        "date_format": new_pattern.date_format,
         "confidence": new_pattern.confidence,
         "is_ai_generated": new_pattern.is_ai_generated,
         "created_at": new_pattern.created_at
@@ -179,10 +186,12 @@ async def update_pattern(
         pattern.regex_pattern = update.regex_pattern
     if update.field_mapping is not None:
         pattern.mapping_json = update.field_mapping
+    if update.date_format is not None:
+        pattern.date_format = update.date_format
     if update.confidence is not None:
         pattern.confidence = update.confidence
     
-    if update.regex_pattern is None and update.field_mapping is None and update.confidence is None:
+    if update.regex_pattern is None and update.field_mapping is None and update.date_format is None and update.confidence is None:
         raise HTTPException(400, "No updates provided")
     
     db.commit()
@@ -193,6 +202,7 @@ async def update_pattern(
         "bank_name": pattern.source,
         "regex_pattern": pattern.regex_pattern,
         "field_mapping": pattern.mapping_json,
+        "date_format": pattern.date_format,
         "confidence": pattern.confidence,
         "is_ai_generated": pattern.is_ai_generated,
         "created_at": pattern.created_at

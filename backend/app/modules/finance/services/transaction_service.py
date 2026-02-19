@@ -18,11 +18,20 @@ class TransactionService:
     def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None, update_balance: bool = True):
         # 1. Unified Deduplication Check (Ref ID, Hash-Fallback, and Fields)
         from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
-        is_dup, reason, existing_id = TransactionDeduplicator.check_raw_duplicate(
-            db, tenant_id, str(transaction.account_id), transaction.amount, transaction.date, 
-            transaction.description, transaction.recipient, transaction.external_id,
-            exclude_pending_id=exclude_pending_id
-        )
+        
+        # Skip strict deduplication for MANUAL entries to allow user intent
+        is_dup = False
+        reason = None
+        existing_id = None
+        
+        logger.info(f"Creating transaction. Source: {transaction.source}, Amount: {transaction.amount}, Date: {transaction.date}, Account: {transaction.account_id}")
+
+        if getattr(transaction, 'source', 'MANUAL') != 'MANUAL':
+            is_dup, reason, existing_id = TransactionDeduplicator.check_raw_duplicate(
+                db, tenant_id, str(transaction.account_id), transaction.amount, transaction.date, 
+                transaction.description, transaction.recipient, transaction.external_id,
+                exclude_pending_id=exclude_pending_id
+            )
         
         if is_dup:
             # If it found a match in confirmed transactions, return it

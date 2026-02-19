@@ -369,6 +369,11 @@
                         <v-textarea v-model="patternForm.regex_pattern" label="Regex Pattern"
                             placeholder="Regex to capture transactions..." variant="outlined" rows="3"
                             class="font-mono text-body-2 mb-4" required></v-textarea>
+                        
+                        <v-text-field v-model="patternForm.date_format" label="Date Format (Optional)"
+                            placeholder="e.g. %d-%b-%y for 14-Feb-26" variant="outlined" density="comfortable"
+                            class="font-mono text-body-2 mb-4" hint="Python datetime format string"
+                            persistent-hint></v-text-field>
 
                         <v-textarea v-model="patternForm.field_mapping_str" label="Field Mapping (JSON)"
                             placeholder='{"amount": 1, "merchant": 2}' variant="outlined" rows="3"
@@ -552,6 +557,7 @@ const patternForm = reactive({
     bank_name: '',
     regex_pattern: '',
     field_mapping_str: '{}',
+    date_format: '',
     confidence: 1.0,
     is_ai_generated: false
 })
@@ -649,6 +655,7 @@ function openAddModal() {
     patternForm.id = null
     patternForm.bank_name = ''
     patternForm.regex_pattern = ''
+    patternForm.date_format = ''
     patternForm.field_mapping_str = '{\n  "amount": 1,\n  "merchant": 2,\n  "date": 3\n}'
     patternForm.confidence = 1.0
     patternForm.is_ai_generated = false
@@ -662,6 +669,7 @@ function openEditModal(pattern: any) {
         patternForm.id = pattern.id
         patternForm.bank_name = pattern.bank_name
         patternForm.regex_pattern = pattern.regex_pattern
+        patternForm.date_format = pattern.date_format || ''
 
         const mapping = pattern.field_mapping || {}
         patternForm.field_mapping_str = JSON.stringify(mapping, null, 2)
@@ -694,6 +702,7 @@ async function savePattern() {
             bank_name: patternForm.bank_name,
             regex_pattern: patternForm.regex_pattern,
             field_mapping: mapping,
+            date_format: patternForm.date_format || null,
             confidence: patternForm.confidence
         }
 

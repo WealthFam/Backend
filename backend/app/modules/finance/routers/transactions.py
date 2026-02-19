@@ -16,7 +16,10 @@ def create_transaction(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return TransactionService.create_transaction(db, transaction, str(current_user.tenant_id))
+    try:
+        return TransactionService.create_transaction(db, transaction, str(current_user.tenant_id))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/transactions", response_model=schemas.TransactionPagination)
 def read_transactions(
