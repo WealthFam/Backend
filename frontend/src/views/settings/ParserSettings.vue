@@ -325,7 +325,7 @@
                                         Manual
                                     </v-chip>
                                     <span class="text-caption font-mono text-disabled">{{ pattern.id.substring(0, 8)
-                                        }}</span>
+                                    }}</span>
                                 </div>
                             </td>
                             <td class="text-right">
@@ -357,7 +357,7 @@
             <v-card class="rounded-xl">
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">{{ isEditingPattern ? 'Edit Pattern' : 'New Pattern'
-                        }}</span>
+                    }}</span>
                     <v-btn icon="X" variant="text" density="comfortable" @click="showPatternModal = false"></v-btn>
                 </v-card-title>
                 <v-card-text class="pa-6">
@@ -526,7 +526,7 @@ const aiStore = useAiStore()
 const { formatAmount } = useCurrency()
 const notify = useNotificationStore()
 
-const PARSER_API = 'http://localhost:8001'
+const PARSER_API = '/parser'
 
 // --- Internal State ---
 const parserStatus = ref({ isOnline: false })
@@ -632,7 +632,7 @@ function formatDate(dateStr: string) {
 async function loadPatterns() {
     patternsLoading.value = true
     try {
-        const res = await axios.get(`${PARSER_API}/v1/patterns`, {
+        const res = await axios.get(`${PARSER_API}/patterns`, {
             params: { limit: 100 }
         })
         patterns.value = res.data.patterns
@@ -698,10 +698,10 @@ async function savePattern() {
         }
 
         if (isEditingPattern.value && patternForm.id) {
-            await axios.put(`${PARSER_API}/v1/patterns/${patternForm.id}`, payload)
+            await axios.put(`${PARSER_API}/patterns/${patternForm.id}`, payload)
             notify.success("Pattern updated")
         } else {
-            await axios.post(`${PARSER_API}/v1/patterns`, payload)
+            await axios.post(`${PARSER_API}/patterns`, payload)
             notify.success("Pattern created")
         }
 
@@ -719,7 +719,7 @@ async function confirmDelete(pattern: any) {
     if (!confirm(`Are you sure you want to delete the pattern for ${pattern.bank_name}?`)) return
 
     try {
-        await axios.delete(`${PARSER_API}/v1/patterns/${pattern.id}`)
+        await axios.delete(`${PARSER_API}/patterns/${pattern.id}`)
         notify.success("Pattern deleted")
         loadPatterns()
     } catch (err) {
