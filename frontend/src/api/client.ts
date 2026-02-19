@@ -36,7 +36,7 @@ apiClient.interceptors.response.use(
     },
     async (error) => {
         const notification = useNotificationStore()
-        
+
         // Handle 401 Unauthorized (e.g., token expired)
         if (error.response && error.response.status === 401) {
             // Clear token and redirect to login if not already there
@@ -147,6 +147,8 @@ export const financeApi = {
         apiClient.get('/finance/budget-history', { params: { months, user_id: userId } }),
     getHeatmapData: (startDate?: string, endDate?: string, userId?: string) =>
         apiClient.get('/finance/heatmap', { params: { start_date: startDate, end_date: endDate, user_id: userId } }),
+    getVendorBreakdown: (category?: string, startDate?: string, endDate?: string, userId?: string) =>
+        apiClient.get('/finance/vendor-breakdown', { params: { category, start_date: startDate, end_date: endDate, user_id: userId } }),
 
     // Ingestion
     analyzeCsv: (formData: FormData) => apiClient.post('/ingestion/csv/analyze', formData, {

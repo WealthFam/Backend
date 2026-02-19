@@ -133,12 +133,6 @@ class TransactionService:
         sort_by: str = "date",
         sort_order: str = "desc"
     ) -> List[models.Transaction]:
-        if user_id in [None, "null", "undefined", ""]:
-            user_id = None
-        
-        # import logging
-        # logger = logging.getLogger(__name__)
-        # logger.info(f"get_transactions: tenant_id={tenant_id}, user_id={user_id}, account_id={account_id}")
 
         query = db.query(models.Transaction).options(
             joinedload(models.Transaction.account)
@@ -164,7 +158,31 @@ class TransactionService:
             ))
             
         if category:
-            query = query.filter(models.Transaction.category == category)
+            # Hierarchical Category Filtering
+            from backend.app.modules.finance.models import Category
+            sub_category_names = []
+            
+            if category == "Uncategorized":
+                query = query.filter(or_(models.Transaction.category == None, models.Transaction.category == "Uncategorized"))
+            else:
+                # Check if this is a parent category
+                parent_cat = db.query(Category).filter(
+                    Category.tenant_id == tenant_id,
+                    Category.name == category,
+                    Category.parent_id == None
+                ).first()
+                
+                
+                if parent_cat:
+                    # Find all subcategories
+                    subs = db.query(Category).filter(Category.parent_id == parent_cat.id).all()
+                    sub_category_names = [s.name for s in subs]
+                
+                if sub_category_names:
+                    filter_list = [category] + sub_category_names
+                    query = query.filter(models.Transaction.category.in_(filter_list))
+                else:
+                    query = query.filter(models.Transaction.category == category)
 
         if exclude_from_reports:
             query = query.filter(models.Transaction.exclude_from_reports == False)
@@ -210,6 +228,9 @@ class TransactionService:
     ) -> int:
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
+        if category in [None, "null", "undefined", "", "OVERALL"]:
+            category = None
+            
         query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
 
         if user_role == "CHILD":
@@ -239,7 +260,27 @@ class TransactionService:
             ))
             
         if category:
-            query = query.filter(models.Transaction.category == category)
+            # Hierarchical Category Filtering
+            from backend.app.modules.finance.models import Category
+            sub_category_names = []
+            
+            if category == "Uncategorized":
+                query = query.filter(or_(models.Transaction.category == None, models.Transaction.category == "Uncategorized"))
+            else:
+                parent_cat = db.query(Category).filter(
+                    Category.tenant_id == tenant_id,
+                    Category.name == category,
+                    Category.parent_id == None
+                ).first()
+                
+                if parent_cat:
+                    subs = db.query(Category).filter(Category.parent_id == parent_cat.id).all()
+                    sub_category_names = [s.name for s in subs]
+                
+                if sub_category_names:
+                    query = query.filter(models.Transaction.category.in_([category] + sub_category_names))
+                else:
+                    query = query.filter(models.Transaction.category == category)
             
         if exclude_from_reports:
             query = query.filter(models.Transaction.exclude_from_reports == False)

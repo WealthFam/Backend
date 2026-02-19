@@ -107,3 +107,20 @@ def get_heatmap(
         end_date=end_date,
         user_id=user_id
     )
+@router.get("/vendor-breakdown")
+def get_vendor_breakdown(
+    category: str = None,
+    start_date: datetime = None,
+    end_date: datetime = None,
+    user_id: str = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return AnalyticsService.get_vendor_breakdown(
+        db, 
+        str(current_user.tenant_id),
+        category=category,
+        start_date=start_date,
+        end_date=end_date,
+        user_id=user_id
+    )

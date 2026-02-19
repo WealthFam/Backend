@@ -141,12 +141,21 @@ const computedChartData = computed(() => {
 
             const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
             // Resolve the primary color
-            const baseColor = resolveColor(dataset.borderColor)
-            // Convert to RGBA for gradient
-            const rgba = baseColor.startsWith('#') ? hexToRgb(baseColor) : baseColor.replace('rgb(', '').replace(')', '').replace('rgba(', '').split(',').slice(0, 3).join(',')
+            let baseColor = resolveColor(dataset.borderColor)
 
-            gradient.addColorStop(0, `rgba(${rgba}, 0.2)`)
-            gradient.addColorStop(1, `rgba(${rgba}, 0)`)
+            // Ensure we have a valid RGB string for the gradient
+            if (baseColor.startsWith('#')) baseColor = hexToRgb(baseColor)
+            else if (baseColor.startsWith('rgb')) {
+              baseColor = baseColor.replace('rgb(', '').replace(')', '').replace('rgba(', '').split(',').slice(0, 3).join(',').trim()
+            } else {
+              // Fallback to primary theme color if resolution fails
+              // We'll use a safe hardcoded fallback to prevent black
+              baseColor = '59, 130, 246' // blue-500
+            }
+
+            gradient.addColorStop(0, `rgba(${baseColor}, 0.45)`) // Richer top opacity
+            gradient.addColorStop(0.7, `rgba(${baseColor}, 0.1)`)
+            gradient.addColorStop(1, `rgba(${baseColor}, 0)`)
             return gradient
           }
         }

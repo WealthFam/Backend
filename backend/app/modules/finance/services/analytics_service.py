@@ -1,3 +1,4 @@
+from typing import List, Optional, Dict
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from sqlalchemy.orm import Session
@@ -773,5 +774,72 @@ class AnalyticsService:
                 "category": row.category,
                 "description": row.description
             }
+            for row in results
+        ]
+    @staticmethod
+    def get_vendor_breakdown(db: Session, tenant_id: str, category: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, user_id: Optional[str] = None):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+        if category in [None, "null", "undefined", "", "OVERALL"]:
+            category = None
+            
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"DEBUG: get_vendor_breakdown - category='{category}' (type: {type(category)})")
+        logger.info(f"DEBUG: get_vendor_breakdown - tenant_id='{tenant_id}', user_id='{user_id}'")
+
+        query = db.query(
+            models.Transaction.recipient.label('vendor'),
+            func.sum(models.Transaction.amount).label('total')
+        ).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.amount < 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False
+        )
+        
+        if start_date:
+            query = query.filter(models.Transaction.date >= start_date)
+        if end_date:
+            query = query.filter(models.Transaction.date <= end_date)
+            
+        if user_id:
+            query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                         
+        if category:
+            # Hierarchical Category Filtering
+            from backend.app.modules.finance.models import Category
+            sub_category_names = []
+            
+            if category == "Uncategorized":
+                logger.info("DEBUG: get_vendor_breakdown - Filtering for Uncategorized")
+                query = query.filter(or_(models.Transaction.category == None, models.Transaction.category == "Uncategorized"))
+            else:
+                parent_cat = db.query(Category).filter(
+                    Category.tenant_id == tenant_id,
+                    Category.name == category,
+                    Category.parent_id == None
+                ).first()
+                
+                logger.info(f"DEBUG: get_vendor_breakdown - parent_cat found: {parent_cat.id if parent_cat else 'None'}")
+                
+                if parent_cat:
+                    subs = db.query(Category).filter(Category.parent_id == parent_cat.id).all()
+                    sub_category_names = [s.name for s in subs]
+                    logger.info(f"DEBUG: get_vendor_breakdown - sub_category_names: {sub_category_names}")
+                
+                if sub_category_names:
+                    filter_list = [category] + sub_category_names
+                    logger.info(f"DEBUG: get_vendor_breakdown - Filtering by list: {filter_list}")
+                    query = query.filter(models.Transaction.category.in_(filter_list))
+                else:
+                    logger.info(f"DEBUG: get_vendor_breakdown - Filtering by single name: '{category}'")
+                    query = query.filter(models.Transaction.category == category)
+
+        results = query.group_by(models.Transaction.recipient).order_by(func.sum(models.Transaction.amount).asc()).all()
+        
+        return [
+            {"vendor": row.vendor or "Unknown", "amount": abs(float(row.total))}
             for row in results
         ]
