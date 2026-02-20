@@ -54,44 +54,81 @@ class MutualFundService:
                 else:
                     return []
             
-            # Continue with processing...
-            if True: # indent preservation wrapper
-                query_low = query.lower() if query else None
-                cat_low = category.lower() if category else None
-                amc_low = amc.lower() if amc else None
+            # Default recommendations if no query/filter
+            if not any([query, category, amc]) and not all_funds_cache:
+                # Popular Fund Scheme Codes (Examples of large well-known funds)
+                featured_codes = [
+                    '120716', # ICICI Prudential Bluechip Fund
+                    '120503', # ICICI Prudential Value Discovery Fund
+                    '101140', # HDFC Top 100 Fund
+                    '100033', # Aditya Birla Sun Life Frontline Equity Fund
+                    '118989', # Nippon India Large Cap Fund
+                    '103133', # SBI Bluechip Fund
+                    '120828', # ICICI Prudential Nifty 50 Index Fund
+                    '103175', # HDFC Index Fund-NIFTY 50 Plan
+                ]
+                featured = [f for f in all_funds if str(f.get('schemeCode')) in featured_codes]
+                if featured: return featured[:limit]
 
-                # Optimization: Direct filter if possible, otherwise iterate
-                filtered_funds = []
-                for f in all_funds:
-                    scheme_name = f.get('schemeName', '').lower()
-                    
-                    # Filtering logic
-                    match = True
-                    if query_low and query_low not in scheme_name:
-                        match = False
-                    if cat_low and cat_low not in scheme_name: 
-                        match = False
-                    if amc_low and amc_low not in scheme_name: 
+            query_low = query.lower() if query else None
+            cat_low = category.lower() if category else None
+            amc_low = amc.lower() if amc else None
+
+            # Optimization: Direct filter if possible, otherwise iterate
+            filtered_funds = []
+            for f in all_funds:
+                scheme_name = f.get('schemeName', '').lower()
+                
+                # Filtering logic
+                match = True
+                if query_low and query_low not in scheme_name:
+                    match = False
+                
+                # Category filter - usually contained in name or we might need better classification
+                if cat_low:
+                    # MFAPI doesn't have a category field in the search list, so we check the name
+                    # Common terms: Equity, Debt, Hybrid, ELSS, Index, Liquid
+                    if cat_low == "index funds": cat_low = "index"
+                    if cat_low not in scheme_name:
                         match = False
                         
-                    if match:
-                        filtered_funds.append(f)
+                if amc_low and amc_low not in scheme_name: 
+                    match = False
+                    
+                if match:
+                    filtered_funds.append(f)
 
-                # Sorting
-                if sort_by == 'returns_desc':
-                    filtered_funds.sort(key=lambda x: MutualFundService.get_mock_returns(str(x.get('schemeCode'))), reverse=True)
-                elif sort_by == 'returns_asc':
-                    filtered_funds.sort(key=lambda x: MutualFundService.get_mock_returns(str(x.get('schemeCode'))))
-                # Default 'relevance' keeps original order (usually by scheme code or alphabetical from API)
+            # Sorting
+            if sort_by == 'returns_desc':
+                filtered_funds.sort(key=lambda x: MutualFundService.get_mock_returns(str(x.get('schemeCode'))), reverse=True)
+            elif sort_by == 'returns_asc':
+                filtered_funds.sort(key=lambda x: MutualFundService.get_mock_returns(str(x.get('schemeCode'))))
+            # Default 'relevance' keeps original order
 
-                # Pagination
-                start = offset
-                end = offset + limit
-                results = filtered_funds[start:end]
+            # Pagination
+            start = offset
+            end = offset + limit
+            results = filtered_funds[start:end]
+            
+            # Enrich with mock data for UI completeness
+            for r in results:
+                scheme_code = str(r.get('schemeCode', '0'))
+                # Mock metadata based on scheme code hash for consistency
+                code_hash = sum(ord(c) for c in scheme_code)
+                
+                r['nav'] = 100.0 + (int(r.get('schemeCode', 0)) % 500) / 10.0
+                r['returns_3y'] = MutualFundService.get_mock_returns(scheme_code)
+                r['category'] = "Mutual Fund" 
+                
+                # New Metadata for Overhaul
+                r['risk_level'] = ['Low', 'Moderate', 'High', 'Very High'][code_hash % 4]
+                r['aum'] = f"{(1000 + (code_hash % 9000)):,} Cr"
+                r['trending'] = (code_hash % 7 == 0) # ~14% funds are trending
+                r['rating'] = 3 + (code_hash % 3) # 3, 4, or 5 stars
                             
-                return results
-            return []
+            return results
         except Exception as e:
+            print(f"Search error: {e}")
             return []
 
     @staticmethod
@@ -884,9 +921,6 @@ class MutualFundService:
             MutualFundHolding.tenant_id == tenant_id,
             MutualFundHolding.scheme_code == scheme_code
         ).all()
-        
-        if not holdings:
-            return None
             
         # 3. Fetch All Orders for this Scheme
         orders = db.query(MutualFundOrder).filter(
@@ -969,7 +1003,7 @@ class MutualFundService:
         nav_history = []
         try:
             import httpx
-            from datetime import datetime
+            from datetime import datetime, timedelta
             
             response = httpx.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=5.0)
             if response.status_code == 200:
@@ -979,7 +1013,9 @@ class MutualFundService:
                 start_date = None
                 if orders:
                     earliest_order = orders[-1].order_date
-                    start_date = earliest_order.date()
+                    start_date = earliest_order.date() if hasattr(earliest_order, 'date') else earliest_order
+                else:
+                    start_date = (datetime.now() - timedelta(days=365)).date()
                 
                 valid_history = []
                 for entry in raw_history:
