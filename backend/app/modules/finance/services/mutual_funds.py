@@ -1110,6 +1110,78 @@ class MutualFundService:
         }
 
     @staticmethod
+    def get_scheme_info(db: Session, tenant_id: str, scheme_code: str):
+        """Fetch general scheme information without requiring a holding."""
+        from backend.app.modules.auth.models import User
+        
+        # 1. Fetch Metadata
+        meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == scheme_code).first()
+        
+        if not meta:
+            # If not in our DB, we could technically fetch from mfapi and create it, 
+            # but for simplicity, return None or a basic stub if we strictly rely on our DB metadata.
+            # We'll try to rely on mfapi for basic details if DB is empty.
+            pass
+
+        # 2. NAV History (1 year default for info page)
+        nav_history = []
+        try:
+            import httpx
+            from datetime import datetime, timedelta
+            
+            response = httpx.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=5.0)
+            if response.status_code == 200:
+                mf_data = response.json()
+                raw_history = mf_data.get("data", [])
+                
+                start_date = (datetime.now() - timedelta(days=365)).date()
+                
+                valid_history = []
+                for entry in raw_history:
+                    try:
+                        d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
+                        if d_obj >= start_date:
+                            valid_history.append({
+                                "date": d_obj.strftime("%Y-%m-%d"),
+                                "value": float(entry['nav'])
+                            })
+                    except: continue
+                nav_history = sorted(valid_history, key=lambda x: x['date'])
+                
+                # Use MFAPI name if our DB lacks it
+                scheme_name = meta.scheme_name if meta else mf_data.get("meta", {}).get("scheme_name", "Unknown Fund")
+                fund_house = meta.fund_house if meta else mf_data.get("meta", {}).get("fund_house", "Unknown AMC")
+        except Exception as e:
+            scheme_name = meta.scheme_name if meta else "Unknown Fund"
+            fund_house = meta.fund_house if meta else "Unknown AMC"
+
+        # Mock metadata based on scheme code hash for consistency with search
+        code_hash = sum(ord(c) for c in scheme_code)
+        risk_level = ['Low', 'Moderate', 'High', 'Very High'][code_hash % 4]
+        aum = f"{(1000 + (code_hash % 9000)):,} Cr"
+        trending = (code_hash % 7 == 0)
+        rating = 3 + (code_hash % 3)
+        returns_3y = round(12.0 + (code_hash % 8) + ((code_hash % 100) / 100.0), 2)
+
+        return {
+            "id": f"explore_{scheme_code}", 
+            "scheme_name": scheme_name,
+            "scheme_code": scheme_code,
+            "isin_growth": meta.isin_growth if meta else None,
+            "isin_reinvest": meta.isin_reinvest if meta else None,
+            "fund_house": fund_house,
+            "category": meta.category if meta else "Mutual Fund",
+            "risk_level": risk_level,
+            "aum": aum,
+            "trending": trending,
+            "rating": rating,
+            "returns_3y": returns_3y,
+            "last_nav": float(nav_history[-1]['value']) if nav_history else 0.0,
+            "nav_history": nav_history,
+            "is_aggregate": False
+        }
+
+    @staticmethod
     def update_holding(db: Session, tenant_id: str, holding_id: str, data: dict):
         with _db_write_lock:
             holding = db.query(MutualFundHolding).filter(

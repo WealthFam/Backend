@@ -27,15 +27,14 @@ class TransactionCreate(BaseModel):
 
 @router.get("/search")
 def search_funds(
-    q: Optional[str] = Query(None, min_length=2),
+    q: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     amc: Optional[str] = Query(None),
     limit: int = 20,
     offset: int = 0,
     sort_by: str = Query('relevance')
 ):
-    if not any([q, category, amc]):
-        raise HTTPException(status_code=400, detail="Search query or filter required")
+    # Allow empty query to fetch popular/trending funds for the Explore tab
     return MutualFundService.search_funds(query=q, category=category, amc=amc, limit=limit, offset=offset, sort_by=sort_by)
 
 @router.get("/indices")
@@ -149,6 +148,18 @@ def get_scheme_details(
     if not details:
         raise HTTPException(status_code=404, detail="Scheme holdings not found")
     return details
+
+@router.get("/schemes/{scheme_code}/info")
+def get_scheme_info(
+    scheme_code: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get scheme metadata without requiring an active holding."""
+    info = MutualFundService.get_scheme_info(db, str(current_user.tenant_id), scheme_code)
+    if not info:
+        raise HTTPException(status_code=404, detail="Scheme information not found")
+    return info
 
 @router.patch("/holdings/{holding_id}")
 def update_holding(

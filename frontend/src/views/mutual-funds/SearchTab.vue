@@ -298,7 +298,7 @@ function getRiskColor(risk: string) {
 }
 
 function openFundDetails(schemeCode: string) {
-    router.push(`/mutual-funds/${schemeCode}?type=aggregate`)
+    router.push(`/mutual-funds/explore/${schemeCode}`)
 }
 
 function openInvestModal(fund: any) {

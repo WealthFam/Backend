@@ -199,6 +199,7 @@ export const financeApi = {
     getPortfolio: (userId?: string) => apiClient.get('/finance/mutual-funds/portfolio', { params: { user_id: userId } }),
     getHoldingDetails: (id: string) => apiClient.get(`/finance/mutual-funds/holdings/${id}`),
     getSchemeDetails: (schemeCode: string) => apiClient.get(`/finance/mutual-funds/schemes/${schemeCode}/details`),
+    getSchemeInfo: (schemeCode: string) => apiClient.get(`/finance/mutual-funds/schemes/${schemeCode}/info`),
     updateHolding: (id: string, data: any) => apiClient.patch(`/finance/mutual-funds/holdings/${id}`, data),
     getAnalytics: (userId?: string) => apiClient.get('/finance/mutual-funds/analytics', { params: { user_id: userId } }),
     getPerformanceTimeline: (period: string = '1y', granularity: string = '1w', userId?: string, schemeCode?: string, holdingId?: string) =>
