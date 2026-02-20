@@ -5,23 +5,21 @@
 2. **[DONE] Top Bar Alignment**: Fix vertical center alignment for all top bar contents (User profile, Member switcher, etc.).
 3. **Skeleton Loaders**: Replace general spinners with standard `v-skeleton-loader` components across all data-heavy views (Portfolio, Transactions, Loans) for a smoother loading experience.
 4. **[DONE] Global Toast System**: Implement a standardized snackbar notification system to provide user feedback on API success/failure (e.g., "Transaction Saved", "Sync Failed").
-5. **Budget Progress Visualization**: Add high-fidelity progress bars to `Budgets.vue` showing actual spend vs. limit with color coding (Green -> Yellow -> Red).
-
+5. **[DONE] Budget Progress Visualization**: Add high-fidelity progress bars to `Budgets.vue` showing actual spend vs. limit with color coding (Green -> Yellow -> Red).
 
 ## 🟡 Technical Debt & Architecture
 6. **Refactor `Transactions.vue`**: This file is currently >2.6k lines. Extract the "Transactions List", "Analytics", "Triage", and "Heatmap" into dedicated sub-components in `@/views/transactions/`.
 7. **Mutual Fund Auto-Sync**: Implement a "Background Sync" status indicator and a manual "Refresh All" button in the Top Bar for Mutual Fund NAV updates.
-8. **Reactivity Audit**: Deep audit of all props in `Settings.vue` sub-pages to ensure one-way data flow and proper event emission (Standardizing `v-model` usage).
+8. **[DONE] Reactivity Audit**: Deep audit of all props in `Settings.vue` sub-pages to ensure one-way data flow and proper event emission (Standardizing `v-model` usage).
 9. **Data Caching Layer**: Implement a Pinia plugin or custom composable to cache frequently accessed data (like Portfolio and Transaction metadata) in `localStorage` to eliminate blank-state flashing.
 
 ## 🔵 New Feature Ideas
 10. **[DONE] Transaction KPIs**: In the transactions page header, show high-level summaries: **Total Expense**, **Total Income**, and **Net Worth Delta** (with options to toggle/view items excluded from reports).
 11. **Loan Amortization Chart**: Add a visual breakdown of projected interest vs. principal payments over time in `LoanDetails.vue`.
-12. **PWA Support**: Configure manifest and service workers to allow the app to be installed on mobile devices with a native look and feel.
 13. **AI Rebalancing Assistant**: Expand the "Portfolio Intelligence" feature to suggest specific Buy/Sell quantities to achieve a target asset allocation.
 
 ## 🟣 Advanced Fintech Features (Long Term)
-14. **Tax Planner (India Focused)**: Calculate Unrealized Capital Gains (LTCG/STCG) for the current portfolio to help with tax-harvesting decisions.
+
 15. **Family Wealth Dashboard**: A high-level view that aggregates net worth across all family members, with permissions to hide/show specific accounts.
 16. **Smart Rule Suggestion**: Implement a local analysis of uncategorized transactions to automatically suggest "Merchant -> Category" rules based on historical frequency.
 17. **Goal-Based SIP Tracker**: Match specific SIP (Systematic Investment Plan) mandates from bank accounts to their corresponding Investment Goals.

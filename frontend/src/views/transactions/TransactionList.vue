@@ -649,9 +649,25 @@ function handleReset() {
 
                 <!-- Loading State -->
                 <template #loading>
-                    <div class="d-flex flex-column align-center justify-center pa-10">
-                        <v-progress-circular indeterminate color="primary" size="48" width="4" class="mb-4" />
-                        <div class="text-subtitle-2 font-weight-bold opacity-60">Syncing with ledger...</div>
+                    <div class="py-2">
+                        <div v-for="i in 10" :key="i"
+                            class="d-flex align-center px-4 py-3 border-b border-opacity-25 glass-loader-row">
+                            <!-- Avatar Skeleton -->
+                            <v-skeleton-loader type="avatar" size="40" class="mr-4 skeleton-glass"></v-skeleton-loader>
+
+                            <!-- Title & Subtitle Skeleton -->
+                            <div class="flex-grow-1 mr-4">
+                                <v-skeleton-loader type="text" width="60%"
+                                    class="mb-1 skeleton-glass"></v-skeleton-loader>
+                                <v-skeleton-loader type="text" width="40%" height="12"
+                                    class="skeleton-glass"></v-skeleton-loader>
+                            </div>
+
+                            <!-- Amount Skeleton -->
+                            <div class="text-right">
+                                <v-skeleton-loader type="text" width="80px" class="skeleton-glass"></v-skeleton-loader>
+                            </div>
+                        </div>
                     </div>
                 </template>
             </v-data-table-server>
@@ -660,6 +676,36 @@ function handleReset() {
 </template>
 
 <style scoped>
+/* Skeleton Loader Overrides */
+.skeleton-glass {
+    background: transparent !important;
+}
+
+.skeleton-glass :deep(.v-skeleton-loader__bone) {
+    background: rgba(var(--v-theme-on-surface), 0.05) !important;
+    border-radius: 8px;
+}
+
+.skeleton-glass :deep(.v-skeleton-loader__avatar) {
+    border-radius: 12px;
+}
+
+.glass-loader-row {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .5;
+    }
+}
+
 /* List Header */
 .list-header {
     display: flex;

@@ -5,6 +5,7 @@ import { financeApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
 import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'
+import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import {
     Plus,
     Calendar,
@@ -277,9 +278,11 @@ watch(() => authStore.selectedMemberId, () => {
                 </v-row>
 
                 <!-- Loading State -->
-                <div v-if="loading" class="d-flex justify-center align-center py-16">
-                    <v-progress-circular indeterminate color="primary" size="64" width="6" />
-                </div>
+                <v-row v-if="loading" class="pb-16 pt-8">
+                    <v-col v-for="i in 3" :key="`skel-goal-${i}`" cols="12" sm="6" md="4" lg="4">
+                        <PremiumSkeleton type="category-card" glass />
+                    </v-col>
+                </v-row>
 
                 <!-- Empty State -->
                 <div v-else-if="goals.length === 0"
@@ -353,7 +356,7 @@ watch(() => authStore.selectedMemberId, () => {
                                         <div>
                                             <span class="text-h6 font-weight-black">{{
                                                 formatAmount(goal.current_amount)
-                                            }}</span>
+                                                }}</span>
                                             <span class="text-tiny font-weight-bold text-medium-emphasis ml-1">of {{
                                                 formatAmount(goal.target_amount) }}</span>
                                         </div>
@@ -551,7 +554,7 @@ watch(() => authStore.selectedMemberId, () => {
                                                 <v-avatar size="28" color="primary" variant="tonal" class="mr-2">
                                                     <span class="text-caption font-weight-black">{{
                                                         item.raw.initials
-                                                    }}</span>
+                                                        }}</span>
                                                 </v-avatar>
                                             </template>
                                         </v-list-item>
@@ -560,7 +563,7 @@ watch(() => authStore.selectedMemberId, () => {
                                         <div class="d-flex align-center">
                                             <v-avatar size="24" color="primary" variant="tonal" class="mr-2">
                                                 <span class="text-tiny font-weight-black">{{ item.raw.initials
-                                                }}</span>
+                                                    }}</span>
                                             </v-avatar>
                                             <span class="text-body-2 font-weight-bold">{{ item.raw.title }}</span>
                                         </div>

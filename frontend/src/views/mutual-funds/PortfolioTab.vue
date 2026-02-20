@@ -29,43 +29,53 @@
 
         <!-- Summary Cards -->
         <v-row class="mb-6">
-            <v-col cols="12" md="4">
-                <v-card class="premium-glass-card h-100 pa-4" rounded="xl">
-                    <div class="text-overline text-medium-emphasis font-weight-bold mb-1">Current Value</div>
-                    <div class="text-h4 font-weight-black text-content mb-2">
-                        {{ formatAmount(portfolioStats.current) }}
-                    </div>
-                    <v-chip size="small" :color="portfolioStats.pl >= 0 ? 'success' : 'error'" variant="tonal"
-                        class="font-weight-bold">
-                        {{ portfolioStats.pl >= 0 ? '↑' : '↓' }} {{ Math.abs(portfolioStats.plPercent).toFixed(2) }}%
-                        Returns
-                    </v-chip>
-                </v-card>
-            </v-col>
-            <v-col cols="12" md="4">
-                <v-card class="premium-glass-card h-100 pa-4" rounded="xl">
-                    <div class="text-overline text-medium-emphasis font-weight-bold mb-1">Total Invested</div>
-                    <div class="text-h4 font-weight-black text-content mb-2">
-                        {{ formatAmount(portfolioStats.invested) }}
-                    </div>
-                    <div class="text-caption text-medium-emphasis font-weight-bold">
-                        Across {{ portfolio.length }} Funds
-                    </div>
-                </v-card>
-            </v-col>
-            <v-col cols="12" md="4">
-                <v-card class="premium-glass-card h-100 pa-4" rounded="xl">
-                    <div class="text-overline text-medium-emphasis font-weight-bold mb-1">Overall P&L</div>
-                    <div class="text-h4 font-weight-black"
-                        :class="portfolioStats.pl >= 0 ? 'text-success' : 'text-error'">
-                        {{ portfolioStats.pl >= 0 ? '+' : '' }}{{ formatAmount(portfolioStats.pl) }}
-                    </div>
-                    <div class="text-caption text-medium-emphasis font-weight-bold" v-if="analytics?.xirr != null">
-                        XIRR: <span :class="analytics.xirr >= 0 ? 'text-success' : 'text-error'">{{
-                            analytics.xirr.toFixed(2) }}%</span>
-                    </div>
-                </v-card>
-            </v-col>
+            <!-- Loading Skeletons for Cards -->
+            <template v-if="isLoading">
+                <v-col cols="12" md="4" v-for="i in 3" :key="`skel-card-${i}`">
+                    <PremiumSkeleton type="stat-card" glass />
+                </v-col>
+            </template>
+            <!-- Actual Cards -->
+            <template v-else>
+                <v-col cols="12" md="4">
+                    <v-card class="premium-glass-card h-100 pa-4" rounded="xl">
+                        <div class="text-overline text-medium-emphasis font-weight-bold mb-1">Current Value</div>
+                        <div class="text-h4 font-weight-black text-content mb-2">
+                            {{ formatAmount(portfolioStats.current) }}
+                        </div>
+                        <v-chip size="small" :color="portfolioStats.pl >= 0 ? 'success' : 'error'" variant="tonal"
+                            class="font-weight-bold">
+                            {{ portfolioStats.pl >= 0 ? '↑' : '↓' }} {{ Math.abs(portfolioStats.plPercent).toFixed(2)
+                            }}%
+                            Returns
+                        </v-chip>
+                    </v-card>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-card class="premium-glass-card h-100 pa-4" rounded="xl">
+                        <div class="text-overline text-medium-emphasis font-weight-bold mb-1">Total Invested</div>
+                        <div class="text-h4 font-weight-black text-content mb-2">
+                            {{ formatAmount(portfolioStats.invested) }}
+                        </div>
+                        <div class="text-caption text-medium-emphasis font-weight-bold">
+                            Across {{ portfolio.length }} Funds
+                        </div>
+                    </v-card>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-card class="premium-glass-card h-100 pa-4" rounded="xl">
+                        <div class="text-overline text-medium-emphasis font-weight-bold mb-1">Overall P&L</div>
+                        <div class="text-h4 font-weight-black"
+                            :class="portfolioStats.pl >= 0 ? 'text-success' : 'text-error'">
+                            {{ portfolioStats.pl >= 0 ? '+' : '' }}{{ formatAmount(portfolioStats.pl) }}
+                        </div>
+                        <div class="text-caption text-medium-emphasis font-weight-bold" v-if="analytics?.xirr != null">
+                            XIRR: <span :class="analytics.xirr >= 0 ? 'text-success' : 'text-error'">{{
+                                analytics.xirr.toFixed(2) }}%</span>
+                        </div>
+                    </v-card>
+                </v-col>
+            </template>
         </v-row>
 
         <!-- Top Movers -->
@@ -165,9 +175,22 @@
                 </v-text-field>
             </div>
 
-            <v-data-table :headers="headers" :items="sortedPortfolio" :search="search" hover
+            <div v-if="isLoading" class="py-2">
+                <div v-for="i in 5" :key="`skel-table-${i}`"
+                    class="d-flex align-center px-6 py-4 border-b border-opacity-25 glass-loader-row">
+                    <v-skeleton-loader type="avatar" size="32" class="mr-4 skeleton-glass"></v-skeleton-loader>
+                    <div class="flex-grow-1 mr-4">
+                        <v-skeleton-loader type="text" width="40%" class="mb-1 skeleton-glass"></v-skeleton-loader>
+                        <v-skeleton-loader type="text" width="20%" height="12"
+                            class="skeleton-glass"></v-skeleton-loader>
+                    </div>
+                    <v-skeleton-loader type="text" width="60px" class="mr-8 skeleton-glass"></v-skeleton-loader>
+                    <v-skeleton-loader type="text" width="100px" class="skeleton-glass"></v-skeleton-loader>
+                </div>
+            </div>
+
+            <v-data-table v-else :headers="headers" :items="sortedPortfolio" :search="search" hover
                 class="premium-table bg-transparent" density="comfortable" item-value="id" v-model:expanded="expanded">
-                <!-- Fund Name Column -->
                 <!-- Fund Name Column -->
                 <template #[`item.scheme_name`]="{ item }">
                     <div class="d-flex align-center py-2">
@@ -367,6 +390,7 @@ import DonutChart from '@/components/DonutChart.vue'
 import FundPerformanceChart from './components/FundPerformanceChart.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import LinkGoalModal from './modals/LinkGoalModal.vue'
+import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import { marked } from 'marked'
 import { useCurrency } from '@/composables/useCurrency'
 
@@ -607,6 +631,32 @@ watch(portfolio, () => {
 </script>
 
 <style scoped>
+/* Skeleton Loader Config */
+.skeleton-glass {
+    background: transparent !important;
+}
+
+.skeleton-glass :deep(.v-skeleton-loader__bone) {
+    background: rgba(var(--v-theme-on-surface), 0.05) !important;
+    border-radius: 8px;
+}
+
+.glass-loader-row {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .5;
+    }
+}
+
 .premium-glass-card {
     background: rgba(var(--v-theme-surface), 0.7) !important;
     backdrop-filter: blur(20px) saturate(180%);
