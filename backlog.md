@@ -4,8 +4,8 @@
 *No active tasks.*
 
 ## 🟡 Technical Debt & Architecture
-1. **Refactor `Transactions.vue`**: This file is currently >2.6k lines. Extract the "Transactions List", "Analytics", "Triage", and "Heatmap" into dedicated sub-components in `@/views/transactions/`.
-2. **Mutual Fund Auto-Sync**: Implement a "Background Sync" status indicator and a manual "Refresh All" button in the Top Bar for Mutual Fund NAV updates.
+1. [x] **Refactor `Transactions.vue`**: This file is currently >2.6k lines. Extract the "Transactions List", "Analytics", "Triage", and "Heatmap" into dedicated sub-components in `@/views/transactions/`.
+2. [x] **Mutual Fund Auto-Sync**: Implement a "Background Sync" status indicator and a manual "Refresh All" button in the Top Bar for Mutual Fund NAV updates.
 3. **Data Caching Layer**: Implement a Pinia plugin or custom composable to cache frequently accessed data (like Portfolio and Transaction metadata) in `localStorage` to eliminate blank-state flashing.
 
 ## 🔵 New Feature Ideas

@@ -4,7 +4,7 @@ import httpx
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
-from backend.app.modules.finance.models import MutualFundsMeta, MutualFundHolding, MutualFundOrder
+from backend.app.modules.finance.models import MutualFundsMeta, MutualFundHolding, MutualFundOrder, PortfolioTimelineCache, MutualFundSyncLog
 
 MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 
@@ -12,6 +12,112 @@ MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 _db_write_lock = threading.Lock()
 
 class MutualFundService:
+
+    @staticmethod
+    def get_latest_sync_status(db: Session, tenant_id: str):
+        """Get the latest sync log for a tenant"""
+        return db.query(MutualFundSyncLog).filter(
+            MutualFundSyncLog.tenant_id == tenant_id
+        ).order_by(MutualFundSyncLog.started_at.desc()).first()
+
+    @staticmethod
+    async def refresh_tenant_navs(tenant_id: str, db: Optional[Session] = None):
+        """
+        Background task to refresh all NAVs for a tenant and update timeline cache.
+        """
+        # Close-at-end flag if we create our own session
+        created_local_db = False
+        if db is None:
+            from backend.app.core.database import SessionLocal
+            db = SessionLocal()
+            created_local_db = True
+
+        try:
+            # 1. Create Sync Log
+            sync_log = MutualFundSyncLog(
+                tenant_id=tenant_id,
+                status="running"
+            )
+            db.add(sync_log)
+            db.commit()
+
+            # 2. Get all holdings for the tenant
+            holdings = db.query(MutualFundHolding).filter(MutualFundHolding.tenant_id == tenant_id).all()
+            if not holdings:
+                sync_log.status = "completed"
+                sync_log.completed_at = datetime.utcnow()
+                db.commit()
+                return {"status": "completed", "updated": 0}
+
+            # 3. Fetch NAVs (using the same logic as get_portfolio but cleaner)
+            import asyncio
+            
+            async def fetch_nav_simple(scheme_code):
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=10.0)
+                    if response.status_code == 200:
+                        data = response.json()
+                        raw = data.get("data", [])
+                        if raw:
+                            # Already sorted by date desc usually, but let's be safe
+                            latest = raw[0]
+                            return {
+                                "scheme_code": scheme_code,
+                                "nav": float(latest.get("nav", 0.0)),
+                                "date": datetime.strptime(latest.get("date"), "%d-%m-%Y")
+                            }
+                except: pass
+                return None
+
+            async def fetch_all_navs():
+                tasks = [fetch_nav_simple(h.scheme_code) for h in holdings]
+                return await asyncio.gather(*tasks)
+
+            nav_results = await fetch_all_navs()
+            
+            # 4. Update Holdings
+            updated_count = 0
+            with _db_write_lock:
+                for nav_data in nav_results:
+                    if not nav_data: continue
+                    
+                    # Find all holdings for this scheme (could be multiple users/folios)
+                    h_list = [h for h in holdings if h.scheme_code == nav_data["scheme_code"]]
+                    for h in h_list:
+                        h.last_nav = nav_data["nav"]
+                        h.last_updated_at = nav_data["date"]
+                        h.current_value = float(h.units) * nav_data["nav"]
+                        updated_count += 1
+                
+                # 5. Commit Updates
+                MutualFundService._safe_commit(db)
+
+            # 6. Update Sync Log
+            sync_log.status = "completed"
+            sync_log.completed_at = datetime.utcnow()
+            sync_log.num_funds_updated = updated_count
+            db.commit()
+
+            # 7. Recalculate Timeline for Today (pre-cache)
+            # This ensures the dashboard feels fast after a sync
+            try:
+                MutualFundService.get_performance_timeline(db, tenant_id, period="1m", granularity="1d")
+            except: pass
+
+            return {"status": "completed", "updated": updated_count}
+
+        except Exception as e:
+            db.rollback()
+            sync_log.status = "error"
+            sync_log.completed_at = datetime.utcnow()
+            sync_log.error_message = str(e)
+            db.commit()
+            raise e
+        finally:
+            if created_local_db:
+                db.close()
+
     
     @staticmethod
     def _safe_commit(db: Session, max_retries: int = 5):
@@ -128,7 +234,7 @@ class MutualFundService:
                             
             return results
         except Exception as e:
-            print(f"Search error: {e}")
+            logger.error(f"Search error: {e}")
             return []
 
     @staticmethod

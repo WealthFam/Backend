@@ -22,8 +22,14 @@ import {
     Sun,
     Users,
     ChevronDown,
-    Search
+    Search,
+    RefreshCw,
+    Loader2
 } from 'lucide-vue-next'
+import { onMounted, onUnmounted, computed, watch } from 'vue'
+import { financeApi } from '@/api/client'
+import { useMutualFundStore } from '@/stores/finance/mutualFunds'
+import { useNotificationStore } from '@/stores/notification'
 import ToastContainer from '@/components/ToastContainer.vue'
 import GlobalSearch from '@/components/common/GlobalSearch.vue'
 
@@ -75,6 +81,52 @@ function logout() {
     auth.logout()
     router.push('/login')
 }
+
+const notification = useNotificationStore()
+
+const mfStore = useMutualFundStore()
+const isSyncing = computed(() => mfStore.isSyncing)
+const syncStatus = computed(() => mfStore.syncStatus)
+
+let syncInterval: any = null
+
+const syncStatusText = computed(() => {
+    if (isSyncing.value || syncStatus.value?.status === 'running') return 'Syncing Mutual Fund NAVs...'
+    if (syncStatus.value?.status === 'error') return `Last sync failed: ${syncStatus.value.error || syncStatus.value.error_message}`
+    return 'Refresh Mutual Fund NAVs'
+})
+
+const lastSyncTimeLabel = computed(() => {
+    if (!syncStatus.value?.completed_at) return ''
+    const date = new Date(syncStatus.value.completed_at)
+    return `Synced ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+})
+
+const lastSyncTime = computed(() => syncStatus.value?.completed_at)
+
+function startPolling() {
+    if (syncInterval) return
+    mfStore.fetchSyncStatus()
+    syncInterval = setInterval(() => mfStore.fetchSyncStatus(), 15000)
+    console.log('[Sync] Started polling interval')
+}
+
+function stopPolling() {
+    if (syncInterval) {
+        clearInterval(syncInterval)
+        syncInterval = null
+        console.log('[Sync] Stopped polling interval')
+    }
+}
+
+watch(() => auth.user, (val) => {
+    if (val) startPolling()
+    else stopPolling()
+}, { immediate: true })
+
+onUnmounted(() => {
+    stopPolling()
+})
 
 // Watch for mobile screen size to handle drawer properly? 
 // Vuetify handles mobile with temporary/permanent props.
@@ -180,6 +232,17 @@ function logout() {
                         </v-list>
                     </v-card>
                 </v-menu>
+
+                <!-- Mutual Fund Sync Status -->
+                <v-tooltip location="bottom" v-if="auth.user">
+                    <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" icon size="40" color="slate-600" class="mr-2" @click="mfStore.triggerSync"
+                            :loading="isSyncing">
+                            <RefreshCw :size="20" :class="{ 'spin-sync': isSyncing }" />
+                        </v-btn>
+                    </template>
+                    <span>{{ syncStatusText }}</span>
+                </v-tooltip>
 
                 <!-- Theme Toggle -->
                 <v-btn icon @click="toggleTheme" color="slate-600" class="mr-2" size="40">
@@ -600,5 +663,34 @@ function logout() {
     color: rgb(var(--v-theme-on-surface), 0.6);
     border-radius: 6px;
     letter-spacing: 0.05em;
+}
+
+.last-sync-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    white-space: nowrap;
+}
+
+.spin-sync {
+    animation: fa-spin 2s infinite linear;
+}
+
+@keyframes fa-spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.sync-btn {
+    transition: transform 0.2s;
+}
+
+.sync-btn:active {
+    transform: scale(0.9);
 }
 </style>

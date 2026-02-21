@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -24,6 +24,37 @@ class TransactionCreate(BaseModel):
     nav: float
     date: datetime
     folio_number: Optional[str] = None
+
+@router.post("/sync/refresh")
+async def trigger_sync(
+    background_tasks: BackgroundTasks,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Trigger background NAV refresh for all holdings"""
+    tenant_id = str(current_user.tenant_id)
+    # Fire and forget - let it handle its own DB session
+    background_tasks.add_task(MutualFundService.refresh_tenant_navs, tenant_id)
+    return {"status": "running", "message": "Sync started in background"}
+
+@router.get("/sync/status")
+async def get_sync_status(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get latest sync log for tenant"""
+    tenant_id = str(current_user.tenant_id)
+    log = MutualFundService.get_latest_sync_status(db, tenant_id)
+    if not log:
+        return {"status": "idle"}
+    
+    return {
+        "status": log.status,
+        "started_at": log.started_at,
+        "completed_at": log.completed_at,
+        "updated_count": log.num_funds_updated,
+        "error": log.error_message
+    }
 
 @router.get("/search")
 def search_funds(
@@ -110,6 +141,7 @@ def cleanup_duplicate_orders(
     tenant_id = str(current_user.tenant_id)
     removed_count = MutualFundService.cleanup_duplicates(db, tenant_id)
     return {"message": f"Removed {removed_count} duplicate orders and synchronized holdings"}
+
 
 @router.post("/recalculate-holdings")
 def trigger_recalculate_holdings(
