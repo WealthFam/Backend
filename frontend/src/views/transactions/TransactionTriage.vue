@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, reactive } from 'vue'
-import VendorAliasModal from '@/components/VendorAliasModal.vue'
+import MerchantAliasModal from '@/components/MerchantAliasModal.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import {
     Inbox,
@@ -526,7 +526,7 @@ const { formatAmount } = useCurrency()
                                         </template>
                                     </v-tooltip>
 
-                                    <v-tooltip text="Map this vendor to an alias for better categorization"
+                                    <v-tooltip text="Map this merchant to an alias for better categorization"
                                         location="top" open-delay="400">
                                         <template v-slot:activator="{ props }">
                                             <v-btn v-bind="props" variant="tonal" size="small" color="primary"
@@ -876,7 +876,7 @@ const { formatAmount } = useCurrency()
         </v-dialog>
 
         <!-- Add Alias Modal -->
-        <VendorAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern" :initial-alias="aliasForm.alias"
+        <MerchantAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern" :initial-alias="aliasForm.alias"
             @saved="emit('refreshTriage')" />
 
         <!-- Discard Confirmation Dialog (Triage) -->

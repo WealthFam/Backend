@@ -87,6 +87,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/merchants/:id',
+      name: 'merchant-details',
+      component: () => import('@/views/MerchantDetails.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/login',
       name: 'login',
       component: Login,

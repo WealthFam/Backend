@@ -85,6 +85,7 @@ export interface TransactionUpdate {
 
 export const financeApi = {
     getAccounts: (userId?: string, includeUnverified?: boolean) => apiClient.get('/finance/accounts', { params: { user_id: userId, include_unverified: includeUnverified } }),
+    globalSearch: (q: string, userId?: string) => apiClient.get('/finance/search', { params: { q, user_id: userId } }),
     createAccount: (data: AccountCreate) => apiClient.post('/finance/accounts', data),
     updateAccount: (id: string, data: AccountUpdate) => apiClient.put(`/finance/accounts/${id}`, data),
     deleteAccount: (id: string) => apiClient.delete(`/finance/accounts/${id}`),
@@ -147,8 +148,8 @@ export const financeApi = {
         apiClient.get('/finance/budget-history', { params: { months, user_id: userId } }),
     getHeatmapData: (startDate?: string, endDate?: string, userId?: string) =>
         apiClient.get('/finance/heatmap', { params: { start_date: startDate, end_date: endDate, user_id: userId } }),
-    getVendorBreakdown: (category?: string, startDate?: string, endDate?: string, userId?: string) =>
-        apiClient.get('/finance/vendor-breakdown', { params: { category, start_date: startDate, end_date: endDate, user_id: userId } }),
+    getMerchantBreakdown: (category?: string, startDate?: string, endDate?: string, userId?: string) =>
+        apiClient.get('/finance/merchant-breakdown', { params: { category, start_date: startDate, end_date: endDate, user_id: userId } }),
 
     // Ingestion
     analyzeCsv: (formData: FormData) => apiClient.post('/ingestion/csv/analyze', formData, {
@@ -232,7 +233,7 @@ export const financeApi = {
     createLoan: (data: any) => apiClient.post('/finance/loans', data),
     recordLoanRepayment: (loanId: string, data: any) => apiClient.post(`/finance/loans/${loanId}/repayment`, data),
 
-    // Vendor Aliases
+    // Merchant Aliases
     getAliases: () => apiClient.get('/ingestion/aliases'),
     createAlias: (data: any) => apiClient.post('/ingestion/aliases', data),
     updateAlias: (id: string, data: any) => apiClient.put(`/ingestion/aliases/${id}`, data),

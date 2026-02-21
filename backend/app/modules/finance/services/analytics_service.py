@@ -777,7 +777,7 @@ class AnalyticsService:
             for row in results
         ]
     @staticmethod
-    def get_vendor_breakdown(db: Session, tenant_id: str, category: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, user_id: Optional[str] = None):
+    def get_merchant_breakdown(db: Session, tenant_id: str, category: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, user_id: Optional[str] = None):
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
         if category in [None, "null", "undefined", "", "OVERALL"]:
@@ -785,11 +785,11 @@ class AnalyticsService:
             
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"DEBUG: get_vendor_breakdown - category='{category}' (type: {type(category)})")
-        logger.info(f"DEBUG: get_vendor_breakdown - tenant_id='{tenant_id}', user_id='{user_id}'")
+        logger.info(f"DEBUG: get_merchant_breakdown - category='{category}' (type: {type(category)})")
+        logger.info(f"DEBUG: get_merchant_breakdown - tenant_id='{tenant_id}', user_id='{user_id}'")
 
         query = db.query(
-            models.Transaction.recipient.label('vendor'),
+            models.Transaction.recipient.label('merchant'),
             func.sum(models.Transaction.amount).label('total')
         ).filter(
             models.Transaction.tenant_id == tenant_id,
@@ -813,7 +813,7 @@ class AnalyticsService:
             sub_category_names = []
             
             if category == "Uncategorized":
-                logger.info("DEBUG: get_vendor_breakdown - Filtering for Uncategorized")
+                logger.info("DEBUG: get_merchant_breakdown - Filtering for Uncategorized")
                 query = query.filter(or_(models.Transaction.category == None, models.Transaction.category == "Uncategorized"))
             else:
                 parent_cat = db.query(Category).filter(
@@ -822,24 +822,24 @@ class AnalyticsService:
                     Category.parent_id == None
                 ).first()
                 
-                logger.info(f"DEBUG: get_vendor_breakdown - parent_cat found: {parent_cat.id if parent_cat else 'None'}")
+                logger.info(f"DEBUG: get_merchant_breakdown - parent_cat found: {parent_cat.id if parent_cat else 'None'}")
                 
                 if parent_cat:
                     subs = db.query(Category).filter(Category.parent_id == parent_cat.id).all()
                     sub_category_names = [s.name for s in subs]
-                    logger.info(f"DEBUG: get_vendor_breakdown - sub_category_names: {sub_category_names}")
+                    logger.info(f"DEBUG: get_merchant_breakdown - sub_category_names: {sub_category_names}")
                 
                 if sub_category_names:
                     filter_list = [category] + sub_category_names
-                    logger.info(f"DEBUG: get_vendor_breakdown - Filtering by list: {filter_list}")
+                    logger.info(f"DEBUG: get_merchant_breakdown - Filtering by list: {filter_list}")
                     query = query.filter(models.Transaction.category.in_(filter_list))
                 else:
-                    logger.info(f"DEBUG: get_vendor_breakdown - Filtering by single name: '{category}'")
+                    logger.info(f"DEBUG: get_merchant_breakdown - Filtering by single name: '{category}'")
                     query = query.filter(models.Transaction.category == category)
 
         results = query.group_by(models.Transaction.recipient).order_by(func.sum(models.Transaction.amount).asc()).all()
         
         return [
-            {"vendor": row.vendor or "Unknown", "amount": abs(float(row.total))}
+            {"merchant": row.merchant or "Unknown", "amount": abs(float(row.total))}
             for row in results
         ]

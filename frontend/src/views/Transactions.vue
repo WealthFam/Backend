@@ -10,7 +10,7 @@ import SpendingHeatmap from '@/components/SpendingHeatmap.vue'
 import TransactionList from './transactions/TransactionList.vue'
 import TransactionTriage from './transactions/TransactionTriage.vue'
 import TransactionModal from './transactions/TransactionModal.vue'
-import VendorAliasModal from '@/components/VendorAliasModal.vue'
+import MerchantAliasModal from '@/components/MerchantAliasModal.vue'
 import {
     LayoutList,
     Inbox,
@@ -177,7 +177,7 @@ watch(() => auth.selectedMemberId, () => {
     fetchHeatmap()
 })
 
-// --- Vendor Alias Logic ---
+// --- Merchant Alias Logic ---
 const showAliasModal = ref(false)
 const aliasForm = reactive({
     pattern: '',
@@ -268,7 +268,7 @@ onMounted(() => {
                             @update:selectedTimeRange="selectedTimeRange = $event; handleTimeRangeChange($event)"
                             @update:page="page = $event; fetchData()"
                             @update:pageSize="pageSize = $event; page = 1; fetchData()" @sortChange="toggleTxnSort"
-                            @editTxn="(t) => { fetchModalData(); openEditModal(t) }" @mapVendor="openAliasModal"
+                            @editTxn="(t) => { fetchModalData(); openEditModal(t) }" @mapMerchant="openAliasModal"
                             @deleteSelected="showDeleteConfirm = true" @importCsv="showImportModal = true"
                             @fetchData="fetchData"
                             @resetFilters="selectedTimeRange = 'all'; startDate = ''; endDate = ''; searchQuery = ''; categoryFilter = ''; fetchData()" />
@@ -326,7 +326,7 @@ onMounted(() => {
             :matchesSearched="matchesSearched" @close="showModal = false" @submit="handleSubmit"
             @findMatches="findMatches" @selectMatch="selectMatch" />
 
-        <VendorAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern" :initial-alias="aliasForm.alias"
+        <MerchantAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern" :initial-alias="aliasForm.alias"
             @saved="() => { fetchData(); fetchTriage(); }" />
 
         <!-- Labeling Message Modal (Interactive Training) -->

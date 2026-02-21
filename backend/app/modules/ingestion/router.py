@@ -817,7 +817,7 @@ def get_unparsed_messages(
         "limit": limit,
         "skip": skip
     }
-# --- Vendor Alias Management ---
+# --- Merchant Alias Management ---
 
 class AliasCreate(BaseModel):
     pattern: str

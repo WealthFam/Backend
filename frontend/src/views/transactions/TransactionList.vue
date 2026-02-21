@@ -57,7 +57,7 @@ const emit = defineEmits<{
     'update:pageSize': [value: number]
     'sortChange': [key: string]
     'editTxn': [txn: any]
-    'mapVendor': [txn: any]
+    'mapMerchant': [txn: any]
     'deleteSelected': []
     'importCsv': []
     'fetchData': []
@@ -298,6 +298,11 @@ function handleReset() {
     background: rgba(var(--v-theme-primary), 0.03) !important;
 }
 
+.hover-underline:hover {
+    text-decoration: underline !important;
+    color: rgb(var(--v-theme-primary)) !important;
+}
+
 .opacity-70 {
     opacity: 0.7;
 }
@@ -527,7 +532,12 @@ function handleReset() {
                         </v-tooltip>
                         <div>
                             <div class="text-subtitle-2 font-weight-bold text-truncate" style="max-width: 200px;">
-                                {{ item.recipient || item.description }}
+                                <router-link v-if="item.recipient"
+                                    :to="`/merchants/${encodeURIComponent(item.recipient)}`"
+                                    class="text-decoration-none text-content hover-underline">
+                                    {{ item.recipient }}
+                                </router-link>
+                                <span v-else>{{ item.description }}</span>
                             </div>
                             <div class="text-caption opacity-50 d-flex align-center gap-1 font-weight-bold"
                                 v-if="item.source">
@@ -615,7 +625,7 @@ function handleReset() {
                                         <Pencil :size="16" class="mr-2" />
                                     </template>
                                 </v-list-item>
-                                <v-list-item @click="emit('mapVendor', item)" title="Map Vendor" value="map">
+                                <v-list-item @click="emit('mapMerchant', item)" title="Map Merchant" value="map">
                                     <template v-slot:prepend>
                                         <MapPin :size="16" class="mr-2" />
                                     </template>

@@ -26,7 +26,7 @@ const loading = ref(false)
 const transactions = ref<any[]>([])
 const totalTransactions = ref(0)
 const dailySpending = ref<{ day: number, amount: number }[]>([])
-const vendorBreakdown = ref<any[]>([])
+const merchantBreakdown = ref<any[]>([])
 const serverOptions = ref({
     page: 1,
     itemsPerPage: 5,
@@ -81,14 +81,14 @@ const fetchData = async () => {
 
         processTrendData(trendRes.data.items)
 
-        // Fetch Vendor Breakdown
-        const vendorRes = await financeApi.getVendorBreakdown(
+        // Fetch Merchant Breakdown
+        const merchantRes = await financeApi.getMerchantBreakdown(
             props.category,
             startDate,
             endDate,
             authStore.selectedMemberId || undefined
         )
-        vendorBreakdown.value = vendorRes.data
+        merchantBreakdown.value = merchantRes.data
 
     } catch (err) {
         console.error('Failed to fetch category details:', err)
@@ -133,16 +133,16 @@ const barChartData = computed(() => ({
 
 const doughnutChartData = computed(() => {
     // Take top 5 and group others
-    const sorted = [...vendorBreakdown.value].sort((a, b) => b.amount - a.amount)
+    const sorted = [...merchantBreakdown.value].sort((a, b) => b.amount - a.amount)
     const top = sorted.slice(0, 5)
     const others = sorted.slice(5).reduce((acc, curr) => acc + curr.amount, 0)
 
     if (others > 0) {
-        top.push({ vendor: 'Others', amount: others })
+        top.push({ merchant: 'Others', amount: others })
     }
 
     return {
-        labels: top.map(v => v.vendor),
+        labels: top.map(v => v.merchant),
         datasets: [{
             data: top.map(v => v.amount),
             backgroundColor: [
@@ -234,7 +234,7 @@ const formatDate = (dateStr: string) => {
                         </v-card>
                     </v-col>
 
-                    <!-- Vendor Breakdown -->
+                    <!-- Merchant Breakdown -->
                     <v-col cols="12" md="4">
                         <v-card variant="outlined" class="chart-box pa-3 border-dashed rounded-xl">
                             <div class="d-flex align-center mb-3">
@@ -242,16 +242,16 @@ const formatDate = (dateStr: string) => {
                                     <Hash :size="18" class="text-purple" />
                                 </div>
                                 <div>
-                                    <h3 class="text-subtitle-1 font-weight-bold mb-0">Top Vendors</h3>
+                                    <h3 class="text-subtitle-1 font-weight-bold mb-0">Top Merchants</h3>
                                     <span class="text-caption text-medium-emphasis">Where your money goes</span>
                                 </div>
                             </div>
-                            <div v-if="vendorBreakdown.length > 0">
+                            <div v-if="merchantBreakdown.length > 0">
                                 <BaseChart type="doughnut" :data="doughnutChartData" :options="doughnutOptions"
                                     :height="160" />
                             </div>
                             <div v-else class="d-flex align-center justify-center" style="height: 160px">
-                                <span class="text-caption text-medium-emphasis">No vendor data available</span>
+                                <span class="text-caption text-medium-emphasis">No merchant data available</span>
                             </div>
                         </v-card>
                     </v-col>
