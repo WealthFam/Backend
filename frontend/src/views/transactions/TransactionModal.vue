@@ -28,6 +28,21 @@ const { formatAmount } = useCurrency()
 const theme = useTheme()
 const isDark = computed(() => theme.global.current.value.dark)
 
+// Local state to avoid prop mutation
+import { reactive, watch } from 'vue'
+const localForm = reactive({ ...props.form })
+
+watch(() => props.isOpen, (next) => {
+    if (next) {
+        Object.assign(localForm, props.form)
+    }
+})
+
+// Deep watch on props.form to keep local state in sync if parent changes it
+watch(() => props.form, (newForm) => {
+    Object.assign(localForm, newForm)
+}, { deep: true })
+
 const categoryOptions = computed(() => {
     const list: any[] = []
     const flatten = (cats: any[], depth = 0) => {
@@ -58,13 +73,12 @@ const expenseGroupOptions = computed(() => {
 })
 
 const currentCategoryBudget = computed(() => {
-    if (!props.form.category || props.form.is_transfer) return null
-    return props.budgets.find(b => b.category === props.form.category) || null
+    if (!localForm.category || localForm.is_transfer) return null
+    return props.budgets.find(b => b.category === localForm.category) || null
 })
 
 // Auto-detect Credit Card Payment
-import { watch } from 'vue'
-watch(() => props.form.category, (newVal) => {
+watch(() => localForm.category, (newVal) => {
     if (!newVal) return;
 
     // Check if category implies credit card payment
@@ -74,13 +88,13 @@ watch(() => props.form.category, (newVal) => {
         const ccAccounts = props.accounts.filter(a => a.type === 'CREDIT_CARD');
 
         if (ccAccounts.length > 0) {
-            // Suggest Transfer mode
-            if (!props.form.is_transfer) {
-                props.form.is_transfer = true;
+            // Suggest Transfer mode (Safe to mutate localForm now)
+            if (!localForm.is_transfer) {
+                localForm.is_transfer = true;
 
                 // If only one card, auto-select it
                 if (ccAccounts.length === 1) {
-                    props.form.to_account_id = ccAccounts[0].id;
+                    localForm.to_account_id = ccAccounts[0].id;
                 }
             }
         }
@@ -88,16 +102,16 @@ watch(() => props.form.category, (newVal) => {
 })
 
 const isFormValid = computed(() => {
-    const basicValid = props.form.amount > 0 && props.form.date && props.form.account_id && props.form.category
-    if (props.form.is_transfer) {
-        return basicValid && props.form.to_account_id
+    const basicValid = localForm.amount > 0 && localForm.date && localForm.account_id && localForm.category
+    if (localForm.is_transfer) {
+        return basicValid && localForm.to_account_id
     }
     return basicValid
 })
 
 function handleSubmit() {
     if (!isFormValid.value) return
-    emit('submit')
+    emit('submit', { ...localForm }) // Emit a clone of the local result
 }
 
 function handleClose() {
@@ -141,14 +155,14 @@ function handleClose() {
 
                             <v-row dense>
                                 <v-col cols="12" class="mb-1">
-                                    <v-text-field v-model="form.description" label="Description"
+                                    <v-text-field v-model="localForm.description" label="Description"
                                         placeholder="What was this for?" variant="outlined" density="comfortable"
                                         rounded="lg" class="premium-modal-input font-weight-bold" hide-details
                                         autocomplete="off" />
                                 </v-col>
 
                                 <v-col cols="4" md="3" class="mb-1">
-                                    <v-select v-model="form.type" :items="['DEBIT', 'CREDIT']" label="Type"
+                                    <v-select v-model="localForm.type" :items="['DEBIT', 'CREDIT']" label="Type"
                                         variant="outlined" density="comfortable" rounded="lg"
                                         class="premium-modal-input font-weight-bold" hide-details>
                                         <template v-slot:selection="{ item }">
@@ -169,21 +183,21 @@ function handleClose() {
                                 </v-col>
 
                                 <v-col cols="8" md="5" class="mb-1">
-                                    <v-text-field v-model="form.amount" label="Amount" type="number" placeholder="0.00"
-                                        variant="outlined" density="comfortable" rounded="lg"
+                                    <v-text-field v-model="localForm.amount" label="Amount" type="number"
+                                        placeholder="0.00" variant="outlined" density="comfortable" rounded="lg"
                                         class="premium-modal-input font-weight-bold" hide-details
                                         :prepend-inner-icon="IndianRupee" autocomplete="off" />
                                 </v-col>
 
                                 <v-col cols="12" md="4" class="mb-1">
                                     <div class="date-picker-wrapper">
-                                        <VueDatePicker v-model="form.date" :dark="isDark" auto-apply
+                                        <VueDatePicker v-model="localForm.date" :dark="isDark" auto-apply
                                             :enable-time-picker="true" model-type="yyyy-MM-dd'T'HH:mm"
                                             format="dd MMM yyyy HH:mm" placeholder="Date & Time" :teleport="true"
                                             input-class-name="premium-date-input">
                                             <template #trigger>
                                                 <v-text-field
-                                                    :model-value="form.date ? new Date(form.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''"
+                                                    :model-value="localForm.date ? new Date(localForm.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''"
                                                     label="Date & Time" variant="outlined" density="comfortable"
                                                     rounded="lg" class="premium-modal-input font-weight-bold"
                                                     hide-details :prepend-inner-icon="Calendar" readonly />
@@ -204,22 +218,22 @@ function handleClose() {
 
                             <v-row dense>
                                 <v-col cols="12" md="6" class="mb-1">
-                                    <v-select v-model="form.account_id" :items="accountOptions" label="Account"
+                                    <v-select v-model="localForm.account_id" :items="accountOptions" label="Account"
                                         item-title="title" item-value="value" variant="outlined" density="comfortable"
                                         rounded="lg" class="premium-modal-input font-weight-bold" hide-details
                                         prepend-inner-icon="Landmark" />
                                 </v-col>
 
                                 <v-col cols="12" md="6" class="mb-1">
-                                    <v-autocomplete v-model="form.category" :items="categoryOptions" label="Category"
-                                        item-title="title" item-value="value" placeholder="Select Category"
-                                        variant="outlined" density="comfortable" rounded="lg"
-                                        class="premium-modal-input font-weight-bold" hide-details
-                                        :prepend-inner-icon="!form.category ? 'Tag' : undefined" />
+                                    <v-autocomplete v-model="localForm.category" :items="categoryOptions"
+                                        label="Category" item-title="title" item-value="value"
+                                        placeholder="Select Category" variant="outlined" density="comfortable"
+                                        rounded="lg" class="premium-modal-input font-weight-bold" hide-details
+                                        :prepend-inner-icon="!localForm.category ? 'Tag' : undefined" />
                                 </v-col>
 
                                 <v-col cols="12" class="mb-1">
-                                    <v-select v-model="form.expense_group_id" :items="expenseGroupOptions"
+                                    <v-select v-model="localForm.expense_group_id" :items="expenseGroupOptions"
                                         label="Life Event / Group" item-title="title" item-value="value"
                                         placeholder="Add to a project or life event (Optional)" variant="outlined"
                                         density="comfortable" rounded="lg" class="premium-modal-input font-weight-bold"
@@ -240,9 +254,9 @@ function handleClose() {
                                 style="border-radius: 20px !important;">
                                 <v-row align="center">
                                     <v-col cols="12" sm="6">
-                                        <v-switch v-model="form.is_transfer" label="Is this a Transfer?" color="primary"
-                                            hide-details density="compact" class="font-weight-bold" persistent-hint
-                                            hint="Moving money between your own accounts">
+                                        <v-switch v-model="localForm.is_transfer" label="Is this a Transfer?"
+                                            color="primary" hide-details density="compact" class="font-weight-bold"
+                                            persistent-hint hint="Moving money between your own accounts">
                                             <template #label>
                                                 <div class="d-flex flex-column ml-2">
                                                     <span class="text-body-2 font-weight-bold">Internal Transfer</span>
@@ -252,7 +266,7 @@ function handleClose() {
                                         </v-switch>
                                     </v-col>
                                     <v-col cols="12" sm="6">
-                                        <v-switch v-model="form.exclude_from_reports" label="Hide from Reports"
+                                        <v-switch v-model="localForm.exclude_from_reports" label="Hide from Reports"
                                             color="error" hide-details density="compact" class="font-weight-bold">
                                             <template #label>
                                                 <div class="d-flex flex-column ml-2">
@@ -268,7 +282,7 @@ function handleClose() {
                             </v-card>
 
                             <v-expand-transition>
-                                <div v-if="form.is_transfer" class="mt-4">
+                                <div v-if="localForm.is_transfer" class="mt-4">
                                     <v-card variant="flat" class="pa-4 border-opacity-10"
                                         style="background: rgba(var(--v-theme-primary), 0.05); border-radius: 20px !important;">
                                         <div class="d-flex align-center gap-2 mb-4">
@@ -278,7 +292,7 @@ function handleClose() {
 
                                         <v-row dense>
                                             <v-col cols="12" md="8">
-                                                <v-select v-model="form.to_account_id" :items="accountOptions"
+                                                <v-select v-model="localForm.to_account_id" :items="accountOptions"
                                                     item-title="title" item-value="value" label="Destination Account"
                                                     placeholder="Select account" variant="outlined"
                                                     density="comfortable" rounded="lg"
@@ -298,19 +312,20 @@ function handleClose() {
                                                 <Search :size="14" />
                                                 Found {{ potentialMatches.length }} matches within 3-day window
                                             </p>
+
                                             <div class="d-flex flex-column gap-3">
                                                 <v-card v-for="match in potentialMatches" :key="match.id" padding="0"
                                                     class="match-card rounded-xl border-opacity-5 cursor-pointer overflow-hidden transition-all"
-                                                    :class="{ 'match-selected-active': form.linked_transaction_id === match.id }"
+                                                    :class="{ 'match-selected-active': localForm.linked_transaction_id === match.id }"
                                                     @click="emit('selectMatch', match)" variant="flat"
-                                                    :color="form.linked_transaction_id === match.id ? 'primary' : 'surface'">
+                                                    :color="localForm.linked_transaction_id === match.id ? 'primary' : 'surface'">
                                                     <div class="pa-4 d-flex justify-space-between align-center">
                                                         <div class="d-flex align-center gap-3">
                                                             <v-avatar size="32"
-                                                                :color="form.linked_transaction_id === match.id ? 'white' : 'primary'"
+                                                                :color="localForm.linked_transaction_id === match.id ? 'white' : 'primary'"
                                                                 class="opacity-80">
                                                                 <Link :size="16"
-                                                                    :color="form.linked_transaction_id === match.id ? 'primary' : 'white'" />
+                                                                    :color="localForm.linked_transaction_id === match.id ? 'primary' : 'white'" />
                                                             </v-avatar>
                                                             <div>
                                                                 <div class="text-subtitle-2 font-weight-black">{{

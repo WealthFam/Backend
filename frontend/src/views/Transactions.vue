@@ -327,7 +327,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.settings-page {
+.dashboard-page {
     min-height: calc(100vh - 64px);
     background: rgb(var(--v-theme-background));
     position: relative;
@@ -367,15 +367,6 @@ onMounted(() => {
     bottom: -100px;
     left: -100px;
     animation-delay: -5s;
-}
-
-.blob-3 {
-    background: rgb(var(--v-theme-success));
-    width: 300px;
-    height: 300px;
-    top: 40%;
-    left: 30%;
-    animation-delay: -8s;
 }
 
 @keyframes blob-float {
