@@ -1,6 +1,6 @@
-```vue
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, reactive } from 'vue'
+import MerchantAliasModal from '@/components/MerchantAliasModal.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import {
     Search,
@@ -57,12 +57,24 @@ const emit = defineEmits<{
     'update:pageSize': [value: number]
     'sortChange': [key: string]
     'editTxn': [txn: any]
-    'mapMerchant': [txn: any]
     'deleteSelected': []
     'importCsv': []
     'fetchData': []
     'resetFilters': []
 }>()
+
+// --- Merchant Alias Logic (Encapsulated) ---
+const showAliasModal = ref(false)
+const aliasForm = reactive({
+    pattern: '',
+    alias: ''
+})
+
+function openAliasModal(txn: any) {
+    aliasForm.pattern = txn.description || txn.recipient || ''
+    aliasForm.alias = txn.recipient || ''
+    showAliasModal.value = true
+}
 
 // Local State
 const selectedIds = defineModel<Set<string>>('selectedIds', { default: () => new Set() })
@@ -625,7 +637,7 @@ function handleReset() {
                                         <Pencil :size="16" class="mr-2" />
                                     </template>
                                 </v-list-item>
-                                <v-list-item @click="emit('mapMerchant', item)" title="Map Merchant" value="map">
+                                <v-list-item @click="openAliasModal(item)" title="Map Merchant" value="map">
                                     <template v-slot:prepend>
                                         <MapPin :size="16" class="mr-2" />
                                     </template>
@@ -682,6 +694,9 @@ function handleReset() {
                 </template>
             </v-data-table-server>
         </v-card>
+
+        <MerchantAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern"
+            :initial-alias="aliasForm.alias" @saved="() => { emit('fetchData') }" />
     </div>
 </template>
 
