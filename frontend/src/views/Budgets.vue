@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import { financeApi } from '@/api/client'
@@ -30,18 +30,24 @@ import {
 } from 'lucide-vue-next'
 import CategoryDetailsModal from '@/components/budgets/CategoryDetailsModal.vue'
 
+import { useBudgetStore } from '@/stores/finance/budgets'
+import { useFinanceStore } from '@/stores/finance'
+
 const { formatAmount } = useCurrency()
 const notify = useNotificationStore()
 const authStore = useAuthStore()
+const budgetStore = useBudgetStore()
+const financeStore = useFinanceStore()
 const router = useRouter()
 
-// State
-const budgets = ref<any[]>([])
-const categories = ref<any[]>([])
-const loading = ref(true)
+// State - seed from cache
+const budgets = computed(() => budgetStore.budgets)
+const overallBudget = computed(() => budgetStore.overallBudget)
+const categories = computed(() => financeStore.categories)
+const loading = ref(budgetStore.budgets.length === 0)
 const loadingInsights = ref(false)
 const showModal = ref(false)
-const insights = ref<any[]>([])
+const insights = computed(() => budgetStore.insights)
 
 // Category Details Modal
 const showDetailsModal = ref(false)
@@ -88,7 +94,6 @@ const newBudget = ref({
 const activeTab = ref<'expense' | 'income'>('expense')
 
 // Metrics
-const overallBudget = ref<any>(null)
 
 // Metrics - categoryBudgets no longer needs to filter ALL
 // But wait, the API now returns list WITHOUT OVERALL, so we don't need to filter it out.
@@ -200,21 +205,17 @@ const categoryOptions = computed(() => {
 })
 
 async function fetchData() {
-    loading.value = true
-    insights.value = [] // Reset insights on month change
+    if (budgetStore.budgets.length === 0) loading.value = true
+    budgetStore.insights = [] // Reset insights on month change
     try {
         const year = selectedDate.value.getFullYear()
         const month = selectedDate.value.getMonth() + 1
         const userId = authStore.selectedMemberId || undefined
 
-        const [budgetRes, overviewRes, catRes] = await Promise.all([
-            financeApi.getBudgets(year, month, userId),
-            financeApi.getBudgetOverview(year, month, userId),
-            financeApi.getCategories()
+        await Promise.all([
+            budgetStore.fetchBudgets(year, month, userId),
+            financeStore.fetchCategories()
         ])
-        budgets.value = budgetRes.data
-        overallBudget.value = overviewRes.data
-        categories.value = catRes.data
     } catch (e) {
         console.error(e)
         notify.error("Failed to load budgets")
@@ -229,8 +230,7 @@ async function fetchInsights() {
         const year = selectedDate.value.getFullYear()
         const month = selectedDate.value.getMonth() + 1
         const userId = authStore.selectedMemberId || undefined
-        const res = await financeApi.getBudgetsInsights(year, month, userId)
-        insights.value = res.data
+        await budgetStore.fetchInsights(year, month, userId)
     } catch (e) {
         notify.error("Failed to generate AI insights")
     } finally {
@@ -239,7 +239,6 @@ async function fetchInsights() {
 }
 
 // Watch for member changes
-import { watch } from 'vue'
 watch(() => authStore.selectedMemberId, () => {
     fetchData()
 })

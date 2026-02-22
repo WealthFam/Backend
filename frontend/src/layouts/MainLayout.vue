@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+
 import { useAuthStore } from '@/stores/auth'
 import { useRouter, useRoute } from 'vue-router'
 import { useTheme } from 'vuetify'
@@ -24,12 +25,9 @@ import {
     ChevronDown,
     Search,
     RefreshCw,
-    Loader2
 } from 'lucide-vue-next'
-import { onMounted, onUnmounted, computed, watch } from 'vue'
-import { financeApi } from '@/api/client'
+import { onUnmounted, computed, watch } from 'vue'
 import { useMutualFundStore } from '@/stores/finance/mutualFunds'
-import { useNotificationStore } from '@/stores/notification'
 import ToastContainer from '@/components/ToastContainer.vue'
 import GlobalSearch from '@/components/common/GlobalSearch.vue'
 
@@ -82,7 +80,7 @@ function logout() {
     router.push('/login')
 }
 
-const notification = useNotificationStore()
+
 
 const mfStore = useMutualFundStore()
 const isSyncing = computed(() => mfStore.isSyncing)
@@ -96,26 +94,17 @@ const syncStatusText = computed(() => {
     return 'Refresh Mutual Fund NAVs'
 })
 
-const lastSyncTimeLabel = computed(() => {
-    if (!syncStatus.value?.completed_at) return ''
-    const date = new Date(syncStatus.value.completed_at)
-    return `Synced ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-})
-
-const lastSyncTime = computed(() => syncStatus.value?.completed_at)
 
 function startPolling() {
     if (syncInterval) return
     mfStore.fetchSyncStatus()
     syncInterval = setInterval(() => mfStore.fetchSyncStatus(), 15000)
-    console.log('[Sync] Started polling interval')
 }
 
 function stopPolling() {
     if (syncInterval) {
         clearInterval(syncInterval)
         syncInterval = null
-        console.log('[Sync] Stopped polling interval')
     }
 }
 
@@ -227,7 +216,7 @@ onUnmounted(() => {
                                 </template>
                                 <v-list-item-title class="font-weight-bold">{{ user.full_name ||
                                     user.email.split('@')[0]
-                                    }}</v-list-item-title>
+                                }}</v-list-item-title>
                             </v-list-item>
                         </v-list>
                     </v-card>
@@ -262,7 +251,7 @@ onUnmounted(() => {
                                 <span class="avatar-emoji">{{ AVATARS[selectedAvatar] }}</span>
                             </v-avatar>
                             <span class="user-display-name d-none d-sm-inline">{{ auth.user.email.split('@')[0]
-                            }}</span>
+                                }}</span>
                         </v-btn>
                     </template>
 
@@ -275,7 +264,7 @@ onUnmounted(() => {
                                     </v-avatar>
                                 </template>
                                 <v-list-item-title class="text-h6 font-weight-bold">{{ auth.user.email.split('@')[0]
-                                    }}</v-list-item-title>
+                                }}</v-list-item-title>
                                 <v-list-item-subtitle class="text-primary font-weight-medium">Family
                                     Admin</v-list-item-subtitle>
                             </v-list-item>

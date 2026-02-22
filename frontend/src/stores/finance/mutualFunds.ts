@@ -1,21 +1,33 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { financeApi } from '@/api/client'
+import { useStorePersistence } from '@/utils/persistence'
 import { useNotificationStore } from '@/stores/notification'
+import { useAuthStore } from '@/stores/auth'
 
 export const useMutualFundStore = defineStore('mutualFunds', () => {
     const notification = useNotificationStore()
+    const auth = useAuthStore()
+    const memberId = computed(() => auth.selectedMemberId)
 
     // State
     const isSyncing = ref(false)
     const syncStatus = ref<any>(null)
+    const portfolio = ref<any[]>([])
+    const analytics = ref<any>(null)
+    const aiAnalysis = ref<string>('')
+
+    useStorePersistence('mf_sync_status', syncStatus, memberId)
+    useStorePersistence('mf_portfolio', portfolio, memberId)
+    useStorePersistence('mf_analytics', analytics, memberId)
+    useStorePersistence('mf_ai_analysis', aiAnalysis, memberId)
+
     const lastFetch = ref<number>(0)
 
     // Actions
     async function fetchSyncStatus() {
         try {
             const { data } = await financeApi.getMutualFundSyncStatus()
-            const wasRunning = syncStatus.value?.status === 'running'
             syncStatus.value = data
             lastFetch.value = Date.now()
 
@@ -39,10 +51,8 @@ export const useMutualFundStore = defineStore('mutualFunds', () => {
         if (isSyncing.value) return
 
         isSyncing.value = true
-        console.log('[MutualFundStore] Triggering sync...')
         try {
-            const res = await financeApi.triggerMutualFundSync()
-            console.log('[MutualFundStore] Sync response:', res.data)
+            await financeApi.triggerMutualFundSync()
             notification.info('Mutual Fund background sync started...')
 
             // Poll sooner to catch the "running" state
@@ -57,6 +67,9 @@ export const useMutualFundStore = defineStore('mutualFunds', () => {
     return {
         isSyncing,
         syncStatus,
+        portfolio,
+        analytics,
+        aiAnalysis,
         lastFetch,
         fetchSyncStatus,
         triggerSync

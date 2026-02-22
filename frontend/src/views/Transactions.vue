@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { useRoute } from 'vue-router'
 
@@ -23,18 +23,21 @@ import { useTransactionState } from '@/composables/useTransactionState'
 import { useTriageState } from '@/composables/useTriageState'
 import { useTransactionModals } from '@/composables/useTransactionModals'
 import { useAuthStore } from '@/stores/auth'
+import { useFinanceStore } from '@/stores/finance'
+import { useBudgetStore } from '@/stores/finance/budgets'
+import { useExpenseGroupStore } from '@/stores/expenseGroups'
 
 // Global State
 const route = useRoute()
+const financeStore = useFinanceStore()
+const budgetStore = useBudgetStore()
+const groupStore = useExpenseGroupStore()
 
-
-
-// Master Data (shared across composables)
-const accounts = ref<any[]>([])
-const categories = ref<any[]>([])
-const budgets = ref<any[]>([])
-const loans = ref<any[]>([])
-const expenseGroups = ref<any[]>([])
+// Master Data (shared across composables, backed by stores)
+const accounts = computed(() => financeStore.accounts)
+const categories = computed(() => financeStore.categories)
+const budgets = computed(() => budgetStore.budgets)
+const expenseGroups = computed(() => groupStore.groups)
 
 // UI State
 const showImportModal = ref(false)
@@ -82,7 +85,7 @@ const {
     toggleTxnSort,
     refreshAccounts,
     confirmDelete
-} = useTransactionState(route, accounts, categories, budgets, loans, expenseGroups)
+} = useTransactionState(route, accounts)
 
 const {
     triageTransactions,
@@ -133,7 +136,8 @@ const {
     handleSmartCategorize,
     findMatches,
     selectMatch
-} = useTransactionModals(selectedAccount, accounts, budgets, transactions, fetchData, showSmartPrompt, smartPromptData, refreshAccounts)
+} = useTransactionModals(selectedAccount, accounts, budgets, transactions, fetchData, showSmartPrompt,
+    smartPromptData, refreshAccounts)
 
 
 // Search debounce
@@ -149,10 +153,7 @@ watch(searchQuery, () => {
 // Watch for global member filter changes
 const auth = useAuthStore()
 watch(() => auth.selectedMemberId, () => {
-    // Reset data and re-fetch everything
-    accounts.value = [] // Force re-fetch of filtered accounts
-    budgets.value = [] // Clear lazy-loaded data
-    loans.value = []
+    // Reset page and re-fetch. Stores handle their own member-specific caching/resets.
     page.value = 1
     fetchData()
     fetchTriage()

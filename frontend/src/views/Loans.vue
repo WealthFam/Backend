@@ -324,12 +324,16 @@ import { useCurrency } from '@/composables/useCurrency'
 import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import { Sparkles, Plus, Landmark, Calendar, X, ChevronDown } from 'lucide-vue-next'
 import { marked } from 'marked'
+import { useLoanStore } from '@/stores/finance/loans'
 
 const router = useRouter()
 const notificationStore = useNotificationStore()
+const loanStore = useLoanStore()
 const { formatAmount } = useCurrency()
-const loading = ref(true)
-const loans = ref<any[]>([])
+
+// State - seed from store cache
+const loans = computed(() => loanStore.loans)
+const loading = ref(loanStore.loans.length === 0)
 const showModal = ref(false)
 const showInsightModal = ref(false)
 const insightLoading = ref(false)
@@ -398,9 +402,9 @@ const getNextDueDate = (dateStr: string) => {
 }
 
 const fetchLoans = async () => {
+    if (loanStore.loans.length === 0) loading.value = true
     try {
-        const response = await api.getLoans()
-        loans.value = response.data
+        await loanStore.fetchLoans()
     } catch (e) {
         console.error("Failed to fetch loans", e)
     } finally {

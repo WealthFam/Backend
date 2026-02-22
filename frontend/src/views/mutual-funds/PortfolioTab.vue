@@ -383,6 +383,7 @@
 import { ref, computed, watch } from 'vue'
 import { financeApi } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { useMutualFundStore } from '@/stores/finance/mutualFunds'
 import {
     Sparkles, Eye as EyeIconMain, ChevronDown, ChevronRight, Target, PieChart, TrendingUp, Search
 } from 'lucide-vue-next'
@@ -398,20 +399,19 @@ const props = defineProps<{
     active: boolean
 }>()
 
+const mfStore = useMutualFundStore()
 const authStore = useAuthStore()
 const { formatAmount } = useCurrency()
 
-// State
-const portfolio = ref<any[]>([])
-const isLoading = ref(true)
-const analytics = ref<any>(null)
-const aiAnalysis = ref('')
+// State - seed from store cache if available
+const portfolio = ref<any[]>(mfStore.portfolio || [])
+const isLoading = ref(mfStore.portfolio.length === 0)
+const analytics = ref<any>(mfStore.analytics)
+const aiAnalysis = ref(mfStore.aiAnalysis || '')
 const isAnalyzing = ref(false)
 const performanceHistory = ref<any[]>([])
 const search = ref('')
 const expanded = ref<string[]>([])
-
-// Headers
 
 // Headers
 const headers = [
@@ -542,11 +542,12 @@ const benchmarkChartData = computed(() => {
 // --- Actions ---
 
 async function fetchPortfolio() {
-    isLoading.value = true
+    if (portfolio.value.length === 0) isLoading.value = true
     try {
         const memberId = authStore.selectedMemberId || undefined
         const response = await financeApi.getPortfolio(memberId)
         portfolio.value = response.data || []
+        mfStore.portfolio = portfolio.value // Persist
     } catch (err) {
         console.error('Failed to fetch portfolio', err)
     } finally {
@@ -563,6 +564,7 @@ async function fetchAnalytics() {
             financeApi.getPerformanceTimeline('1y', '1w', memberId)
         ])
         analytics.value = analyticsRes.data
+        mfStore.analytics = analyticsRes.data // Persist
 
         const perfData = perfRes.data || {}
         if (perfData.timeline && Array.isArray(perfData.timeline)) {
@@ -588,6 +590,7 @@ async function generateAIAnalysis() {
         const memberId = authStore.selectedMemberId || undefined
         const res = await financeApi.getPortfolioInsights(memberId)
         aiAnalysis.value = res.data.insights
+        mfStore.aiAnalysis = aiAnalysis.value // Persist
     } catch (e) { console.error(e) } finally { isAnalyzing.value = false }
 }
 
@@ -618,7 +621,7 @@ watch(() => authStore.selectedMemberId, async () => {
 })
 
 watch(() => props.active, async (isActive) => {
-    if (isActive && !portfolio.value.length) {
+    if (isActive) {
         await fetchPortfolio()
         fetchAnalytics()
     }

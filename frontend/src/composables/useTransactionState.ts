@@ -1,7 +1,9 @@
-import { ref, computed, watch, type Ref } from 'vue'
+import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { useAuthStore } from '@/stores/auth'
+import { useTransactionStore } from '@/stores/finance/transactions'
+import { useFinanceStore } from '@/stores/finance'
+import { useExpenseGroupStore } from '@/stores/expenseGroups'
 import type { RouteLocationNormalized } from 'vue-router'
 
 /**
@@ -10,25 +12,21 @@ import type { RouteLocationNormalized } from 'vue-router'
  */
 export function useTransactionState(
     route: RouteLocationNormalized,
-    accounts: Ref<any[]>,
-    categories: Ref<any[]>,
-    budgets: Ref<any[]>,
-    loans: Ref<any[]>,
-    expenseGroups: Ref<any[]>
+    accounts: Ref<any[]> | ComputedRef<any[]>
 ) {
     const notify = useNotificationStore()
-    const auth = useAuthStore()
+    const txnStore = useTransactionStore()
+    const financeStore = useFinanceStore()
+    const groupStore = useExpenseGroupStore()
 
-    // Core State
-    const transactions = ref<any[]>([])
-    const loading = ref(true)
-    const total = ref(0)
-    const metrics = ref({
+    // Core State (MAPPED TO STORE)
+    const transactions = computed(() => txnStore.transactions)
+    const loading = computed(() => txnStore.loading)
+    const total = computed(() => txnStore.total)
+    const metrics = computed(() => txnStore.metrics || {
         monthly_income: 0,
         monthly_spending: 0,
-        breakdown: {
-            net_worth: 0
-        }
+        breakdown: { net_worth: 0 }
     })
 
     // Filter State
@@ -68,32 +66,24 @@ export function useTransactionState(
      * Fetch transactions with current filters
      */
     async function refreshAccounts() {
-        try {
-            const res = await financeApi.getAccounts(auth.selectedMemberId || undefined)
-            accounts.value = res.data
-        } catch (e) {
-            console.error('Failed to refresh accounts', e)
-        }
+        await financeStore.fetchAccounts()
     }
 
     /**
      * Fetch transactions with current filters
      */
+    /**
+     * Fetch transactions with current filters
+     */
     async function fetchData() {
-        loading.value = true
         try {
-            // Load master data if not already loaded OR if we need to refresh based on member
-            // OPTIMIZATION: Only fetch essential data for list view. 
-            // Budgets and Loans are lazy-loaded when modal opens.
+            // Load master data via stores
             if (accounts.value.length === 0) {
-                const [accRes, catRes, groupRes] = await Promise.all([
-                    financeApi.getAccounts(auth.selectedMemberId || undefined),
-                    financeApi.getCategories(true),
-                    financeApi.getExpenseGroups(auth.selectedMemberId || undefined)
+                await Promise.all([
+                    financeStore.fetchAccounts(),
+                    financeStore.fetchCategories(),
+                    groupStore.fetchGroups()
                 ])
-                accounts.value = accRes.data
-                categories.value = catRes.data
-                expenseGroups.value = groupRes.data
             }
 
             // Set account from route query if available
@@ -109,34 +99,18 @@ export function useTransactionState(
                 }
             }
 
-            const res = await financeApi.getTransactions(
-                selectedAccount.value || undefined,
-                page.value,
-                pageSize.value,
-                startDate.value || undefined,
-                endDate.value || undefined,
-                searchQuery.value || undefined,
-                categoryFilter.value || undefined,
-                txnSortKey.value,
-                txnSortOrder.value,
-                auth.selectedMemberId || undefined
-            )
-
-            transactions.value = res.data.items
-            total.value = res.data.total
-
-            // Fetch metrics for the same filters
-            try {
-                const metricsRes = await financeApi.getMetrics(
-                    selectedAccount.value || undefined,
-                    startDate.value || undefined,
-                    endDate.value || undefined,
-                    auth.selectedMemberId || undefined
-                )
-                metrics.value = metricsRes.data
-            } catch (e) {
-                console.error('[Transactions] Failed to fetch metrics', e)
-            }
+            // Delegated to Store
+            await txnStore.fetchTransactions({
+                accountId: selectedAccount.value || undefined,
+                page: page.value,
+                pageSize: pageSize.value,
+                startDate: startDate.value || undefined,
+                endDate: endDate.value || undefined,
+                search: searchQuery.value || undefined,
+                category: categoryFilter.value || undefined,
+                sortKey: txnSortKey.value,
+                sortOrder: txnSortOrder.value
+            })
 
             // If current page exceeds total pages, reset to page 1
             if (page.value > Math.ceil(total.value / pageSize.value) && page.value > 1) {
@@ -147,7 +121,6 @@ export function useTransactionState(
             console.error('[Transactions] Failed to fetch data', e)
             notify.error('Failed to load data')
         } finally {
-            loading.value = false
             selectedIds.value.clear()
         }
     }
@@ -249,7 +222,7 @@ export function useTransactionState(
     const showDeleteConfirm = ref(false)
 
     async function confirmDelete() {
-        loading.value = true
+        txnStore.loading = true
         try {
             await financeApi.bulkDeleteTransactions(Array.from(selectedIds.value))
             notify.success(`Deleted ${selectedIds.value.size} transactions`)
@@ -258,7 +231,7 @@ export function useTransactionState(
             selectedIds.value.clear()
         } catch (e) {
             notify.error('Failed to delete transactions')
-            loading.value = false
+            txnStore.loading = false
         }
     }
 
@@ -293,15 +266,16 @@ export function useTransactionState(
         // Methods
         fetchData,
         fetchModalData: async () => {
-            // Lazy load heavy data for modals
-            if (budgets.value.length === 0 || loans.value.length === 0) {
+            // Lazy load heavy data for modals via stores
+            const budgetStore = (await import('@/stores/finance/budgets')).useBudgetStore()
+            const loanStore = (await import('@/stores/finance/loans')).useLoanStore()
+
+            if (budgetStore.budgets.length === 0 || loanStore.loans.length === 0) {
                 try {
-                    const [budgetRes, loanRes] = await Promise.all([
-                        financeApi.getBudgets(undefined, undefined, auth.selectedMemberId || undefined),
-                        financeApi.getLoans(auth.selectedMemberId || undefined)
+                    await Promise.all([
+                        budgetStore.fetchBudgets(new Date().getFullYear(), new Date().getMonth() + 1),
+                        loanStore.fetchLoans()
                     ])
-                    budgets.value = budgetRes.data
-                    loans.value = loanRes.data
                 } catch (e) {
                     console.error('Failed to load modal data', e)
                 }

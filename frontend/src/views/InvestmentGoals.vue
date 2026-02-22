@@ -5,6 +5,7 @@ import { financeApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
 import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'
+import { useGoalStore } from '@/stores/finance/goals'
 import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import {
     Plus,
@@ -22,12 +23,13 @@ import {
 
 const notify = useNotificationStore()
 const authStore = useAuthStore()
+const goalStore = useGoalStore()
 const { formatAmount } = useCurrency()
 
-const goals = ref<any[]>([])
-const accounts = ref<any[]>([])
-const portfolio = ref<any[]>([])
-const loading = ref(true)
+const goals = computed(() => goalStore.goals)
+const accounts = computed(() => goalStore.accounts)
+const portfolio = computed(() => goalStore.portfolio)
+const loading = ref(goalStore.goals.length === 0)
 const showModal = ref(false)
 const showDeleteModal = ref(false)
 const goalToDelete = ref<string | null>(null)
@@ -55,10 +57,9 @@ const assetForm = ref({
 })
 
 const fetchGoals = async () => {
-    loading.value = true
+    if (goalStore.goals.length === 0) loading.value = true
     try {
-        const res = await financeApi.getInvestmentGoals(authStore.selectedMemberId || undefined)
-        goals.value = res.data
+        await goalStore.fetchGoals(authStore.selectedMemberId || undefined)
     } catch (e) {
         notify.error("Failed to load goals")
     } finally {
@@ -68,9 +69,7 @@ const fetchGoals = async () => {
 
 const fetchAccounts = async () => {
     try {
-        // Accounts are filtered by owner_id in the service now, but it's good to be consistent
-        const res = await financeApi.getAccounts(authStore.selectedMemberId || undefined)
-        accounts.value = res.data.filter((a: any) => a.type === 'BANK' || a.type === 'INVESTMENT')
+        await goalStore.fetchAccounts(authStore.selectedMemberId || undefined)
     } catch (e) {
         console.error("Failed to fetch accounts")
     }
@@ -78,8 +77,7 @@ const fetchAccounts = async () => {
 
 const fetchPortfolio = async () => {
     try {
-        const res = await financeApi.getPortfolio()
-        portfolio.value = res.data
+        await goalStore.fetchPortfolio()
     } catch (e) {
         console.error("Failed to fetch portfolio")
     }
