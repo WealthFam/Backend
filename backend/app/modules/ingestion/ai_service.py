@@ -194,6 +194,40 @@ class GeminiProvider:
         except Exception:
             return None
 
+    def batch_clean_merchant_names(self, config: ingestion_models.AIConfiguration, descriptions: List[str]) -> Optional[Dict[str, str]]:
+        if not config.api_key or not descriptions:
+            return None
+        
+        client = genai.Client(api_key=config.api_key)
+        model_id = config.model_name or "gemini-1.5-flash"
+        
+        prompt = (
+            "You are a transaction mapping expert. Given a list of noisy bank transaction descriptions, "
+            "extract the clean, canonical merchant name for each. Remove transaction IDs, dates, UPI handles, and location codes. "
+            "Examples:\n"
+            "- 'UPI/ZOMATO/TXN123/BANGALORE' -> 'Zomato'\n"
+            "- 'SWIGGY*ORDER_99' -> 'Swiggy'\n"
+            "- 'AMAZON PAY INDIA PAYMT' -> 'Amazon'\n\n"
+            "Return a JSON object where the key is the original description and the value is the clean merchant name."
+            f"\n\nDESCRIPTIONS:\n{json.dumps(descriptions)}"
+        )
+        
+        try:
+            response = client.models.generate_content(
+                model=model_id,
+                contents=f"{prompt}\n\nRESPONSE FORMAT: JSON Object."
+            )
+            if not response or not response.text:
+                return None
+            
+            text = response.text
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            if start != -1 and end != 0:
+                return json.loads(text[start:end])
+        except Exception:
+            return None
+
 class AIService:
     _providers = {
         "gemini": GeminiProvider()
@@ -325,3 +359,48 @@ class AIService:
         data_str = json.dumps(loans_data, indent=2, default=str)
         
         return provider.generate_loans_overview_advice(config, data_str)
+
+    @classmethod
+    def clean_merchant_names(cls, db: Session, tenant_id: str, descriptions: List[str]) -> Dict[str, str]:
+        """
+        Extract clean merchant names from noisy descriptions. 
+        Uses AI if available, else falls back to heuristics.
+        """
+        if not descriptions: return {}
+
+        # 1. Try AI
+        config = db.query(ingestion_models.AIConfiguration).filter(
+            ingestion_models.AIConfiguration.tenant_id == tenant_id,
+            ingestion_models.AIConfiguration.is_enabled == True
+        ).first()
+
+        if config:
+            provider = cls._providers.get(config.provider.lower())
+            if provider and hasattr(provider, 'batch_clean_merchant_names'):
+                cleaned = provider.batch_clean_merchant_names(config, descriptions)
+                if cleaned: return cleaned
+
+        # 2. Fallback to Heuristics
+        results = {}
+        for d in descriptions:
+            results[d] = cls.heuristic_clean_merchant(d)
+        return results
+
+    @staticmethod
+    def heuristic_clean_merchant(description: str) -> str:
+        import re
+        if not description: return "Unknown"
+        # Remove UPI/ prefixes
+        clean = re.sub(r'^UPI/', '', description, flags=re.I)
+        # Remove everything after the second / if it exists
+        parts = clean.split('/')
+        if len(parts) > 1:
+            clean = parts[0]
+        # Remove common Junk
+        clean = re.sub(r'[0-9]{5,}', '', clean) # long numbers
+        clean = re.sub(r'\*.*', '', clean) # remove content after *
+        # Clean special chars but keep space
+        clean = re.sub(r'[^a-zA-Z\s]', ' ', clean)
+        # Trim and Title
+        clean = ' '.join(clean.split()).title()
+        return clean or "Unknown"

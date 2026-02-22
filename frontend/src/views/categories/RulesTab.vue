@@ -66,18 +66,40 @@
                     <v-col v-for="s in rulesStore.suggestions" :key="s.name" cols="12" md="4">
                         <v-card class="premium-glass-card pa-6 overflow-hidden" rounded="xl" elevation="2">
                             <div class="d-flex justify-space-between align-start relative-pos z-10">
-                                <div class="flex-grow-1">
-                                    <div class="text-h6 font-weight-black mb-1">{{ s.name }}</div>
-                                    <div class="text-body-2 font-weight-medium opacity-60 mb-4 italic truncate"
-                                        style="max-width: 300px;">
+                                <div class="flex-grow-1 min-w-0">
+                                    <div class="d-flex align-center gap-2 mb-1">
+                                        <div class="text-h6 font-weight-black truncate">{{ s.name }}</div>
+                                        <v-chip v-if="s.count" size="x-small" color="secondary" variant="flat" border
+                                            class="px-2 font-weight-black">
+                                            {{ s.count }}x
+                                        </v-chip>
+                                    </div>
+                                    <div v-if="s.reason" class="text-caption font-weight-black opacity-40 mb-2 truncate"
+                                        :title="s.reason">
+                                        {{ s.reason }}
+                                    </div>
+                                    <div class="text-body-2 font-weight-medium opacity-60 mb-4 italic truncate">
                                         matches "{{ s.keywords.join(', ') }}"
                                     </div>
-                                    <v-chip color="primary" variant="tonal" size="small"
-                                        class="font-weight-black letter-spacing-1" label border>
-                                        {{ categoriesStore.getCategoryDisplay(s.category) }}
-                                    </v-chip>
+                                    <div class="d-flex align-center gap-2">
+                                        <v-chip color="primary" variant="tonal" size="small"
+                                            class="font-weight-black letter-spacing-1" label border>
+                                            {{ categoriesStore.getCategoryDisplay(s.category) }}
+                                        </v-chip>
+                                        <v-tooltip v-if="s.confidence_level" location="bottom">
+                                            <template v-slot:activator="{ props }">
+                                                <v-chip v-bind="props"
+                                                    :color="['High', 'Very High'].includes(s.confidence_level) ? 'success' : 'warning'"
+                                                    variant="text" size="small" class="font-weight-black">
+                                                    <Zap :size="12" class="mr-1" />
+                                                    {{ s.confidence_level }}
+                                                </v-chip>
+                                            </template>
+                                            System is {{ Math.round(s.confidence * 100) }}% confident
+                                        </v-tooltip>
+                                    </div>
                                 </div>
-                                <div class="d-flex gap-2">
+                                <div class="d-flex gap-2 ml-2">
                                     <v-btn variant="outlined" size="small" color="slate-400"
                                         class="rounded-lg border-thin"
                                         style="min-width: 36px; width: 36px; height: 36px; padding: 0"
@@ -426,7 +448,7 @@
                                     <div class="min-w-0 pr-2">
                                         <div class="text-caption font-weight-black truncate">{{ txn.description ||
                                             txn.recipient
-                                        }}</div>
+                                            }}</div>
                                         <div class="text-extra-small opacity-50">
                                             {{ new Date(txn.date).toLocaleDateString() }}
                                             <v-chip v-if="txn.category && txn.category !== 'Uncategorized'"

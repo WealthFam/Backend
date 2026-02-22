@@ -203,10 +203,12 @@ class CategoryService:
     @staticmethod
     def get_rule_suggestions(db: Session, tenant_id: str) -> List[dict]:
         """
-        Analyze transaction history to suggest new rules.
+        Analyze transaction history to suggest new rules using AI-enhanced grouping.
         """
-        # Group by Description + Category
-        results = db.query(
+        from backend.app.modules.ingestion.ai_service import AIService
+        
+        # 1. Fetch raw candidates
+        candidates = db.query(
             models.Transaction.description,
             models.Transaction.category,
             func.count(models.Transaction.id).label("count")
@@ -221,39 +223,71 @@ class CategoryService:
             func.count(models.Transaction.id) >= 1
         ).order_by(
             func.count(models.Transaction.id).desc()
-        ).limit(10).all()
+        ).limit(50).all()
+
+        if not candidates: return []
+
+        # 2. Extract clean names
+        descriptions = list(set([c.description for c in candidates if c.description]))
+        clean_map = AIService.clean_merchant_names(db, tenant_id, descriptions)
+
+        # 3. Aggregate by clean name
+        aggregated = {} 
         
-        suggestions = []
-        existing_rules = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id).all()
+        existing_rules = CategoryService.get_category_rules(db, tenant_id)
         ignored = db.query(models.IgnoredSuggestion).filter(models.IgnoredSuggestion.tenant_id == tenant_id).all()
         
-        # Flatten existing keywords for basic dedup
-        existing_keywords = set()
+        # Flatten existing keywords for exclusion
+        exclusion_set = set()
         for r in existing_rules:
-            try:
-                kw = json.loads(r.keywords)
-                for k in kw: existing_keywords.add(k.lower())
-            except: pass
-            
+            for kw in (r.keywords or []): 
+                if isinstance(kw, str): exclusion_set.add(kw.lower())
         for i in ignored:
-            existing_keywords.add(i.pattern.lower())
+            exclusion_set.add(i.pattern.lower())
 
-        for row in results:
-            desc = row.description
-            cat = row.category
-            count = row.count
+        for c in candidates:
+            clean_name = clean_map.get(c.description, AIService.heuristic_clean_merchant(c.description))
             
-            if desc.lower() in existing_keywords:
+            # Skip if already ruled or ignored
+            if clean_name.lower() in exclusion_set or c.description.lower() in exclusion_set:
                 continue
-                
-            suggestions.append({
-                "name": f"Auto-tag {desc}",
-                "category": cat,
-                "keywords": [desc], 
-                "confidence": count
-            })
+
+            if clean_name not in aggregated:
+                aggregated[clean_name] = {
+                    "category": c.category,
+                    "count": 0,
+                    "keywords": {clean_name},
+                    "reason": f"Frequent merchant '{clean_name}' detected."
+                }
             
-        return suggestions
+            aggregated[clean_name]["count"] += c.count
+            # If multiple descriptions map to same clean name, we can add them to keywords or just stick to clean name
+            # aggregated[clean_name]["keywords"].add(c.description) # Maybe too noisy? Let's just use clean name
+
+        # 4. Final collection
+        suggestions = []
+        for name, data in aggregated.items():
+            # Apply a slightly higher threshold for suggestions if AI is used? 
+            # Or just keep it at 2+ for visibility.
+            if data["count"] < 2: continue 
+            
+            confidence = min(0.95, 0.4 + (data["count"] * 0.1))
+            level = "High" if data["count"] >= 5 else "Medium"
+            if data["count"] >= 10: level = "Very High"
+            
+            suggestions.append({
+                "name": f"Auto-tag {name}",
+                "category": data["category"],
+                "keywords": list(data["keywords"]),
+                "count": data["count"],
+                "confidence": confidence,
+                "confidence_level": level,
+                "reason": data["reason"]
+            })
+
+        # Sort by count
+        suggestions.sort(key=lambda x: x["count"], reverse=True)
+        return suggestions[:15]
 
     @staticmethod
     def export_category_rules(db: Session, tenant_id: str) -> List[dict]:

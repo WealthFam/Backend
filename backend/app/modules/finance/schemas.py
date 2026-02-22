@@ -164,7 +164,10 @@ class RuleSuggestion(BaseModel):
     category: str
     keywords: List[str]
     only_uncategorized: bool = True
-    confidence: int
+    count: int = 1
+    confidence: float = 0.5
+    confidence_level: str = "Medium" # Low, Medium, High
+    reason: Optional[str] = None
 
 class IgnoredSuggestionCreate(BaseModel):
     pattern: str
