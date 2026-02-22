@@ -4,7 +4,8 @@ import { useTheme } from 'vuetify'
 import { useCurrency } from '@/composables/useCurrency'
 import {
     CheckCircle2, X, Pencil, Plus, Minus, Info, Tag,
-    Settings, ArrowLeftRight, Search, Link, SearchX, LineChart, IndianRupee, Calendar
+    Settings, ArrowLeftRight, Search, Link, SearchX, LineChart, IndianRupee, Calendar,
+    FileText, Paperclip, ExternalLink, Trash2
 } from 'lucide-vue-next'
 import { VueDatePicker } from '@vuepic/vue-datepicker'
 import '@vuepic/vue-datepicker/dist/main.css'
@@ -42,6 +43,69 @@ watch(() => props.isOpen, (next) => {
 watch(() => props.form, (newForm) => {
     Object.assign(localForm, newForm)
 }, { deep: true })
+
+// Document Management
+import { financeApi } from '@/api/client'
+import { useNotificationStore } from '@/stores/notification'
+
+const notification = useNotificationStore()
+const attachedDocs = ref<any[]>([])
+const loadingDocs = ref(false)
+const showDocPicker = ref(false)
+const vaultItems = ref<any[]>([])
+
+async function fetchAttachedDocs() {
+    if (!props.isEditing || !localForm.id) {
+        attachedDocs.value = []
+        return
+    }
+    loadingDocs.value = true
+    try {
+        const res = await financeApi.getDocuments({ transaction_id: localForm.id })
+        attachedDocs.value = res.data
+    } catch (e) {
+        console.error('Failed to fetch docs', e)
+    } finally {
+        loadingDocs.value = false
+    }
+}
+
+watch(() => props.isOpen, (next) => {
+    if (next && props.isEditing) fetchAttachedDocs()
+})
+
+async function handleFileUpload(e: any) {
+    const file = e.target.files[0]
+    if (!file || !localForm.id) return
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('transaction_id', localForm.id)
+    formData.append('is_shared', 'true')
+
+    try {
+        await financeApi.uploadDocument(formData)
+        notification.success('Document attached')
+        fetchAttachedDocs()
+    } catch (e) {
+        notification.error('Failed to upload document')
+    }
+}
+
+async function detachDoc(docId: string) {
+    try {
+        await financeApi.deleteDocument(docId)
+        notification.success('Document detached')
+        fetchAttachedDocs()
+    } catch (e) {
+        notification.error('Failed to detach document')
+    }
+}
+
+function openDoc(docId: string) {
+    const url = financeApi.getDocumentDownloadUrl(docId)
+    window.open(url, '_blank')
+}
 
 const categoryOptions = computed(() => {
     const list: any[] = []
@@ -373,6 +437,50 @@ function handleClose() {
                                 </v-alert>
                             </div>
                         </v-expand-transition>
+
+                        <!-- Document Vault Integration -->
+                        <div class="section-group mt-6">
+                            <div class="d-flex align-center justify-space-between mb-4">
+                                <div class="d-flex align-center gap-2">
+                                    <Paperclip :size="20" class="text-primary" />
+                                    <span
+                                        class="text-overline font-weight-black text-primary letter-spacing-wide">Documents</span>
+                                </div>
+                                <v-btn v-if="isEditing" variant="text" color="primary" density="compact"
+                                    class="text-none font-weight-bold" @click="$refs.txFileInput.click()">
+                                    <Plus :size="14" class="mr-1" /> Add File
+                                </v-btn>
+                                <input type="file" ref="txFileInput" class="d-none" @change="handleFileUpload" />
+                            </div>
+
+                            <v-card variant="flat" border class="pa-1 bg-surface border-opacity-10"
+                                style="border-radius: 20px !important;">
+                                <v-list v-if="attachedDocs.length > 0" density="compact" class="bg-transparent">
+                                    <v-list-item v-for="doc in attachedDocs" :key="doc.id" rounded="lg" class="mb-1">
+                                        <template v-slot:prepend>
+                                            <FileText :size="16" class="mr-3 text-slate-400" />
+                                        </template>
+                                        <v-list-item-title class="text-caption font-weight-bold">{{ doc.filename
+                                            }}</v-list-item-title>
+                                        <template v-slot:append>
+                                            <div class="d-flex gap-1">
+                                                <v-btn icon variant="text" density="compact" @click="openDoc(doc.id)">
+                                                    <ExternalLink :size="14" class="text-primary" />
+                                                </v-btn>
+                                                <v-btn icon variant="text" density="compact" @click="detachDoc(doc.id)"
+                                                    color="error">
+                                                    <Trash2 :size="14" />
+                                                </v-btn>
+                                            </div>
+                                        </template>
+                                    </v-list-item>
+                                </v-list>
+                                <div v-else class="pa-6 text-center opacity-40">
+                                    <p class="text-caption font-weight-bold mb-0">No documents attached</p>
+                                    <p v-if="!isEditing" class="text-tiny">Save transaction first to attach docs</p>
+                                </div>
+                            </v-card>
+                        </div>
                     </div>
                 </v-form>
             </v-card-text>

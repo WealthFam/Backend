@@ -389,3 +389,5 @@ class MutualFundSyncLog(Base):
     status = Column(String, default="running") # running, completed, error
     num_funds_updated = Column(Numeric(10, 0), default=0)
     error_message = Column(String, nullable=True)
+
+

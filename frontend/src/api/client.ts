@@ -152,6 +152,28 @@ export const financeApi = {
         apiClient.get('/finance/analytics/merchant-breakdown', { params: { category, start_date: startDate, end_date: endDate, user_id: userId } }),
     getFamilyWealth: () => apiClient.get('/finance/analytics/family-wealth'),
     getRecurringSuggestions: () => apiClient.get('/finance/recurring/suggestions'),
+
+    // Document Vault
+    uploadDocument: (formData: FormData) => apiClient.post('/finance/vault/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    uploadVersion: (id: string, formData: FormData) => apiClient.post(`/finance/vault/${id}/version`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    createFolder: (formData: FormData) => apiClient.post('/finance/vault/folders', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    getDocuments: (params?: { transaction_id?: string, parent_id?: string, file_type?: string, skip?: number, limit?: number }) =>
+        apiClient.get('/finance/vault', { params }),
+    listVersions: (id: string) => apiClient.get(`/finance/vault/${id}/versions`),
+    deleteDocument: (id: string) => apiClient.delete(`/finance/vault/${id}`),
+    syncVault: () => apiClient.post('/finance/vault/sync'),
+    getDocumentDownloadUrl: (id: string, version?: number) => {
+        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/download`
+        if (version) url += `?version=${version}`
+        return url
+    },
+
     // Ingestion
     analyzeCsv: (formData: FormData) => apiClient.post('/ingestion/csv/analyze', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }

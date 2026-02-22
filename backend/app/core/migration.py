@@ -27,7 +27,7 @@ def run_auto_migrations(engine: Engine):
                     # If it failed because it already exists, we are fine. 
                     # If it failed for another reason, we might want to know, but 
                     # we don't want to abort the whole migration if possible.
-
+                
             # 1. Add columns to existing tables since CREATE TABLE IF NOT EXISTS won't add them
             safe_add_column("pending_transactions", "latitude", "DECIMAL(10, 8)")
             safe_add_column("pending_transactions", "longitude", "DECIMAL(11, 8)")
@@ -275,6 +275,54 @@ def run_auto_migrations(engine: Engine):
             # 21. Account owner field
             safe_add_column("accounts", "owner_id", "VARCHAR")
 
+            # 22. Document Vault Tables
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS document_vault (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                owner_id VARCHAR,
+                filename VARCHAR NOT NULL,
+                file_type VARCHAR NOT NULL DEFAULT 'OTHER',
+                file_path VARCHAR,
+                file_size NUMERIC(15, 0) DEFAULT 0,
+                mime_type VARCHAR,
+                transaction_id VARCHAR,
+                parent_id VARCHAR,
+                is_folder BOOLEAN DEFAULT FALSE,
+                is_shared BOOLEAN DEFAULT TRUE,
+                description VARCHAR,
+                gdrive_file_id VARCHAR,
+                last_synced_at TIMESTAMP,
+                current_version NUMERIC(5, 0) DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+                FOREIGN KEY(owner_id) REFERENCES users (id),
+                FOREIGN KEY(transaction_id) REFERENCES transactions (id),
+                FOREIGN KEY(parent_id) REFERENCES document_vault (id)
+            );
+            """))
+
+            safe_add_column("document_vault", "parent_id", "VARCHAR")
+            safe_add_column("document_vault", "is_folder", "BOOLEAN DEFAULT FALSE")
+            safe_add_column("document_vault", "is_shared", "BOOLEAN DEFAULT TRUE")
+            safe_add_column("document_vault", "gdrive_file_id", "VARCHAR")
+            safe_add_column("document_vault", "last_synced_at", "TIMESTAMP")
+            safe_add_column("document_vault", "current_version", "NUMERIC(5, 0) DEFAULT 1")
+            safe_add_column("document_vault", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS document_versions (
+                id VARCHAR PRIMARY KEY,
+                document_id VARCHAR NOT NULL,
+                version_number NUMERIC(5, 0) NOT NULL,
+                file_path VARCHAR NOT NULL,
+                file_size NUMERIC(15, 0) NOT NULL,
+                filename VARCHAR NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(document_id) REFERENCES document_vault (id)
+            );
+            """))
 
             # Explicitly commit the transaction!
             connection.commit()

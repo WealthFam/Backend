@@ -25,6 +25,7 @@ import {
     ChevronDown,
     Search,
     RefreshCw,
+    ShieldCheck,
 } from 'lucide-vue-next'
 import { onUnmounted, computed, watch } from 'vue'
 import { useMutualFundStore } from '@/stores/finance/mutualFunds'
@@ -72,6 +73,7 @@ const navItems = [
     { title: 'Financial Goals', icon: Target, to: '/investment-goals' },
     { title: 'Expense Groups', icon: Layers, to: '/expense-groups' },
     { title: 'Loans', icon: Landmark, to: '/loans' },
+    { title: 'Vault', icon: ShieldCheck, to: '/vault' },
     { title: 'Settings', icon: Settings, to: '/settings' },
 ]
 
