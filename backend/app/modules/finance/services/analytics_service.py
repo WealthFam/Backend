@@ -843,3 +843,272 @@ class AnalyticsService:
             {"merchant": row.merchant or "Unknown", "amount": abs(float(row.total))}
             for row in results
         ]
+    @staticmethod
+    def get_family_wealth(db: Session, tenant_id: str):
+        # 1. Get all users in the tenant
+        from backend.app.modules.auth.models import User
+        family_members = db.query(User).filter(User.tenant_id == tenant_id).all()
+        
+        # 2. Get all accounts in the tenant
+        accounts = db.query(models.Account).filter(models.Account.tenant_id == tenant_id).all()
+        
+        # 3. Calculate breakdown
+        member_wealth = []
+        shared_wealth = {
+            "net_worth": 0,
+            "assets": 0,
+            "liabilities": 0,
+            "account_count": 0
+        }
+        
+        total_assets = 0
+        total_liabilities = 0
+        
+        for user in family_members:
+            user_assets = 0
+            user_liabilities = 0
+            user_accounts = [a for a in accounts if a.owner_id == str(user.id)]
+            
+            for acc in user_accounts:
+                bal = float(acc.balance or 0)
+                if acc.type in ['CREDIT_CARD', 'LOAN']:
+                    user_liabilities += bal
+                else:
+                    user_assets += bal
+            
+            member_wealth.append({
+                "user_id": str(user.id),
+                "name": user.full_name or user.email.split('@')[0],
+                "role": user.role,
+                "net_worth": user_assets - user_liabilities,
+                "assets": user_assets,
+                "liabilities": user_liabilities,
+                "account_count": len(user_accounts)
+            })
+            
+            total_assets += user_assets
+            total_liabilities += user_liabilities
+            
+        # Shared accounts (owner_id is None)
+        shared_accounts = [a for a in accounts if a.owner_id is None]
+        for acc in shared_accounts:
+            bal = float(acc.balance or 0)
+            if acc.type in ['CREDIT_CARD', 'LOAN']:
+                shared_wealth["liabilities"] += bal
+            else:
+                shared_wealth["assets"] += bal
+                
+        shared_wealth["net_worth"] = shared_wealth["assets"] - shared_wealth["liabilities"]
+        shared_wealth["account_count"] = len(shared_accounts)
+        
+        total_assets += shared_wealth["assets"]
+        total_liabilities += shared_wealth["liabilities"]
+        
+        return {
+            "total_net_worth": total_assets - total_liabilities,
+            "total_assets": total_assets,
+            "total_liabilities": total_liabilities,
+            "members": member_wealth,
+            "shared": shared_wealth
+        }
+
+    @staticmethod
+    def get_detailed_analytics(db: Session, tenant_id: str, account_id: str = None, start_date: datetime = None, end_date: datetime = None, user_id: str = None, category: str = None):
+        """
+        Consolidated analytics for the Dashboard/Insights view.
+        Offloads heavy client-side processing to the server.
+        """
+        from backend.app.modules.finance.models import Transaction, Category, Account
+        
+        # 1. Base filter
+        filters = [
+            Transaction.tenant_id == tenant_id,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False,
+            Transaction.amount < 0
+        ]
+        
+        if account_id:
+            filters.append(Transaction.account_id == account_id)
+        if start_date:
+            filters.append(Transaction.date >= start_date)
+        if end_date:
+            filters.append(Transaction.date <= end_date)
+            
+        query = db.query(Transaction).filter(*filters)
+        
+        if user_id:
+            query = query.join(Account, Transaction.account_id == Account.id)\
+                         .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+
+        # We take all relevant transactions for this period
+        txns = query.all()
+        
+        # 2. Category Breakdown (Hierarchical)
+        db_categories = db.query(Category).filter(Category.tenant_id == tenant_id).all()
+        
+        cat_totals = {}
+        for t in txns:
+            cat_name = t.category or "Uncategorized"
+            cat_totals[cat_name] = cat_totals.get(cat_name, 0) + abs(float(t.amount))
+            
+        # Roll up children to parents
+        final_categories = []
+        parents = [c for c in db_categories if not c.parent_id]
+        
+        for p in parents:
+            total = cat_totals.get(p.name, 0)
+            children = [c for c in db_categories if c.parent_id == p.id]
+            for c in children:
+                total += cat_totals.get(c.name, 0)
+            
+            if total > 0:
+                final_categories.append({"name": p.name, "value": round(total, 2)})
+        
+        # Top 5 + Others
+        final_categories.sort(key=lambda x: x["value"], reverse=True)
+        if len(final_categories) > 5:
+            top_5 = final_categories[:5]
+            others_val = sum(c["value"] for c in final_categories[5:])
+            top_5.append({"name": "Others", "value": round(others_val, 2)})
+            final_categories = top_5
+
+        # 3. Merchant Breakdown
+        merc_totals = {}
+        for t in txns:
+            m_name = t.recipient or "Unknown"
+            merc_totals[m_name] = merc_totals.get(m_name, 0) + abs(float(t.amount))
+            
+        final_merchants = [
+            {"name": m, "value": round(v, 2)} 
+            for m, v in merc_totals.items()
+        ]
+        final_merchants.sort(key=lambda x: x["value"], reverse=True)
+        final_merchants = final_merchants[:6] # Top 6 merchants
+
+        # 4. Temporal Heatmap (Category vs Hour)
+        # We only want the top categories for the heatmap grid
+        active_cats = [c["name"] for c in final_categories if c["name"] != "Others"]
+        heatmap_grid = {cat: {h: 0 for h in range(24)} for cat in active_cats}
+        max_heat = 0
+        
+        for t in txns:
+            if t.category in heatmap_grid:
+                hour = t.date.hour
+                heatmap_grid[t.category][hour] += abs(float(t.amount))
+                if heatmap_grid[t.category][hour] > max_heat:
+                    max_heat = heatmap_grid[t.category][hour]
+
+        # 5. Excluded/Shielded Transactions
+        excluded_filters = [
+            Transaction.tenant_id == tenant_id,
+            or_(Transaction.is_transfer == True, Transaction.exclude_from_reports == True)
+        ]
+        if account_id: excluded_filters.append(Transaction.account_id == account_id)
+        if start_date: excluded_filters.append(Transaction.date >= start_date)
+        if end_date: excluded_filters.append(Transaction.date <= end_date)
+        
+        ex_query = db.query(Transaction).filter(*excluded_filters)
+        if user_id:
+            ex_query = ex_query.join(Account, Transaction.account_id == Account.id)\
+                               .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+        
+        ex_txns = ex_query.all()
+        excluded_income = sum(float(t.amount) for t in ex_txns if t.amount > 0)
+        excluded_expense = sum(abs(float(t.amount)) for t in ex_txns if t.amount < 0)
+        
+        ex_cat_map = {}
+        for t in ex_txns:
+            cname = t.category or "Shielded"
+            ex_cat_map[cname] = ex_cat_map.get(cname, 0) + abs(float(t.amount))
+            
+        final_ex_cats = [{"name": k, "value": round(v, 2)} for k, v in ex_cat_map.items()]
+
+        # 6. Trend Data (Daily)
+        trend_filters = [
+            Transaction.tenant_id == tenant_id,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False,
+            Transaction.amount < 0
+        ]
+        if account_id: trend_filters.append(Transaction.account_id == account_id)
+        if start_date: trend_filters.append(Transaction.date >= start_date)
+        if end_date: trend_filters.append(Transaction.date <= end_date)
+        
+        if category:
+            sub_category_names = []
+            parent_cat = db.query(Category).filter(
+                Category.tenant_id == tenant_id,
+                Category.name == category,
+                Category.parent_id == None
+            ).first()
+            
+            if parent_cat:
+                subs = db.query(Category).filter(Category.parent_id == parent_cat.id).all()
+                sub_category_names = [s.name for s in subs]
+            
+            if sub_category_names:
+                filter_list = [category] + sub_category_names
+                trend_filters.append(Transaction.category.in_(filter_list))
+            else:
+                trend_filters.append(Transaction.category == category)
+        
+        trend_query = db.query(
+            func.date(Transaction.date).label('day'),
+            func.sum(Transaction.amount).label('total')
+        ).filter(*trend_filters)
+        
+        if user_id:
+            trend_query = trend_query.join(Account, Transaction.account_id == Account.id)\
+                                     .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+            
+        trend_results = trend_query.group_by(func.date(Transaction.date)).order_by(func.date(Transaction.date)).all()
+        final_trend = [{"date": str(r.day), "amount": abs(float(r.total))} for r in trend_results]
+
+        expense_total = sum(abs(float(t.amount)) for t in txns)
+        income_query = db.query(func.sum(Transaction.amount)).filter(
+            Transaction.tenant_id == tenant_id,
+            Transaction.amount > 0,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False
+        )
+        if account_id: income_query = income_query.filter(Transaction.account_id == account_id)
+        if start_date: income_query = income_query.filter(Transaction.date >= start_date)
+        if end_date: income_query = income_query.filter(Transaction.date <= end_date)
+        if user_id:
+            income_query = income_query.join(Account, Transaction.account_id == Account.id)\
+                                       .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+        
+        income_total = float(income_query.scalar() or 0)
+
+        # 7. Account & Type Distributions (for AI Context)
+        acc_map = {}
+        type_map = {}
+        for t in txns:
+            aname = t.account.name if t.account else "Unknown"
+            atype = t.account.type if t.account else "OTHER"
+            acc_map[aname] = acc_map.get(aname, 0) + abs(float(t.amount))
+            type_map[atype] = type_map.get(atype, 0) + abs(float(t.amount))
+            
+        final_accs = [{"name": k, "value": round(v, 2)} for k, v in acc_map.items()]
+        final_types = [{"name": k, "value": round(v, 2)} for k, v in type_map.items()]
+
+        return {
+            "categories": final_categories,
+            "merchants": final_merchants,
+            "accounts": final_accs,
+            "types": final_types,
+            "heatmap": {
+                "grid": heatmap_grid,
+                "categories": active_cats,
+                "hours": list(range(24)),
+                "max": round(max_heat, 2)
+            },
+            "expense_total": round(expense_total, 2),
+            "income": round(income_total, 2),
+            "net": round(income_total - expense_total, 2),
+            "excludedExpense": round(excluded_expense, 2),
+            "excludedIncome": round(excluded_income, 2),
+            "excludedCategories": final_ex_cats,
+            "trend": final_trend
+        }
