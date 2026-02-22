@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, reactive, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import { useCurrency } from '@/composables/useCurrency'
 import {
@@ -30,7 +30,7 @@ const theme = useTheme()
 const isDark = computed(() => theme.global.current.value.dark)
 
 // Local state to avoid prop mutation
-import { reactive, watch } from 'vue'
+
 const localForm = reactive({ ...props.form })
 
 watch(() => props.isOpen, (next) => {
@@ -51,8 +51,7 @@ import { useNotificationStore } from '@/stores/notification'
 const notification = useNotificationStore()
 const attachedDocs = ref<any[]>([])
 const loadingDocs = ref(false)
-const showDocPicker = ref(false)
-const vaultItems = ref<any[]>([])
+
 
 async function fetchAttachedDocs() {
     if (!props.isEditing || !localForm.id) {
@@ -447,7 +446,8 @@ function handleClose() {
                                         class="text-overline font-weight-black text-primary letter-spacing-wide">Documents</span>
                                 </div>
                                 <v-btn v-if="isEditing" variant="text" color="primary" density="compact"
-                                    class="text-none font-weight-bold" @click="$refs.txFileInput.click()">
+                                    class="text-none font-weight-bold"
+                                    @click="($refs.txFileInput as HTMLInputElement).click()">
                                     <Plus :size="14" class="mr-1" /> Add File
                                 </v-btn>
                                 <input type="file" ref="txFileInput" class="d-none" @change="handleFileUpload" />
@@ -461,7 +461,7 @@ function handleClose() {
                                             <FileText :size="16" class="mr-3 text-slate-400" />
                                         </template>
                                         <v-list-item-title class="text-caption font-weight-bold">{{ doc.filename
-                                            }}</v-list-item-title>
+                                        }}</v-list-item-title>
                                         <template v-slot:append>
                                             <div class="d-flex gap-1">
                                                 <v-btn icon variant="text" density="compact" @click="openDoc(doc.id)">

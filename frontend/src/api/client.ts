@@ -165,14 +165,37 @@ export const financeApi = {
     }),
     getDocuments: (params?: { transaction_id?: string, parent_id?: string, file_type?: string, skip?: number, limit?: number }) =>
         apiClient.get('/finance/vault', { params }),
+    updateDocument: (id: string, formData: FormData) => apiClient.put(`/finance/vault/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
     listVersions: (id: string) => apiClient.get(`/finance/vault/${id}/versions`),
     deleteDocument: (id: string) => apiClient.delete(`/finance/vault/${id}`),
     syncVault: () => apiClient.post('/finance/vault/sync'),
+    getDocument: (id: string) => apiClient.get(`/finance/vault/${id}`),
     getDocumentDownloadUrl: (id: string, version?: number) => {
         let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/download`
         if (version) url += `?version=${version}`
         return url
     },
+    getDocumentViewUrl: (id: string, version?: number) => {
+        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/view`
+        if (version) url += `?version=${version}`
+        return url
+    },
+    getDocumentBlob: (id: string, version?: number) => {
+        let url = `/finance/vault/${id}/view`
+        if (version) url += `?version=${version}`
+        return apiClient.get(url, { responseType: 'blob' })
+    },
+    getVaultSettings: () => apiClient.get('/finance/vault/settings'),
+    saveVaultSettings: (credentials_json: string) => apiClient.post('/finance/vault/settings', { credentials_json }),
+    clearVaultSettings: () => apiClient.delete('/finance/vault/settings'),
+    testVaultConnection: () => apiClient.post('/finance/vault/settings/test'),
+    getVaultAuthUrl: (client_id: string, client_secret: string) =>
+        apiClient.post('/finance/vault/settings/auth-url', { client_id, client_secret }),
+    exchangeVaultCode: (code: string) =>
+        apiClient.post('/finance/vault/settings/callback', { code }),
+    getVaultHistory: (limit: number = 10) => apiClient.get('/finance/vault/history', { params: { limit } }),
 
     // Ingestion
     analyzeCsv: (formData: FormData) => apiClient.post('/ingestion/csv/analyze', formData, {
