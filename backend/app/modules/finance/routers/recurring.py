@@ -53,3 +53,10 @@ def process_recurring_transactions(
 ):
     count = RecurringService.process_recurring_transactions(db, str(current_user.tenant_id))
     return {"status": "success", "processed_count": count}
+
+@router.get("/recurring/suggestions", response_model=List[schemas.RecurringSuggestion])
+def get_recurring_suggestions(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return RecurringService.get_recurring_suggestions(db, str(current_user.tenant_id))
