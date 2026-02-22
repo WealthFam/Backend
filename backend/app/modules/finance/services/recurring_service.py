@@ -125,3 +125,81 @@ class RecurringService:
             
         db.commit()
         return count
+
+    @staticmethod
+    def get_recurring_suggestions(db: Session, tenant_id: str) -> List[schemas.RecurringSuggestion]:
+        """
+        Analyzes transaction history to find recurring patterns (Monthly/Weekly).
+        """
+        from sqlalchemy import func, and_, desc
+        from collections import defaultdict
+        import statistics
+
+        # 1. Fetch recent debit transactions (last 6 months)
+        six_months_ago = datetime.utcnow() - relativedelta(months=6)
+        transactions = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.type == models.TransactionType.DEBIT,
+            models.Transaction.date >= six_months_ago,
+            models.Transaction.is_transfer == False,
+            models.Transaction.is_emi == False
+        ).order_by(models.Transaction.date.desc()).all()
+
+        # 2. Group by Recipient + Amount (allowing 5% variance)
+        groups = defaultdict(list)
+        for t in transactions:
+            if not t.recipient and not t.description: continue
+            key = t.recipient or t.description
+            # We use a slightly fuzzy key (merchant name)
+            groups[key.upper()].append(t)
+
+        suggestions = []
+        
+        # 3. Analyze each group for frequency
+        for merchant, txns in groups.items():
+            if len(txns) < 3: continue # Need at least 3 occurrences to be a "pattern"
+
+            # Sort by date
+            txns.sort(key=lambda x: x.date)
+            intervals = []
+            for i in range(1, len(txns)):
+                diff = (txns[i].date - txns[i-1].date).days
+                intervals.append(diff)
+
+            if not intervals: continue
+
+            avg_interval = sum(intervals) / len(intervals)
+            std_dev = statistics.stdev(intervals) if len(intervals) > 1 else 0
+
+            # Frequency Detection (Monthly: 25-35 days, Weekly: 6-8 days)
+            frequency = None
+            if 25 <= avg_interval <= 35 and std_dev < 5:
+                frequency = "MONTHLY"
+            elif 6 <= avg_interval <= 8 and std_dev < 2:
+                frequency = "WEEKLY"
+
+            if frequency:
+                # Check if already tracked
+                existing = db.query(models.RecurringTransaction).filter(
+                    models.RecurringTransaction.tenant_id == tenant_id,
+                    models.RecurringTransaction.name.ilike(f"%{merchant}%")
+                ).first()
+                
+                if existing: continue
+
+                # Calculate median amount
+                amounts = [t.amount for t in txns]
+                median_amount = statistics.median(amounts)
+
+                suggestions.append(schemas.RecurringSuggestion(
+                    name=merchant.title(),
+                    amount=median_amount,
+                    frequency=frequency,
+                    category=txns[-1].category,
+                    account_id=txns[-1].account_id,
+                    confidence=min(0.9, 0.5 + (len(txns) * 0.1)),
+                    reason=f"Detected {len(txns)} transactions matching every {frequency.lower().replace('ly', '')}",
+                    last_date=txns[-1].date
+                ))
+
+        return sorted(suggestions, key=lambda x: x.confidence, reverse=True)

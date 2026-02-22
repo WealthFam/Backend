@@ -341,6 +341,16 @@ class RecurringTransactionRead(RecurringTransactionBase):
     
     class Config:
         from_attributes = True
+
+class RecurringSuggestion(BaseModel):
+    name: str
+    amount: Decimal
+    frequency: str  # MONTHLY, WEEKLY
+    category: Optional[str] = None
+    account_id: str
+    confidence: float
+    reason: str
+    last_date: datetime
         
 # --- Loan Schemas ---
 
