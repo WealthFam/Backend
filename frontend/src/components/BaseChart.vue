@@ -20,6 +20,7 @@ import {
   ArcElement,
   Filler
 } from 'chart.js'
+import ChartDataLabels from 'chartjs-plugin-datalabels'
 import { Bar, Line, Doughnut } from 'vue-chartjs'
 
 ChartJS.register(
@@ -32,7 +33,8 @@ ChartJS.register(
   PointElement,
   LineElement,
   ArcElement,
-  Filler
+  Filler,
+  ChartDataLabels
 )
 
 const props = defineProps<{
@@ -42,8 +44,70 @@ const props = defineProps<{
   height?: number
 }>()
 
+const emit = defineEmits(['chart-click'])
+
 const vTheme = useTheme()
 const isDark = computed(() => vTheme.global.current.value.dark)
+
+/**
+ * Custom Polyline Plugin for Doughnut Charts
+ */
+const polylineLabelsPlugin = {
+  id: 'polylineLabels',
+  afterDraw(chart: any) {
+    if (chart.config.type !== 'doughnut') return
+    const options = chart.options.plugins?.polylineLabels
+    if (!options || options.display === false) return
+
+    const { ctx } = chart
+    ctx.save()
+
+    chart.data.datasets.forEach((dataset: any, i: number) => {
+      const meta = chart.getDatasetMeta(i)
+      meta.data.forEach((element: any, index: number) => {
+        const { x, y, startAngle, endAngle, outerRadius } = element
+        const midAngle = startAngle + (endAngle - startAngle) / 2
+
+        const startX = x + Math.cos(midAngle) * outerRadius
+        const startY = y + Math.sin(midAngle) * outerRadius
+        const elbowX = x + Math.cos(midAngle) * (outerRadius + 15)
+        const elbowY = y + Math.sin(midAngle) * (outerRadius + 15)
+
+        const isRight = Math.cos(midAngle) > 0
+        const endX = elbowX + (isRight ? 20 : -20)
+        const endY = elbowY
+
+        ctx.beginPath()
+        ctx.moveTo(startX, startY)
+        ctx.lineTo(elbowX, elbowY)
+        ctx.lineTo(endX, endY)
+        ctx.strokeStyle = dataset.backgroundColor[index] || 'rgba(var(--v-border-color), 0.5)'
+        ctx.lineWidth = 2
+        ctx.stroke()
+
+        const value = dataset.data[index]
+        const label = chart.data.labels[index]
+        const total = dataset.data.reduce((a: number, b: number) => a + b, 0)
+        const percent = ((value / total) * 100).toFixed(0) + '%'
+
+        ctx.font = 'bold 12px Inter, sans-serif'
+        // Accessing isDark from the theme instance available in the closure
+        ctx.fillStyle = vTheme.global.current.value.dark ? '#ffffff' : '#0f172a'
+        ctx.textAlign = isRight ? 'left' : 'right'
+        ctx.textBaseline = 'middle'
+
+        const labelText = `${label}: ${percent} (₹${value.toLocaleString()})`
+        ctx.fillText(labelText, endX + (isRight ? 12 : -12), endY)
+      })
+    })
+    ctx.restore()
+  }
+}
+
+// Check if plugin is already registered to avoid duplicates
+if (!ChartJS.registry.plugins.get('polylineLabels')) {
+  ChartJS.register(polylineLabelsPlugin)
+}
 
 const chartComponent = computed(() => {
   if (props.type === 'bar') return Bar
@@ -56,6 +120,7 @@ const defaultOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
+    datalabels: { display: false }, // Disable by default for all charts
     legend: {
       display: props.type === 'doughnut',
       position: 'bottom' as const,
@@ -86,9 +151,17 @@ const defaultOptions = computed(() => ({
         color: isDark.value ? 'rgba(254,254,254,0.05)' : 'rgba(0, 0, 0, 0.05)'
       },
       ticks: {
-        color: isDark.value ? 'rgba(255, 255, 255, 0.5)' : 'rgba(15, 23, 42, 0.5)',
-        font: { size: 10, weight: 'bold' },
-        callback: (value: any) => '₹' + value.toLocaleString()
+        color: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)',
+        font: { size: 11, weight: 'bold' },
+        callback: function (this: any, value: any) {
+          // Chart.js passes 'this' as the scale object
+          const label = this.getLabelForValue(value)
+          // If it's a numeric value (and not just an index for a category axis)
+          if (typeof label === 'number') {
+            return '₹' + label.toLocaleString()
+          }
+          return label
+        }
       }
     },
     x: {
@@ -96,8 +169,8 @@ const defaultOptions = computed(() => ({
         display: false
       },
       ticks: {
-        font: { size: 10, weight: 'bold' },
-        color: isDark.value ? 'rgba(255, 255, 255, 0.5)' : 'rgba(15, 23, 42, 0.5)'
+        font: { size: 11, weight: 'bold' },
+        color: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)'
       }
     }
   } : {}
@@ -168,6 +241,10 @@ const computedChartData = computed(() => {
         }
       } else if (typeof dataset.backgroundColor === 'string' && (dataset.backgroundColor.includes('var(') || dataset.backgroundColor.includes('rgb('))) {
         dataset.backgroundColor = resolveColor(dataset.backgroundColor)
+      } else if (Array.isArray(dataset.backgroundColor)) {
+        dataset.backgroundColor = dataset.backgroundColor.map((c: any) =>
+          (typeof c === 'string' && (c.includes('var(') || c.includes('rgb('))) ? resolveColor(c) : c
+        )
       }
 
       if (typeof dataset.pointBackgroundColor === 'function') {
@@ -232,7 +309,39 @@ function hexToRgb(hex: string): string {
 }
 
 const chartData = computed(() => computedChartData.value)
-const chartOptions = computed(() => ({ ...defaultOptions.value, ...props.options }))
+const chartOptions = computed(() => {
+  // Deep merge strategy for options to preserve nested plugin defaults
+  const merge = (target: any, source: any): any => {
+    if (source === null || typeof source !== 'object' || Array.isArray(source) || typeof source === 'function') {
+      return source
+    }
+    const output = { ...target }
+    for (const key in source) {
+      if (source[key] instanceof Object && key in target && !Array.isArray(source[key]) && typeof source[key] !== 'function') {
+        output[key] = merge(target[key], source[key])
+      } else {
+        output[key] = source[key]
+      }
+    }
+    return output
+  }
+
+  const base = merge(defaultOptions.value, props.options || {})
+
+  // Inject click handler if not already present
+  if (!base.onClick) {
+    base.onClick = (_event: any, elements: any[]) => {
+      if (elements && elements.length > 0) {
+        const index = elements[0].index
+        const label = chartData.value.labels[index]
+        const value = chartData.value.datasets[0].data[index]
+        emit('chart-click', { index, label, value })
+      }
+    }
+  }
+
+  return base
+})
 const height = computed(() => props.height || 300)
 
 </script>
