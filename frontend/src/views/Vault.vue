@@ -1,16 +1,15 @@
 <template>
     <MainLayout>
-        <v-container fluid class="page-container vault-page">
+        <v-container fluid class="page-container vault-page dashboard-page">
             <!-- Animated Mesh Background -->
-            <div class="mesh-blob blob-1"
-                style="background: rgba(var(--v-theme-primary), 0.1); width: 600px; height: 600px; top: -200px; right: -100px;">
-            </div>
+            <div class="mesh-blob blob-1"></div>
+            <div class="mesh-blob blob-2"></div>
 
             <div class="relative-pos z-10">
                 <!-- Header Actions -->
                 <v-row class="mb-6 align-center">
                     <v-col cols="12" md="6">
-                        <div class="d-flex align-center gap-3">
+                        <div class="d-flex align-center ga-3">
                             <div class="icon-box primary-glow">
                                 <ShieldCheck :size="24" class="text-primary" />
                             </div>
@@ -21,34 +20,65 @@
                             </div>
                         </div>
                     </v-col>
-                    <v-col cols="12" md="6" class="d-flex justify-md-end gap-3">
-                        <v-btn variant="tonal" color="slate-600" rounded="pill" height="44"
-                            class="px-6 font-weight-black" :loading="syncLoading" @click="triggerSync">
-                            <template v-slot:prepend>
-                                <RefreshCw :size="18" :class="{ 'spin-sync': syncLoading }" />
+                    <v-col cols="12" md="6" class="d-flex justify-md-end ga-2">
+                        <!-- Cloud Sync hidden for now 
+                        <v-tooltip text="Sync History" location="top">
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" variant="tonal" color="slate-600" rounded="lg" height="44"
+                                    width="44" class="icon-btn-square" @click="openHistory">
+                                    <History :size="20" />
+                                </v-btn>
                             </template>
-                            CLOUD SYNC
-                        </v-btn>
-                        <v-btn variant="tonal" color="primary" rounded="pill" height="44" class="px-6 font-weight-black"
-                            prepend-icon="folder_plus" @click="showFolderModal = true">
-                            NEW FOLDER
-                        </v-btn>
-                        <v-btn color="primary" rounded="pill" height="44" class="px-6 font-weight-black shadow-primary"
-                            prepend-icon="upload" @click="showUploadModal = true">
-                            UPLOAD FILE
-                        </v-btn>
+</v-tooltip>
+
+<v-tooltip text="Cloud Sync" location="top">
+    <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" variant="tonal" color="slate-600" rounded="lg" height="44"
+                                    width="44" class="icon-btn-square" :loading="syncLoading" @click="triggerSync">
+                                    <RefreshCw :size="20" :class="{ 'spin-sync': syncLoading }" />
+                                </v-btn>
+                            </template>
+</v-tooltip>
+
+<v-tooltip text="Vault Settings" location="top">
+    <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" variant="tonal" color="slate-600" rounded="lg" height="44"
+                                    width="44" class="icon-btn-square" @click="showSettingsModal = true">
+                                    <Settings :size="20" />
+                                </v-btn>
+                            </template>
+</v-tooltip>
+-->
+
+                        <v-tooltip text="New Folder" location="top">
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" variant="tonal" color="primary" rounded="lg" height="44"
+                                    width="44" class="icon-btn-square" @click="showFolderModal = true">
+                                    <FolderPlus :size="20" />
+                                </v-btn>
+                            </template>
+                        </v-tooltip>
+
+                        <v-tooltip text="Upload File" location="top">
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" color="primary" rounded="lg" height="44" width="44"
+                                    class="icon-btn-square shadow-primary" @click="showUploadModal = true">
+                                    <Upload :size="20" />
+                                </v-btn>
+                            </template>
+                        </v-tooltip>
                     </v-col>
                 </v-row>
 
                 <!-- Breadcrumbs -->
                 <v-row class="mb-4">
                     <v-col cols="12">
-                        <div class="d-flex align-center gap-2 breadcrumb-container">
+                        <div class="d-flex align-center ga-2 breadcrumb-container">
                             <v-btn variant="text" density="compact" class="text-none px-2 font-weight-bold"
                                 @click="navigateTo('ROOT')">
                                 <Home :size="16" class="mr-1" /> Vault
                             </v-btn>
-                            <template v-for="(crumb, idx) in breadcrumbs" :key="crumb.id">
+                            <template v-for="crumb in breadcrumbs" :key="crumb.id">
                                 <ChevronRight :size="14" class="opacity-30" />
                                 <v-btn variant="text" density="compact" class="text-none px-2 font-weight-bold"
                                     @click="navigateTo(crumb.id)">
@@ -62,7 +92,7 @@
                 <!-- Filters & Search -->
                 <v-row class="mb-6">
                     <v-col cols="12">
-                        <div class="glass-card pa-3 d-flex align-center flex-wrap gap-4">
+                        <div class="glass-card pa-3 d-flex align-center flex-wrap ga-4">
                             <v-btn-toggle v-model="filterType" mandatory color="primary" rounded="pill"
                                 density="compact" class="vault-toggle">
                                 <v-btn value="ALL" class="px-4">All Items</v-btn>
@@ -94,7 +124,7 @@
                 <v-row v-else-if="items.length > 0">
                     <v-col v-for="item in filteredItems" :key="item.id" cols="12" sm="6" md="4" lg="3">
                         <v-card class="vault-card glass-card h-100" elevation="0"
-                            @click="item.is_folder ? navigateTo(item.id, item.filename) : null">
+                            @click="item.is_folder ? navigateTo(item.id, item.filename) : openPreview(item)">
                             <div class="card-preview d-flex align-center justify-center">
                                 <div :class="['icon-wrap', getIconColor(item)]">
                                     <component :is="getIcon(item)" :size="32" />
@@ -109,23 +139,17 @@
                                     </span>
                                     <v-menu location="bottom end">
                                         <template v-slot:activator="{ props }">
-                                            <v-btn icon="more_vert" variant="text" density="compact" v-bind="props"
-                                                size="small" @click.stop></v-btn>
+                                            <v-btn variant="text" density="compact" v-bind="props" icon size="small"
+                                                class="opacity-60 hover-opacity-100" @click.stop>
+                                                <MoreVertical :size="18" />
+                                            </v-btn>
                                         </template>
                                         <v-list class="glass-card py-1" density="compact">
                                             <v-list-item v-if="!item.is_folder" @click="downloadItem(item)">
                                                 <template v-slot:prepend>
                                                     <Download :size="14" class="mr-2" />
                                                 </template>
-                                                <v-list-item-title
-                                                    class="text-caption font-weight-bold">Download</v-list-item-title>
-                                            </v-list-item>
-                                            <v-list-item v-if="!item.is_folder" @click="openVersionModal(item)">
-                                                <template v-slot:prepend>
-                                                    <History :size="14" class="mr-2" />
-                                                </template>
-                                                <v-list-item-title class="text-caption font-weight-bold">Update
-                                                    Version</v-list-item-title>
+                                                <v-list-item-title class="font-weight-bold">Download</v-list-item-title>
                                             </v-list-item>
                                             <v-list-item @click="deleteItem(item)" class="text-error">
                                                 <template v-slot:prepend>
@@ -138,14 +162,20 @@
                                     </v-menu>
                                 </div>
 
-                                <div class="d-flex align-center text-caption text-medium-emphasis gap-2">
-                                    <span v-if="item.is_folder">Folder</span>
-                                    <span v-else>{{ formatSize(item.file_size) }} • v{{ item.current_version }}</span>
-                                    <span class="opacity-30">•</span>
-                                    <span>{{ formatDate(item.created_at) }}</span>
+                                <div class="d-flex align-center justify-space-between mt-2">
+                                    <span class="text-tiny opacity-50 d-flex align-center">
+                                        <Clock :size="10" class="mr-1" /> {{ formatDate(item.updated_at ||
+                                            item.created_at) }}
+                                    </span>
+                                    <div class="d-flex align-center ga-2">
+                                        <span v-if="!item.is_folder" class="version-badge">v{{ item.current_version
+                                        }}</span>
+                                        <span v-else
+                                            class="text-tiny opacity-30 font-weight-bold uppercase">Folder</span>
+                                    </div>
                                 </div>
                                 <div v-if="item.transaction_id"
-                                    class="d-flex align-center text-caption text-primary font-weight-bold mt-2 gap-1">
+                                    class="d-flex align-center text-caption text-primary font-weight-bold mt-2 ga-1">
                                     <Link :size="12" />
                                     <span>Linked to transaction</span>
                                 </div>
@@ -166,22 +196,26 @@
                 <v-card class="glass-card" rounded="xl">
                     <v-card-title class="pa-6 pb-2 d-flex justify-space-between align-center">
                         <span class="font-weight-black">Upload Document</span>
-                        <v-btn icon="close" variant="text" @click="showUploadModal = false"></v-btn>
+                        <v-btn icon variant="text" @click="showUploadModal = false">
+                            <X :size="20" />
+                        </v-btn>
                     </v-card-title>
                     <v-card-text class="pa-6">
-                        <div v-if="!selectedFile" class="dropzone" @click="$refs.fileInput.click()" @dragover.prevent
+                        <div v-if="!selectedFile" class="dropzone" @click="fileInput?.click()" @dragover.prevent
                             @drop.prevent="handleDrop">
                             <UploadCloud :size="48" class="text-primary mb-3" />
                             <div class="text-subtitle-1 font-weight-bold">Click or Drag File</div>
                             <input type="file" ref="fileInput" class="d-none" @change="handleFileSelect" />
                         </div>
-                        <div v-else class="file-preview pa-4 mb-4 d-flex align-center gap-4">
+                        <div v-else class="file-preview pa-4 mb-4 d-flex align-center ga-4">
                             <FileText :size="32" class="text-primary" />
                             <div class="flex-grow-1 overflow-hidden">
                                 <div class="font-weight-bold text-truncate">{{ selectedFile.name }}</div>
                                 <div class="text-caption opacity-70">{{ formatSize(selectedFile.size) }}</div>
                             </div>
-                            <v-btn icon="close" variant="text" size="small" @click="selectedFile = null"></v-btn>
+                            <v-btn icon variant="text" size="small" @click="selectedFile = null">
+                                <X :size="16" />
+                            </v-btn>
                         </div>
 
                         <v-select v-model="uploadForm.file_type" label="Category" :items="docTypes" variant="outlined"
@@ -212,78 +246,9 @@
                 </v-card>
             </v-dialog>
 
-            <!-- Version History Modal -->
-            <v-dialog v-model="showVersionModal" max-width="600">
-                <v-card class="glass-card" rounded="xl">
-                    <v-card-title class="pa-6 pb-2 d-flex justify-space-between align-center">
-                        <div>
-                            <span class="font-weight-black">Version History</span>
-                            <div class="text-caption opacity-70">{{ selectedDoc?.filename }}</div>
-                        </div>
-                        <v-btn icon="close" variant="text" @click="showVersionModal = false"></v-btn>
-                    </v-card-title>
-                    <v-card-text class="pa-6">
-                        <!-- Upload New Version -->
-                        <div class="mb-8 pa-4 bg-primary bg-opacity-5 rounded-lg border border-dashed border-primary">
-                            <div class="text-subtitle-2 font-weight-black mb-2">Upload New Version</div>
-                            <div v-if="!selectedFile" class="d-flex align-center gap-3">
-                                <v-btn color="primary" variant="tonal" rounded="pill" prepend-icon="upload"
-                                    @click="$refs.versionFileInput.click()">
-                                    SELECT FILE
-                                </v-btn>
-                                <input type="file" ref="versionFileInput" class="d-none" @change="handleFileSelect" />
-                                <span class="text-caption opacity-60">Replaces current version</span>
-                            </div>
-                            <div v-else class="d-flex align-center justify-space-between">
-                                <div class="d-flex align-center gap-2">
-                                    <FileText :size="20" class="text-primary" />
-                                    <span class="text-body-2 font-weight-bold truncate" style="max-width: 250px;">{{
-                                        selectedFile.name }}</span>
-                                </div>
-                                <div class="d-flex gap-2">
-                                    <v-btn variant="text" size="small" @click="selectedFile = null">Cancel</v-btn>
-                                    <v-btn color="primary" size="small" rounded="pill" :loading="submitting"
-                                        @click="handleVersionUpload">CONFIRM</v-btn>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- History List -->
-                        <div class="version-list">
-                            <div class="text-overline font-weight-black text-medium-emphasis mb-3">Previous Versions
-                            </div>
-                            <v-row v-if="versionLoading">
-                                <v-col v-for="i in 3" :key="i" cols="12">
-                                    <v-skeleton-loader type="list-item" class="bg-transparent"></v-skeleton-loader>
-                                </v-col>
-                            </v-row>
-                            <div v-else-if="versions.length > 0">
-                                <div v-for="(v, idx) in versions" :key="v.id"
-                                    class="pa-4 mb-2 rounded-lg d-flex align-center justify-space-between border"
-                                    :class="idx === 0 ? 'bg-primary bg-opacity-5 border-primary-light' : 'bg-surface'">
-                                    <div class="d-flex align-center gap-4">
-                                        <div class="version-badge" :class="{ 'current': idx === 0 }">
-                                            v{{ v.version_number }}
-                                        </div>
-                                        <div>
-                                            <div class="text-body-2 font-weight-black">{{ v.filename }}</div>
-                                            <div class="text-tiny opacity-60">
-                                                {{ formatDate(v.created_at) }} • {{ formatSize(v.file_size) }}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <v-btn icon="download" variant="text" size="small" color="primary"
-                                        @click="downloadVersion(v.version_number)"></v-btn>
-                                </div>
-                            </div>
-                            <div v-else class="text-center py-8 opacity-40">
-                                No history found
-                            </div>
-                        </div>
-                    </v-card-text>
-                </v-card>
-            </v-dialog>
         </v-container>
+
+        <FilePreviewModal v-model="showPreviewModal" :item="selectedDoc" @refresh="fetchItems" />
     </MainLayout>
 </template>
 
@@ -294,10 +259,16 @@ import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import {
     ShieldCheck, Download, Trash2, Search, UploadCloud, Home,
-    FileText, Folder, ChevronRight, History, Receipt, Scale, RefreshCw, Link
+    FileText, Folder, ChevronRight, Receipt, Scale, Link,
+    FolderPlus, Upload, X,
+    Clock, MoreVertical
 } from 'lucide-vue-next'
 
+
 const notification = useNotificationStore()
+
+// Components
+import FilePreviewModal from './vault/FilePreviewModal.vue'
 
 // Navigation & State
 const currentFolderId = ref<string | null>(null)
@@ -315,30 +286,14 @@ const submitting = ref(false)
 const selectedFile = ref<File | null>(null)
 const folderName = ref('')
 const uploadForm = ref({ file_type: 'OTHER', is_shared: true })
+const fileInput = ref<HTMLInputElement | null>(null)
 
-const showVersionModal = ref(false)
+const showPreviewModal = ref(false)
 const selectedDoc = ref<any>(null)
-const versions = ref<any[]>([])
-const versionLoading = ref(false)
 
-const syncLoading = ref(false)
 
-async function triggerSync() {
-    syncLoading.value = true
-    try {
-        const res = await financeApi.syncVault()
-        if (res.data.status === 'success') {
-            notification.success('Vault synced with Google Drive')
-            fetchItems()
-        } else {
-            notification.warning(res.data.message)
-        }
-    } catch (e) {
-        notification.error('Sync failed. Check credentials.')
-    } finally {
-        syncLoading.value = false
-    }
-}
+
+
 
 const docTypes = [
     { title: 'Other', value: 'OTHER' },
@@ -362,7 +317,7 @@ async function fetchItems() {
 }
 
 function navigateTo(id: string | null, name?: string) {
-    if (id === 'ROOT') {
+    if (id === 'ROOT' || !id) {
         currentFolderId.value = null
         currentPathName.value = 'Vault'
         breadcrumbs.value = []
@@ -370,11 +325,11 @@ function navigateTo(id: string | null, name?: string) {
         // If not already in breadcrumbs, add it
         const exists = breadcrumbs.value.find(b => b.id === id)
         if (!exists && name) {
-            breadcrumbs.value.push({ id, name })
+            breadcrumbs.value.push({ id: id as string, name })
         } else if (exists) {
             // Trim breadcrumbs up to this folder
-            const idx = breadcrumbs.value.findIndex(b => b.id === id)
-            breadcrumbs.value = breadcrumbs.value.slice(0, idx + 1)
+            const crumbIdx = breadcrumbs.value.findIndex(b => b.id === id)
+            breadcrumbs.value = breadcrumbs.value.slice(0, crumbIdx + 1)
         }
         currentFolderId.value = id
         currentPathName.value = name || 'Folder'
@@ -382,44 +337,11 @@ function navigateTo(id: string | null, name?: string) {
     fetchItems()
 }
 
-async function openVersionModal(item: any) {
+function openPreview(item: any) {
     selectedDoc.value = item
-    showVersionModal.value = true
-    versionLoading.value = true
-    try {
-        const res = await financeApi.listVersions(item.id)
-        versions.value = res.data
-    } catch (e) {
-        notification.error('Failed to load version history')
-    } finally {
-        versionLoading.value = false
-    }
+    showPreviewModal.value = true
 }
 
-async function handleVersionUpload() {
-    if (!selectedFile.value || !selectedDoc.value) return
-    submitting.value = true
-    const formData = new FormData()
-    formData.append('file', selectedFile.value)
-
-    try {
-        await financeApi.uploadVersion(selectedDoc.value.id, formData)
-        notification.success('New version uploaded')
-        selectedFile.value = null
-        openVersionModal(selectedDoc.value)
-        fetchItems()
-    } catch (e) {
-        notification.error('Version upload failed')
-    } finally {
-        submitting.value = false
-    }
-}
-
-function downloadVersion(versionNum: number) {
-    if (!selectedDoc.value) return
-    const url = financeApi.getDocumentDownloadUrl(selectedDoc.value.id, versionNum)
-    window.open(url, '_blank')
-}
 
 // Upload & Folder creation
 function handleFileSelect(e: any) {
@@ -475,9 +397,21 @@ async function createFolder() {
 }
 
 // Actions
-function downloadItem(item: any) {
-    const url = financeApi.getDocumentDownloadUrl(item.id)
-    window.open(url, '_blank')
+async function downloadItem(item: any) {
+    try {
+        const res = await financeApi.getDocumentBlob(item.id)
+        const blob = new Blob([res.data], { type: item.mime_type })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = item.filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    } catch (e) {
+        notification.error('Download failed')
+    }
 }
 
 async function deleteItem(item: any) {
@@ -518,11 +452,11 @@ function getIcon(item: any) {
 function getIconColor(item: any) {
     if (item.is_folder) return 'text-primary'
     switch (item.file_type) {
-        case 'INVOICE': return 'text-orange-500'
-        case 'POLICY': return 'text-blue-500'
-        case 'TAX': return 'text-red-500'
-        case 'IDENTITY': return 'text-green-500'
-        default: return 'text-slate-500'
+        case 'INVOICE': return 'text-orange-darken-2'
+        case 'POLICY': return 'text-blue-darken-2'
+        case 'TAX': return 'text-red-darken-2'
+        case 'IDENTITY': return 'text-green-darken-2'
+        default: return 'text-grey-darken-1'
     }
 }
 
@@ -538,20 +472,61 @@ function formatDate(dateStr: string) {
     return new Date(dateStr).toLocaleDateString()
 }
 
-onMounted(fetchItems)
+onMounted(() => {
+    fetchItems()
+})
 </script>
 
 <style scoped>
 .vault-page {
     position: relative;
-    min-height: calc(100vh - 100px);
+    min-height: calc(100vh - 64px);
+    overflow: hidden;
 }
 
+.relative-pos {
+    position: relative;
+}
+
+.z-10 {
+    z-index: 10;
+}
+
+/* Mesh Background */
 .mesh-blob {
     position: absolute;
-    filter: blur(100px);
+    filter: blur(80px);
     opacity: 0.15;
-    z-index: 0;
+    z-index: 1;
+    border-radius: 50%;
+    animation: blob-float 20s infinite alternate;
+}
+
+.blob-1 {
+    background: rgba(var(--v-theme-primary), 0.1);
+    width: 600px;
+    height: 600px;
+    top: -200px;
+    right: -100px;
+}
+
+.blob-2 {
+    background: rgba(var(--v-theme-secondary), 0.05);
+    width: 400px;
+    height: 400px;
+    bottom: -100px;
+    left: -100px;
+    animation-delay: -5s;
+}
+
+@keyframes blob-float {
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    100% {
+        transform: translate(20px, -20px) scale(1.1);
+    }
 }
 
 .icon-box {
@@ -566,13 +541,6 @@ onMounted(fetchItems)
 .primary-glow {
     background: rgba(var(--v-theme-primary), 0.1);
     box-shadow: 0 4px 20px rgba(var(--v-theme-primary), 0.15);
-}
-
-.glass-card {
-    background: rgba(var(--v-theme-surface), 0.7);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(var(--v-border-color), 0.1);
-    border-radius: 20px;
 }
 
 .breadcrumb-container {
@@ -626,18 +594,6 @@ onMounted(fetchItems)
     box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.3);
 }
 
-.gap-2 {
-    gap: 8px;
-}
-
-.gap-3 {
-    gap: 12px;
-}
-
-.gap-4 {
-    gap: 16px;
-}
-
 .vault-toggle :deep(.v-btn) {
     font-weight: 700 !important;
     text-transform: none;
@@ -657,9 +613,83 @@ onMounted(fetchItems)
     color: white;
 }
 
-.truncate {
-    white-space: nowrap;
+.settings-json-area :deep(textarea) {
+    font-family: 'Fira Code', monospace !important;
+    font-size: 0.8rem;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-dot.success {
+    background-color: #22c55e;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+}
+
+.status-dot.error {
+    background-color: #ef4444;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+.status-dot.running {
+    background-color: #3b82f6;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.2);
+        opacity: 0.7;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.modal-header-premium {
+    background: transparent;
+    position: relative;
     overflow: hidden;
-    text-overflow: ellipsis;
+    border-bottom: 1px solid rgba(var(--v-border-color), 0.05);
+}
+
+.header-icon-wrapper {
+    background: rgba(var(--v-theme-primary), 0.1);
+    padding: 10px;
+    border-radius: 16px;
+    border: 1px solid rgba(var(--v-theme-primary), 0.1);
+}
+
+.text-tiny {
+    font-size: 10px;
+}
+
+.icon-btn-square {
+    min-width: 44px !important;
+    padding: 0 !important;
+}
+
+.help-panels :deep(.v-expansion-panel-text__wrapper) {
+    padding: 0;
+}
+
+.setup-steps {
+    padding-left: 15px;
+    line-height: 1.6;
+}
+
+.setup-steps li {
+    margin-bottom: 4px;
 }
 </style>
