@@ -109,8 +109,7 @@
                             <span class="text-overline font-weight-black text-medium-emphasis letter-spacing-1">Total
                                 Income</span>
                             <h2 class="text-h4 font-weight-black text-success mt-n1">{{
-                                formatAmount(analyticsMetrics?.monthly_income
-                                    ?? analyticsData.income) }}
+                                formatAmount(analyticsData.income || 0) }}
                             </h2>
                         </div>
                     </div>
@@ -127,8 +126,7 @@
                             <span class="text-overline font-weight-black text-medium-emphasis letter-spacing-1">Total
                                 Expenses</span>
                             <h2 class="text-h4 font-weight-black text-error mt-n1">{{
-                                formatAmount(analyticsMetrics?.monthly_total ??
-                                    analyticsData.expense) }}
+                                formatAmount(analyticsData.expense_total) }}
                             </h2>
                         </div>
                     </div>
@@ -143,12 +141,10 @@
                         </div>
                         <div>
                             <span class="text-overline font-weight-black text-medium-emphasis letter-spacing-1">Net
-                                Cashflow</span>
+                                Savings</span>
                             <h2 class="text-h4 font-weight-black mt-n1"
-                                :class="(analyticsMetrics?.monthly_income ?? 0) >= (analyticsMetrics?.monthly_total ?? 0) ? 'text-primary' : 'text-error'">
-                                {{ formatAmount((analyticsMetrics?.monthly_income ?? 0) -
-                                    (analyticsMetrics?.monthly_total ??
-                                        0)) }}
+                                :class="(analyticsData.net || 0) >= 0 ? 'text-primary' : 'text-error'">
+                                {{ formatAmount(analyticsData.net || 0) }}
                             </h2>
                         </div>
                     </div>
@@ -224,8 +220,22 @@
                         <span class="text-h6 font-weight-black">Spending Categorization</span>
                     </v-card-title>
                     <v-card-text class="pa-6">
-                        <div class="chart-container">
-                            <BaseChart type="doughnut" :data="categoryChartData" :height="300" />
+                        <div class="doughnut-chart-container relative-pos">
+                            <BaseChart type="doughnut" :data="categoryChartData" :height="450" :options="{
+                                cutout: '75%',
+                                plugins: {
+                                    legend: { display: false },
+                                    polylineLabels: { display: true }
+                                },
+                                layout: {
+                                    padding: { left: 160, right: 160, top: 30, bottom: 30 }
+                                }
+                            }" @chart-click="handleCategoryClick" />
+                            <div class="chart-center-label">
+                                <div class="text-overline font-weight-black opacity-60">TOTAL SPENT</div>
+                                <div class="text-h6 font-weight-black">{{ formatAmount(analyticsData.expense_total) }}
+                                </div>
+                            </div>
                         </div>
                     </v-card-text>
                 </v-card>
@@ -238,13 +248,37 @@
                         <span class="text-h6 font-weight-black">Top Merchants</span>
                     </v-card-title>
                     <v-card-text class="pa-6">
-                        <div class="chart-container">
-                            <BaseChart type="bar" :data="merchantChartData" :height="300" :options="{
+                        <div class="analytics-chart-box">
+                            <BaseChart type="bar" :data="merchantChartData" :height="450" :options="{
                                 indexAxis: 'y',
-                                plugins: { legend: { display: false } },
+                                plugins: {
+                                    legend: { display: false },
+                                    datalabels: {
+                                        display: true,
+                                        anchor: 'end',
+                                        align: 'right',
+                                        offset: 4,
+                                        color: isDark ? '#ffffff' : '#0f172a',
+                                        font: { weight: 'bold', size: 10 },
+                                        formatter: (value: number) => '₹' + Math.abs(value).toLocaleString()
+                                    }
+                                },
+                                layout: {
+                                    padding: { left: 10, right: 60, top: 0, bottom: 0 }
+                                },
                                 scales: {
-                                    x: { grid: { display: false, color: 'rgba(0,0,0,0.05)' } },
-                                    y: { grid: { display: false } }
+                                    x: {
+                                        grid: { display: false },
+                                        ticks: { display: false }
+                                    },
+                                    y: {
+                                        grid: { display: false },
+                                        ticks: {
+                                            display: true,
+                                            font: { size: 11, weight: 'bold' },
+                                            color: isDark ? '#ffffff' : '#0f172a'
+                                        }
+                                    }
                                 }
                             }" />
                         </div>
@@ -265,18 +299,33 @@
                                 <v-btn value="daily" class="text-none">Daily</v-btn>
                                 <v-btn value="monthly" class="text-none">Monthly</v-btn>
                             </v-btn-toggle>
-                            <v-select v-model="selectedTrendCategory"
-                                :items="categoryOptions.map(c => ({ title: c.label, value: c.value }))"
-                                density="comfortable" variant="outlined" hide-details class="trend-cat-premium"
-                                rounded="pill" menu-icon=""
-                                style="background: rgba(var(--v-theme-surface), 0.7); width: 220px;">
+                            <v-autocomplete v-model="selectedTrendCategory" :items="categoryOptions" item-title="title"
+                                item-value="value" density="comfortable" variant="outlined" hide-details
+                                class="trend-cat-premium" rounded="pill" menu-icon="" placeholder="Search Categories..."
+                                style="background: rgba(var(--v-theme-surface), 0.7); width: 280px;">
                                 <template v-slot:prepend-inner>
                                     <Filter :size="16" class="text-primary mr-1" />
+                                </template>
+                                <template v-slot:item="{ props, item }">
+                                    <v-list-item v-bind="props" :title="item.raw.title">
+                                        <template v-slot:prepend>
+                                            <span class="mr-2"
+                                                :style="{ paddingLeft: item.raw.isChild ? '16px' : '0' }">
+                                                {{ item.raw.icon }}
+                                            </span>
+                                        </template>
+                                        <template v-slot:title>
+                                            <span
+                                                :class="{ 'text-caption opacity-70': item.raw.isChild, 'font-weight-bold': !item.raw.isChild }">
+                                                {{ item.raw.title }}
+                                            </span>
+                                        </template>
+                                    </v-list-item>
                                 </template>
                                 <template v-slot:append-inner>
                                     <ChevronDown :size="16" class="text-primary opacity-70" />
                                 </template>
-                            </v-select>
+                            </v-autocomplete>
                         </div>
                     </v-card-title>
                     <v-card-text class="pa-6">
@@ -299,7 +348,7 @@
                         <span class="text-h6 font-weight-black">Foresight Forecast</span>
                     </v-card-title>
                     <v-card-text class="pa-6">
-                        <div class="chart-container relative">
+                        <div class="analytics-chart-box relative">
                             <BaseChart v-if="forecastData.length > 0" type="line" :data="forecastChartData"
                                 :height="300" />
                             <div v-else class="d-flex items-center justify-center fill-height">Calculative Projection...
@@ -387,6 +436,7 @@ import { useCurrency } from '@/composables/useCurrency'
 import BaseChart from '@/components/BaseChart.vue'
 import BudgetHistoryChart from '@/components/BudgetHistoryChart.vue'
 import { marked } from 'marked'
+import { useTheme } from 'vuetify'
 import {
     TrendingUp, TrendingDown, Scale,
     CalendarRange, ArrowRight, RefreshCcw, Filter, BarChart2,
@@ -402,7 +452,10 @@ const props = defineProps<Props>()
 
 const store = useFinanceStore()
 const authStore = useAuthStore()
+const theme = useTheme()
 const { formatAmount } = useCurrency()
+
+const isDark = computed(() => theme.global.current.value.dark)
 
 // Filters local to analytics
 const selectedTimeRange = ref('this-month')
@@ -410,6 +463,45 @@ const startDate = ref('')
 const endDate = ref('')
 const selectedTrendCategory = ref('')
 const trendView = ref<'daily' | 'monthly'>('daily')
+
+// Category Color Palette (if store colors are missing or identical)
+const chartPalette = [
+    '#3B82F6', // Blue
+    '#10B981', // Emerald
+    '#F59E0B', // Amber
+    '#EF4444', // Red
+    '#8B5CF6', // Violet
+    '#EC4899', // Pink
+    '#06B6D4', // Cyan
+    '#F97316', // Orange
+    '#6366F1', // Indigo
+    '#14B8A6', // Teal
+    '#F43F5E', // Rose
+    '#84CC16', // Lime
+    '#A855F7', // Purple
+    '#0EA5E9', // Sky
+    '#D946EF', // Fuchsia
+    '#FACC15', // Yellow
+    '#22C55E', // Green
+    '#64748B', // Slate
+    '#d97706', // Amber-600
+    '#be123c', // Rose-700
+    '#4338ca', // Indigo-700
+    '#047857', // Emerald-700
+    '#a21caf', // Fuchsia-700
+    '#b91c1c'  // Red-700
+]
+
+function handleCategoryClick(payload: any) {
+    if (payload && payload.label) {
+        selectedTrendCategory.value = payload.label
+        // Scroll to trend chart for better UX
+        const trendEl = document.querySelector('.large-chart-container')
+        if (trendEl) {
+            trendEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+    }
+}
 
 const timeRangeOptions = [
     { label: 'All Time', value: 'all' },
@@ -421,8 +513,23 @@ const timeRangeOptions = [
 ]
 
 // Data for Analytics
-const transactions = ref<any[]>([])
-const analyticsMetrics = ref<any>(null)
+
+const analyticsData = ref<any>({
+    income: 0,
+    expense_total: 0,
+    net: 0,
+    categories: [],
+    merchants: [],
+    heatmap: { grid: {}, categories: [], hours: [], max: 0 },
+    excludedExpense: 0,
+    excludedIncome: 0,
+    excludedCategories: [],
+    accounts: [],
+    types: [],
+    credit: { limit: 0, consumed: 0, available: 0, percent: 0 },
+    patterns: { weekend: 0, weekday: 0, weekendPercent: 0, weekdayPercent: 0 },
+    count: 0
+})
 const forecastData = ref<any[]>([])
 const budgets = ref<any[]>([])
 const budgetHistory = ref<any[]>([])
@@ -484,6 +591,11 @@ function handleTimeRangeChange(val: string) {
     fetchAnalyticsData()
 }
 
+// Re-fetch trend when category changes
+watch(selectedTrendCategory, () => {
+    fetchAnalyticsData()
+})
+
 async function fetchAnalyticsData() {
     loading.value = true
     try {
@@ -494,15 +606,13 @@ async function fetchAnalyticsData() {
             account_id: props.selectedAccount || undefined
         }
 
-        const [txnRes, metricsRes, forecastRes, budgetRes, historyRes] = await Promise.all([
-            financeApi.getTransactions(params.account_id, 1, 1000, params.start_date || undefined, params.end_date || undefined, undefined, undefined, 'date', 'desc', userId),
-            financeApi.getMetrics(params.account_id, params.start_date || undefined, params.end_date || undefined, userId),
+        const [detailedRes, forecastRes, budgetRes, historyRes] = await Promise.all([
+            financeApi.getDetailedAnalytics(params.account_id, params.start_date || undefined, params.end_date || undefined, userId, selectedTrendCategory.value || undefined),
             financeApi.getForecast(params.account_id, 30, userId),
             financeApi.getBudgets(undefined, undefined, userId),
             financeApi.getBudgetHistory(6, userId)
         ])
-        transactions.value = txnRes.data.items
-        analyticsMetrics.value = metricsRes.data
+        analyticsData.value = detailedRes.data
         forecastData.value = forecastRes.data
         budgets.value = budgetRes.data
         budgetHistory.value = historyRes.data
@@ -523,8 +633,16 @@ async function generateAIInsights() {
         const velocity = budgetHistory.value.length > 0 ? `Spending velocity is currently showing a ${overallBudget.value?.percentage > 80 ? 'HIGH' : 'STABLE'} trend relative to the monthly cycle.` : ''
 
         const promptData = {
-            ...analyticsMetrics.value,
-            budgets: budgets.value.map(b => ({
+            income: analyticsData.value.income,
+            expense_total: analyticsData.value.expense_total,
+            net: analyticsData.value.net,
+            categories: analyticsData.value.categories,
+            merchants: analyticsData.value.merchants,
+            accounts: analyticsData.value.accounts,
+            types: analyticsData.value.types,
+            credit: analyticsData.value.credit,
+            patterns: analyticsData.value.patterns,
+            budgets: budgets.value.map((b: any) => ({
                 category: b.category,
                 limit: b.amount_limit,
                 spent: b.spent,
@@ -546,150 +664,37 @@ async function generateAIInsights() {
     }
 }
 
-const overallBudget = computed(() => budgets.value.find(b => b.category === 'OVERALL'))
+const overallBudget = computed(() => budgets.value.find((b: any) => b.category === 'OVERALL'))
 
-// --- Analytics Computed Logic ---
-function formatTypeLabel(type: string) {
-    const labels: Record<string, string> = {
-        'BANK': 'Bank', 'CREDIT_CARD': 'Card', 'LOAN': 'Loan', 'WALLET': 'Cash', 'INVESTMENT': 'Invest'
-    }
-    return labels[type] || type
-}
 
-const analyticsData = computed(() => {
-    const data = transactions.value || []
-    let income = 0
-    let expense = 0
-    let excludedExpense = 0
-    let excludedIncome = 0
-    const catMap: Record<string, number> = {}
-    const excludedCatMap: Record<string, number> = {}
-    const dateMap: Record<string, number> = {}
-    const merchantMap: Record<string, number> = {}
-    const accountMap: Record<string, number> = {}
-    const typeMap: Record<string, number> = {}
-    let weekendSpend = 0
-    let weekdaySpend = 0
-
-    // Fetch credit limit info from store accounts
-    let totalLimit = 0
-    let totalConsumed = 0
-    store.accounts.forEach(acc => {
-        if (acc.type === 'CREDIT_CARD' && acc.credit_limit) {
-            totalLimit += Number(acc.credit_limit)
-            totalConsumed += Number(acc.balance)
-        }
-    })
-
-    data.forEach(t => {
-        const amt = Number(t.amount)
-        const isExpense = amt < 0
-        const isTransfer = t.is_transfer === true
-        const isExcluded = t.exclude_from_reports === true
-        const absAmt = Math.abs(amt)
-
-        if (isExcluded || isTransfer) {
-            if (isExpense) excludedExpense += absAmt
-            else excludedIncome += absAmt
-
-            const cat = t.category || (isTransfer ? 'Transfer' : 'Uncategorized')
-            excludedCatMap[cat] = (excludedCatMap[cat] || 0) + absAmt
-            return
-        }
-
-        if (!isExpense) income += absAmt
-        else {
-            expense += absAmt
-            // Categories
-            const cat = t.category || 'Uncategorized'
-            catMap[cat] = (catMap[cat] || 0) + absAmt
-
-            // Merchants
-            const merchant = t.recipient || 'Unknown'
-            merchantMap[merchant] = (merchantMap[merchant] || 0) + absAmt
-
-            // Accounts
-            const accName = store.getAccountName(t.account_id)
-            accountMap[accName] = (accountMap[accName] || 0) + absAmt
-
-            // Account Type
-            const acc = store.accounts.find(a => a.id === t.account_id)
-            if (acc) {
-                const label = formatTypeLabel(acc.type)
-                typeMap[label] = (typeMap[label] || 0) + absAmt
-            }
-
-            // Patterns
-            if (t.date) {
-                const day = new Date(t.date).getDay()
-                if (day === 0 || day === 6) weekendSpend += absAmt
-                else weekdaySpend += absAmt
-            }
-        }
-
-        const dateKey = t.date ? t.date.split('T')[0] : 'Unknown'
-        if (isExpense) dateMap[dateKey] = (dateMap[dateKey] || 0) + absAmt
-    })
-
-    const toSortedArray = (map: Record<string, number>) => {
-        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }))
-    }
-
-    return {
-        income,
-        expense,
-        excludedExpense,
-        excludedIncome,
-        net: income - expense,
-        categories: Object.entries(catMap).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({
-            name, value, color: store.getCategoryColor(name), icon: store.getCategoryIcon(name)
-        })),
-        excludedCategories: Object.entries(excludedCatMap).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({
-            name, value, color: store.getCategoryColor(name), icon: store.getCategoryIcon(name)
-        })),
-        merchants: toSortedArray(merchantMap).slice(0, 5),
-        accounts: toSortedArray(accountMap),
-        types: toSortedArray(typeMap),
-        credit: {
-            limit: totalLimit,
-            consumed: totalConsumed,
-            available: totalLimit - totalConsumed,
-            percent: totalLimit > 0 ? (totalConsumed / totalLimit * 100) : 0
-        },
-        patterns: {
-            weekend: weekendSpend,
-            weekday: weekdaySpend,
-            weekendPercent: expense > 0 ? (weekendSpend / expense * 100) : 0,
-            weekdayPercent: expense > 0 ? (weekdaySpend / expense * 100) : 0
-        },
-        count: data.length
-    }
-})
-
-// --- Chart Data Preparations ---
 const categoryOptions = computed(() => {
-    return [{ label: 'All Categories', value: '' }, ...store.categories.map(c => ({ label: c.name, value: c.name }))]
+    // Organize categories hierarchically
+    const parents = store.categories.filter(c => !c.parent_id)
+    const result: any[] = [{ title: 'All Spending', value: '', icon: '📊', isChild: false }]
+
+    parents.sort((a, b) => a.name.localeCompare(b.name)).forEach(p => {
+        result.push({ title: p.name, value: p.name, icon: p.icon || '🏷️', isChild: false })
+        const children = store.categories.filter(c => c.parent_id === p.id)
+        children.sort((a, b) => a.name.localeCompare(b.name)).forEach(c => {
+            result.push({ title: c.name, value: c.name, icon: c.icon || '🔹', isChild: true })
+        })
+    })
+
+    return result
 })
 
 const filteredTrendData = computed(() => {
-    const txns = transactions.value.filter(t => {
-        if (t.is_transfer || t.exclude_from_reports) return false
-        if (Number(t.amount) >= 0) return false
-        if (selectedTrendCategory.value && t.category !== selectedTrendCategory.value) return false
-        return true
-    })
-
-    const map: Record<string, number> = {}
-    txns.forEach(t => {
-        const key = trendView.value === 'daily'
-            ? t.date.split('T')[0]
-            : t.date.slice(0, 7) // YYYY-MM
-        map[key] = (map[key] || 0) + Math.abs(Number(t.amount))
-    })
-
-    return Object.entries(map)
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([label, value]) => ({ label, value }))
+    const trend = analyticsData.value.trend || []
+    if (trendView.value === 'monthly') {
+        const map: Record<string, number> = {}
+        trend.forEach((d: any) => {
+            const month = d.date.slice(0, 7)
+            map[month] = (map[month] || 0) + d.amount
+        })
+        return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([label, value]) => ({ label, value }))
+    }
+    return trend.map((d: any) => ({ label: d.date, value: d.amount }))
 })
 
 const trendChartData = computed(() => {
@@ -698,10 +703,10 @@ const trendChartData = computed(() => {
     const bgColor = color.startsWith('#') ? color + '20' : color.replace('rgb(', 'rgba(').replace(')', ', 0.1)')
 
     return {
-        labels: filteredTrendData.value.map(d => trendView.value === 'daily' ? d.label.slice(5) : d.label),
+        labels: filteredTrendData.value.map((d: any) => trendView.value === 'daily' ? d.label.slice(5) : d.label),
         datasets: [{
             label: selectedTrendCategory.value || 'All Spending',
-            data: filteredTrendData.value.map(d => d.value),
+            data: filteredTrendData.value.map((d: any) => d.value),
             borderColor: color,
             backgroundColor: bgColor,
             fill: true,
@@ -714,61 +719,35 @@ const trendChartData = computed(() => {
 
 
 const heatmapData = computed(() => {
-    const hours = Array.from({ length: 24 }, (_, i) => i)
-    const activeCats = analyticsData.value.categories.slice(0, 8).map(c => c.name)
-
-    // category -> hour -> amount
-    const grid: Record<string, Record<number, number>> = {}
-    activeCats.forEach(cat => {
-        grid[cat] = {}
-        hours.forEach(h => grid[cat][h] = 0)
-    })
-
-    transactions.value.forEach(t => {
-        if (Number(t.amount) >= 0 || t.is_transfer) return
-        if (!activeCats.includes(t.category)) return
-
-        const date = new Date(t.date)
-        const hour = date.getHours()
-        if (grid[t.category]) {
-            grid[t.category][hour] += Math.abs(Number(t.amount))
-        }
-    })
-
-    // Find max for scaling
-    let max = 0
-    Object.values(grid).forEach(hMap => {
-        Object.values(hMap).forEach(val => { if (val > max) max = val })
-    })
-
-    return { grid, categories: activeCats, hours, max }
+    return analyticsData.value.heatmap
 })
 
 const merchantChartData = computed(() => ({
-    labels: analyticsData.value.merchants.map(m => m.name),
+    labels: analyticsData.value.merchants?.map((m: any) => m.name) || [],
     datasets: [{
         label: 'Spending',
-        data: analyticsData.value.merchants.map(m => m.value),
-        backgroundColor: 'rgb(var(--v-theme-primary))',
+        data: analyticsData.value.merchants?.map((m: any) => m.value) || [],
+        backgroundColor: analyticsData.value.merchants?.map((_: any, i: number) => chartPalette[i % chartPalette.length]) || [],
         borderRadius: 6,
         borderSkipped: false,
     }]
 }))
 
 const categoryChartData = computed(() => ({
-    labels: analyticsData.value.categories.map(c => c.name),
+    labels: analyticsData.value.categories?.map((c: any) => c.name) || [],
     datasets: [{
-        data: analyticsData.value.categories.map(c => c.value),
-        backgroundColor: analyticsData.value.categories.map(c => c.color || 'rgb(var(--v-theme-primary))'),
-        hoverOffset: 4
+        data: analyticsData.value.categories?.map((c: any) => c.value) || [],
+        backgroundColor: analyticsData.value.categories?.map((_: any, i: number) => chartPalette[i % chartPalette.length]) || [],
+        hoverOffset: 12,
+        borderWidth: 0
     }]
 }))
 
 const forecastChartData = computed(() => ({
-    labels: forecastData.value.map(d => d.date.split('T')[0].slice(5)),
+    labels: forecastData.value.map((d: any) => d.date.split('T')[0].slice(5)),
     datasets: [{
         label: 'Projected Balance',
-        data: forecastData.value.map(d => d.balance),
+        data: forecastData.value.map((d: any) => d.balance),
         borderColor: 'rgb(var(--v-theme-success))',
         backgroundColor: 'rgba(var(--v-theme-success), 0.1)',
         fill: true,
@@ -946,9 +925,30 @@ const forecastChartData = computed(() => ({
 }
 
 /* Charts */
-.chart-container {
-    height: 300px;
+.analytics-chart-box {
+    height: 450px;
     width: 100%;
+    position: relative;
+}
+
+.doughnut-chart-container {
+    height: 450px;
+    /* Keeps extra space for polyline labels */
+    width: 100%;
+}
+
+.relative-pos {
+    position: relative;
+}
+
+.chart-center-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    z-index: 1;
 }
 
 .large-chart-container {

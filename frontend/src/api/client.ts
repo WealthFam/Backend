@@ -14,7 +14,7 @@ apiClient.interceptors.request.use(
     async (config) => {
         const token = localStorage.getItem('access_token')
         if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`
+            config.headers.Authorization = `Bearer ${token} `
         }
         return config
     },
@@ -99,8 +99,8 @@ export const financeApi = {
     smartCategorize: (data: { transaction_id: string, category: string, create_rule: boolean, apply_to_similar: boolean, exclude_from_reports?: boolean }) =>
         apiClient.post('/finance/transactions/smart-categorize', data),
     bulkDeleteTransactions: (ids: string[]) => apiClient.post('/finance/transactions/bulk-delete', { transaction_ids: ids }),
-    getMetrics: (accountId?: string, startDate?: string, endDate?: string, userId?: string) =>
-        apiClient.get('/finance/metrics', { params: { account_id: accountId, start_date: startDate, end_date: endDate, user_id: userId } }),
+    getMetrics: (accountId?: string, startDate?: string, endDate?: string, userId?: string) => apiClient.get('/finance/analytics/metrics', { params: { account_id: accountId, start_date: startDate, end_date: endDate, user_id: userId } }),
+    getDetailedAnalytics: (accountId?: string, startDate?: string, endDate?: string, userId?: string, category?: string) => apiClient.get('/finance/analytics/detailed', { params: { account_id: accountId, start_date: startDate, end_date: endDate, user_id: userId, category } }),
     getRules: () => apiClient.get('/finance/rules'),
     getRuleSuggestions: () => apiClient.get('/finance/rules/suggestions'),
     createRule: (data: any) => apiClient.post('/finance/rules', data),
@@ -139,18 +139,19 @@ export const financeApi = {
     deleteRecurring: (id: string) => apiClient.delete(`/finance/recurring/${id}`),
     processRecurring: () => apiClient.post('/finance/recurring/process'),
     getForecast: (accountId?: string, days: number = 30, userId?: string) =>
-        apiClient.get('/finance/forecast', { params: { account_id: accountId, days, user_id: userId } }),
+        apiClient.get('/finance/analytics/forecast', { params: { account_id: accountId, days, user_id: userId } }),
     getNetWorthTimeline: (days: number = 30, userId?: string) =>
-        apiClient.get('/finance/net-worth-timeline', { params: { days, user_id: userId } }),
+        apiClient.get('/finance/analytics/net-worth-timeline', { params: { days, user_id: userId } }),
     getSpendingTrend: (userId?: string) =>
-        apiClient.get('/finance/spending-trend', { params: { user_id: userId } }),
+        apiClient.get('/finance/analytics/spending-trend', { params: { user_id: userId } }),
     getBudgetHistory: (months: number = 6, userId?: string) =>
-        apiClient.get('/finance/budget-history', { params: { months, user_id: userId } }),
+        apiClient.get('/finance/analytics/budget-history', { params: { months, user_id: userId } }),
     getHeatmapData: (startDate?: string, endDate?: string, userId?: string) =>
-        apiClient.get('/finance/heatmap', { params: { start_date: startDate, end_date: endDate, user_id: userId } }),
+        apiClient.get('/finance/analytics/heatmap', { params: { start_date: startDate, end_date: endDate, user_id: userId } }),
     getMerchantBreakdown: (category?: string, startDate?: string, endDate?: string, userId?: string) =>
-        apiClient.get('/finance/merchant-breakdown', { params: { category, start_date: startDate, end_date: endDate, user_id: userId } }),
-
+        apiClient.get('/finance/analytics/merchant-breakdown', { params: { category, start_date: startDate, end_date: endDate, user_id: userId } }),
+    getFamilyWealth: () => apiClient.get('/finance/analytics/family-wealth'),
+    getRecurringSuggestions: () => apiClient.get('/finance/recurring/suggestions'),
     // Ingestion
     analyzeCsv: (formData: FormData) => apiClient.post('/ingestion/csv/analyze', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
