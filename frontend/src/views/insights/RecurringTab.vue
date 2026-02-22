@@ -1,5 +1,55 @@
 <template>
     <div class="recurring-content px-0 pb-6">
+        <div class="d-flex justify-end mb-6">
+            <v-btn color="primary" @click="showAddModal = true" rounded="pill" height="44"
+                class="text-none font-weight-black px-6" elevation="4">
+                <template v-slot:prepend>
+                    <Plus :size="18" stroke-width="3" />
+                </template>
+                Add Subscription
+            </v-btn>
+        </div>
+
+        <!-- Smart Suggestions Section -->
+        <div v-if="suggestions.length > 0" class="suggestions-section mb-10 mt-2">
+            <div class="d-flex align-center mb-4">
+                <div class="icon-orb mr-3"
+                    style="width: 32px; height: 32px; background: rgba(var(--v-theme-primary), 0.1)">
+                    <Sparkles :size="16" class="text-primary" />
+                </div>
+                <div>
+                    <h3 class="text-subtitle-1 font-weight-black">Smart Suggestions</h3>
+                    <p class="text-caption font-weight-bold opacity-60">Detected recurring patterns from your history
+                    </p>
+                </div>
+            </div>
+
+            <div class="suggestions-slider d-flex gap-4 overflow-x-auto pb-4 px-1" style="scrollbar-width: none;">
+                <v-card v-for="(suggestion, idx) in suggestions" :key="idx" rounded="xl"
+                    class="suggestion-card pa-4 border-premium flex-shrink-0" width="300" elevation="0">
+                    <div class="d-flex justify-space-between align-start mb-3">
+                        <v-avatar color="primary" variant="tonal" size="40" rounded="lg">
+                            <component :is="getCategoryLucideIcon(suggestion.category)" :size="20" />
+                        </v-avatar>
+                        <v-chip size="x-small" color="success" class="font-weight-black" variant="tonal">
+                            {{ (suggestion.confidence * 100).toFixed(0) }}% Match
+                        </v-chip>
+                    </div>
+
+                    <div class="text-subtitle-2 font-weight-black mb-1 text-truncate">{{ suggestion.name }}</div>
+                    <div class="text-h6 font-weight-black mb-3">{{ formatAmount(suggestion.amount) }}<span
+                            class="text-caption opacity-60 ml-1">/ {{ suggestion.frequency.toLowerCase() }}</span></div>
+
+                    <p class="text-caption opacity-70 mb-4 line-clamp-2" style="height: 32px;">{{ suggestion.reason }}
+                    </p>
+
+                    <v-btn block color="primary" variant="flat" size="small" rounded="lg"
+                        class="text-none font-weight-black" @click="approveSuggestion(suggestion)">
+                        Add Subscription
+                    </v-btn>
+                </v-card>
+            </div>
+        </div>
         <v-row v-if="store.recurringTransactions.length > 0">
             <v-col v-for="rec in store.recurringTransactions" :key="rec.id" cols="12" md="6" lg="4">
                 <v-card rounded="xl" class="recurring-glass-card hover-elevate group">
@@ -145,12 +195,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, defineExpose } from 'vue'
+import { ref, defineExpose, onMounted } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
 import { financeApi } from '@/api/client'
-import { Plus, X, ChevronDown, CalendarClock, Trash2, Wallet, CreditCard } from 'lucide-vue-next'
+import { Plus, X, ChevronDown, CalendarClock, Trash2, Wallet, CreditCard, Sparkles } from 'lucide-vue-next'
 import { getCategoryLucideIcon } from '@/utils/iconMapping'
 
 const store = useFinanceStore()
@@ -158,6 +208,47 @@ const authStore = useAuthStore()
 const { formatAmount } = useCurrency()
 
 const showAddModal = ref(false)
+const suggestions = ref<any[]>([])
+const loadingSuggestions = ref(false)
+
+onMounted(() => {
+    fetchSuggestions()
+})
+
+async function fetchSuggestions() {
+    loadingSuggestions.value = true
+    try {
+        const res = await financeApi.getRecurringSuggestions()
+        suggestions.value = res.data
+    } catch (e) {
+        console.error("Failed to fetch recurring suggestions", e)
+    } finally {
+        loadingSuggestions.value = false
+    }
+}
+
+async function approveSuggestion(suggestion: any) {
+    try {
+        await financeApi.createRecurringTransaction({
+            name: suggestion.name,
+            amount: suggestion.amount,
+            category: suggestion.category,
+            account_id: suggestion.account_id,
+            frequency: suggestion.frequency,
+            start_date: suggestion.last_date,
+            next_run_date: new Date().toISOString(), // Default to today or next expected
+            type: 'DEBIT',
+            is_active: true,
+            exclude_from_reports: false
+        })
+        // Refresh everything
+        await store.fetchRecurring(authStore.selectedMemberId || undefined)
+        await fetchSuggestions()
+    } catch (e) {
+        console.error("Failed to approve suggestion", e)
+    }
+}
+
 
 const newRecurrence = ref({
     name: '',
@@ -229,5 +320,39 @@ defineExpose({
 .premium-modal-select:hover :deep(.v-field__outline) {
     --v-field-border-opacity: 0.4;
     border-color: rgb(var(--v-theme-primary)) !important;
+}
+
+.suggestion-card {
+    background: rgba(var(--v-theme-primary), 0.03) !important;
+    border: 1px solid rgba(var(--v-theme-primary), 0.1) !important;
+    transition: all 0.3s ease;
+}
+
+.suggestion-card:hover {
+    background: rgba(var(--v-theme-primary), 0.06) !important;
+    transform: translateY(-4px);
+    border-color: rgba(var(--v-theme-primary), 0.3) !important;
+}
+
+.suggestions-slider::-webkit-scrollbar {
+    display: none;
+}
+
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.border-premium {
+    border: 1px solid rgba(var(--v-border-color), 0.1) !important;
+}
+
+.icon-orb {
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 </style>
