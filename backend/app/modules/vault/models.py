@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Numeric, Boolean
 from sqlalchemy import Enum as SqlEnum
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship, backref, foreign
 import enum
 from backend.app.core.database import Base
 
@@ -27,7 +27,7 @@ class DocumentVault(Base):
     mime_type = Column(String, nullable=True)
     
     transaction_id = Column(String, ForeignKey("transactions.id"), nullable=True, index=True)
-    parent_id = Column(String, ForeignKey("document_vault.id"), nullable=True, index=True)
+    parent_id = Column(String, nullable=True, index=True) # Manual FK for DuckDB compatibility
     is_folder = Column(Boolean, default=False, nullable=False)
     is_shared = Column(Boolean, default=True, nullable=False) # Default to family shared
     description = Column(String, nullable=True)
@@ -45,14 +45,23 @@ class DocumentVault(Base):
     # but for true isolation we rely on string-based ForeignKey and backrefs.
     
     owner = relationship("User", foreign_keys=[owner_id])
-    children = relationship("DocumentVault", backref=backref("parent", remote_side=[id]), cascade="all, delete-orphan")
-    versions = relationship("DocumentVersion", back_populates="document", cascade="all, delete-orphan")
+    children = relationship(
+        "DocumentVault", 
+        primaryjoin="DocumentVault.id == foreign(DocumentVault.parent_id)",
+        backref=backref("parent", remote_side=[id])
+    )
+    versions = relationship(
+        "DocumentVersion", 
+        primaryjoin="DocumentVault.id == foreign(DocumentVersion.document_id)",
+        back_populates="document", 
+        cascade="all, delete-orphan"
+    )
 
 class DocumentVersion(Base):
     __tablename__ = "document_versions"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    document_id = Column(String, ForeignKey("document_vault.id"), nullable=False, index=True)
+    document_id = Column(String, nullable=False, index=True) # Manual FK for DuckDB compatibility
     version_number = Column(Numeric(5, 0), nullable=False)
     
     file_path = Column(String, nullable=False)
@@ -61,4 +70,22 @@ class DocumentVersion(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    document = relationship("DocumentVault", back_populates="versions")
+    document = relationship(
+        "DocumentVault", 
+        primaryjoin="DocumentVault.id == foreign(DocumentVersion.document_id)",
+        back_populates="versions"
+    )
+
+class VaultSyncHistory(Base):
+    __tablename__ = "vault_sync_history"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    status = Column(String, nullable=False) # success, error, running
+    message = Column(String, nullable=True)
+    items_processed = Column(Numeric(10, 0), default=0)
+    error_details = Column(String, nullable=True)
+    
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+

@@ -20,6 +20,71 @@ def trigger_sync(
     res = GoogleDriveService.sync_to_cloud(db, str(current_user.tenant_id))
     return res
 
+@router.get("/settings")
+def get_sync_settings(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Check sync configuration status"""
+    return VaultService.get_sync_settings(db, str(current_user.tenant_id))
+
+@router.post("/settings")
+def save_sync_settings(
+    creds: dict,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Save GDrive service account creds"""
+    return VaultService.save_sync_settings(db, str(current_user.tenant_id), creds.get("credentials_json", ""))
+
+@router.delete("/settings")
+def clear_sync_settings(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Clear GDrive credentials"""
+    return VaultService.clear_sync_settings(db, str(current_user.tenant_id))
+
+@router.post("/settings/test")
+def test_sync_connection(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Verify stored GDrive credentials"""
+    return GoogleDriveService.test_connection(db, str(current_user.tenant_id))
+
+@router.post("/settings/auth-url")
+def get_gdrive_auth_url(
+    data: dict,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Generate GDrive OAuth URL"""
+    return GoogleDriveService.get_auth_url(
+        db, 
+        str(current_user.tenant_id), 
+        data.get("client_id"), 
+        data.get("client_secret")
+    )
+
+@router.post("/settings/callback")
+def gdrive_callback(
+    data: dict,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Exchange code for GDrive tokens"""
+    return GoogleDriveService.exchange_code(db, str(current_user.tenant_id), data.get("code"))
+
+@router.get("/history")
+def get_sync_history(
+    limit: int = 10,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get recent sync logs"""
+    return VaultService.get_sync_history(db, str(current_user.tenant_id), limit)
+
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
@@ -65,6 +130,31 @@ async def update_document_version(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/{document_id}")
+async def update_document(
+    document_id: str,
+    file_type: Optional[models.DocumentType] = Form(None),
+    is_shared: Optional[bool] = Form(None),
+    filename: Optional[str] = Form(None),
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update document metadata"""
+    doc = VaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if file_type is not None:
+        doc.file_type = file_type
+    if is_shared is not None:
+        doc.is_shared = is_shared
+    if filename is not None:
+        doc.filename = filename
+        
+    db.commit()
+    db.refresh(doc)
+    return doc
 
 @router.get("/{document_id}/versions")
 def list_document_versions(
@@ -158,6 +248,52 @@ def download_document(
         filename=filename,
         media_type=doc.mime_type
     )
+
+@router.get("/{document_id}/view")
+def view_document(
+    document_id: str,
+    version: Optional[int] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Serve a document version for inline viewing (preview)"""
+    doc = VaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not doc.is_shared and doc.owner_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    file_path = doc.file_path
+    
+    # If a specific version is requested
+    if version and version != doc.current_version:
+        ver_record = db.query(models.DocumentVersion).filter(
+            models.DocumentVersion.document_id == document_id,
+            models.DocumentVersion.version_number == version
+        ).first()
+        if not ver_record:
+            raise HTTPException(status_code=404, detail="Version not found")
+        file_path = ver_record.file_path
+
+    # Use inline disposition for previews
+    return FileResponse(
+        path=file_path,
+        media_type=doc.mime_type,
+        content_disposition_type="inline"
+    )
+
+@router.get("/{document_id}")
+def get_document(
+    document_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get single document metadata"""
+    doc = VaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
 
 @router.delete("/{document_id}")
 def delete_document(

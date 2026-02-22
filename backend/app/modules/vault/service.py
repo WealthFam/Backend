@@ -31,6 +31,18 @@ class VaultService:
     ) -> models.DocumentVault:
         """Handle file upload and metadata creation with versioning"""
         
+        # 0. Check for filename collision in the same parent folder
+        query = db.query(models.DocumentVault).filter(
+            models.DocumentVault.tenant_id == tenant_id,
+            models.DocumentVault.filename == file.filename,
+            models.DocumentVault.parent_id == parent_id,
+            models.DocumentVault.is_folder == False
+        )
+        
+        existing_doc = query.first()
+        if existing_doc:
+            return VaultService.update_document_version(db, existing_doc.id, tenant_id, file)
+
         # 1. Generate ID and prepare path
         doc_id = str(uuid.uuid4())
         file_path = VaultService._get_storage_path(tenant_id, doc_id, version=1)
@@ -226,3 +238,65 @@ class VaultService:
         db.delete(doc)
         db.commit()
         return True
+
+    @staticmethod
+    def get_sync_history(db: Session, tenant_id: str, limit: int = 10):
+        """Get recent sync logs for the vault"""
+        return db.query(models.VaultSyncHistory).filter(
+            models.VaultSyncHistory.tenant_id == tenant_id
+        ).order_by(models.VaultSyncHistory.started_at.desc()).limit(limit).all()
+
+    @staticmethod
+    def save_sync_settings(db: Session, tenant_id: str, credentials_json: str):
+        """Save GDrive service account JSON to DB"""
+        from backend.app.modules.auth.models import TenantSetting
+        import json
+        
+        # Validate JSON
+        try:
+            json.loads(credentials_json)
+        except:
+            raise Exception("Invalid JSON formatting for credentials")
+
+        setting = db.query(TenantSetting).filter(
+            TenantSetting.tenant_id == tenant_id,
+            TenantSetting.key == "vault_gdrive_config"
+        ).first()
+        
+        if not setting:
+            setting = TenantSetting(
+                tenant_id=tenant_id,
+                key="vault_gdrive_config",
+                value=credentials_json
+            )
+            db.add(setting)
+        else:
+            setting.value = credentials_json
+            
+        db.commit()
+        return {"status": "success"}
+
+    @staticmethod
+    def get_sync_settings(db: Session, tenant_id: str):
+        """Check if sync is configured and return meta"""
+        from backend.app.modules.auth.models import TenantSetting
+        setting = db.query(TenantSetting).filter(
+            TenantSetting.tenant_id == tenant_id,
+            TenantSetting.key == "vault_gdrive_config"
+        ).first()
+        
+        return {
+            "configured": setting is not None and setting.value is not None,
+            "last_updated": setting.updated_at if setting else None
+        }
+
+    @staticmethod
+    def clear_sync_settings(db: Session, tenant_id: str):
+        """Remove GDrive credentials from DB"""
+        from backend.app.modules.auth.models import TenantSetting
+        db.query(TenantSetting).filter(
+            TenantSetting.tenant_id == tenant_id,
+            TenantSetting.key == "vault_gdrive_config"
+        ).delete()
+        db.commit()
+        return {"status": "success"}

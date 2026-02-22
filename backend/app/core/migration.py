@@ -276,6 +276,9 @@ def run_auto_migrations(engine: Engine):
             safe_add_column("accounts", "owner_id", "VARCHAR")
 
             # 22. Document Vault Tables
+            # NOTE: Due to DuckDB limitations with Foreign Keys during updates, 
+            # we ensure these tables do NOT have self-referencing FKs or strict FKs on document_id.
+
             connection.execute(text("""
             CREATE TABLE IF NOT EXISTS document_vault (
                 id VARCHAR PRIMARY KEY,
@@ -298,8 +301,7 @@ def run_auto_migrations(engine: Engine):
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id),
                 FOREIGN KEY(owner_id) REFERENCES users (id),
-                FOREIGN KEY(transaction_id) REFERENCES transactions (id),
-                FOREIGN KEY(parent_id) REFERENCES document_vault (id)
+                FOREIGN KEY(transaction_id) REFERENCES transactions (id)
             );
             """))
 
@@ -319,8 +321,34 @@ def run_auto_migrations(engine: Engine):
                 file_path VARCHAR NOT NULL,
                 file_size NUMERIC(15, 0) NOT NULL,
                 filename VARCHAR NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(document_id) REFERENCES document_vault (id)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """))
+
+            # 23. Tenant Settings
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS tenant_settings (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                key VARCHAR NOT NULL,
+                value VARCHAR,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+            );
+            """))
+
+            # 24. Vault Sync History
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS vault_sync_history (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                status VARCHAR NOT NULL,
+                message VARCHAR,
+                items_processed NUMERIC(10, 0) DEFAULT 0,
+                error_details VARCHAR,
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))
 

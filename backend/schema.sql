@@ -482,8 +482,7 @@ CREATE TABLE document_vault (
 	PRIMARY KEY (id), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (id), 
 	FOREIGN KEY(owner_id) REFERENCES users (id), 
-	FOREIGN KEY(transaction_id) REFERENCES transactions (id), 
-	FOREIGN KEY(parent_id) REFERENCES document_vault (id)
+	FOREIGN KEY(transaction_id) REFERENCES transactions (id)
 );
 CREATE INDEX ix_vault_tenant ON document_vault (tenant_id);
 CREATE INDEX ix_vault_transaction ON document_vault (transaction_id);
@@ -497,7 +496,32 @@ CREATE TABLE document_versions (
 	file_size NUMERIC(15, 0) NOT NULL, 
 	filename VARCHAR NOT NULL, 
 	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
-	PRIMARY KEY (id), 
-	FOREIGN KEY(document_id) REFERENCES document_vault (id)
+	PRIMARY KEY (id)
 );
 CREATE INDEX ix_vault_versions_doc ON document_versions (document_id);
+
+CREATE TABLE tenant_settings (
+	id VARCHAR NOT NULL, 
+	tenant_id VARCHAR NOT NULL, 
+	key VARCHAR NOT NULL, 
+	value VARCHAR, 
+	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+);
+CREATE INDEX ix_settings_tenant ON tenant_settings (tenant_id);
+CREATE INDEX ix_settings_key ON tenant_settings (key);
+
+CREATE TABLE vault_sync_history (
+	id VARCHAR NOT NULL, 
+	tenant_id VARCHAR NOT NULL, 
+	status VARCHAR NOT NULL, 
+	message VARCHAR, 
+	items_processed NUMERIC(10, 0) DEFAULT 0, 
+	error_details VARCHAR, 
+	started_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
+	completed_at TIMESTAMP WITHOUT TIME ZONE, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+);
+CREATE INDEX ix_vault_sync_tenant ON vault_sync_history (tenant_id);
