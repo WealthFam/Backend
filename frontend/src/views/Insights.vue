@@ -55,15 +55,15 @@
                                 @click="activeTab = 1">
                                 Recurring
                             </v-btn>
+                            <v-btn variant="flat" rounded="pill" height="40"
+                                class="text-none font-weight-black px-8 letter-spacing-1"
+                                :color="activeTab === 2 ? 'primary' : 'transparent'"
+                                :class="activeTab !== 2 ? 'text-medium-emphasis' : 'elevation-2'"
+                                @click="activeTab = 2">
+                                Family Circle
+                            </v-btn>
                         </div>
 
-                        <v-btn v-if="activeTab === 1" color="primary" @click="recurringTabRef?.openAddModal()"
-                            rounded="pill" height="40" class="text-none font-weight-black px-6 ml-2" elevation="2">
-                            <template v-slot:prepend>
-                                <Plus :size="18" stroke-width="3" />
-                            </template>
-                            Add Subscription
-                        </v-btn>
                     </v-col>
                 </v-row>
 
@@ -77,6 +77,11 @@
                     <v-window-item :value="1">
                         <RecurringTab ref="recurringTabRef" />
                     </v-window-item>
+
+                    <!-- FAMILY CIRCLE TAB -->
+                    <v-window-item :value="2">
+                        <FamilyWealthTab />
+                    </v-window-item>
                 </v-window>
             </div>
         </v-container>
@@ -84,13 +89,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import AnalyticsTab from '@/views/insights/AnalyticsTab.vue'
 import RecurringTab from '@/views/insights/RecurringTab.vue'
-import { Wallet, Plus, ChevronDown } from 'lucide-vue-next'
+import FamilyWealthTab from '@/views/insights/FamilyWealthTab.vue'
+import { Wallet, ChevronDown } from 'lucide-vue-next'
 
 const store = useFinanceStore()
 const authStore = useAuthStore()
@@ -99,14 +105,10 @@ const activeTab = ref(0)
 const selectedAccount = ref('')
 const recurringTabRef = ref<InstanceType<typeof RecurringTab> | null>(null)
 
-import { onMounted } from 'vue'
-
 onMounted(() => {
     store.fetchAll(authStore.selectedMemberId || undefined)
 })
 
-// Requirement 2: Reset account filter and re-fetch data when global member changes
-import { watch } from 'vue'
 watch(() => authStore.selectedMemberId, () => {
     selectedAccount.value = ''
     store.fetchAll(authStore.selectedMemberId || undefined)
