@@ -25,8 +25,9 @@ class DocumentVault(Base):
     file_path = Column(String, nullable=True) # Current version path (Null for folders)
     file_size = Column(Numeric(15, 0), default=0, nullable=False) # Size in bytes
     mime_type = Column(String, nullable=True)
+    thumbnail_path = Column(String, nullable=True)
     
-    transaction_id = Column(String, ForeignKey("transactions.id"), nullable=True, index=True)
+    transaction_id = Column(String, nullable=True, index=True)  # No FK — DuckDB FKs block UPDATE on parent rows
     parent_id = Column(String, nullable=True, index=True) # Manual FK for DuckDB compatibility
     is_folder = Column(Boolean, default=False, nullable=False)
     is_shared = Column(Boolean, default=True, nullable=False) # Default to family shared
@@ -57,6 +58,14 @@ class DocumentVault(Base):
         cascade="all, delete-orphan"
     )
 
+    # Added relationship to Transaction (without strict FK)
+    transaction = relationship(
+        "Transaction",
+        primaryjoin="DocumentVault.transaction_id == foreign(Transaction.id)",
+        uselist=False,
+        viewonly=True
+    )
+
 class DocumentVersion(Base):
     __tablename__ = "document_versions"
 
@@ -67,6 +76,7 @@ class DocumentVersion(Base):
     file_path = Column(String, nullable=False)
     file_size = Column(Numeric(15, 0), nullable=False)
     filename = Column(String, nullable=False)
+    thumbnail_path = Column(String, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
     
