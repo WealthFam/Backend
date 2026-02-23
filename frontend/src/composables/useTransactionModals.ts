@@ -42,6 +42,7 @@ export function useTransactionModals(
 
     // Form State
     const defaultForm: {
+        id: string
         type: string
         description: string
         category: string
@@ -56,6 +57,7 @@ export function useTransactionModals(
         loan_id: string
         expense_group_id: string
     } = {
+        id: '',
         type: 'DEBIT',
         description: '',
         category: '',
@@ -127,6 +129,7 @@ export function useTransactionModals(
         originalExclude.value = txn.exclude_from_reports || false
         const isDebit = txn.amount < 0
         form.value = {
+            id: txn.id,
             type: isDebit ? 'DEBIT' : 'CREDIT',
             description: txn.description,
             category: txn.category,

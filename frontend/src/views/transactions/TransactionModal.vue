@@ -5,7 +5,9 @@ import { useCurrency } from '@/composables/useCurrency'
 import {
     CheckCircle2, X, Pencil, Plus, Minus, Info, Tag,
     Settings, ArrowLeftRight, Search, Link, SearchX, LineChart, IndianRupee, Calendar,
-    FileText, Paperclip, ExternalLink, Trash2
+    FileText, Paperclip, ExternalLink, Trash2, Link2,
+    FileImage, FileVideo, Music, FileCode, FileArchive, Fingerprint, ShieldCheck, Receipt, Scale, Folder,
+    FileSpreadsheet, Presentation
 } from 'lucide-vue-next'
 import { VueDatePicker } from '@vuepic/vue-datepicker'
 import '@vuepic/vue-datepicker/dist/main.css'
@@ -52,6 +54,48 @@ const notification = useNotificationStore()
 const attachedDocs = ref<any[]>([])
 const loadingDocs = ref(false)
 
+// Vault picker for linking existing docs
+const vaultPickerOpen = ref(false)
+const vaultPickerSearch = ref('')
+const vaultPickerResults = ref<any[]>([])
+const vaultPickerLoading = ref(false)
+let vaultPickerTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function searchVaultDocs(q: string) {
+    vaultPickerLoading.value = true
+    try {
+        // When q is empty, list all root-level files; when typing, use backend search (spans all folders)
+        const params = q.trim()
+            ? { search: q.trim(), limit: 20 }
+            : { limit: 20 }
+        const res = await financeApi.getDocuments(params)
+        const all: any[] = Array.isArray(res.data) ? res.data : (res.data?.items || [])
+        vaultPickerResults.value = all.filter(d => !d.is_folder)
+    } catch { vaultPickerResults.value = [] }
+    finally { vaultPickerLoading.value = false }
+}
+
+function onVaultPickerInput() {
+    if (vaultPickerTimeout) clearTimeout(vaultPickerTimeout)
+    vaultPickerTimeout = setTimeout(() => searchVaultDocs(vaultPickerSearch.value), 300)
+}
+
+async function linkVaultDoc(doc: any) {
+    if (!localForm.id) return
+    try {
+        await financeApi.linkDocToTransaction(doc.id, localForm.id)
+        notification.success(`"${doc.filename}" linked to this transaction`)
+        vaultPickerOpen.value = false
+        vaultPickerSearch.value = ''
+        fetchAttachedDocs()
+    } catch { notification.error('Failed to link document') }
+}
+
+function openVaultPicker() {
+    vaultPickerOpen.value = true
+    vaultPickerSearch.value = ''
+    searchVaultDocs('')
+}
 
 async function fetchAttachedDocs() {
     if (!props.isEditing || !localForm.id) {
@@ -101,9 +145,22 @@ async function detachDoc(docId: string) {
     }
 }
 
-function openDoc(docId: string) {
-    const url = financeApi.getDocumentDownloadUrl(docId)
-    window.open(url, '_blank')
+async function openDoc(docId: string) {
+    try {
+        const doc = attachedDocs.value.find(d => d.id === docId)
+        const res = await financeApi.getDocumentBlob(docId)
+        const blob = new Blob([res.data], { type: res.headers['content-type'] || doc?.mime_type || 'application/octet-stream' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = doc?.filename || 'document'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    } catch (e) {
+        notification.error('Failed to open document')
+    }
 }
 
 const categoryOptions = computed(() => {
@@ -179,6 +236,56 @@ function handleSubmit() {
 
 function handleClose() {
     emit('close')
+}
+
+function getIcon(item: any) {
+    if (!item) return FileText
+    if (item.is_folder) return Folder
+
+    const filename = (item.filename || '').toLowerCase()
+    const mt = (item.mime_type || '').toLowerCase()
+
+    if (item.file_type === 'INVOICE') return Receipt
+    if (item.file_type === 'POLICY') return ShieldCheck
+    if (item.file_type === 'TAX') return Scale
+    if (item.file_type === 'IDENTITY') return Fingerprint
+
+    if (filename.endsWith('.pdf') || mt === 'application/pdf') return FileText
+    if (filename.endsWith('.xls') || filename.endsWith('.xlsx') || filename.endsWith('.csv') ||
+        mt.includes('spreadsheet') || mt.includes('excel') || mt.includes('csv') || mt.includes('sheet')) return FileSpreadsheet
+    if (filename.endsWith('.ppt') || filename.endsWith('.pptx') ||
+        mt.includes('presentation') || mt.includes('powerpoint')) return Presentation
+    if (filename.endsWith('.doc') || filename.endsWith('.docx') || mt.includes('word') || mt.includes('msword')) return FileText
+
+    if (mt.startsWith('image/')) return FileImage
+    if (mt.startsWith('video/')) return FileVideo
+    if (mt.startsWith('audio/')) return Music
+    if (mt.includes('javascript') || mt.includes('json') || mt.includes('html') || mt.includes('css')) return FileCode
+    if (mt.includes('zip') || mt.includes('rar') || mt.includes('tar') || mt.includes('7z') || mt.includes('archive')) return FileArchive
+    return FileText
+}
+
+function getIconColor(item: any) {
+    if (!item) return 'text-grey'
+    if (item.is_folder) return 'text-primary'
+
+    const filename = (item.filename || '').toLowerCase()
+    const mt = (item.mime_type || '').toLowerCase()
+
+    if (item.file_type === 'INVOICE') return 'text-orange-darken-2'
+    if (item.file_type === 'POLICY') return 'text-blue-darken-2'
+    if (item.file_type === 'TAX') return 'text-red-darken-2'
+    if (item.file_type === 'IDENTITY') return 'text-green-darken-2'
+
+    if (filename.endsWith('.pdf') || mt === 'application/pdf') return 'text-red-darken-1'
+    if (filename.endsWith('.xls') || filename.endsWith('.xlsx') || filename.endsWith('.csv') || mt.includes('sheet')) return 'text-green-darken-3'
+    if (mt.includes('presentation') || mt.includes('powerpoint')) return 'text-deep-orange-darken-2'
+
+    if (mt.startsWith('image/')) return 'text-purple-darken-1'
+    if (mt.startsWith('video/')) return 'text-deep-purple'
+    if (mt.startsWith('audio/')) return 'text-pink'
+    if (mt.includes('zip') || mt.includes('rar') || mt.includes('archive')) return 'text-amber-darken-3'
+    return 'text-grey-darken-1'
 }
 </script>
 
@@ -445,23 +552,87 @@ function handleClose() {
                                     <span
                                         class="text-overline font-weight-black text-primary letter-spacing-wide">Documents</span>
                                 </div>
-                                <v-btn v-if="isEditing" variant="text" color="primary" density="compact"
-                                    class="text-none font-weight-bold"
-                                    @click="($refs.txFileInput as HTMLInputElement).click()">
-                                    <Plus :size="14" class="mr-1" /> Add File
-                                </v-btn>
+                                <div v-if="isEditing" class="d-flex align-center gap-1">
+                                    <v-btn variant="text" color="primary" density="compact"
+                                        class="text-none font-weight-bold"
+                                        @click="($refs.txFileInput as HTMLInputElement).click()">
+                                        <Plus :size="14" class="mr-1" /> Upload New
+                                    </v-btn>
+                                    <v-btn variant="text" color="secondary" density="compact"
+                                        class="text-none font-weight-bold" @click="openVaultPicker">
+                                        <Link2 :size="14" class="mr-1" /> Link from Vault
+                                    </v-btn>
+                                </div>
                                 <input type="file" ref="txFileInput" class="d-none" @change="handleFileUpload" />
                             </div>
+
+                            <!-- Vault Picker panel -->
+                            <v-expand-transition>
+                                <div v-if="vaultPickerOpen && isEditing" class="mb-4 pa-3 rounded-xl border"
+                                    style="border-color: rgba(var(--v-theme-secondary), 0.3); background: rgba(var(--v-theme-secondary), 0.03);">
+                                    <div class="d-flex align-center justify-space-between mb-3">
+                                        <span class="text-caption font-weight-black opacity-70">PICK FROM VAULT</span>
+                                        <v-btn icon variant="text" size="x-small" @click="vaultPickerOpen = false">
+                                            <X :size="14" />
+                                        </v-btn>
+                                    </div>
+                                    <v-text-field v-model="vaultPickerSearch" @input="onVaultPickerInput"
+                                        label="Search vault documents…" variant="outlined" rounded="lg"
+                                        density="compact" prepend-inner-icon="mdi-magnify" :loading="vaultPickerLoading"
+                                        hide-details class="mb-2" clearable
+                                        @click:clear="searchVaultDocs('')"></v-text-field>
+                                    <div class="rounded-lg border overflow-hidden"
+                                        style="max-height: 200px; overflow-y: auto;" v-if="vaultPickerResults.length">
+                                        <div v-for="doc in vaultPickerResults" :key="doc.id"
+                                            class="vault-pick-item pa-3 cursor-pointer d-flex align-center ga-3"
+                                            @click="linkVaultDoc(doc)">
+                                            <div class="header-icon-box bg-surface-variant rounded pa-0 overflow-hidden d-flex align-center justify-center"
+                                                style="width: 32px; height: 32px; flex-shrink: 0;">
+                                                <v-img v-if="doc.thumbnail_path"
+                                                    :src="financeApi.getDocumentThumbnailUrl(doc.id)" cover
+                                                    class="absolute-full">
+                                                    <template v-slot:placeholder>
+                                                        <v-progress-circular indeterminate size="12"
+                                                            color="primary"></v-progress-circular>
+                                                    </template>
+                                                </v-img>
+                                                <component v-else :is="getIcon(doc)" :size="16"
+                                                    :class="getIconColor(doc)" />
+                                            </div>
+                                            <div class="flex-grow-1 min-w-0">
+                                                <div class="text-caption font-weight-bold text-truncate">{{ doc.filename
+                                                    }}</div>
+                                                <div class="text-tiny opacity-50">{{ doc.file_type }} - {{
+                                                    doc.transaction_id ? '(linked)' :
+                                                        'Free' }}</div>
+
+                                            </div>
+                                            <v-chip size="x-small" color="primary" variant="tonal">LINK</v-chip>
+                                        </div>
+                                    </div>
+                                    <div v-else-if="!vaultPickerLoading"
+                                        class="text-caption opacity-40 text-center py-3">
+                                        No documents found
+                                    </div>
+                                </div>
+                            </v-expand-transition>
 
                             <v-card variant="flat" border class="pa-1 bg-surface border-opacity-10"
                                 style="border-radius: 20px !important;">
                                 <v-list v-if="attachedDocs.length > 0" density="compact" class="bg-transparent">
                                     <v-list-item v-for="doc in attachedDocs" :key="doc.id" rounded="lg" class="mb-1">
                                         <template v-slot:prepend>
-                                            <FileText :size="16" class="mr-3 text-slate-400" />
+                                            <div class="bg-surface-variant rounded mr-3 pa-0 overflow-hidden d-flex align-center justify-center"
+                                                style="width: 24px; height: 24px;">
+                                                <v-img v-if="doc.thumbnail_path"
+                                                    :src="financeApi.getDocumentThumbnailUrl(doc.id)" cover
+                                                    class="absolute-full" />
+                                                <component v-else :is="getIcon(doc)" :size="14"
+                                                    :class="getIconColor(doc)" />
+                                            </div>
                                         </template>
                                         <v-list-item-title class="text-caption font-weight-bold">{{ doc.filename
-                                        }}</v-list-item-title>
+                                            }}</v-list-item-title>
                                         <template v-slot:append>
                                             <div class="d-flex gap-1">
                                                 <v-btn icon variant="text" density="compact" @click="openDoc(doc.id)">

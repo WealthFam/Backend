@@ -125,8 +125,17 @@
                     <v-col v-for="item in filteredItems" :key="item.id" cols="12" sm="6" md="4" lg="3">
                         <v-card class="vault-card glass-card h-100" elevation="0"
                             @click="item.is_folder ? navigateTo(item.id, item.filename) : openPreview(item)">
-                            <div class="card-preview d-flex align-center justify-center">
-                                <div :class="['icon-wrap', getIconColor(item)]">
+                            <div class="card-preview d-flex align-center justify-center relative-pos overflow-hidden">
+                                <v-img v-if="item.thumbnail_path" :src="financeApi.getDocumentThumbnailUrl(item.id)"
+                                    cover class="absolute-full thumbnail-zoom" alt="thumbnail">
+                                    <template v-slot:placeholder>
+                                        <div class="d-flex align-center justify-center fill-height bg-primary-soft">
+                                            <v-progress-circular indeterminate size="20"
+                                                color="primary"></v-progress-circular>
+                                        </div>
+                                    </template>
+                                </v-img>
+                                <div v-else :class="['icon-wrap', getIconColor(item)]">
                                     <component :is="getIcon(item)" :size="32" />
                                 </div>
                             </div>
@@ -151,6 +160,13 @@
                                                 </template>
                                                 <v-list-item-title class="font-weight-bold">Download</v-list-item-title>
                                             </v-list-item>
+                                            <v-list-item v-if="!item.is_folder" @click="openPreview(item, true)">
+                                                <template v-slot:prepend>
+                                                    <Link2 :size="14" class="mr-2" />
+                                                </template>
+                                                <v-list-item-title class="font-weight-bold">Link
+                                                    Transaction</v-list-item-title>
+                                            </v-list-item>
                                             <v-list-item @click="deleteItem(item)" class="text-error">
                                                 <template v-slot:prepend>
                                                     <Trash2 :size="14" class="mr-2" />
@@ -174,10 +190,21 @@
                                             class="text-tiny opacity-30 font-weight-bold uppercase">Folder</span>
                                     </div>
                                 </div>
-                                <div v-if="item.transaction_id"
-                                    class="d-flex align-center text-caption text-primary font-weight-bold mt-2 ga-1">
-                                    <Link :size="12" />
-                                    <span>Linked to transaction</span>
+                                <!-- Linked Transaction Info -->
+                                <div v-if="item.transaction" @click.stop="openPreview(item, false)"
+                                    class="mt-3 pa-2 rounded-lg border-primary-thin bg-primary-soft-bg d-flex align-center justify-space-between ga-2 cursor-pointer hover-bg-primary-soft min-w-0">
+                                    <div
+                                        class="text-tiny font-weight-bold text-truncate opacity-80 flex-grow-1 min-w-0">
+                                        {{ item.transaction.description }}
+                                    </div>
+                                    <span class="text-tiny font-weight-black flex-shrink-0"
+                                        :class="item.transaction.amount < 0 ? 'text-error' : 'text-success'">
+                                        {{ item.transaction.amount < 0 ? '-' : '+' }}₹{{
+                                            Math.abs(item.transaction.amount).toLocaleString() }} </span>
+                                </div>
+                                <div v-else-if="item.transaction_id"
+                                    class="mt-2 text-tiny text-primary font-weight-bold">
+                                    Linked
                                 </div>
                             </v-card-text>
                         </v-card>
@@ -248,7 +275,8 @@
 
         </v-container>
 
-        <FilePreviewModal v-model="showPreviewModal" :item="selectedDoc" @refresh="fetchItems" />
+        <FilePreviewModal v-model="showPreviewModal" :item="selectedDoc" :initialEditMode="isPreviewEdit"
+            @refresh="fetchItems" />
     </MainLayout>
 </template>
 
@@ -257,12 +285,7 @@ import { ref, computed, onMounted } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import {
-    ShieldCheck, Download, Trash2, Search, UploadCloud, Home,
-    FileText, Folder, ChevronRight, Receipt, Scale, Link,
-    FolderPlus, Upload, X,
-    Clock, MoreVertical
-} from 'lucide-vue-next'
+import { X, Download, Clock, Upload, FileText, Link2, FileImage, FileVideo, Music, FileCode, FileArchive, Fingerprint, ShieldCheck, Folder, Receipt, Scale, FileSpreadsheet, Presentation, FolderPlus, MoreVertical, UploadCloud, Home, ChevronRight, Search, Trash2 } from 'lucide-vue-next'
 
 
 const notification = useNotificationStore()
@@ -290,8 +313,7 @@ const fileInput = ref<HTMLInputElement | null>(null)
 
 const showPreviewModal = ref(false)
 const selectedDoc = ref<any>(null)
-
-
+const isPreviewEdit = ref(false)
 
 
 
@@ -309,6 +331,12 @@ async function fetchItems() {
     try {
         const res = await financeApi.getDocuments({ parent_id: currentFolderId.value || 'ROOT' })
         items.value = res.data
+
+        // Sync selectedDoc if modal is open to ensure details tab stays fresh
+        if (showPreviewModal.value && selectedDoc.value) {
+            const fresh = items.value.find(i => i.id === selectedDoc.value.id)
+            if (fresh) selectedDoc.value = fresh
+        }
     } catch (error) {
         notification.error('Failed to load vault items')
     } finally {
@@ -337,8 +365,9 @@ function navigateTo(id: string | null, name?: string) {
     fetchItems()
 }
 
-function openPreview(item: any) {
+function openPreview(item: any, isEdit = false) {
     selectedDoc.value = item
+    isPreviewEdit.value = isEdit
     showPreviewModal.value = true
 }
 
@@ -439,25 +468,59 @@ const filteredItems = computed(() => {
 })
 
 function getIcon(item: any) {
+    if (!item) return FileText
     if (item.is_folder) return Folder
-    switch (item.file_type) {
-        case 'INVOICE': return Receipt
-        case 'POLICY': return ShieldCheck
-        case 'TAX': return Scale
-        case 'IDENTITY': return ShieldCheck
-        default: return FileText
-    }
+    const filename = (item.filename || '').toLowerCase()
+    const mt = (item.mime_type || '').toLowerCase()
+
+    // 1. By Category (Highest Priority)
+    if (item.file_type === 'INVOICE') return Receipt
+    if (item.file_type === 'POLICY') return ShieldCheck
+    if (item.file_type === 'TAX') return Scale
+    if (item.file_type === 'IDENTITY') return Fingerprint
+
+    // 2. By Extension / Specific Type
+    if (filename.endsWith('.pdf') || mt === 'application/pdf') return FileText
+    if (filename.endsWith('.xls') || filename.endsWith('.xlsx') || filename.endsWith('.csv') ||
+        mt.includes('spreadsheet') || mt.includes('excel') || mt.includes('csv') || mt.includes('sheet')) return FileSpreadsheet
+    if (filename.endsWith('.ppt') || filename.endsWith('.pptx') ||
+        mt.includes('presentation') || mt.includes('powerpoint')) return Presentation
+    if (filename.endsWith('.doc') || filename.endsWith('.docx') || mt.includes('word') || mt.includes('msword')) return FileText
+
+    // 3. By General Mime Type
+    if (mt.startsWith('image/')) return FileImage
+    if (mt.startsWith('video/')) return FileVideo
+    if (mt.startsWith('audio/')) return Music
+    if (mt.includes('javascript') || mt.includes('json') || mt.includes('html') || mt.includes('css')) return FileCode
+    if (mt.includes('zip') || mt.includes('rar') || mt.includes('tar') || mt.includes('gz') || mt.includes('7z') || mt.includes('archive')) return FileArchive
+
+    return FileText
 }
 
 function getIconColor(item: any) {
+    if (!item) return 'text-grey'
     if (item.is_folder) return 'text-primary'
-    switch (item.file_type) {
-        case 'INVOICE': return 'text-orange-darken-2'
-        case 'POLICY': return 'text-blue-darken-2'
-        case 'TAX': return 'text-red-darken-2'
-        case 'IDENTITY': return 'text-green-darken-2'
-        default: return 'text-grey-darken-1'
-    }
+    const filename = (item.filename || '').toLowerCase()
+    const mt = (item.mime_type || '').toLowerCase()
+
+    // 1. By Category
+    if (item.file_type === 'INVOICE') return 'text-orange-darken-2'
+    if (item.file_type === 'POLICY') return 'text-blue-darken-2'
+    if (item.file_type === 'TAX') return 'text-red-darken-2'
+    if (item.file_type === 'IDENTITY') return 'text-green-darken-2'
+
+    // 2. By Specific File Type
+    if (filename.endsWith('.pdf') || mt === 'application/pdf') return 'text-red-darken-1'
+    if (filename.endsWith('.xls') || filename.endsWith('.xlsx') || filename.endsWith('.csv') || mt.includes('sheet')) return 'text-green-darken-3'
+    if (mt.includes('presentation') || mt.includes('powerpoint')) return 'text-deep-orange-darken-2'
+
+    // 3. By General Mime Type
+    if (mt.startsWith('image/')) return 'text-purple-darken-1'
+    if (mt.startsWith('video/')) return 'text-deep-purple'
+    if (mt.startsWith('audio/')) return 'text-pink'
+    if (mt.includes('zip') || mt.includes('rar') || mt.includes('archive')) return 'text-amber-darken-3'
+
+    return 'text-grey-darken-1'
 }
 
 function formatSize(bytes: number) {
@@ -564,6 +627,22 @@ onMounted(() => {
 .card-preview {
     height: 100px;
     background: rgba(var(--v-theme-on-surface), 0.02);
+}
+
+.thumbnail-zoom {
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vault-card:hover .thumbnail-zoom {
+    transform: scale(1.08);
+}
+
+.absolute-full {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
 }
 
 .icon-wrap {
