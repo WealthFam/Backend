@@ -2,9 +2,12 @@ import os
 import shutil
 import uuid
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
+import logging
 from . import models
+
+logger = logging.getLogger(__name__)
 
 STORAGE_BASE_PATH = "data/vault"
 
@@ -16,6 +19,61 @@ class VaultService:
         if not os.path.exists(path):
             os.makedirs(path, exist_ok=True)
         return os.path.join(path, f"v{version}")
+
+    @staticmethod
+    def _generate_thumbnail(file_path: str, content_type: str) -> Optional[str]:
+        """Generate a 256x256 thumbnail for images and PDFs"""
+        try:
+            import mimetypes
+            
+            # 0. Robust Content Type detection
+            if not content_type or content_type == "application/octet-stream":
+                guessed, _ = mimetypes.guess_type(file_path)
+                if guessed:
+                    content_type = guessed
+            
+            logger.info(f"Generating thumbnail for {file_path} (Type: {content_type})")
+            thumb_path = f"{file_path}_thumb.jpg"
+            
+            # 1. Handle Images
+            if content_type and content_type.startswith("image/"):
+                from PIL import Image
+                with Image.open(file_path) as img:
+                    img.thumbnail((256, 256))
+                    if img.mode in ("RGBA", "P"):
+                        background = Image.new("RGB", img.size, (255, 255, 255))
+                        try:
+                            # Try to use transparency mask
+                            background.paste(img, mask=img.split()[3] if img.mode == "RGBA" else None)
+                        except:
+                            background.paste(img)
+                        img = background
+                    elif img.mode != "RGB":
+                        img = img.convert("RGB")
+                    img.save(thumb_path, "JPEG", quality=85)
+                logger.info(f"  Image thumbnail created: {thumb_path}")
+                return thumb_path
+                
+            # 2. Handle PDFs
+            elif content_type and (content_type == "application/pdf" or "pdf" in content_type):
+                try:
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(file_path)
+                    if doc.page_count > 0:
+                        page = doc.load_page(0)  # first page
+                        pix = page.get_pixmap(matrix=fitz.Matrix(256/page.rect.width, 256/page.rect.width))
+                        pix.save(thumb_path)
+                        doc.close()
+                        logger.info(f"  PDF thumbnail created: {thumb_path}")
+                        return thumb_path
+                except Exception as pdf_err:
+                    logger.error(f"  PDF thumbnail generation failed: {pdf_err}")
+            
+            logger.info(f"  No thumbnail generator for type: {content_type}")
+            return None
+        except Exception as e:
+            logger.error(f"  Thumbnail generation error for {file_path}: {e}")
+            return None
 
     @staticmethod
     def upload_document(
@@ -55,6 +113,7 @@ class VaultService:
             raise Exception(f"Failed to save file to storage: {str(e)}")
 
         file_size = os.path.getsize(file_path)
+        thumbnail_path = VaultService._generate_thumbnail(file_path, file.content_type)
 
         # 3. Create database record
         try:
@@ -67,6 +126,7 @@ class VaultService:
                 file_path=file_path,
                 file_size=file_size,
                 mime_type=file.content_type,
+                thumbnail_path=thumbnail_path,
                 transaction_id=transaction_id,
                 parent_id=parent_id,
                 is_folder=False,
@@ -82,7 +142,8 @@ class VaultService:
                 version_number=1,
                 file_path=file_path,
                 file_size=file_size,
-                filename=file.filename
+                filename=file.filename,
+                thumbnail_path=thumbnail_path
             )
             db.add(first_version)
             
@@ -116,6 +177,7 @@ class VaultService:
                 shutil.copyfileobj(file.file, buffer)
             
             file_size = os.path.getsize(file_path)
+            thumbnail_path = VaultService._generate_thumbnail(file_path, file.content_type)
             
             # Update Document record
             doc.file_path = file_path
@@ -123,6 +185,7 @@ class VaultService:
             doc.current_version = new_version_num
             doc.filename = file.filename # Update filename to latest if changed
             doc.mime_type = file.content_type
+            doc.thumbnail_path = thumbnail_path
             
             # Create Version record
             new_ver = models.DocumentVersion(
@@ -130,7 +193,8 @@ class VaultService:
                 version_number=new_version_num,
                 file_path=file_path,
                 file_size=file_size,
-                filename=file.filename
+                filename=file.filename,
+                thumbnail_path=thumbnail_path
             )
             db.add(new_ver)
             
@@ -179,18 +243,28 @@ class VaultService:
         transaction_id: Optional[str] = None,
         parent_id: Optional[str] = "ROOT",
         file_type: Optional[models.DocumentType] = None,
+        search: Optional[str] = None,
         skip: int = 0,
         limit: int = 50
     ) -> List[models.DocumentVault]:
         """List documents with tenant and owner isolation"""
-        query = db.query(models.DocumentVault).filter(
+        query = db.query(models.DocumentVault).options(
+            joinedload(models.DocumentVault.transaction)
+        ).filter(
             models.DocumentVault.tenant_id == tenant_id
         )
-        
-        if parent_id == "ROOT":
-            query = query.filter(models.DocumentVault.parent_id == None)
-        elif parent_id:
-            query = query.filter(models.DocumentVault.parent_id == parent_id)
+
+        # When searching by text, ignore folder hierarchy
+        if search:
+            query = query.filter(
+                models.DocumentVault.is_folder == False,
+                models.DocumentVault.filename.ilike(f"%{search}%")
+            )
+        else:
+            if parent_id == "ROOT":
+                query = query.filter(models.DocumentVault.parent_id == None)
+            elif parent_id:
+                query = query.filter(models.DocumentVault.parent_id == parent_id)
 
         if transaction_id:
             query = query.filter(models.DocumentVault.transaction_id == transaction_id)

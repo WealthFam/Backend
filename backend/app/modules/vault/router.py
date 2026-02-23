@@ -1,3 +1,4 @@
+import os
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
@@ -137,6 +138,7 @@ async def update_document(
     file_type: Optional[models.DocumentType] = Form(None),
     is_shared: Optional[bool] = Form(None),
     filename: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -151,10 +153,32 @@ async def update_document(
         doc.is_shared = is_shared
     if filename is not None:
         doc.filename = filename
+    if description is not None:
+        doc.description = description
         
     db.commit()
     db.refresh(doc)
     return doc
+
+
+@router.patch("/{document_id}/link-transaction")
+def link_document_to_transaction(
+    document_id: str,
+    data: dict,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Link or unlink a vault document to a transaction. Pass transaction_id=null to unlink."""
+    doc = VaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    transaction_id = data.get("transaction_id")  # Can be None to unlink
+    doc.transaction_id = transaction_id
+    db.commit()
+    db.refresh(doc)
+    return doc
+
 
 @router.get("/{document_id}/versions")
 def list_document_versions(
@@ -197,6 +221,7 @@ def list_documents(
     transaction_id: Optional[str] = None,
     parent_id: Optional[str] = "ROOT",
     file_type: Optional[models.DocumentType] = None,
+    search: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
     current_user: auth_models.User = Depends(get_current_user),
@@ -210,6 +235,7 @@ def list_documents(
         transaction_id=transaction_id,
         parent_id=parent_id,
         file_type=file_type,
+        search=search,
         skip=skip,
         limit=limit
     )
@@ -281,6 +307,40 @@ def view_document(
         path=file_path,
         media_type=doc.mime_type,
         content_disposition_type="inline"
+    )
+
+@router.get("/{document_id}/thumbnail")
+def get_thumbnail(
+    document_id: str,
+    version: Optional[int] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Serve a document thumbnail for the vault grid"""
+    doc = VaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not doc.is_shared and doc.owner_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    thumb_path = doc.thumbnail_path
+    
+    # If a specific version is requested
+    if version and version != doc.current_version:
+        ver_record = db.query(models.DocumentVersion).filter(
+            models.DocumentVersion.document_id == document_id,
+            models.DocumentVersion.version_number == version
+        ).first()
+        if ver_record:
+            thumb_path = ver_record.thumbnail_path
+
+    if not thumb_path or not os.path.exists(thumb_path):
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+    return FileResponse(
+        path=thumb_path,
+        media_type="image/jpeg"
     )
 
 @router.get("/{document_id}")
