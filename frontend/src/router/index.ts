@@ -33,9 +33,21 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/vault',
+      name: 'vault',
+      component: () => import('@/views/Vault.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/mutual-funds',
       name: 'mutual-funds',
       component: () => import('@/views/MutualFunds.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/mutual-funds/explore/:id',
+      name: 'explore-fund',
+      component: () => import('@/views/ExploreFund.vue'),
       meta: { requiresAuth: true }
     },
     {
@@ -78,6 +90,12 @@ const router = createRouter({
       path: '/investment-goals',
       name: 'investment-goals',
       component: () => import('@/views/InvestmentGoals.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/merchants/:id',
+      name: 'merchant-details',
+      component: () => import('@/views/MerchantDetails.vue'),
       meta: { requiresAuth: true }
     },
     {

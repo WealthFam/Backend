@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, reactive } from 'vue'
-import VendorAliasModal from '@/components/VendorAliasModal.vue'
+import MerchantAliasModal from '@/components/MerchantAliasModal.vue'
+import TransactionTrainingModal from './TransactionTrainingModal.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import {
     Inbox,
@@ -46,6 +47,10 @@ const props = defineProps<{
     createIgnoreRule: boolean
     triageIdToDiscard: string | null
     trainingIdToDiscard: string | null
+    // Training Modal Props
+    showLabelForm: boolean
+    selectedMessage: any
+    labelForm: any
 }>()
 
 // Emits
@@ -73,6 +78,8 @@ const emit = defineEmits<{
     'confirmTrainingDiscard': []
     'confirmBulkDiscard': []
     'confirmBulkTrainingDiscard': []
+    'update:showLabelForm': [value: boolean]
+    'handleLabelSubmit': []
 }>()
 
 // Local State
@@ -526,7 +533,7 @@ const { formatAmount } = useCurrency()
                                         </template>
                                     </v-tooltip>
 
-                                    <v-tooltip text="Map this vendor to an alias for better categorization"
+                                    <v-tooltip text="Map this merchant to an alias for better categorization"
                                         location="top" open-delay="400">
                                         <template v-slot:activator="{ props }">
                                             <v-btn v-bind="props" variant="tonal" size="small" color="primary"
@@ -876,8 +883,8 @@ const { formatAmount } = useCurrency()
         </v-dialog>
 
         <!-- Add Alias Modal -->
-        <VendorAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern" :initial-alias="aliasForm.alias"
-            @saved="emit('refreshTriage')" />
+        <MerchantAliasModal v-model="showAliasModal" :initial-pattern="aliasForm.pattern"
+            :initial-alias="aliasForm.alias" @saved="emit('refreshTriage')" />
 
         <!-- Discard Confirmation Dialog (Triage) -->
         <v-dialog :model-value="showDiscardConfirm" @update:model-value="emit('update:showDiscardConfirm', $event)"
@@ -958,36 +965,31 @@ const { formatAmount } = useCurrency()
                 </v-card-text>
             </v-card>
         </v-dialog>
+
+        <!-- Training Modal -->
+        <TransactionTrainingModal :model-value="showLabelForm"
+            @update:model-value="emit('update:showLabelForm', $event)" :selected-message="selectedMessage"
+            :label-form="labelForm" :categories="categories" @submit="emit('handleLabelSubmit')" />
     </div>
 </template>
 
 <style scoped>
-/* VIBRANT GLASSMORPHISM DESIGN SYSTEM */
 .premium-glass-card {
     background: rgba(var(--v-theme-surface), 0.7) !important;
     backdrop-filter: blur(10px) !important;
-    -webkit-backdrop-filter: blur(10px) !important;
     border: 1px solid rgba(var(--v-border-color), 0.1) !important;
     border-radius: 20px !important;
     box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07) !important;
     transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
     position: relative;
     overflow: hidden;
-    min-height: 32px;
     display: flex;
-    flex-direction: column
+    flex-direction: column;
 }
 
-.premium-glass-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%);
-    pointer-events: none;
-    z-index: 1;
+.premium-glass-card:hover {
+    border-color: rgba(var(--v-theme-primary), 0.3) !important;
+    transform: translateY(-4px);
 }
 
 .premium-glass-card.is-selected {
@@ -995,12 +997,6 @@ const { formatAmount } = useCurrency()
     background: rgba(var(--v-theme-primary), 0.05) !important;
 }
 
-/* Global .premium-glass-card hover is now subtler */
-.premium-glass-card:hover {
-    border-color: rgba(var(--v-theme-primary), 0.3) !important;
-}
-
-/* Dynamic Accent Glow */
 .card-glow-accent {
     position: absolute;
     top: 0;
@@ -1027,19 +1023,10 @@ const { formatAmount } = useCurrency()
     box-shadow: 0 0 15px rgba(var(--v-theme-warning), 0.4) !important;
 }
 
-
 .modern-header-title {
     color: rgba(var(--v-theme-on-surface), 0.9);
     letter-spacing: -0.3px;
     line-height: 1.2;
-    text-align: left !important;
-}
-
-.modern-amount-display {
-    font-family: 'Inter', sans-serif;
-    letter-spacing: -1.5px;
-    font-size: 1.8rem !important;
-    font-weight: 900 !important;
 }
 
 .amount-hero-section {
@@ -1050,8 +1037,10 @@ const { formatAmount } = useCurrency()
 
 .amount-hero-text {
     font-size: 2.2rem !important;
+    font-weight: 900 !important;
     line-height: 1;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05));
+    font-family: 'Inter', sans-serif;
+    letter-spacing: -1.5px;
 }
 
 .modern-message-container {
@@ -1068,7 +1057,6 @@ const { formatAmount } = useCurrency()
 }
 
 .message-content {
-    font-family: 'Inter', sans-serif;
     line-height: 1.5;
     color: rgba(var(--v-theme-on-surface), 0.7);
     font-style: italic;
@@ -1079,12 +1067,11 @@ const { formatAmount } = useCurrency()
 }
 
 .training-content {
-    font-family: 'Fira Code', 'Courier New', monospace !important;
+    font-family: 'Fira Code', monospace !important;
     font-style: normal !important;
     -webkit-line-clamp: 5 !important;
 }
 
-/* Tactile Toggles */
 .tactile-toggle-group {
     background: rgba(var(--v-theme-on-surface), 0.04);
     padding: 3px;
@@ -1098,11 +1085,6 @@ const { formatAmount } = useCurrency()
     font-weight: 800 !important;
     letter-spacing: 0.5px;
     border: none !important;
-    transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-}
-
-.tactile-toggle-group :deep(.v-btn--active) {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
 }
 
 .modern-card-footer {
@@ -1118,34 +1100,37 @@ const { formatAmount } = useCurrency()
     color: rgb(var(--v-theme-primary)) !important;
 }
 
-/* Pagination Styling */
 .modern-pagination :deep(.v-pagination__item) {
     border-radius: 12px !important;
     font-weight: 800;
-    background: rgba(var(--v-theme-surface), 0.5) !important;
 }
 
-.rows-per-page-select :deep(.v-field__input) {
-    font-weight: 800;
-    font-family: 'Inter';
+.animate-in {
+    animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.gap-2 {
+    gap: 8px;
 }
 
 .gap-3 {
     gap: 12px;
 }
 
-.filter-field-premium :deep(.v-field),
-.search-input-premium :deep(.v-field),
-.rows-per-page-select :deep(.v-field) {
-    background: rgba(var(--v-theme-surface), 0.5) !important;
-    border: 1px solid rgba(var(--v-border-color), 0.1) !important;
-    box-shadow: none !important;
-    font-weight: 600;
-}
-
-:deep(.v-field--variant-solo),
-:deep(.v-field--variant-solo-filled) {
-    box-shadow: none !important;
+.gap-4 {
+    gap: 16px;
 }
 
 .border-thin {
@@ -1154,5 +1139,13 @@ const { formatAmount } = useCurrency()
 
 .tracking-wider {
     letter-spacing: 1px;
+}
+
+.tracking-widest {
+    letter-spacing: 2px;
+}
+
+.no-hover:hover {
+    transform: none !important;
 }
 </style>

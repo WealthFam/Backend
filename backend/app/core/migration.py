@@ -27,7 +27,7 @@ def run_auto_migrations(engine: Engine):
                     # If it failed because it already exists, we are fine. 
                     # If it failed for another reason, we might want to know, but 
                     # we don't want to abort the whole migration if possible.
-
+                
             # 1. Add columns to existing tables since CREATE TABLE IF NOT EXISTS won't add them
             safe_add_column("pending_transactions", "latitude", "DECIMAL(10, 8)")
             safe_add_column("pending_transactions", "longitude", "DECIMAL(11, 8)")
@@ -275,6 +275,141 @@ def run_auto_migrations(engine: Engine):
             # 21. Account owner field
             safe_add_column("accounts", "owner_id", "VARCHAR")
 
+            # 22. Document Vault Tables
+            # NOTE: Due to DuckDB limitations with Foreign Keys during updates, 
+            # we ensure these tables do NOT have self-referencing FKs or strict FKs on document_id.
+
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS document_vault (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                owner_id VARCHAR,
+                filename VARCHAR NOT NULL,
+                file_type VARCHAR NOT NULL DEFAULT 'OTHER',
+                file_path VARCHAR,
+                file_size NUMERIC(15, 0) DEFAULT 0,
+                mime_type VARCHAR,
+                transaction_id VARCHAR,
+                parent_id VARCHAR,
+                is_folder BOOLEAN DEFAULT FALSE,
+                is_shared BOOLEAN DEFAULT TRUE,
+                description VARCHAR,
+                gdrive_file_id VARCHAR,
+                last_synced_at TIMESTAMP,
+                current_version NUMERIC(5, 0) DEFAULT 1,
+                thumbnail_path VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+                FOREIGN KEY(owner_id) REFERENCES users (id)
+                -- NOTE: No FK on transaction_id — DuckDB blocks UPDATE on parent rows when FK exists
+            );
+            """))
+
+            safe_add_column("document_vault", "parent_id", "VARCHAR")
+            safe_add_column("document_vault", "is_folder", "BOOLEAN DEFAULT FALSE")
+            safe_add_column("document_vault", "is_shared", "BOOLEAN DEFAULT TRUE")
+            safe_add_column("document_vault", "gdrive_file_id", "VARCHAR")
+            safe_add_column("document_vault", "last_synced_at", "TIMESTAMP")
+            safe_add_column("document_vault", "current_version", "NUMERIC(5, 0) DEFAULT 1")
+            safe_add_column("document_vault", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            safe_add_column("document_vault", "thumbnail_path", "VARCHAR")
+
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS document_versions (
+                id VARCHAR PRIMARY KEY,
+                document_id VARCHAR NOT NULL,
+                version_number NUMERIC(5, 0) NOT NULL,
+                file_path VARCHAR NOT NULL,
+                file_size NUMERIC(15, 0) NOT NULL,
+                filename VARCHAR NOT NULL,
+                thumbnail_path VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """))
+
+            safe_add_column("document_versions", "thumbnail_path", "VARCHAR")
+
+            # 22b. Drop FK constraint on document_vault.transaction_id if it exists
+            # DuckDB's FK implementation blocks UPDATE on any referenced parent row,
+            # not just deletes — so normal transaction date edits crash when a doc is linked.
+            # We rebuild the table without the FK if it has one. Data is preserved.
+            try:
+                # Check if the FK exists by attempting a safe probe
+                connection.execute(text("""
+                    CREATE TABLE IF NOT EXISTS _dv_migration_check AS SELECT 1 WHERE FALSE
+                """))
+                connection.execute(text("DROP TABLE IF EXISTS _dv_migration_check"))
+
+                # Recreate document_vault without the transaction_id FK
+                # Only runs when transitioning from old schema that had the FK
+                connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS document_vault_new (
+                    id VARCHAR PRIMARY KEY,
+                    tenant_id VARCHAR NOT NULL,
+                    owner_id VARCHAR,
+                    filename VARCHAR NOT NULL,
+                    file_type VARCHAR NOT NULL DEFAULT 'OTHER',
+                    file_path VARCHAR,
+                    file_size NUMERIC(15, 0) DEFAULT 0,
+                    mime_type VARCHAR,
+                    transaction_id VARCHAR,
+                    parent_id VARCHAR,
+                    is_folder BOOLEAN DEFAULT FALSE,
+                    is_shared BOOLEAN DEFAULT TRUE,
+                    description VARCHAR,
+                    gdrive_file_id VARCHAR,
+                    last_synced_at TIMESTAMP,
+                    current_version NUMERIC(5, 0) DEFAULT 1,
+                    thumbnail_path VARCHAR,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+                    FOREIGN KEY(owner_id) REFERENCES users (id)
+                );
+                """))
+
+                connection.execute(text("""
+                INSERT INTO document_vault_new
+                SELECT id, tenant_id, owner_id, filename, file_type, file_path, file_size,
+                       mime_type, transaction_id, parent_id, is_folder, is_shared, description,
+                       gdrive_file_id, last_synced_at, current_version, thumbnail_path, created_at, updated_at
+                FROM document_vault
+                ON CONFLICT (id) DO NOTHING;
+                """))
+
+                connection.execute(text("DROP TABLE document_vault"))
+                connection.execute(text("ALTER TABLE document_vault_new RENAME TO document_vault"))
+                logger.info("document_vault FK migration complete — transaction_id FK removed.")
+            except Exception as fk_err:
+                logger.info(f"document_vault FK migration skipped (likely already clean): {fk_err}")
+
+            # 23. Tenant Settings
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS tenant_settings (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                key VARCHAR NOT NULL,
+                value VARCHAR,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+            );
+            """))
+
+            # 24. Vault Sync History
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS vault_sync_history (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                status VARCHAR NOT NULL,
+                message VARCHAR,
+                items_processed NUMERIC(10, 0) DEFAULT 0,
+                error_details VARCHAR,
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+            );
+            """))
 
             # Explicitly commit the transaction!
             connection.commit()

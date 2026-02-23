@@ -164,7 +164,10 @@ class RuleSuggestion(BaseModel):
     category: str
     keywords: List[str]
     only_uncategorized: bool = True
-    confidence: int
+    count: int = 1
+    confidence: float = 0.5
+    confidence_level: str = "Medium" # Low, Medium, High
+    reason: Optional[str] = None
 
 class IgnoredSuggestionCreate(BaseModel):
     pattern: str
@@ -338,6 +341,16 @@ class RecurringTransactionRead(RecurringTransactionBase):
     
     class Config:
         from_attributes = True
+
+class RecurringSuggestion(BaseModel):
+    name: str
+    amount: Decimal
+    frequency: str  # MONTHLY, WEEKLY
+    category: Optional[str] = None
+    account_id: str
+    confidence: float
+    reason: str
+    last_date: datetime
         
 # --- Loan Schemas ---
 

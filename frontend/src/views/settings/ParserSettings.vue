@@ -325,7 +325,7 @@
                                         Manual
                                     </v-chip>
                                     <span class="text-caption font-mono text-disabled">{{ pattern.id.substring(0, 8)
-                                        }}</span>
+                                    }}</span>
                                 </div>
                             </td>
                             <td class="text-right">
@@ -357,7 +357,7 @@
             <v-card class="rounded-xl">
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">{{ isEditingPattern ? 'Edit Pattern' : 'New Pattern'
-                        }}</span>
+                    }}</span>
                     <v-btn icon="X" variant="text" density="comfortable" @click="showPatternModal = false"></v-btn>
                 </v-card-title>
                 <v-card-text class="pa-6">
@@ -369,6 +369,11 @@
                         <v-textarea v-model="patternForm.regex_pattern" label="Regex Pattern"
                             placeholder="Regex to capture transactions..." variant="outlined" rows="3"
                             class="font-mono text-body-2 mb-4" required></v-textarea>
+                        
+                        <v-text-field v-model="patternForm.date_format" label="Date Format (Optional)"
+                            placeholder="e.g. %d-%b-%y for 14-Feb-26" variant="outlined" density="comfortable"
+                            class="font-mono text-body-2 mb-4" hint="Python datetime format string"
+                            persistent-hint></v-text-field>
 
                         <v-textarea v-model="patternForm.field_mapping_str" label="Field Mapping (JSON)"
                             placeholder='{"amount": 1, "merchant": 2}' variant="outlined" rows="3"
@@ -526,7 +531,7 @@ const aiStore = useAiStore()
 const { formatAmount } = useCurrency()
 const notify = useNotificationStore()
 
-const PARSER_API = 'http://localhost:8001'
+const PARSER_API = '/parser'
 
 // --- Internal State ---
 const parserStatus = ref({ isOnline: false })
@@ -552,6 +557,7 @@ const patternForm = reactive({
     bank_name: '',
     regex_pattern: '',
     field_mapping_str: '{}',
+    date_format: '',
     confidence: 1.0,
     is_ai_generated: false
 })
@@ -632,7 +638,7 @@ function formatDate(dateStr: string) {
 async function loadPatterns() {
     patternsLoading.value = true
     try {
-        const res = await axios.get(`${PARSER_API}/v1/patterns`, {
+        const res = await axios.get(`${PARSER_API}/patterns`, {
             params: { limit: 100 }
         })
         patterns.value = res.data.patterns
@@ -649,6 +655,7 @@ function openAddModal() {
     patternForm.id = null
     patternForm.bank_name = ''
     patternForm.regex_pattern = ''
+    patternForm.date_format = ''
     patternForm.field_mapping_str = '{\n  "amount": 1,\n  "merchant": 2,\n  "date": 3\n}'
     patternForm.confidence = 1.0
     patternForm.is_ai_generated = false
@@ -662,6 +669,7 @@ function openEditModal(pattern: any) {
         patternForm.id = pattern.id
         patternForm.bank_name = pattern.bank_name
         patternForm.regex_pattern = pattern.regex_pattern
+        patternForm.date_format = pattern.date_format || ''
 
         const mapping = pattern.field_mapping || {}
         patternForm.field_mapping_str = JSON.stringify(mapping, null, 2)
@@ -694,14 +702,15 @@ async function savePattern() {
             bank_name: patternForm.bank_name,
             regex_pattern: patternForm.regex_pattern,
             field_mapping: mapping,
+            date_format: patternForm.date_format || null,
             confidence: patternForm.confidence
         }
 
         if (isEditingPattern.value && patternForm.id) {
-            await axios.put(`${PARSER_API}/v1/patterns/${patternForm.id}`, payload)
+            await axios.put(`${PARSER_API}/patterns/${patternForm.id}`, payload)
             notify.success("Pattern updated")
         } else {
-            await axios.post(`${PARSER_API}/v1/patterns`, payload)
+            await axios.post(`${PARSER_API}/patterns`, payload)
             notify.success("Pattern created")
         }
 
@@ -719,7 +728,7 @@ async function confirmDelete(pattern: any) {
     if (!confirm(`Are you sure you want to delete the pattern for ${pattern.bank_name}?`)) return
 
     try {
-        await axios.delete(`${PARSER_API}/v1/patterns/${pattern.id}`)
+        await axios.delete(`${PARSER_API}/patterns/${pattern.id}`)
         notify.success("Pattern deleted")
         loadPatterns()
     } catch (err) {

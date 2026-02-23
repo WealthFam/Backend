@@ -9,6 +9,7 @@ from .mutual_funds import router as mutual_funds_router
 from .loans import router as loans_router
 from .expense_groups import router as expense_groups_router
 from .investment_goals import router as investment_goals_router
+from .search import router as search_router
 
 router = APIRouter()
 
@@ -26,3 +27,4 @@ router.include_router(mutual_funds_router, tags=["Mutual Funds"])
 router.include_router(loans_router, tags=["Loans"])
 router.include_router(expense_groups_router)
 router.include_router(investment_goals_router)
+router.include_router(search_router)

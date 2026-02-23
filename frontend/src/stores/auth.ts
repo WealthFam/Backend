@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import apiClient from '@/api/client'
+import { clearStoreCache } from '@/utils/persistence'
 
 interface User {
     id: string
@@ -91,6 +92,7 @@ export const useAuthStore = defineStore('auth', () => {
         selectedMemberId.value = null
         familyMembers.value = []
         localStorage.removeItem('access_token')
+        clearStoreCache()
     }
 
     if (token.value) {

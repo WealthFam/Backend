@@ -26,9 +26,10 @@ def run_auto_migrations(engine: Engine):
             );
             """))
             
-            # 2. Update pattern_rules with AI fields
+            # 2. Update pattern_rules with AI fields and new columns
             safe_add_column("pattern_rules", "is_ai_generated", "BOOLEAN DEFAULT FALSE")
             safe_add_column("pattern_rules", "confidence", "JSON")
+            safe_add_column("pattern_rules", "date_format", "VARCHAR")
 
             # 3. Create ai_call_cache table if not exists
             connection.execute(text("""

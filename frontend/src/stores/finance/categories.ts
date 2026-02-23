@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { financeApi } from '@/api/client'
+import { useStorePersistence } from '@/utils/persistence'
 import { useNotificationStore } from '@/stores/notification'
 
 export const useCategoriesStore = defineStore('categories', () => {
     // State
     const categories = ref<any[]>([])
+    useStorePersistence('categories_full', categories)
     const loading = ref(false)
     const error = ref<string | null>(null)
     const searchFilter = ref('all') // 'all' | 'expense' | 'income' | 'transfer'

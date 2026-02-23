@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.database import SessionLocal
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.recurring_service import RecurringService
+from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.ingestion.email_sync import EmailSyncService
 from backend.app.modules.ingestion import models as ingestion_models
 import logging
@@ -88,6 +89,32 @@ def auto_sync_job():
     finally:
         db.close()
 
+def mutual_fund_sync_job():
+    """
+    Job to refresh mutual fund NAVs for all tenants.
+    Runs every 12 hours.
+    """
+    logger.info("[MFSync] Starting scheduled NAV refresh...")
+    db: Session = SessionLocal()
+    try:
+        # Get all distinct tenant_ids that have mutual fund holdings
+        from backend.app.modules.finance.models import MutualFundHolding
+        tenants = db.query(MutualFundHolding.tenant_id).distinct().all()
+        tenant_ids = [t[0] for t in tenants]
+        
+        logger.info(f"[MFSync] Found {len(tenant_ids)} tenants with holdings.")
+        for tid in tenant_ids:
+            try:
+                logger.info(f"[MFSync] Syncing for tenant {tid}...")
+                asyncio.run(MutualFundService.refresh_tenant_navs(db, tid))
+            except Exception as e:
+                logger.error(f"[MFSync] Error syncing for tenant {tid}: {e}")
+                
+    except Exception as e:
+        logger.error(f"[MFSync] General MFSync Error: {e}")
+    finally:
+        db.close()
+
 def start_scheduler():
     # Run daily at 00:01 UTC (or server time)
     trigger = CronTrigger(hour=0, minute=1)
@@ -99,6 +126,9 @@ def start_scheduler():
     
     # Run email sync every 15 minutes
     scheduler.add_job(auto_sync_job, 'interval', minutes=15, id="auto_sync_job", replace_existing=True)
+    
+    # Run mutual fund sync every 12 hours
+    scheduler.add_job(mutual_fund_sync_job, 'interval', hours=12, id="mutual_fund_sync_job", replace_existing=True)
     
     scheduler.start()
     logger.info("APScheduler started.")

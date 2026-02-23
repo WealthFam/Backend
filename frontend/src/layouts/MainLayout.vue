@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+
 import { useAuthStore } from '@/stores/auth'
 import { useRouter, useRoute } from 'vue-router'
 import { useTheme } from 'vuetify'
@@ -21,9 +22,15 @@ import {
     Moon,
     Sun,
     Users,
-    ChevronDown
+    ChevronDown,
+    Search,
+    RefreshCw,
+    ShieldCheck,
 } from 'lucide-vue-next'
+import { onUnmounted, computed, watch } from 'vue'
+import { useMutualFundStore } from '@/stores/finance/mutualFunds'
 import ToastContainer from '@/components/ToastContainer.vue'
+import GlobalSearch from '@/components/common/GlobalSearch.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -42,6 +49,9 @@ const rail = ref(true)
 function toggleTheme() {
     theme.global.name.value = theme.global.current.value.dark ? 'wealthFamTheme' : 'wealthFamDark'
 }
+
+// Global Search State
+const showSearch = ref(false)
 
 // User Menu State
 const selectedAvatar = ref(localStorage.getItem('user_avatar') || 'default')
@@ -63,6 +73,7 @@ const navItems = [
     { title: 'Financial Goals', icon: Target, to: '/investment-goals' },
     { title: 'Expense Groups', icon: Layers, to: '/expense-groups' },
     { title: 'Loans', icon: Landmark, to: '/loans' },
+    { title: 'Vault', icon: ShieldCheck, to: '/vault' },
     { title: 'Settings', icon: Settings, to: '/settings' },
 ]
 
@@ -70,6 +81,43 @@ function logout() {
     auth.logout()
     router.push('/login')
 }
+
+
+
+const mfStore = useMutualFundStore()
+const isSyncing = computed(() => mfStore.isSyncing)
+const syncStatus = computed(() => mfStore.syncStatus)
+
+let syncInterval: any = null
+
+const syncStatusText = computed(() => {
+    if (isSyncing.value || syncStatus.value?.status === 'running') return 'Syncing Mutual Fund NAVs...'
+    if (syncStatus.value?.status === 'error') return `Last sync failed: ${syncStatus.value.error || syncStatus.value.error_message}`
+    return 'Refresh Mutual Fund NAVs'
+})
+
+
+function startPolling() {
+    if (syncInterval) return
+    mfStore.fetchSyncStatus()
+    syncInterval = setInterval(() => mfStore.fetchSyncStatus(), 15000)
+}
+
+function stopPolling() {
+    if (syncInterval) {
+        clearInterval(syncInterval)
+        syncInterval = null
+    }
+}
+
+watch(() => auth.user, (val) => {
+    if (val) startPolling()
+    else stopPolling()
+}, { immediate: true })
+
+onUnmounted(() => {
+    stopPolling()
+})
 
 // Watch for mobile screen size to handle drawer properly? 
 // Vuetify handles mobile with temporary/permanent props.
@@ -103,7 +151,27 @@ function logout() {
 
             <v-spacer></v-spacer>
 
+            <!-- Centered Header Search Trigger -->
+            <div class="header-search-container d-none d-md-flex align-center justify-center">
+                <v-text-field readonly flat hide-details density="compact" variant="solo-filled" rounded="pill"
+                    placeholder="Search for anything..." class="centered-search-field" @click="showSearch = true">
+                    <template v-slot:prepend-inner>
+                        <Search :size="18" class="text-medium-emphasis mr-1" />
+                    </template>
+                    <template v-slot:append-inner>
+                        <div class="cmd-k-hint-v2">⌘K</div>
+                    </template>
+                </v-text-field>
+            </div>
+
+            <v-spacer></v-spacer>
+
             <div class="d-flex align-center pr-2">
+                <!-- Mobile Search Icon -->
+                <v-btn icon color="slate-600" class="d-md-none mr-2" @click="showSearch = true">
+                    <Search :size="20" />
+                </v-btn>
+
                 <!-- Date Chip (Desktop) -->
                 <div class="date-chip-v2 d-none d-md-flex mr-4">
                     <div class="pulse-dot"></div>
@@ -155,6 +223,17 @@ function logout() {
                         </v-list>
                     </v-card>
                 </v-menu>
+
+                <!-- Mutual Fund Sync Status -->
+                <v-tooltip location="bottom" v-if="auth.user">
+                    <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" icon size="40" color="slate-600" class="mr-2" @click="mfStore.triggerSync"
+                            :loading="isSyncing">
+                            <RefreshCw :size="20" :class="{ 'spin-sync': isSyncing }" />
+                        </v-btn>
+                    </template>
+                    <span>{{ syncStatusText }}</span>
+                </v-tooltip>
 
                 <!-- Theme Toggle -->
                 <v-btn icon @click="toggleTheme" color="slate-600" class="mr-2" size="40">
@@ -265,6 +344,7 @@ function logout() {
         </v-main>
 
         <ToastContainer />
+        <GlobalSearch v-model="showSearch" />
     </v-app>
 </template>
 
@@ -541,5 +621,67 @@ function logout() {
     100% {
         box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
     }
+}
+
+.header-search-container {
+    flex: 1;
+    max-width: 480px;
+    margin: 0 24px;
+}
+
+.centered-search-field :deep(.v-field) {
+    background: rgba(var(--v-theme-on-surface), 0.05) !important;
+    border: 1px solid rgba(var(--v-border-color), 0.1) !important;
+    cursor: pointer !important;
+    font-weight: 600;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.centered-search-field :deep(.v-field):hover {
+    background: rgba(var(--v-theme-on-surface), 0.08) !important;
+    border-color: rgba(var(--v-theme-primary), 0.3) !important;
+}
+
+.centered-search-field :deep(input) {
+    cursor: pointer !important;
+}
+
+.cmd-k-hint-v2 {
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    background: rgba(var(--v-theme-on-surface), 0.1);
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    border-radius: 6px;
+    letter-spacing: 0.05em;
+}
+
+.last-sync-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    white-space: nowrap;
+}
+
+.spin-sync {
+    animation: fa-spin 2s infinite linear;
+}
+
+@keyframes fa-spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.sync-btn {
+    transition: transform 0.2s;
+}
+
+.sync-btn:active {
+    transform: scale(0.9);
 }
 </style>

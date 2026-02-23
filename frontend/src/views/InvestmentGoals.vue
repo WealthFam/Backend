@@ -5,6 +5,8 @@ import { financeApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
 import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'
+import { useGoalStore } from '@/stores/finance/goals'
+import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import {
     Plus,
     Calendar,
@@ -21,12 +23,13 @@ import {
 
 const notify = useNotificationStore()
 const authStore = useAuthStore()
+const goalStore = useGoalStore()
 const { formatAmount } = useCurrency()
 
-const goals = ref<any[]>([])
-const accounts = ref<any[]>([])
-const portfolio = ref<any[]>([])
-const loading = ref(true)
+const goals = computed(() => goalStore.goals)
+const accounts = computed(() => goalStore.accounts)
+const portfolio = computed(() => goalStore.portfolio)
+const loading = ref(goalStore.goals.length === 0)
 const showModal = ref(false)
 const showDeleteModal = ref(false)
 const goalToDelete = ref<string | null>(null)
@@ -54,10 +57,9 @@ const assetForm = ref({
 })
 
 const fetchGoals = async () => {
-    loading.value = true
+    if (goalStore.goals.length === 0) loading.value = true
     try {
-        const res = await financeApi.getInvestmentGoals(authStore.selectedMemberId || undefined)
-        goals.value = res.data
+        await goalStore.fetchGoals(authStore.selectedMemberId || undefined)
     } catch (e) {
         notify.error("Failed to load goals")
     } finally {
@@ -67,9 +69,7 @@ const fetchGoals = async () => {
 
 const fetchAccounts = async () => {
     try {
-        // Accounts are filtered by owner_id in the service now, but it's good to be consistent
-        const res = await financeApi.getAccounts(authStore.selectedMemberId || undefined)
-        accounts.value = res.data.filter((a: any) => a.type === 'BANK' || a.type === 'INVESTMENT')
+        await goalStore.fetchAccounts(authStore.selectedMemberId || undefined)
     } catch (e) {
         console.error("Failed to fetch accounts")
     }
@@ -77,8 +77,7 @@ const fetchAccounts = async () => {
 
 const fetchPortfolio = async () => {
     try {
-        const res = await financeApi.getPortfolio()
-        portfolio.value = res.data
+        await goalStore.fetchPortfolio()
     } catch (e) {
         console.error("Failed to fetch portfolio")
     }
@@ -277,9 +276,11 @@ watch(() => authStore.selectedMemberId, () => {
                 </v-row>
 
                 <!-- Loading State -->
-                <div v-if="loading" class="d-flex justify-center align-center py-16">
-                    <v-progress-circular indeterminate color="primary" size="64" width="6" />
-                </div>
+                <v-row v-if="loading" class="pb-16 pt-8">
+                    <v-col v-for="i in 3" :key="`skel-goal-${i}`" cols="12" sm="6" md="4" lg="4">
+                        <PremiumSkeleton type="category-card" glass />
+                    </v-col>
+                </v-row>
 
                 <!-- Empty State -->
                 <div v-else-if="goals.length === 0"
@@ -353,7 +354,7 @@ watch(() => authStore.selectedMemberId, () => {
                                         <div>
                                             <span class="text-h6 font-weight-black">{{
                                                 formatAmount(goal.current_amount)
-                                            }}</span>
+                                                }}</span>
                                             <span class="text-tiny font-weight-bold text-medium-emphasis ml-1">of {{
                                                 formatAmount(goal.target_amount) }}</span>
                                         </div>
@@ -551,7 +552,7 @@ watch(() => authStore.selectedMemberId, () => {
                                                 <v-avatar size="28" color="primary" variant="tonal" class="mr-2">
                                                     <span class="text-caption font-weight-black">{{
                                                         item.raw.initials
-                                                    }}</span>
+                                                        }}</span>
                                                 </v-avatar>
                                             </template>
                                         </v-list-item>
@@ -560,7 +561,7 @@ watch(() => authStore.selectedMemberId, () => {
                                         <div class="d-flex align-center">
                                             <v-avatar size="24" color="primary" variant="tonal" class="mr-2">
                                                 <span class="text-tiny font-weight-black">{{ item.raw.initials
-                                                }}</span>
+                                                    }}</span>
                                             </v-avatar>
                                             <span class="text-body-2 font-weight-bold">{{ item.raw.title }}</span>
                                         </div>

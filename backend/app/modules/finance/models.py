@@ -377,3 +377,17 @@ class PortfolioTimelineCache(Base):
     __table_args__ = (
         {'sqlite_autoincrement': True}
     )
+
+class MutualFundSyncLog(Base):
+    """Log to track background NAV sync status"""
+    __tablename__ = "mutual_fund_sync_logs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    status = Column(String, default="running") # running, completed, error
+    num_funds_updated = Column(Numeric(10, 0), default=0)
+    error_message = Column(String, nullable=True)
+
+

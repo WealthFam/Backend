@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import SpendingHeatmap from '@/components/SpendingHeatmap.vue'
 
-// Props
+// Props - SpendingHeatmap now self-fetches, just pass date range
 defineProps<{
-    heatmapData: any[]
-    loading: boolean
+    startDate: string
+    endDate: string
+    loading?: boolean
 }>()
 </script>
 
@@ -14,7 +15,7 @@ defineProps<{
             <v-progress-circular indeterminate color="primary" size="48" class="mb-4"></v-progress-circular>
             <p class="text-subtitle-2 font-weight-black opacity-70">Loading Map Data...</p>
         </div>
-        <SpendingHeatmap :data="heatmapData" />
+        <SpendingHeatmap :start-date="startDate" :end-date="endDate" />
         <div class="heatmap-footer mt-4">
             <p class="text-caption text-on-surface opacity-60 font-weight-bold">
                 Showing spending density based on transaction geolocation. Only

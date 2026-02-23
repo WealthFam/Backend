@@ -41,6 +41,8 @@ import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.heat'
+import { financeApi } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 
 interface HeatmapDataPoint {
     latitude: number
@@ -50,21 +52,48 @@ interface HeatmapDataPoint {
 }
 
 const props = defineProps<{
-    data: HeatmapDataPoint[]
+    startDate: string
+    endDate: string
 }>()
+
+const data = ref<HeatmapDataPoint[]>([])
+const loading = ref(false)
+const auth = useAuthStore()
+
+async function fetchHeatmap() {
+    loading.value = true
+    try {
+        const res = await financeApi.getHeatmapData(props.startDate, props.endDate, auth.selectedMemberId || undefined)
+        data.value = res.data
+    } catch (e) {
+        console.error('Failed to fetch heatmap', e)
+    } finally {
+        loading.value = false
+    }
+}
+
+watch([() => props.startDate, () => props.endDate, () => auth.selectedMemberId], () => {
+    fetchHeatmap()
+})
+
+onMounted(() => {
+    fetchHeatmap()
+    // Small timeout to ensure container has dimensions
+    setTimeout(initMap, 100)
+})
 
 const mapContainer = ref<HTMLElement | null>(null)
 let map: L.Map | null = null
 let heatLayer: any = null
 
-const hasLocationData = computed(() => props.data && props.data.length > 0)
+const hasLocationData = computed(() => data.value && data.value.length > 0)
 
 const initMap = () => {
     if (!mapContainer.value) return
 
     // Default center (can be tuned or detected from data)
     const center: L.LatLngExpression = hasLocationData.value
-        ? [props.data[0].latitude, props.data[0].longitude]
+        ? [data.value[0].latitude, data.value[0].longitude]
         : [20.5937, 78.9629] // India center fallback
 
     map = L.map(mapContainer.value, {
@@ -95,9 +124,7 @@ const updateHeatmap = () => {
     if (!hasLocationData.value) return
 
     // Prepare heatmap data: [lat, lng, intensity]
-    const heatPoints = props.data.map(p => {
-        // Normalize intensity based on amount
-        // Simple log scale or linear scale
+    const heatPoints = data.value.map(p => {
         const intensity = Math.min(Math.abs(p.amount) / 1000, 1)
         return [p.latitude, p.longitude, intensity]
     })
@@ -108,28 +135,23 @@ const updateHeatmap = () => {
         blur: 15,
         maxZoom: 17,
         gradient: {
-            0.4: '#3b82f6', // blue
-            0.6: '#10b981', // green
-            0.7: '#f59e0b', // amber
-            0.8: '#ef4444'  // red
+            0.4: '#3b82f6',
+            0.6: '#10b981',
+            0.7: '#f59e0b',
+            0.8: '#ef4444'
         }
     }).addTo(map)
 
     // Fit bounds if we have multiple points
-    if (props.data.length > 1) {
-        const bounds = L.latLngBounds(props.data.map(p => [p.latitude, p.longitude]))
+    if (data.value.length > 1) {
+        const bounds = L.latLngBounds(data.value.map(p => [p.latitude, p.longitude] as L.LatLngTuple))
         map.fitBounds(bounds, { padding: [50, 50] })
     }
 }
 
-watch(() => props.data, () => {
+watch(data, () => {
     updateHeatmap()
 }, { deep: true })
-
-onMounted(() => {
-    // Small timeout to ensure container has dimensions
-    setTimeout(initMap, 100)
-})
 
 onUnmounted(() => {
     if (map) {

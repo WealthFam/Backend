@@ -4,7 +4,7 @@ import httpx
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
-from backend.app.modules.finance.models import MutualFundsMeta, MutualFundHolding, MutualFundOrder
+from backend.app.modules.finance.models import MutualFundsMeta, MutualFundHolding, MutualFundOrder, PortfolioTimelineCache, MutualFundSyncLog
 
 MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 
@@ -12,6 +12,112 @@ MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 _db_write_lock = threading.Lock()
 
 class MutualFundService:
+
+    @staticmethod
+    def get_latest_sync_status(db: Session, tenant_id: str):
+        """Get the latest sync log for a tenant"""
+        return db.query(MutualFundSyncLog).filter(
+            MutualFundSyncLog.tenant_id == tenant_id
+        ).order_by(MutualFundSyncLog.started_at.desc()).first()
+
+    @staticmethod
+    async def refresh_tenant_navs(tenant_id: str, db: Optional[Session] = None):
+        """
+        Background task to refresh all NAVs for a tenant and update timeline cache.
+        """
+        # Close-at-end flag if we create our own session
+        created_local_db = False
+        if db is None:
+            from backend.app.core.database import SessionLocal
+            db = SessionLocal()
+            created_local_db = True
+
+        try:
+            # 1. Create Sync Log
+            sync_log = MutualFundSyncLog(
+                tenant_id=tenant_id,
+                status="running"
+            )
+            db.add(sync_log)
+            db.commit()
+
+            # 2. Get all holdings for the tenant
+            holdings = db.query(MutualFundHolding).filter(MutualFundHolding.tenant_id == tenant_id).all()
+            if not holdings:
+                sync_log.status = "completed"
+                sync_log.completed_at = datetime.utcnow()
+                db.commit()
+                return {"status": "completed", "updated": 0}
+
+            # 3. Fetch NAVs (using the same logic as get_portfolio but cleaner)
+            import asyncio
+            
+            async def fetch_nav_simple(scheme_code):
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=10.0)
+                    if response.status_code == 200:
+                        data = response.json()
+                        raw = data.get("data", [])
+                        if raw:
+                            # Already sorted by date desc usually, but let's be safe
+                            latest = raw[0]
+                            return {
+                                "scheme_code": scheme_code,
+                                "nav": float(latest.get("nav", 0.0)),
+                                "date": datetime.strptime(latest.get("date"), "%d-%m-%Y")
+                            }
+                except: pass
+                return None
+
+            async def fetch_all_navs():
+                tasks = [fetch_nav_simple(h.scheme_code) for h in holdings]
+                return await asyncio.gather(*tasks)
+
+            nav_results = await fetch_all_navs()
+            
+            # 4. Update Holdings
+            updated_count = 0
+            with _db_write_lock:
+                for nav_data in nav_results:
+                    if not nav_data: continue
+                    
+                    # Find all holdings for this scheme (could be multiple users/folios)
+                    h_list = [h for h in holdings if h.scheme_code == nav_data["scheme_code"]]
+                    for h in h_list:
+                        h.last_nav = nav_data["nav"]
+                        h.last_updated_at = nav_data["date"]
+                        h.current_value = float(h.units) * nav_data["nav"]
+                        updated_count += 1
+                
+                # 5. Commit Updates
+                MutualFundService._safe_commit(db)
+
+            # 6. Update Sync Log
+            sync_log.status = "completed"
+            sync_log.completed_at = datetime.utcnow()
+            sync_log.num_funds_updated = updated_count
+            db.commit()
+
+            # 7. Recalculate Timeline for Today (pre-cache)
+            # This ensures the dashboard feels fast after a sync
+            try:
+                MutualFundService.get_performance_timeline(db, tenant_id, period="1m", granularity="1d")
+            except: pass
+
+            return {"status": "completed", "updated": updated_count}
+
+        except Exception as e:
+            db.rollback()
+            sync_log.status = "error"
+            sync_log.completed_at = datetime.utcnow()
+            sync_log.error_message = str(e)
+            db.commit()
+            raise e
+        finally:
+            if created_local_db:
+                db.close()
+
     
     @staticmethod
     def _safe_commit(db: Session, max_retries: int = 5):
@@ -54,44 +160,81 @@ class MutualFundService:
                 else:
                     return []
             
-            # Continue with processing...
-            if True: # indent preservation wrapper
-                query_low = query.lower() if query else None
-                cat_low = category.lower() if category else None
-                amc_low = amc.lower() if amc else None
+            # Default recommendations if no query/filter
+            if not any([query, category, amc]) and not all_funds_cache:
+                # Popular Fund Scheme Codes (Examples of large well-known funds)
+                featured_codes = [
+                    '120716', # ICICI Prudential Bluechip Fund
+                    '120503', # ICICI Prudential Value Discovery Fund
+                    '101140', # HDFC Top 100 Fund
+                    '100033', # Aditya Birla Sun Life Frontline Equity Fund
+                    '118989', # Nippon India Large Cap Fund
+                    '103133', # SBI Bluechip Fund
+                    '120828', # ICICI Prudential Nifty 50 Index Fund
+                    '103175', # HDFC Index Fund-NIFTY 50 Plan
+                ]
+                featured = [f for f in all_funds if str(f.get('schemeCode')) in featured_codes]
+                if featured: return featured[:limit]
 
-                # Optimization: Direct filter if possible, otherwise iterate
-                filtered_funds = []
-                for f in all_funds:
-                    scheme_name = f.get('schemeName', '').lower()
-                    
-                    # Filtering logic
-                    match = True
-                    if query_low and query_low not in scheme_name:
-                        match = False
-                    if cat_low and cat_low not in scheme_name: 
-                        match = False
-                    if amc_low and amc_low not in scheme_name: 
+            query_low = query.lower() if query else None
+            cat_low = category.lower() if category else None
+            amc_low = amc.lower() if amc else None
+
+            # Optimization: Direct filter if possible, otherwise iterate
+            filtered_funds = []
+            for f in all_funds:
+                scheme_name = f.get('schemeName', '').lower()
+                
+                # Filtering logic
+                match = True
+                if query_low and query_low not in scheme_name:
+                    match = False
+                
+                # Category filter - usually contained in name or we might need better classification
+                if cat_low:
+                    # MFAPI doesn't have a category field in the search list, so we check the name
+                    # Common terms: Equity, Debt, Hybrid, ELSS, Index, Liquid
+                    if cat_low == "index funds": cat_low = "index"
+                    if cat_low not in scheme_name:
                         match = False
                         
-                    if match:
-                        filtered_funds.append(f)
+                if amc_low and amc_low not in scheme_name: 
+                    match = False
+                    
+                if match:
+                    filtered_funds.append(f)
 
-                # Sorting
-                if sort_by == 'returns_desc':
-                    filtered_funds.sort(key=lambda x: MutualFundService.get_mock_returns(str(x.get('schemeCode'))), reverse=True)
-                elif sort_by == 'returns_asc':
-                    filtered_funds.sort(key=lambda x: MutualFundService.get_mock_returns(str(x.get('schemeCode'))))
-                # Default 'relevance' keeps original order (usually by scheme code or alphabetical from API)
+            # Sorting
+            if sort_by == 'returns_desc':
+                filtered_funds.sort(key=lambda x: MutualFundService.get_mock_returns(str(x.get('schemeCode'))), reverse=True)
+            elif sort_by == 'returns_asc':
+                filtered_funds.sort(key=lambda x: MutualFundService.get_mock_returns(str(x.get('schemeCode'))))
+            # Default 'relevance' keeps original order
 
-                # Pagination
-                start = offset
-                end = offset + limit
-                results = filtered_funds[start:end]
+            # Pagination
+            start = offset
+            end = offset + limit
+            results = filtered_funds[start:end]
+            
+            # Enrich with mock data for UI completeness
+            for r in results:
+                scheme_code = str(r.get('schemeCode', '0'))
+                # Mock metadata based on scheme code hash for consistency
+                code_hash = sum(ord(c) for c in scheme_code)
+                
+                r['nav'] = 100.0 + (int(r.get('schemeCode', 0)) % 500) / 10.0
+                r['returns_3y'] = MutualFundService.get_mock_returns(scheme_code)
+                r['category'] = "Mutual Fund" 
+                
+                # New Metadata for Overhaul
+                r['risk_level'] = ['Low', 'Moderate', 'High', 'Very High'][code_hash % 4]
+                r['aum'] = f"{(1000 + (code_hash % 9000)):,} Cr"
+                r['trending'] = (code_hash % 7 == 0) # ~14% funds are trending
+                r['rating'] = 3 + (code_hash % 3) # 3, 4, or 5 stars
                             
-                return results
-            return []
+            return results
         except Exception as e:
+            logger.error(f"Search error: {e}")
             return []
 
     @staticmethod
@@ -884,9 +1027,6 @@ class MutualFundService:
             MutualFundHolding.tenant_id == tenant_id,
             MutualFundHolding.scheme_code == scheme_code
         ).all()
-        
-        if not holdings:
-            return None
             
         # 3. Fetch All Orders for this Scheme
         orders = db.query(MutualFundOrder).filter(
@@ -969,7 +1109,7 @@ class MutualFundService:
         nav_history = []
         try:
             import httpx
-            from datetime import datetime
+            from datetime import datetime, timedelta
             
             response = httpx.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=5.0)
             if response.status_code == 200:
@@ -979,7 +1119,9 @@ class MutualFundService:
                 start_date = None
                 if orders:
                     earliest_order = orders[-1].order_date
-                    start_date = earliest_order.date()
+                    start_date = earliest_order.date() if hasattr(earliest_order, 'date') else earliest_order
+                else:
+                    start_date = (datetime.now() - timedelta(days=365)).date()
                 
                 valid_history = []
                 for entry in raw_history:
@@ -1071,6 +1213,78 @@ class MutualFundService:
             "nav_history": nav_history,
             "is_aggregate": True,
             "owners": owners_list
+        }
+
+    @staticmethod
+    def get_scheme_info(db: Session, tenant_id: str, scheme_code: str):
+        """Fetch general scheme information without requiring a holding."""
+        from backend.app.modules.auth.models import User
+        
+        # 1. Fetch Metadata
+        meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == scheme_code).first()
+        
+        if not meta:
+            # If not in our DB, we could technically fetch from mfapi and create it, 
+            # but for simplicity, return None or a basic stub if we strictly rely on our DB metadata.
+            # We'll try to rely on mfapi for basic details if DB is empty.
+            pass
+
+        # 2. NAV History (1 year default for info page)
+        nav_history = []
+        try:
+            import httpx
+            from datetime import datetime, timedelta
+            
+            response = httpx.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=5.0)
+            if response.status_code == 200:
+                mf_data = response.json()
+                raw_history = mf_data.get("data", [])
+                
+                start_date = (datetime.now() - timedelta(days=365)).date()
+                
+                valid_history = []
+                for entry in raw_history:
+                    try:
+                        d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
+                        if d_obj >= start_date:
+                            valid_history.append({
+                                "date": d_obj.strftime("%Y-%m-%d"),
+                                "value": float(entry['nav'])
+                            })
+                    except: continue
+                nav_history = sorted(valid_history, key=lambda x: x['date'])
+                
+                # Use MFAPI name if our DB lacks it
+                scheme_name = meta.scheme_name if meta else mf_data.get("meta", {}).get("scheme_name", "Unknown Fund")
+                fund_house = meta.fund_house if meta else mf_data.get("meta", {}).get("fund_house", "Unknown AMC")
+        except Exception as e:
+            scheme_name = meta.scheme_name if meta else "Unknown Fund"
+            fund_house = meta.fund_house if meta else "Unknown AMC"
+
+        # Mock metadata based on scheme code hash for consistency with search
+        code_hash = sum(ord(c) for c in scheme_code)
+        risk_level = ['Low', 'Moderate', 'High', 'Very High'][code_hash % 4]
+        aum = f"{(1000 + (code_hash % 9000)):,} Cr"
+        trending = (code_hash % 7 == 0)
+        rating = 3 + (code_hash % 3)
+        returns_3y = round(12.0 + (code_hash % 8) + ((code_hash % 100) / 100.0), 2)
+
+        return {
+            "id": f"explore_{scheme_code}", 
+            "scheme_name": scheme_name,
+            "scheme_code": scheme_code,
+            "isin_growth": meta.isin_growth if meta else None,
+            "isin_reinvest": meta.isin_reinvest if meta else None,
+            "fund_house": fund_house,
+            "category": meta.category if meta else "Mutual Fund",
+            "risk_level": risk_level,
+            "aum": aum,
+            "trending": trending,
+            "rating": rating,
+            "returns_3y": returns_3y,
+            "last_nav": float(nav_history[-1]['value']) if nav_history else 0.0,
+            "nav_history": nav_history,
+            "is_aggregate": False
         }
 
     @staticmethod

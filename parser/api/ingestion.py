@@ -28,6 +28,7 @@ from parser.parsers.bank.ausfb import AuSfbSmsParser, AuSfbEmailParser
 from parser.parsers.bank.bandhan import BandhanSmsParser, BandhanEmailParser
 from parser.parsers.bank.centralbank import CentralBankSmsParser, CentralBankEmailParser
 from parser.parsers.bank.boi import BoiSmsParser, BoiEmailParser
+from parser.parsers.bank.slice import SliceSmsParser
 from parser.parsers.bank.government_schemes import EpfoSmsParser, PpfSmsParser, NpsSmsParser, EpfoEmailParser, PpfEmailParser, NpsEmailParser
 from parser.parsers.bank.generic import GenericSmsParser
 from parser.parsers.registry import ParserRegistry
@@ -56,6 +57,7 @@ ParserRegistry.register_sms(AuSfbSmsParser())
 ParserRegistry.register_sms(BandhanSmsParser())
 ParserRegistry.register_sms(CentralBankSmsParser())
 ParserRegistry.register_sms(BoiSmsParser())
+ParserRegistry.register_sms(SliceSmsParser())
 # Government Schemes
 ParserRegistry.register_sms(EpfoSmsParser())
 ParserRegistry.register_sms(PpfSmsParser())

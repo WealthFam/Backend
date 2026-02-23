@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -25,17 +25,47 @@ class TransactionCreate(BaseModel):
     date: datetime
     folio_number: Optional[str] = None
 
+@router.post("/sync/refresh")
+async def trigger_sync(
+    background_tasks: BackgroundTasks,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Trigger background NAV refresh for all holdings"""
+    tenant_id = str(current_user.tenant_id)
+    # Fire and forget - let it handle its own DB session
+    background_tasks.add_task(MutualFundService.refresh_tenant_navs, tenant_id)
+    return {"status": "running", "message": "Sync started in background"}
+
+@router.get("/sync/status")
+async def get_sync_status(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get latest sync log for tenant"""
+    tenant_id = str(current_user.tenant_id)
+    log = MutualFundService.get_latest_sync_status(db, tenant_id)
+    if not log:
+        return {"status": "idle"}
+    
+    return {
+        "status": log.status,
+        "started_at": log.started_at,
+        "completed_at": log.completed_at,
+        "updated_count": log.num_funds_updated,
+        "error": log.error_message
+    }
+
 @router.get("/search")
 def search_funds(
-    q: Optional[str] = Query(None, min_length=2),
+    q: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     amc: Optional[str] = Query(None),
     limit: int = 20,
     offset: int = 0,
     sort_by: str = Query('relevance')
 ):
-    if not any([q, category, amc]):
-        raise HTTPException(status_code=400, detail="Search query or filter required")
+    # Allow empty query to fetch popular/trending funds for the Explore tab
     return MutualFundService.search_funds(query=q, category=category, amc=amc, limit=limit, offset=offset, sort_by=sort_by)
 
 @router.get("/indices")
@@ -112,6 +142,7 @@ def cleanup_duplicate_orders(
     removed_count = MutualFundService.cleanup_duplicates(db, tenant_id)
     return {"message": f"Removed {removed_count} duplicate orders and synchronized holdings"}
 
+
 @router.post("/recalculate-holdings")
 def trigger_recalculate_holdings(
     user_id: Optional[str] = Query(None),
@@ -149,6 +180,18 @@ def get_scheme_details(
     if not details:
         raise HTTPException(status_code=404, detail="Scheme holdings not found")
     return details
+
+@router.get("/schemes/{scheme_code}/info")
+def get_scheme_info(
+    scheme_code: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get scheme metadata without requiring an active holding."""
+    info = MutualFundService.get_scheme_info(db, str(current_user.tenant_id), scheme_code)
+    if not info:
+        raise HTTPException(status_code=404, detail="Scheme information not found")
+    return info
 
 @router.patch("/holdings/{holding_id}")
 def update_holding(

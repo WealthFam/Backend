@@ -14,7 +14,7 @@ apiClient.interceptors.request.use(
     async (config) => {
         const token = localStorage.getItem('access_token')
         if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`
+            config.headers.Authorization = `Bearer ${token} `
         }
         return config
     },
@@ -36,7 +36,7 @@ apiClient.interceptors.response.use(
     },
     async (error) => {
         const notification = useNotificationStore()
-        
+
         // Handle 401 Unauthorized (e.g., token expired)
         if (error.response && error.response.status === 401) {
             // Clear token and redirect to login if not already there
@@ -85,6 +85,7 @@ export interface TransactionUpdate {
 
 export const financeApi = {
     getAccounts: (userId?: string, includeUnverified?: boolean) => apiClient.get('/finance/accounts', { params: { user_id: userId, include_unverified: includeUnverified } }),
+    globalSearch: (q: string, userId?: string) => apiClient.get('/finance/search', { params: { q, user_id: userId } }),
     createAccount: (data: AccountCreate) => apiClient.post('/finance/accounts', data),
     updateAccount: (id: string, data: AccountUpdate) => apiClient.put(`/finance/accounts/${id}`, data),
     deleteAccount: (id: string) => apiClient.delete(`/finance/accounts/${id}`),
@@ -93,13 +94,15 @@ export const financeApi = {
         apiClient.put(`/finance/accounts/${id}/balance`, { ...data, account_id: id }),
     getTransactions: (accountId?: string, page: number = 1, limit: number = 50, startDate?: string, endDate?: string, search?: string, category?: string, sortBy: string = 'date', sortOrder: string = 'desc', userId?: string) =>
         apiClient.get('/finance/transactions', { params: { account_id: accountId, page, limit, start_date: startDate, end_date: endDate, search, category, sort_by: sortBy, sort_order: sortOrder, user_id: userId } }),
+    searchTransactions: (q: string, limit: number = 10) =>
+        apiClient.get('/finance/transactions', { params: { search: q, limit, page: 1, sort_by: 'date', sort_order: 'desc' } }),
     createTransaction: (data: any) => apiClient.post('/finance/transactions', data),
     updateTransaction: (id: string, data: TransactionUpdate) => apiClient.put(`/finance/transactions/${id}`, data),
     smartCategorize: (data: { transaction_id: string, category: string, create_rule: boolean, apply_to_similar: boolean, exclude_from_reports?: boolean }) =>
         apiClient.post('/finance/transactions/smart-categorize', data),
     bulkDeleteTransactions: (ids: string[]) => apiClient.post('/finance/transactions/bulk-delete', { transaction_ids: ids }),
-    getMetrics: (accountId?: string, startDate?: string, endDate?: string, userId?: string) =>
-        apiClient.get('/finance/metrics', { params: { account_id: accountId, start_date: startDate, end_date: endDate, user_id: userId } }),
+    getMetrics: (accountId?: string, startDate?: string, endDate?: string, userId?: string) => apiClient.get('/finance/analytics/metrics', { params: { account_id: accountId, start_date: startDate, end_date: endDate, user_id: userId } }),
+    getDetailedAnalytics: (accountId?: string, startDate?: string, endDate?: string, userId?: string, category?: string) => apiClient.get('/finance/analytics/detailed', { params: { account_id: accountId, start_date: startDate, end_date: endDate, user_id: userId, category } }),
     getRules: () => apiClient.get('/finance/rules'),
     getRuleSuggestions: () => apiClient.get('/finance/rules/suggestions'),
     createRule: (data: any) => apiClient.post('/finance/rules', data),
@@ -138,15 +141,74 @@ export const financeApi = {
     deleteRecurring: (id: string) => apiClient.delete(`/finance/recurring/${id}`),
     processRecurring: () => apiClient.post('/finance/recurring/process'),
     getForecast: (accountId?: string, days: number = 30, userId?: string) =>
-        apiClient.get('/finance/forecast', { params: { account_id: accountId, days, user_id: userId } }),
+        apiClient.get('/finance/analytics/forecast', { params: { account_id: accountId, days, user_id: userId } }),
     getNetWorthTimeline: (days: number = 30, userId?: string) =>
-        apiClient.get('/finance/net-worth-timeline', { params: { days, user_id: userId } }),
+        apiClient.get('/finance/analytics/net-worth-timeline', { params: { days, user_id: userId } }),
     getSpendingTrend: (userId?: string) =>
-        apiClient.get('/finance/spending-trend', { params: { user_id: userId } }),
+        apiClient.get('/finance/analytics/spending-trend', { params: { user_id: userId } }),
     getBudgetHistory: (months: number = 6, userId?: string) =>
-        apiClient.get('/finance/budget-history', { params: { months, user_id: userId } }),
+        apiClient.get('/finance/analytics/budget-history', { params: { months, user_id: userId } }),
     getHeatmapData: (startDate?: string, endDate?: string, userId?: string) =>
-        apiClient.get('/finance/heatmap', { params: { start_date: startDate, end_date: endDate, user_id: userId } }),
+        apiClient.get('/finance/analytics/heatmap', { params: { start_date: startDate, end_date: endDate, user_id: userId } }),
+    getMerchantBreakdown: (category?: string, startDate?: string, endDate?: string, userId?: string) =>
+        apiClient.get('/finance/analytics/merchant-breakdown', { params: { category, start_date: startDate, end_date: endDate, user_id: userId } }),
+    getFamilyWealth: () => apiClient.get('/finance/analytics/family-wealth'),
+    getRecurringSuggestions: () => apiClient.get('/finance/recurring/suggestions'),
+
+    // Document Vault
+    uploadDocument: (formData: FormData) => apiClient.post('/finance/vault/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    uploadVersion: (id: string, formData: FormData) => apiClient.post(`/finance/vault/${id}/version`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    createFolder: (formData: FormData) => apiClient.post('/finance/vault/folders', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    getDocuments: (params?: { transaction_id?: string, parent_id?: string, file_type?: string, search?: string, skip?: number, limit?: number }) =>
+        apiClient.get('/finance/vault', { params }),
+    updateDocument: (id: string, formData: FormData) => apiClient.put(`/finance/vault/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    listVersions: (id: string) => apiClient.get(`/finance/vault/${id}/versions`),
+    deleteDocument: (id: string) => apiClient.delete(`/finance/vault/${id}`),
+    linkDocToTransaction: (docId: string, transactionId: string | null) =>
+        apiClient.patch(`/finance/vault/${docId}/link-transaction`, { transaction_id: transactionId }),
+    syncVault: () => apiClient.post('/finance/vault/sync'),
+    getDocument: (id: string) => apiClient.get(`/finance/vault/${id}`),
+
+    getDocumentDownloadUrl: (id: string, version?: number) => {
+        const token = localStorage.getItem('access_token')
+        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/download?token=${token}`
+        if (version) url += `&version=${version}`
+        return url
+    },
+    getDocumentViewUrl: (id: string, version?: number) => {
+        const token = localStorage.getItem('access_token')
+        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/view?token=${token}`
+        if (version) url += `&version=${version}`
+        return url
+    },
+    getDocumentThumbnailUrl: (id: string, version?: number) => {
+        const token = localStorage.getItem('access_token')
+        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/thumbnail?token=${token}`
+        if (version) url += `&version=${version}`
+        return url
+    },
+    getDocumentBlob: (id: string, version?: number) => {
+        let url = `/finance/vault/${id}/view`
+        if (version) url += `?version=${version}`
+        return apiClient.get(url, { responseType: 'blob' })
+    },
+    getVaultSettings: () => apiClient.get('/finance/vault/settings'),
+    saveVaultSettings: (credentials_json: string) => apiClient.post('/finance/vault/settings', { credentials_json }),
+    clearVaultSettings: () => apiClient.delete('/finance/vault/settings'),
+    testVaultConnection: () => apiClient.post('/finance/vault/settings/test'),
+    getVaultAuthUrl: (client_id: string, client_secret: string) =>
+        apiClient.post('/finance/vault/settings/auth-url', { client_id, client_secret }),
+    exchangeVaultCode: (code: string) =>
+        apiClient.post('/finance/vault/settings/callback', { code }),
+    getVaultHistory: (limit: number = 10) => apiClient.get('/finance/vault/history', { params: { limit } }),
 
     // Ingestion
     analyzeCsv: (formData: FormData) => apiClient.post('/ingestion/csv/analyze', formData, {
@@ -195,8 +257,11 @@ export const financeApi = {
 
     getMarketIndices: () => apiClient.get('/finance/mutual-funds/indices'),
     getPortfolio: (userId?: string) => apiClient.get('/finance/mutual-funds/portfolio', { params: { user_id: userId } }),
+    getMutualFundSyncStatus: () => apiClient.get('/finance/mutual-funds/sync/status'),
+    triggerMutualFundSync: () => apiClient.post('/finance/mutual-funds/sync/refresh'),
     getHoldingDetails: (id: string) => apiClient.get(`/finance/mutual-funds/holdings/${id}`),
     getSchemeDetails: (schemeCode: string) => apiClient.get(`/finance/mutual-funds/schemes/${schemeCode}/details`),
+    getSchemeInfo: (schemeCode: string) => apiClient.get(`/finance/mutual-funds/schemes/${schemeCode}/info`),
     updateHolding: (id: string, data: any) => apiClient.patch(`/finance/mutual-funds/holdings/${id}`, data),
     getAnalytics: (userId?: string) => apiClient.get('/finance/mutual-funds/analytics', { params: { user_id: userId } }),
     getPerformanceTimeline: (period: string = '1y', granularity: string = '1w', userId?: string, schemeCode?: string, holdingId?: string) =>
@@ -229,7 +294,7 @@ export const financeApi = {
     createLoan: (data: any) => apiClient.post('/finance/loans', data),
     recordLoanRepayment: (loanId: string, data: any) => apiClient.post(`/finance/loans/${loanId}/repayment`, data),
 
-    // Vendor Aliases
+    // Merchant Aliases
     getAliases: () => apiClient.get('/ingestion/aliases'),
     createAlias: (data: any) => apiClient.post('/ingestion/aliases', data),
     updateAlias: (id: string, data: any) => apiClient.put(`/ingestion/aliases/${id}`, data),

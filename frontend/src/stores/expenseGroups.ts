@@ -1,64 +1,78 @@
-import { defineStore } from 'pinia';
-import axios from 'axios';
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { financeApi } from '@/api/client'
+import { useStorePersistence } from '@/utils/persistence'
+import { useAuthStore } from '@/stores/auth'
 
 export interface ExpenseGroup {
-    id: string;
-    name: string;
-    description: string;
-    is_active: boolean;
-    created_at: string;
+    id: string
+    name: string
+    description: string
+    is_active: boolean
+    created_at: string
 }
 
-export const useExpenseGroupStore = defineStore('expenseGroups', {
-    state: () => ({
-        groups: [] as ExpenseGroup[],
-        loading: false,
-        error: null as string | null,
-    }),
+export const useExpenseGroupStore = defineStore('expenseGroups', () => {
+    const auth = useAuthStore()
+    const memberId = computed(() => auth.selectedMemberId)
 
-    actions: {
-        async fetchGroups() {
-            this.loading = true;
-            try {
-                const response = await axios.get('/api/finance/expense-groups');
-                this.groups = response.data;
-                this.error = null;
-            } catch (err: any) {
-                this.error = 'Failed to fetch expense groups';
-                console.error(err);
-            } finally {
-                this.loading = false;
-            }
-        },
+    const groups = ref<ExpenseGroup[]>([])
+    const loading = ref(false)
+    const error = ref<string | null>(null)
 
-        async createGroup(name: string, description: string) {
-            try {
-                const response = await axios.post('/api/finance/expense-groups', { name, description });
-                this.groups.push(response.data);
-            } catch (err: any) {
-                throw new Error('Failed to create expense group');
-            }
-        },
+    useStorePersistence('expense_groups_list', groups, memberId)
 
-        async updateGroup(id: string, name: string, description: string, is_active: boolean) {
-            try {
-                const response = await axios.put(`/api/finance/expense-groups/${id}`, { name, description, is_active });
-                const index = this.groups.findIndex(g => g.id === id);
-                if (index !== -1) {
-                    this.groups[index] = response.data;
-                }
-            } catch (err: any) {
-                throw new Error('Failed to update expense group');
-            }
-        },
-
-        async deleteGroup(id: string) {
-            try {
-                await axios.delete(`/api/finance/expense-groups/${id}`);
-                this.groups = this.groups.filter(g => g.id !== id);
-            } catch (err: any) {
-                throw new Error('Failed to delete expense group');
-            }
+    async function fetchGroups() {
+        loading.value = true
+        try {
+            const response = await financeApi.getExpenseGroups(auth.selectedMemberId || undefined)
+            groups.value = response.data
+            error.value = null
+        } catch (err: any) {
+            error.value = 'Failed to fetch expense groups'
+            console.error(err)
+        } finally {
+            loading.value = false
         }
-    },
-});
+    }
+
+    async function createGroup(name: string, description: string) {
+        try {
+            const response = await financeApi.createExpenseGroup({ name, description })
+            groups.value.push(response.data)
+        } catch (err: any) {
+            throw new Error('Failed to create expense group')
+        }
+    }
+
+    async function updateGroup(id: string, name: string, description: string, is_active: boolean) {
+        try {
+            const response = await financeApi.updateExpenseGroup(id, { name, description, is_active })
+            const index = groups.value.findIndex(g => g.id === id)
+            if (index !== -1) {
+                groups.value[index] = response.data
+            }
+        } catch (err: any) {
+            throw new Error('Failed to update expense group')
+        }
+    }
+
+    async function deleteGroup(id: string) {
+        try {
+            await financeApi.deleteExpenseGroup(id)
+            groups.value = groups.value.filter(g => g.id !== id)
+        } catch (err: any) {
+            throw new Error('Failed to delete expense group')
+        }
+    }
+
+    return {
+        groups,
+        loading,
+        error,
+        fetchGroups,
+        createGroup,
+        updateGroup,
+        deleteGroup
+    }
+})

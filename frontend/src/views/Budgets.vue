@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import { financeApi } from '@/api/client'
@@ -25,21 +25,40 @@ import {
     Activity,
     MoreVertical,
     Moon,
-    PieChart
+    PieChart,
+    BarChart3
 } from 'lucide-vue-next'
+import CategoryDetailsModal from '@/components/budgets/CategoryDetailsModal.vue'
+
+import { useBudgetStore } from '@/stores/finance/budgets'
+import { useFinanceStore } from '@/stores/finance'
 
 const { formatAmount } = useCurrency()
 const notify = useNotificationStore()
 const authStore = useAuthStore()
+const budgetStore = useBudgetStore()
+const financeStore = useFinanceStore()
 const router = useRouter()
 
-// State
-const budgets = ref<any[]>([])
-const categories = ref<any[]>([])
-const loading = ref(true)
+// State - seed from cache
+const budgets = computed(() => budgetStore.budgets)
+const overallBudget = computed(() => budgetStore.overallBudget)
+const categories = computed(() => financeStore.categories)
+const loading = ref(budgetStore.budgets.length === 0)
 const loadingInsights = ref(false)
 const showModal = ref(false)
-const insights = ref<any[]>([])
+const insights = computed(() => budgetStore.insights)
+
+// Category Details Modal
+const showDetailsModal = ref(false)
+const selectedCategoryForDetails = ref<any>(null)
+const selectedCategoryBudget = ref<any>(null)
+
+function openCategoryDetails(category: any, budget?: any) {
+    selectedCategoryForDetails.value = category
+    selectedCategoryBudget.value = budget
+    showDetailsModal.value = true
+}
 
 // Month Selection
 const now = new Date()
@@ -75,7 +94,6 @@ const newBudget = ref({
 const activeTab = ref<'expense' | 'income'>('expense')
 
 // Metrics
-const overallBudget = ref<any>(null)
 
 // Metrics - categoryBudgets no longer needs to filter ALL
 // But wait, the API now returns list WITHOUT OVERALL, so we don't need to filter it out.
@@ -136,8 +154,8 @@ const inactiveGroups = computed(() => {
     })
 })
 
-const overspentGroups = computed(() => {
-    return groupedBudgets.value.filter(g => g.parent.percentage > 100)
+const alertGroups = computed(() => {
+    return groupedBudgets.value.filter(g => g.parent.percentage > 85)
 })
 
 const totalIncome = computed(() => {
@@ -187,21 +205,17 @@ const categoryOptions = computed(() => {
 })
 
 async function fetchData() {
-    loading.value = true
-    insights.value = [] // Reset insights on month change
+    if (budgetStore.budgets.length === 0) loading.value = true
+    budgetStore.insights = [] // Reset insights on month change
     try {
         const year = selectedDate.value.getFullYear()
         const month = selectedDate.value.getMonth() + 1
         const userId = authStore.selectedMemberId || undefined
 
-        const [budgetRes, overviewRes, catRes] = await Promise.all([
-            financeApi.getBudgets(year, month, userId),
-            financeApi.getBudgetOverview(year, month, userId),
-            financeApi.getCategories()
+        await Promise.all([
+            budgetStore.fetchBudgets(year, month, userId),
+            financeStore.fetchCategories()
         ])
-        budgets.value = budgetRes.data
-        overallBudget.value = overviewRes.data
-        categories.value = catRes.data
     } catch (e) {
         console.error(e)
         notify.error("Failed to load budgets")
@@ -216,8 +230,7 @@ async function fetchInsights() {
         const year = selectedDate.value.getFullYear()
         const month = selectedDate.value.getMonth() + 1
         const userId = authStore.selectedMemberId || undefined
-        const res = await financeApi.getBudgetsInsights(year, month, userId)
-        insights.value = res.data
+        await budgetStore.fetchInsights(year, month, userId)
     } catch (e) {
         notify.error("Failed to generate AI insights")
     } finally {
@@ -226,7 +239,6 @@ async function fetchInsights() {
 }
 
 // Watch for member changes
-import { watch } from 'vue'
 watch(() => authStore.selectedMemberId, () => {
     fetchData()
 })
@@ -360,7 +372,7 @@ onMounted(() => {
                                     <div class="d-flex align-baseline ga-3 mb-8">
                                         <span class="text-h2 font-weight-black text-white letter-spacing-tight">{{
                                             formatAmount(overallBudget.spent)
-                                        }}</span>
+                                            }}</span>
                                         <span class="text-h4 text-white opacity-30">/</span>
                                         <span class="text-h4 font-weight-bold text-white opacity-60">
                                             {{ overallBudget.amount_limit ? formatAmount(overallBudget.amount_limit) :
@@ -565,18 +577,18 @@ onMounted(() => {
                                         <Ban class="text-slate-400" :size="24" />
                                     </v-avatar>
                                 </div>
-                                <div class="d-flex flex-column gap-2 mt-2">
+                                <div class="d-flex flex-column ga-2 mt-2">
                                     <div v-if="overallBudget.total_excluded > 0"
                                         class="text-subtitle-2 font-weight-black opacity-60 d-flex justify-space-between align-center">
                                         <span>Outflow</span>
                                         <span class="text-subtitle-1">{{ formatAmount(overallBudget.total_excluded)
-                                        }}</span>
+                                            }}</span>
                                     </div>
                                     <div v-if="overallBudget.excluded_income > 0"
                                         class="text-subtitle-2 font-weight-black text-success d-flex justify-space-between align-center">
                                         <span>Inflow</span>
                                         <span class="text-subtitle-1">+{{ formatAmount(overallBudget.excluded_income)
-                                        }}</span>
+                                            }}</span>
                                     </div>
                                 </div>
                             </v-card>
@@ -585,39 +597,54 @@ onMounted(() => {
 
                     <!-- Budget Alerts (Dynamic) -->
                     <v-expand-transition>
-                        <div v-if="overspentGroups.length > 0" class="mb-10">
+                        <div v-if="alertGroups.length > 0" class="mb-8">
                             <div class="d-flex align-center ga-3 mb-4">
-                                <v-avatar color="error" variant="tonal" size="44">
-                                    <Flame class="text-error" :size="24" />
+                                <v-avatar color="warning" variant="tonal" size="40">
+                                    <Flame class="text-warning" :size="20" />
                                 </v-avatar>
                                 <div>
-                                    <h3 class="text-h6 font-weight-black line-height-1 mb-1">Budget Alerts</h3>
-                                    <p class="text-caption font-weight-bold opacity-60">High-priority awareness items
-                                    </p>
+                                    <h3 class="text-subtitle-1 font-weight-black line-height-1 mb-0">Budget Alerts</h3>
+                                    <p class="text-caption font-weight-bold opacity-60">Attention needed</p>
                                 </div>
                             </div>
                             <v-row>
-                                <v-col v-for="group in overspentGroups" :key="`alert-${group.parent.category}`"
-                                    cols="12" sm="6" lg="4">
-                                    <v-card border="error" variant="outlined"
-                                        class="pa-4 bg-error-lighten-5 rounded-xl border-opacity-25 h-100"
+                                <v-col v-for="group in alertGroups" :key="`alert-${group.parent.category}`" cols="12"
+                                    sm="6" md="4" lg="3">
+                                    <v-card :color="group.parent.percentage > 100 ? 'error' : 'warning'" variant="tonal"
+                                        class="pa-3 rounded-xl border-opacity-50 h-100 cursor-pointer hover-scale"
                                         @click="editBudget(group.parent)">
                                         <div class="d-flex align-center justify-space-between">
                                             <div class="d-flex align-center ga-3">
-                                                <v-avatar size="44" color="error" variant="tonal" rounded="lg">
-                                                    <span class="text-h5">{{ group.parent.icon }}</span>
+                                                <v-avatar size="36"
+                                                    :color="group.parent.percentage > 100 ? 'error' : 'warning'"
+                                                    variant="flat" rounded="lg">
+                                                    <span class="text-h6">{{ group.parent.icon }}</span>
                                                 </v-avatar>
-                                                <div>
-                                                    <div class="text-subtitle-1 font-weight-black">{{
+                                                <div class="overflow-hidden">
+                                                    <div class="text-subtitle-2 font-weight-black text-truncate">{{
                                                         group.parent.category }}</div>
-                                                    <div class="text-caption font-weight-bold text-error">
-                                                        Overspent by {{ formatAmount(group.parent.spent -
-                                                            group.parent.amount_limit) }}
+                                                    <div class="text-caption font-weight-bold"
+                                                        :class="group.parent.percentage > 100 ? 'text-error' : 'text-warning-darken-2'">
+                                                        {{ group.parent.percentage > 100 ? 'Overspent' : 'Near Limit' }}
+                                                        ({{ group.parent.percentage.toFixed(0) }}%)
                                                     </div>
                                                 </div>
                                             </div>
-                                            <v-btn variant="tonal" size="small" icon color="error">
-                                                <Pencil :size="16" />
+                                            <div class="text-right">
+                                                <div class="text-subtitle-2 font-weight-black">
+                                                    {{ formatAmount(Math.abs(group.parent.remaining)) }}
+                                                </div>
+                                                <div class="font-weight-bold opacity-70" style="font-size: 10px">
+                                                    {{ group.parent.percentage > 100 ? 'Exceeded' : 'Left' }}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3 pt-3 border-t d-flex justify-center">
+                                            <v-btn variant="text" size="x-small" color="on-surface"
+                                                class="opacity-60 font-weight-bold"
+                                                @click.stop="openCategoryDetails(group.parent.category, group.parent)">
+                                                View Analysis
+                                                <ArrowRight :size="12" class="ml-1" />
                                             </v-btn>
                                         </div>
                                     </v-card>
@@ -655,24 +682,24 @@ onMounted(() => {
 
                     <v-row v-if="activeGroups.length > 0">
                         <v-col v-for="group in activeGroups" :key="group.parent.budget_id || group.parent.category"
-                            cols="12" sm="6" lg="4">
+                            cols="12" sm="6" md="4" lg="3">
                             <!-- Changed lg-3 to lg-4 for wider cards -->
                             <v-card class="premium-glass-card h-100 d-flex flex-column" rounded="xl">
-                                <div class="pa-6 flex-grow-1">
+                                <div class="pa-5 flex-grow-1">
                                     <!-- Card Header -->
                                     <div class="d-flex justify-space-between align-start mb-6">
                                         <div class="d-flex align-center ga-3">
                                             <div class="category-icon-container"
                                                 :style="{ '--icon-color': group.parent.color || (activeTab === 'expense' ? '#F43F5E' : '#10B981') }">
                                                 <span class="text-h4 relative-pos z-2">{{ group.parent.icon || '🏷️'
-                                                }}</span>
+                                                    }}</span>
                                                 <div class="icon-gradient-bg"></div>
                                             </div>
                                             <div>
                                                 <span class="text-h6 font-weight-black line-height-1 mb-1 d-block">{{
                                                     group.parent.category
-                                                    }}</span>
-                                                <div class="d-flex gap-2">
+                                                }}</span>
+                                                <div class="d-flex ga-2">
                                                     <v-chip v-if="group.children.length > 0" size="x-small"
                                                         variant="tonal" color="primary" class="font-weight-bold">
                                                         {{ group.children.length }} Sub-categories
@@ -692,6 +719,14 @@ onMounted(() => {
                                                 </v-btn>
                                             </template>
                                             <v-list density="compact" rounded="lg" class="py-1">
+                                                <v-list-item
+                                                    @click="openCategoryDetails(group.parent.category, group.parent)">
+                                                    <template v-slot:prepend>
+                                                        <BarChart3 :size="14" class="mr-3 text-primary" />
+                                                    </template>
+                                                    <v-list-item-title class="font-weight-bold">View
+                                                        Analysis</v-list-item-title>
+                                                </v-list-item>
                                                 <v-list-item @click="editBudget(group.parent)">
                                                     <template v-slot:prepend>
                                                         <Pencil :size="14" class="mr-3" />
@@ -710,7 +745,7 @@ onMounted(() => {
                                             <v-row no-gutters>
                                                 <!-- Spent Column -->
                                                 <v-col cols="6" class="metric-col pa-4 border-r">
-                                                    <div class="d-flex align-center gap-2 mb-1">
+                                                    <div class="d-flex align-center ga-2 mb-1">
                                                         <v-avatar size="24"
                                                             :color="group.parent.percentage > 100 ? 'error' : 'primary'"
                                                             variant="tonal" rounded="sm">
@@ -738,7 +773,7 @@ onMounted(() => {
                                                 </v-col>
                                                 <!-- Limit/Remaining Column -->
                                                 <v-col cols="6" class="metric-col pa-4 bg-surface-light">
-                                                    <div class="d-flex align-center gap-2 mb-1">
+                                                    <div class="d-flex align-center ga-2 mb-1">
                                                         <v-avatar size="24" color="slate-400" variant="tonal"
                                                             rounded="sm">
                                                             <Target :size="14" />
@@ -787,13 +822,13 @@ onMounted(() => {
                                                 </span>
                                             </v-expansion-panel-title>
                                             <v-expansion-panel-text class="pa-0">
-                                                <div class="d-flex flex-column gap-2 mt-2">
+                                                <div class="d-flex flex-column ga-2 mt-2">
                                                     <div v-for="child in group.children" :key="child.category"
                                                         class="subcategory-row pa-2 px-3 group/sub cursor-pointer rounded-lg relative-pos overflow-hidden transition-all mb-1"
-                                                        @click.stop="editBudget(child)">
+                                                        @click.stop="openCategoryDetails(child.category, child)">
                                                         <div
                                                             class="d-flex justify-space-between align-center mb-1 relative-pos z-2">
-                                                            <div class="d-flex align-center gap-2">
+                                                            <div class="d-flex align-center ga-2">
                                                                 <span class="text-caption">{{ child.icon }}</span>
                                                                 <span class="text-caption font-weight-black truncate"
                                                                     style="max-width: 140px;">
@@ -840,7 +875,7 @@ onMounted(() => {
 
                     <!-- Inactive Groups Section -->
                     <div v-if="inactiveGroups.length > 0" class="mt-8">
-                        <div class="d-flex align-center gap-3 mb-4">
+                        <div class="d-flex align-center ga-3 mb-4">
                             <Moon color="rgb(var(--v-theme-primary))" opacity="0.6" :size="20" />
                             <h3 class="text-h6 font-weight-black opacity-60">Inactive Categories</h3>
                         </div>
@@ -851,7 +886,7 @@ onMounted(() => {
                                     style="background: rgba(var(--v-theme-surface), 0.3) !important">
                                     <div class="pa-6 flex-grow-1">
                                         <div class="d-flex justify-space-between align-start mb-6">
-                                            <div class="d-flex align-center gap-3">
+                                            <div class="d-flex align-center ga-3">
                                                 <v-avatar color="surface-variant" variant="tonal" rounded="lg" size="44"
                                                     border>
                                                     <span class="text-h5">{{ group.parent.icon || '🏷️' }}</span>
@@ -906,7 +941,7 @@ onMounted(() => {
         <v-dialog v-model="showModal" max-width="500">
             <v-card class="premium-glass-card no-hover" rounded="xl">
                 <v-card-title class="pa-6 border-b d-flex align-center">
-                    <div class="d-flex align-center gap-3 flex-grow-1">
+                    <div class="d-flex align-center ga-3 flex-grow-1">
                         <v-avatar color="primary" variant="tonal" rounded="lg" size="40">
                             <span class="text-h6">{{ newBudget.icon || '🏷️' }}</span>
                         </v-avatar>
@@ -944,7 +979,7 @@ onMounted(() => {
                                 class="font-weight-black text-h6"></v-text-field>
                         </div>
 
-                        <div class="d-flex gap-4 justify-end mt-10">
+                        <div class="d-flex ga-4 justify-end mt-10">
                             <v-btn variant="text" rounded="pill" class="text-none px-8 font-weight-black"
                                 @click="showModal = false">Cancel</v-btn>
                             <v-btn color="primary" rounded="pill"
@@ -956,6 +991,9 @@ onMounted(() => {
                 </v-card-text>
             </v-card>
         </v-dialog>
+        <CategoryDetailsModal :isOpen="showDetailsModal" :category="selectedCategoryForDetails"
+            :budget="selectedCategoryBudget" :month="selectedDate.getMonth() + 1" :year="selectedDate.getFullYear()"
+            @close="showDetailsModal = false" />
     </MainLayout>
 </template>
 
@@ -1197,5 +1235,13 @@ onMounted(() => {
 .premium-glass-card:hover .card-bg-icon-standard {
     transform: rotate(0deg) scale(1.1);
     opacity: 0.05;
+}
+
+.hover-scale {
+    transition: transform 0.2s;
+}
+
+.hover-scale:hover {
+    transform: translateY(-2px);
 }
 </style>

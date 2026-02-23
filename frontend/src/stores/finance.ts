@@ -1,15 +1,23 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { financeApi } from '@/api/client'
+import { useStorePersistence } from '@/utils/persistence'
+import { useAuthStore } from '@/stores/auth'
+
 
 export const useFinanceStore = defineStore('finance', () => {
+    const auth = useAuthStore()
+    const memberId = computed(() => auth.selectedMemberId)
+
     // State
     const categories = ref<any[]>([])
     const accounts = ref<any[]>([])
-
-
     const recurringTransactions = ref<any[]>([])
-    // const metrics = ref<any>(null)
+
+    // Apply Persistence
+    useStorePersistence('categories', categories) // Categories are usually global
+    useStorePersistence('accounts', accounts, memberId)
+    useStorePersistence('recurring_transactions', recurringTransactions, memberId)
 
     const loading = ref(false)
     const error = ref<string | null>(null)
@@ -50,7 +58,7 @@ export const useFinanceStore = defineStore('finance', () => {
 
     async function fetchAccounts() {
         try {
-            const res = await financeApi.getAccounts()
+            const res = await financeApi.getAccounts(auth.selectedMemberId || undefined)
             accounts.value = res.data
         } catch (e) {
             console.error("Failed to fetch accounts", e)

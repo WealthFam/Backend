@@ -1,11 +1,16 @@
-```vue
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, reactive, watch } from 'vue'
+import { useTheme } from 'vuetify'
 import { useCurrency } from '@/composables/useCurrency'
 import {
-    CheckCircle2, X, Pencil, Plus, Info, Tag,
-    Settings, ArrowLeftRight, Search, Link, SearchX, LineChart
+    CheckCircle2, X, Pencil, Plus, Minus, Info, Tag,
+    Settings, ArrowLeftRight, Search, Link, SearchX, LineChart, IndianRupee, Calendar,
+    FileText, Paperclip, ExternalLink, Trash2, Link2,
+    FileImage, FileVideo, Music, FileCode, FileArchive, Fingerprint, ShieldCheck, Receipt, Scale, Folder,
+    FileSpreadsheet, Presentation
 } from 'lucide-vue-next'
+import { VueDatePicker } from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
 
 const props = defineProps<{
     isOpen: boolean
@@ -23,6 +28,140 @@ const props = defineProps<{
 const emit = defineEmits(['close', 'submit', 'findMatches', 'selectMatch'])
 
 const { formatAmount } = useCurrency()
+const theme = useTheme()
+const isDark = computed(() => theme.global.current.value.dark)
+
+// Local state to avoid prop mutation
+
+const localForm = reactive({ ...props.form })
+
+watch(() => props.isOpen, (next) => {
+    if (next) {
+        Object.assign(localForm, props.form)
+    }
+})
+
+// Deep watch on props.form to keep local state in sync if parent changes it
+watch(() => props.form, (newForm) => {
+    Object.assign(localForm, newForm)
+}, { deep: true })
+
+// Document Management
+import { financeApi } from '@/api/client'
+import { useNotificationStore } from '@/stores/notification'
+
+const notification = useNotificationStore()
+const attachedDocs = ref<any[]>([])
+const loadingDocs = ref(false)
+
+// Vault picker for linking existing docs
+const vaultPickerOpen = ref(false)
+const vaultPickerSearch = ref('')
+const vaultPickerResults = ref<any[]>([])
+const vaultPickerLoading = ref(false)
+let vaultPickerTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function searchVaultDocs(q: string) {
+    vaultPickerLoading.value = true
+    try {
+        // When q is empty, list all root-level files; when typing, use backend search (spans all folders)
+        const params = q.trim()
+            ? { search: q.trim(), limit: 20 }
+            : { limit: 20 }
+        const res = await financeApi.getDocuments(params)
+        const all: any[] = Array.isArray(res.data) ? res.data : (res.data?.items || [])
+        vaultPickerResults.value = all.filter(d => !d.is_folder)
+    } catch { vaultPickerResults.value = [] }
+    finally { vaultPickerLoading.value = false }
+}
+
+function onVaultPickerInput() {
+    if (vaultPickerTimeout) clearTimeout(vaultPickerTimeout)
+    vaultPickerTimeout = setTimeout(() => searchVaultDocs(vaultPickerSearch.value), 300)
+}
+
+async function linkVaultDoc(doc: any) {
+    if (!localForm.id) return
+    try {
+        await financeApi.linkDocToTransaction(doc.id, localForm.id)
+        notification.success(`"${doc.filename}" linked to this transaction`)
+        vaultPickerOpen.value = false
+        vaultPickerSearch.value = ''
+        fetchAttachedDocs()
+    } catch { notification.error('Failed to link document') }
+}
+
+function openVaultPicker() {
+    vaultPickerOpen.value = true
+    vaultPickerSearch.value = ''
+    searchVaultDocs('')
+}
+
+async function fetchAttachedDocs() {
+    if (!props.isEditing || !localForm.id) {
+        attachedDocs.value = []
+        return
+    }
+    loadingDocs.value = true
+    try {
+        const res = await financeApi.getDocuments({ transaction_id: localForm.id })
+        attachedDocs.value = res.data
+    } catch (e) {
+        console.error('Failed to fetch docs', e)
+    } finally {
+        loadingDocs.value = false
+    }
+}
+
+watch(() => props.isOpen, (next) => {
+    if (next && props.isEditing) fetchAttachedDocs()
+})
+
+async function handleFileUpload(e: any) {
+    const file = e.target.files[0]
+    if (!file || !localForm.id) return
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('transaction_id', localForm.id)
+    formData.append('is_shared', 'true')
+
+    try {
+        await financeApi.uploadDocument(formData)
+        notification.success('Document attached')
+        fetchAttachedDocs()
+    } catch (e) {
+        notification.error('Failed to upload document')
+    }
+}
+
+async function detachDoc(docId: string) {
+    try {
+        await financeApi.deleteDocument(docId)
+        notification.success('Document detached')
+        fetchAttachedDocs()
+    } catch (e) {
+        notification.error('Failed to detach document')
+    }
+}
+
+async function openDoc(docId: string) {
+    try {
+        const doc = attachedDocs.value.find(d => d.id === docId)
+        const res = await financeApi.getDocumentBlob(docId)
+        const blob = new Blob([res.data], { type: res.headers['content-type'] || doc?.mime_type || 'application/octet-stream' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = doc?.filename || 'document'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    } catch (e) {
+        notification.error('Failed to open document')
+    }
+}
 
 const categoryOptions = computed(() => {
     const list: any[] = []
@@ -54,16 +193,99 @@ const expenseGroupOptions = computed(() => {
 })
 
 const currentCategoryBudget = computed(() => {
-    if (!props.form.category || props.form.is_transfer) return null
-    return props.budgets.find(b => b.category === props.form.category) || null
+    if (!localForm.category || localForm.is_transfer) return null
+    return props.budgets.find(b => b.category === localForm.category) || null
+})
+
+// Auto-detect Credit Card Payment
+watch(() => localForm.category, (newVal) => {
+    if (!newVal) return;
+
+    // Check if category implies credit card payment
+    const lower = newVal.toLowerCase();
+    if (lower.includes('credit card') || lower.includes('cc payment') || lower.includes('card payment')) {
+        // Find if we have credit card accounts
+        const ccAccounts = props.accounts.filter(a => a.type === 'CREDIT_CARD');
+
+        if (ccAccounts.length > 0) {
+            // Suggest Transfer mode (Safe to mutate localForm now)
+            if (!localForm.is_transfer) {
+                localForm.is_transfer = true;
+
+                // If only one card, auto-select it
+                if (ccAccounts.length === 1) {
+                    localForm.to_account_id = ccAccounts[0].id;
+                }
+            }
+        }
+    }
+})
+
+const isFormValid = computed(() => {
+    const basicValid = localForm.amount > 0 && localForm.date && localForm.account_id && localForm.category
+    if (localForm.is_transfer) {
+        return basicValid && localForm.to_account_id
+    }
+    return basicValid
 })
 
 function handleSubmit() {
-    emit('submit')
+    if (!isFormValid.value) return
+    emit('submit', { ...localForm }) // Emit a clone of the local result
 }
 
 function handleClose() {
     emit('close')
+}
+
+function getIcon(item: any) {
+    if (!item) return FileText
+    if (item.is_folder) return Folder
+
+    const filename = (item.filename || '').toLowerCase()
+    const mt = (item.mime_type || '').toLowerCase()
+
+    if (item.file_type === 'INVOICE') return Receipt
+    if (item.file_type === 'POLICY') return ShieldCheck
+    if (item.file_type === 'TAX') return Scale
+    if (item.file_type === 'IDENTITY') return Fingerprint
+
+    if (filename.endsWith('.pdf') || mt === 'application/pdf') return FileText
+    if (filename.endsWith('.xls') || filename.endsWith('.xlsx') || filename.endsWith('.csv') ||
+        mt.includes('spreadsheet') || mt.includes('excel') || mt.includes('csv') || mt.includes('sheet')) return FileSpreadsheet
+    if (filename.endsWith('.ppt') || filename.endsWith('.pptx') ||
+        mt.includes('presentation') || mt.includes('powerpoint')) return Presentation
+    if (filename.endsWith('.doc') || filename.endsWith('.docx') || mt.includes('word') || mt.includes('msword')) return FileText
+
+    if (mt.startsWith('image/')) return FileImage
+    if (mt.startsWith('video/')) return FileVideo
+    if (mt.startsWith('audio/')) return Music
+    if (mt.includes('javascript') || mt.includes('json') || mt.includes('html') || mt.includes('css')) return FileCode
+    if (mt.includes('zip') || mt.includes('rar') || mt.includes('tar') || mt.includes('7z') || mt.includes('archive')) return FileArchive
+    return FileText
+}
+
+function getIconColor(item: any) {
+    if (!item) return 'text-grey'
+    if (item.is_folder) return 'text-primary'
+
+    const filename = (item.filename || '').toLowerCase()
+    const mt = (item.mime_type || '').toLowerCase()
+
+    if (item.file_type === 'INVOICE') return 'text-orange-darken-2'
+    if (item.file_type === 'POLICY') return 'text-blue-darken-2'
+    if (item.file_type === 'TAX') return 'text-red-darken-2'
+    if (item.file_type === 'IDENTITY') return 'text-green-darken-2'
+
+    if (filename.endsWith('.pdf') || mt === 'application/pdf') return 'text-red-darken-1'
+    if (filename.endsWith('.xls') || filename.endsWith('.xlsx') || filename.endsWith('.csv') || mt.includes('sheet')) return 'text-green-darken-3'
+    if (mt.includes('presentation') || mt.includes('powerpoint')) return 'text-deep-orange-darken-2'
+
+    if (mt.startsWith('image/')) return 'text-purple-darken-1'
+    if (mt.startsWith('video/')) return 'text-deep-purple'
+    if (mt.startsWith('audio/')) return 'text-pink'
+    if (mt.includes('zip') || mt.includes('rar') || mt.includes('archive')) return 'text-amber-darken-3'
+    return 'text-grey-darken-1'
 }
 </script>
 
@@ -103,24 +325,55 @@ function handleClose() {
 
                             <v-row dense>
                                 <v-col cols="12" class="mb-1">
-                                    <v-text-field v-model="form.description" label="Description"
+                                    <v-text-field v-model="localForm.description" label="Description"
                                         placeholder="What was this for?" variant="outlined" density="comfortable"
                                         rounded="lg" class="premium-modal-input font-weight-bold" hide-details
                                         autocomplete="off" />
                                 </v-col>
 
-                                <v-col cols="12" md="6" class="mb-1">
-                                    <v-text-field v-model="form.amount" label="Amount" type="number" placeholder="0.00"
+                                <v-col cols="4" md="3" class="mb-1">
+                                    <v-select v-model="localForm.type" :items="['DEBIT', 'CREDIT']" label="Type"
                                         variant="outlined" density="comfortable" rounded="lg"
-                                        class="premium-modal-input font-weight-bold" hide-details
-                                        prepend-inner-icon="DollarSign" autocomplete="off" />
+                                        class="premium-modal-input font-weight-bold" hide-details>
+                                        <template v-slot:selection="{ item }">
+                                            <span :class="item.value === 'DEBIT' ? 'text-error' : 'text-success'">{{
+                                                item.value === 'DEBIT' ? 'Debit' : 'Credit' }}</span>
+                                        </template>
+                                        <template v-slot:item="{ props, item }">
+                                            <v-list-item v-bind="props"
+                                                :title="item.value === 'DEBIT' ? 'Debit' : 'Credit'"
+                                                :class="item.value === 'DEBIT' ? 'text-error' : 'text-success'">
+                                                <template v-slot:prepend>
+                                                    <component :is="item.value === 'DEBIT' ? Minus : Plus" :size="16"
+                                                        class="mr-2" />
+                                                </template>
+                                            </v-list-item>
+                                        </template>
+                                    </v-select>
                                 </v-col>
 
-                                <v-col cols="12" md="6" class="mb-1">
-                                    <v-text-field v-model="form.date" label="Date & Time" type="datetime-local"
-                                        variant="outlined" density="comfortable" rounded="lg"
+                                <v-col cols="8" md="5" class="mb-1">
+                                    <v-text-field v-model="localForm.amount" label="Amount" type="number"
+                                        placeholder="0.00" variant="outlined" density="comfortable" rounded="lg"
                                         class="premium-modal-input font-weight-bold" hide-details
-                                        prepend-inner-icon="Calendar" />
+                                        :prepend-inner-icon="IndianRupee" autocomplete="off" />
+                                </v-col>
+
+                                <v-col cols="12" md="4" class="mb-1">
+                                    <div class="date-picker-wrapper">
+                                        <VueDatePicker v-model="localForm.date" :dark="isDark" auto-apply
+                                            :enable-time-picker="true" model-type="yyyy-MM-dd'T'HH:mm"
+                                            format="dd MMM yyyy HH:mm" placeholder="Date & Time" :teleport="true"
+                                            input-class-name="premium-date-input">
+                                            <template #trigger>
+                                                <v-text-field
+                                                    :model-value="localForm.date ? new Date(localForm.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''"
+                                                    label="Date & Time" variant="outlined" density="comfortable"
+                                                    rounded="lg" class="premium-modal-input font-weight-bold"
+                                                    hide-details :prepend-inner-icon="Calendar" readonly />
+                                            </template>
+                                        </VueDatePicker>
+                                    </div>
                                 </v-col>
                             </v-row>
                         </div>
@@ -135,22 +388,22 @@ function handleClose() {
 
                             <v-row dense>
                                 <v-col cols="12" md="6" class="mb-1">
-                                    <v-select v-model="form.account_id" :items="accountOptions" label="Account"
+                                    <v-select v-model="localForm.account_id" :items="accountOptions" label="Account"
                                         item-title="title" item-value="value" variant="outlined" density="comfortable"
                                         rounded="lg" class="premium-modal-input font-weight-bold" hide-details
                                         prepend-inner-icon="Landmark" />
                                 </v-col>
 
                                 <v-col cols="12" md="6" class="mb-1">
-                                    <v-autocomplete v-model="form.category" :items="categoryOptions" label="Category"
-                                        item-title="title" item-value="value" placeholder="Uncategorized"
-                                        variant="outlined" density="comfortable" rounded="lg"
-                                        class="premium-modal-input font-weight-bold" hide-details
-                                        prepend-inner-icon="Tag" />
+                                    <v-autocomplete v-model="localForm.category" :items="categoryOptions"
+                                        label="Category" item-title="title" item-value="value"
+                                        placeholder="Select Category" variant="outlined" density="comfortable"
+                                        rounded="lg" class="premium-modal-input font-weight-bold" hide-details
+                                        :prepend-inner-icon="!localForm.category ? 'Tag' : undefined" />
                                 </v-col>
 
                                 <v-col cols="12" class="mb-1">
-                                    <v-select v-model="form.expense_group_id" :items="expenseGroupOptions"
+                                    <v-select v-model="localForm.expense_group_id" :items="expenseGroupOptions"
                                         label="Life Event / Group" item-title="title" item-value="value"
                                         placeholder="Add to a project or life event (Optional)" variant="outlined"
                                         density="comfortable" rounded="lg" class="premium-modal-input font-weight-bold"
@@ -171,9 +424,9 @@ function handleClose() {
                                 style="border-radius: 20px !important;">
                                 <v-row align="center">
                                     <v-col cols="12" sm="6">
-                                        <v-switch v-model="form.is_transfer" label="Is this a Transfer?" color="primary"
-                                            hide-details density="compact" class="font-weight-bold" persistent-hint
-                                            hint="Moving money between your own accounts">
+                                        <v-switch v-model="localForm.is_transfer" label="Is this a Transfer?"
+                                            color="primary" hide-details density="compact" class="font-weight-bold"
+                                            persistent-hint hint="Moving money between your own accounts">
                                             <template #label>
                                                 <div class="d-flex flex-column ml-2">
                                                     <span class="text-body-2 font-weight-bold">Internal Transfer</span>
@@ -183,7 +436,7 @@ function handleClose() {
                                         </v-switch>
                                     </v-col>
                                     <v-col cols="12" sm="6">
-                                        <v-switch v-model="form.exclude_from_reports" label="Hide from Reports"
+                                        <v-switch v-model="localForm.exclude_from_reports" label="Hide from Reports"
                                             color="error" hide-details density="compact" class="font-weight-bold">
                                             <template #label>
                                                 <div class="d-flex flex-column ml-2">
@@ -199,7 +452,7 @@ function handleClose() {
                             </v-card>
 
                             <v-expand-transition>
-                                <div v-if="form.is_transfer" class="mt-4">
+                                <div v-if="localForm.is_transfer" class="mt-4">
                                     <v-card variant="flat" class="pa-4 border-opacity-10"
                                         style="background: rgba(var(--v-theme-primary), 0.05); border-radius: 20px !important;">
                                         <div class="d-flex align-center gap-2 mb-4">
@@ -209,7 +462,7 @@ function handleClose() {
 
                                         <v-row dense>
                                             <v-col cols="12" md="8">
-                                                <v-select v-model="form.to_account_id" :items="accountOptions"
+                                                <v-select v-model="localForm.to_account_id" :items="accountOptions"
                                                     item-title="title" item-value="value" label="Destination Account"
                                                     placeholder="Select account" variant="outlined"
                                                     density="comfortable" rounded="lg"
@@ -229,19 +482,20 @@ function handleClose() {
                                                 <Search :size="14" />
                                                 Found {{ potentialMatches.length }} matches within 3-day window
                                             </p>
+
                                             <div class="d-flex flex-column gap-3">
                                                 <v-card v-for="match in potentialMatches" :key="match.id" padding="0"
                                                     class="match-card rounded-xl border-opacity-5 cursor-pointer overflow-hidden transition-all"
-                                                    :class="{ 'match-selected-active': form.linked_transaction_id === match.id }"
+                                                    :class="{ 'match-selected-active': localForm.linked_transaction_id === match.id }"
                                                     @click="emit('selectMatch', match)" variant="flat"
-                                                    :color="form.linked_transaction_id === match.id ? 'primary' : 'surface'">
+                                                    :color="localForm.linked_transaction_id === match.id ? 'primary' : 'surface'">
                                                     <div class="pa-4 d-flex justify-space-between align-center">
                                                         <div class="d-flex align-center gap-3">
                                                             <v-avatar size="32"
-                                                                :color="form.linked_transaction_id === match.id ? 'white' : 'primary'"
+                                                                :color="localForm.linked_transaction_id === match.id ? 'white' : 'primary'"
                                                                 class="opacity-80">
                                                                 <Link :size="16"
-                                                                    :color="form.linked_transaction_id === match.id ? 'primary' : 'white'" />
+                                                                    :color="localForm.linked_transaction_id === match.id ? 'primary' : 'white'" />
                                                             </v-avatar>
                                                             <div>
                                                                 <div class="text-subtitle-2 font-weight-black">{{
@@ -289,6 +543,115 @@ function handleClose() {
                                 </v-alert>
                             </div>
                         </v-expand-transition>
+
+                        <!-- Document Vault Integration -->
+                        <div class="section-group mt-6">
+                            <div class="d-flex align-center justify-space-between mb-4">
+                                <div class="d-flex align-center gap-2">
+                                    <Paperclip :size="20" class="text-primary" />
+                                    <span
+                                        class="text-overline font-weight-black text-primary letter-spacing-wide">Documents</span>
+                                </div>
+                                <div v-if="isEditing" class="d-flex align-center gap-1">
+                                    <v-btn variant="text" color="primary" density="compact"
+                                        class="text-none font-weight-bold"
+                                        @click="($refs.txFileInput as HTMLInputElement).click()">
+                                        <Plus :size="14" class="mr-1" /> Upload New
+                                    </v-btn>
+                                    <v-btn variant="text" color="secondary" density="compact"
+                                        class="text-none font-weight-bold" @click="openVaultPicker">
+                                        <Link2 :size="14" class="mr-1" /> Link from Vault
+                                    </v-btn>
+                                </div>
+                                <input type="file" ref="txFileInput" class="d-none" @change="handleFileUpload" />
+                            </div>
+
+                            <!-- Vault Picker panel -->
+                            <v-expand-transition>
+                                <div v-if="vaultPickerOpen && isEditing" class="mb-4 pa-3 rounded-xl border"
+                                    style="border-color: rgba(var(--v-theme-secondary), 0.3); background: rgba(var(--v-theme-secondary), 0.03);">
+                                    <div class="d-flex align-center justify-space-between mb-3">
+                                        <span class="text-caption font-weight-black opacity-70">PICK FROM VAULT</span>
+                                        <v-btn icon variant="text" size="x-small" @click="vaultPickerOpen = false">
+                                            <X :size="14" />
+                                        </v-btn>
+                                    </div>
+                                    <v-text-field v-model="vaultPickerSearch" @input="onVaultPickerInput"
+                                        label="Search vault documents…" variant="outlined" rounded="lg"
+                                        density="compact" prepend-inner-icon="mdi-magnify" :loading="vaultPickerLoading"
+                                        hide-details class="mb-2" clearable
+                                        @click:clear="searchVaultDocs('')"></v-text-field>
+                                    <div class="rounded-lg border overflow-hidden"
+                                        style="max-height: 200px; overflow-y: auto;" v-if="vaultPickerResults.length">
+                                        <div v-for="doc in vaultPickerResults" :key="doc.id"
+                                            class="vault-pick-item pa-3 cursor-pointer d-flex align-center ga-3"
+                                            @click="linkVaultDoc(doc)">
+                                            <div class="header-icon-box bg-surface-variant rounded pa-0 overflow-hidden d-flex align-center justify-center"
+                                                style="width: 32px; height: 32px; flex-shrink: 0;">
+                                                <v-img v-if="doc.thumbnail_path"
+                                                    :src="financeApi.getDocumentThumbnailUrl(doc.id)" cover
+                                                    class="absolute-full">
+                                                    <template v-slot:placeholder>
+                                                        <v-progress-circular indeterminate size="12"
+                                                            color="primary"></v-progress-circular>
+                                                    </template>
+                                                </v-img>
+                                                <component v-else :is="getIcon(doc)" :size="16"
+                                                    :class="getIconColor(doc)" />
+                                            </div>
+                                            <div class="flex-grow-1 min-w-0">
+                                                <div class="text-caption font-weight-bold text-truncate">{{ doc.filename
+                                                    }}</div>
+                                                <div class="text-tiny opacity-50">{{ doc.file_type }} - {{
+                                                    doc.transaction_id ? '(linked)' :
+                                                        'Free' }}</div>
+
+                                            </div>
+                                            <v-chip size="x-small" color="primary" variant="tonal">LINK</v-chip>
+                                        </div>
+                                    </div>
+                                    <div v-else-if="!vaultPickerLoading"
+                                        class="text-caption opacity-40 text-center py-3">
+                                        No documents found
+                                    </div>
+                                </div>
+                            </v-expand-transition>
+
+                            <v-card variant="flat" border class="pa-1 bg-surface border-opacity-10"
+                                style="border-radius: 20px !important;">
+                                <v-list v-if="attachedDocs.length > 0" density="compact" class="bg-transparent">
+                                    <v-list-item v-for="doc in attachedDocs" :key="doc.id" rounded="lg" class="mb-1">
+                                        <template v-slot:prepend>
+                                            <div class="bg-surface-variant rounded mr-3 pa-0 overflow-hidden d-flex align-center justify-center"
+                                                style="width: 24px; height: 24px;">
+                                                <v-img v-if="doc.thumbnail_path"
+                                                    :src="financeApi.getDocumentThumbnailUrl(doc.id)" cover
+                                                    class="absolute-full" />
+                                                <component v-else :is="getIcon(doc)" :size="14"
+                                                    :class="getIconColor(doc)" />
+                                            </div>
+                                        </template>
+                                        <v-list-item-title class="text-caption font-weight-bold">{{ doc.filename
+                                            }}</v-list-item-title>
+                                        <template v-slot:append>
+                                            <div class="d-flex gap-1">
+                                                <v-btn icon variant="text" density="compact" @click="openDoc(doc.id)">
+                                                    <ExternalLink :size="14" class="text-primary" />
+                                                </v-btn>
+                                                <v-btn icon variant="text" density="compact" @click="detachDoc(doc.id)"
+                                                    color="error">
+                                                    <Trash2 :size="14" />
+                                                </v-btn>
+                                            </div>
+                                        </template>
+                                    </v-list-item>
+                                </v-list>
+                                <div v-else class="pa-6 text-center opacity-40">
+                                    <p class="text-caption font-weight-bold mb-0">No documents attached</p>
+                                    <p v-if="!isEditing" class="text-tiny">Save transaction first to attach docs</p>
+                                </div>
+                            </v-card>
+                        </div>
                     </div>
                 </v-form>
             </v-card-text>
@@ -302,7 +665,7 @@ function handleClose() {
                 </v-btn>
                 <v-spacer></v-spacer>
                 <v-btn color="primary" variant="flat" rounded="pill" class="font-weight-black px-10 elevation-4"
-                    height="40" @click="handleSubmit" :prepend-icon="CheckCircle2">
+                    height="40" @click="handleSubmit" :prepend-icon="CheckCircle2" :disabled="!isFormValid">
                     {{ isEditing ? 'Update Entry' : 'Create Transaction' }}
                 </v-btn>
             </v-card-actions>
@@ -391,5 +754,39 @@ function handleClose() {
 
 .text-tiny {
     font-size: 10px;
+}
+
+/* DatePicker Customization */
+.dp__theme_dark {
+    --dp-background-color: rgb(var(--v-theme-surface));
+    --dp-text-color: rgba(var(--v-theme-on-surface), 0.87);
+    --dp-hover-color: rgba(var(--v-theme-primary), 0.1);
+    --dp-hover-text-color: rgb(var(--v-theme-on-surface));
+    --dp-hover-icon-color: rgb(var(--v-theme-on-surface));
+    --dp-primary-color: rgb(var(--v-theme-primary));
+    --dp-primary-text-color: #ffffff;
+    --dp-secondary-color: #a0a0a0;
+    --dp-border-color: rgba(var(--v-border-color), 0.15);
+    --dp-menu-border-color: rgba(var(--v-border-color), 0.15);
+    --dp-border-color-hover: rgba(var(--v-border-color), 0.3);
+    --dp-disabled-color: #f6f6f6;
+    --dp-scroll-bar-background: #f3f3f3;
+    --dp-scroll-bar-color: #959595;
+    --dp-success-color: #76d275;
+    --dp-success-color-disabled: #a3d9b1;
+    --dp-icon-color: rgba(var(--v-theme-on-surface), 0.6);
+    --dp-danger-color: #ff6f60;
+    --dp-marker-color: #ff6f60;
+    --dp-tooltip-color: #fafafa;
+    --dp-disabled-color-text: #8e8e8e;
+    --dp-highlight-color: rgb(25 118 210 / 10%);
+    --dp-range-between-dates-background-color: var(--dp-hover-color, #484848);
+    --dp-range-between-dates-text-color: var(--dp-hover-text-color, #fff);
+    --dp-range-between-border-color: var(--dp-hover-color, #fff);
+    font-family: inherit;
+}
+
+.date-picker-wrapper :deep(.dp__input_wrap) {
+    display: none;
 }
 </style>

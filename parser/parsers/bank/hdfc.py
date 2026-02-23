@@ -34,12 +34,19 @@ class HdfcSmsParser(BaseSmsParser):
                 txn_type="DEBIT",
                 field_map={"amount": 1, "mask": 2, "recipient": 3, "date": 4, "ref_id": 5}
             ),
-            # Credit
+            # Credit (With Ref/UPI) - Prioritized
             TransactionPattern(
-                regex=re.compile(r"(?i)(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*credited\s*to\s*HDFC\s*Bank\s*A/c\s*(?:.*?|x*|\*|X*)(\d+)\s*on\s*([\d/:-]+)\s*from\s*(.*?)(?:\s*\((?:UPI|Ref)[:\.\s]*(\w+)\))?", re.IGNORECASE),
+                regex=re.compile(r"(?i)(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*credited\s*to\s*HDFC\s*Bank\s*A/c\s*(?:.*?|x*|\*|X*)(\d+)\s*on\s*([\d/:-]+)\s*from\s*(?:VPA\s+)?(.*?)\s*\(?(?:UPI|Ref)[:\.\s]*(\w+)\)?", re.IGNORECASE),
                 confidence=1.0,
                 txn_type="CREDIT",
                 field_map={"amount": 1, "mask": 2, "date": 3, "recipient": 4, "ref_id": 5}
+            ),
+            # Credit (No Ref) - Fallback
+            TransactionPattern(
+                regex=re.compile(r"(?i)(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*credited\s*to\s*HDFC\s*Bank\s*A/c\s*(?:.*?|x*|\*|X*)(\d+)\s*on\s*([\d/:-]+)\s*from\s*(?:VPA\s+)?(.*)", re.IGNORECASE),
+                confidence=0.9,
+                txn_type="CREDIT",
+                field_map={"amount": 1, "mask": 2, "date": 3, "recipient": 4}
             ),
             # Salary/Deposit (UPDATE format with balance)
             TransactionPattern(

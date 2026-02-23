@@ -46,6 +46,7 @@ class PatternRule(Base):
     source = Column(String, nullable=False)  # SMS, EMAIL, or bank name
     regex_pattern = Column(String, nullable=False)
     mapping_json = Column(JSON, nullable=False)
+    date_format = Column(String, nullable=True) # e.g. "%d-%b-%y"
     is_active = Column(Boolean, default=True)
     is_ai_generated = Column(Boolean, default=False)
     confidence = Column(JSON, nullable=True)  # AI's confidence in this pattern

@@ -96,16 +96,16 @@
                             <v-avatar color="warning" variant="tonal" rounded="lg" size="48">
                                 <PieChart :size="24" />
                             </v-avatar>
-                            <div class="text-h6 font-weight-black"
+                            <div v-if="metrics && metrics.budget_health" class="text-h4 font-weight-black mb-1"
                                 :class="metrics.budget_health.percentage > 90 ? 'text-error' : 'text-warning'">
-                                {{ metrics.budget_health.percentage.toFixed(0) }}%
+                                {{ (metrics.budget_health.percentage || 0).toFixed(0) }}%
                             </div>
                         </div>
-                        <div>
+                        <div v-if="metrics && metrics.budget_health">
                             <div class="text-overline opacity-60 font-weight-black mb-1">Budget Health</div>
-                            <v-progress-linear :model-value="Math.min(metrics.budget_health.percentage, 100)"
+                            <v-progress-linear :model-value="Math.min(metrics.budget_health.percentage || 0, 100)"
                                 height="10" rounded="pill" class="mt-2 budget-progress-premium"
-                                :class="metrics.budget_health.percentage > 90 ? 'health-danger' : 'health-warning'"></v-progress-linear>
+                                :class="(metrics.budget_health.percentage || 0) > 90 ? 'health-danger' : 'health-warning'"></v-progress-linear>
                         </div>
                     </v-card>
                 </v-col>
@@ -117,9 +117,9 @@
                             <v-avatar color="success" variant="tonal" rounded="lg" size="48">
                                 <Sparkles :size="24" />
                             </v-avatar>
-                            <v-chip v-if="!mfPortfolio.loading && mfPortfolio.invested > 0" size="small" color="success"
-                                variant="flat" class="font-weight-black">
-                                {{ mfPortfolio.xirr.toFixed(1) }}% XIRR
+                            <v-chip v-if="!mfPortfolio.loading && (mfPortfolio.invested > 0 || mfPortfolio.xirr)"
+                                size="small" color="success" variant="flat" class="font-weight-black">
+                                {{ (mfPortfolio.xirr || 0).toFixed(1) }}% XIRR
                             </v-chip>
                         </div>
                         <div>
@@ -162,11 +162,11 @@
                                     </div>
                                     <span class="text-caption font-weight-black"
                                         :class="b.percentage > 100 ? 'text-error' : 'text-primary'">
-                                        {{ b.percentage.toFixed(0) }}%
+                                        {{ (b.percentage || 0).toFixed(0) }}%
                                     </span>
                                 </div>
-                                <v-progress-linear :model-value="Math.min(b.percentage, 100)" height="6" rounded="pill"
-                                    class="mb-3 budget-progress-premium"
+                                <v-progress-linear :model-value="Math.min(b.percentage || 0, 100)" height="6"
+                                    rounded="pill" class="mb-3 budget-progress-premium"
                                     :class="b.percentage > 100 ? 'health-danger' : (b.percentage > 85 ? 'health-warning' : 'health-success')">
                                 </v-progress-linear>
                                 <div class="d-flex justify-space-between text-caption font-weight-bold opacity-60">
@@ -330,40 +330,52 @@
                                         </div>
                                         <span class="text-caption font-weight-black"
                                             :class="card.utilization > 70 ? 'text-error' : 'text-primary'">
-                                            {{ card.utilization.toFixed(0) }}%
+                                            {{ (card.utilization || 0).toFixed(0) }}%
                                         </span>
                                     </div>
-                                    <v-progress-linear :model-value="Math.min(card.utilization, 100)" height="10"
+                                    <v-progress-linear :model-value="Math.min(card.utilization || 0, 100)" height="10"
                                         rounded="pill" class="credit-progress-premium"
                                         :class="card.utilization > 70 ? 'health-danger' : ''"></v-progress-linear>
                                 </v-col>
 
                                 <v-col cols="12" md="4" class="text-md-right">
-                                    <div class="d-flex flex-md-column justify-space-between align-end">
-                                        <div class="d-flex ga-6 mb-1">
-                                            <div class="text-right">
-                                                <div class="text-overline opacity-60 font-weight-black"
-                                                    style="line-height:1">
-                                                    Balance</div>
-                                                <div class="text-subtitle-1 font-weight-black">{{
-                                                    formatAmount(card.balance) }}</div>
+                                    <div class="d-flex flex-md-column justify-space-between align-end h-100">
+                                        <!-- Statement Info -->
+                                        <div class="text-right mb-2">
+                                            <div class="text-caption font-weight-bold opacity-60">Statement Balance
+                                                <v-icon v-if="card.statement_balance < 0 && card.days_until_due < 5"
+                                                    color="error" size="12" class="ml-1">AlertCircle</v-icon>
                                             </div>
-                                            <div class="text-right">
-                                                <div class="text-overline opacity-60 font-weight-black"
-                                                    style="line-height:1">
-                                                    Available</div>
-                                                <div class="text-subtitle-1 font-weight-black text-primary">{{
-                                                    formatAmount((card.limit
-                                                        || 0) - (card.balance || 0)) }}</div>
+                                            <div class="text-h6 font-weight-black"
+                                                :class="card.statement_balance < 0 ? 'text-error' : 'text-success'">
+                                                {{ formatAmount(card.statement_balance) }}
+                                            </div>
+                                            <div v-if="card.unbilled_spend > 0"
+                                                class="text-tiny font-weight-bold opacity-50 mt-1">
+                                                +{{ formatAmount(card.unbilled_spend) }} unbilled
                                             </div>
                                         </div>
-                                        <div class="text-caption font-weight-black d-flex align-center"
-                                            :class="card.days_until_due < 7 && card.days_until_due !== null ? 'text-error' : 'text-slate-500'">
-                                            <AlertCircle v-if="card.days_until_due < 7 && card.days_until_due !== null"
-                                                :size="14" class="mr-1" />
-                                            <span v-if="card.days_until_due !== null">Due in {{ card.days_until_due }}
-                                                days</span>
-                                            <span v-else>No Cycle Data</span>
+
+                                        <!-- Due Date Info -->
+                                        <div class="text-right">
+                                            <div v-if="card.days_until_due !== null">
+                                                <div class="d-flex align-center justify-end"
+                                                    :class="card.days_until_due < 5 ? 'text-error' : 'text-primary'">
+                                                    <span class="text-subtitle-2 font-weight-black">
+                                                        Due in {{ card.days_until_due }} days
+                                                    </span>
+                                                </div>
+                                                <div class="text-tiny font-weight-bold opacity-60">
+                                                    {{ formatDate(card.next_due_date).day }}
+                                                </div>
+                                                <div v-if="card.minimum_due > 0"
+                                                    class="text-tiny font-weight-bold text-error mt-1">
+                                                    Min: {{ formatAmount(card.minimum_due) }}
+                                                </div>
+                                            </div>
+                                            <div v-else class="text-caption font-weight-bold opacity-40">
+                                                No Cycle Data
+                                            </div>
                                         </div>
                                     </div>
                                 </v-col>
@@ -393,6 +405,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
 import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
 import Sparkline from '@/components/Sparkline.vue'
+import { useDashboardStore } from '@/stores/dashboard'
+import { useBudgetStore } from '@/stores/finance/budgets'
+import { useExpenseGroupStore } from '@/stores/expenseGroups'
+import { useFinanceStore } from '@/stores/finance'
 import {
     Wallet,
     PieChart,
@@ -400,62 +416,50 @@ import {
     Sparkles,
     Activity,
     CalendarClock,
-    CreditCard,
-    AlertCircle
+    CreditCard
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const auth = useAuthStore()
+const dashboardStore = useDashboardStore()
+const financeStore = useFinanceStore()
+const budgetStore = useBudgetStore()
+const expenseGroupStore = useExpenseGroupStore()
 const { formatAmount } = useCurrency()
 
-// --- State ---
-const loading = ref(true)
-const accounts = ref<any[]>([])
-const categories = ref<any[]>([])
-const budgets = ref<any[]>([])
-const expenseGroups = ref<any[]>([])
+// --- State --- (seeded from store cache for instant render)
+const DEFAULT_METRICS = {
+    breakdown: {
+        net_worth: 0, bank_balance: 0, cash_balance: 0, credit_debt: 0,
+        investment_value: 0, total_credit_limit: 0, available_credit: 0, overall_credit_utilization: 0
+    },
+    monthly_spending: 0, total_excluded: 0, excluded_income: 0,
+    top_spending_category: null as any,
+    budget_health: { limit: 0, spent: 0, percentage: 0 },
+    credit_intelligence: [] as any[], recent_transactions: [] as any[], currency: 'INR'
+}
 
-const mfPortfolio = ref({
-    invested: 0,
-    current: 0,
-    pl: 0,
-    plPercent: 0,
-    xirr: 0,
+const DEFAULT_PORTFOLIO = {
+    invested: 0, current: 0, pl: 0, plPercent: 0, xirr: 0,
     trend: [] as number[],
     allocation: { equity: 0, debt: 0, hybrid: 0, other: 0 } as any,
-    topPerformer: null as any,
-    loading: true
-})
+    topPerformer: null as any, loading: true
+}
 
-const netWorthTrend = ref<number[]>([])
-const spendingTrend = ref<number[]>([])
+// Reactively sync with store and provide safe defaults
+const metrics = computed(() => dashboardStore.metrics || DEFAULT_METRICS)
+const mfPortfolio = computed(() => dashboardStore.mfPortfolio || DEFAULT_PORTFOLIO)
+const netWorthTrend = computed(() => dashboardStore.netWorthTrend || [])
+const spendingTrend = computed(() => dashboardStore.spendingTrend || [])
+
+const loading = computed(() => !dashboardStore.metrics && dashboardStore.loading)
+
+// Shared store data
+const accounts = computed(() => financeStore.accounts)
+const categories = computed(() => financeStore.categories)
+const budgets = computed(() => budgetStore.budgets)
+const expenseGroups = computed(() => expenseGroupStore.groups)
 const recurringTransactions = ref<any[]>([])
-
-const metrics = ref({
-    breakdown: {
-        net_worth: 0,
-        bank_balance: 0,
-        cash_balance: 0,
-        credit_debt: 0,
-        investment_value: 0,
-        total_credit_limit: 0,
-        available_credit: 0,
-        overall_credit_utilization: 0
-    },
-    monthly_spending: 0,
-    total_excluded: 0,
-    excluded_income: 0,
-    top_spending_category: null as { name: string, amount: number } | null,
-    budget_health: {
-        limit: 0,
-        spent: 0,
-        percentage: 0
-    },
-    credit_intelligence: [] as any[],
-    recent_transactions: [] as any[],
-    currency: 'INR'
-})
-
 
 const budgetPulse = computed(() => {
     return budgets.value
@@ -465,23 +469,26 @@ const budgetPulse = computed(() => {
 })
 
 const netWorth = computed(() => {
-    const liquid = (metrics.value.breakdown.bank_balance || 0) + (metrics.value.breakdown.cash_balance || 0)
-    const totalInvestments = mfPortfolio.value.current || 0
-    const totalDebt = metrics.value.breakdown.credit_debt || 0
+    const breakdown = metrics.value?.breakdown || DEFAULT_METRICS.breakdown
+    const liquid = (breakdown.bank_balance || 0) + (breakdown.cash_balance || 0)
+    const totalInvestments = mfPortfolio.value?.current || 0
+    const totalDebt = breakdown.credit_debt || 0
     return liquid + totalInvestments - totalDebt
 })
 
 const sortedCredit = computed(() => {
-    return [...metrics.value.credit_intelligence].sort((a, b) => {
-        if (a.days_until_due === null) return 1
-        if (b.days_until_due === null) return -1
+    const intelligence = metrics.value?.credit_intelligence || []
+    return [...intelligence].sort((a, b) => {
+        if (a.days_until_due === null || a.days_until_due === undefined) return 1
+        if (b.days_until_due === null || b.days_until_due === undefined) return -1
         return a.days_until_due - b.days_until_due
     })
 })
 
 const creditSummary = computed(() => {
-    const totalLimit = metrics.value.breakdown.total_credit_limit || 0
-    const totalDebt = metrics.value.breakdown.credit_debt || 0
+    const breakdown = metrics.value?.breakdown || DEFAULT_METRICS.breakdown
+    const totalLimit = breakdown.total_credit_limit || 0
+    const totalDebt = breakdown.credit_debt || 0
     const utilization = totalLimit > 0 ? (totalDebt / totalLimit) * 100 : 0
     return { totalLimit, totalDebt, utilization }
 })
@@ -510,16 +517,14 @@ const greetingEmoji = computed(() => {
 
 // --- Data Fetching ---
 async function fetchAllData() {
-    loading.value = true
-    mfPortfolio.value.loading = true
     const userId = auth.selectedMemberId || undefined
-
-    setTimeout(() => { loading.value = false }, 300)
-
-    // 1. Metrics
+    // Only show loading if we have no cached data
+    // 1. Core Metrics
     financeApi.getMetrics(undefined, undefined, undefined, userId)
-        .then(res => { metrics.value = res.data })
-        .catch(e => console.warn("Metrics fetch failed", e))
+        .then(res => {
+            dashboardStore.metrics = res.data
+        })
+        .catch(e => { console.warn("Metrics fetch failed", e) })
 
     // 2. Portfolio
     financeApi.getPortfolio(userId)
@@ -530,10 +535,13 @@ async function fetchAllData() {
                     invested += Number(h.invested_value || h.investedValue || h.invested_amount || 0)
                     current += Number(h.current_value || h.currentValue || h.value || 0)
                 })
-                mfPortfolio.value.invested = invested
-                mfPortfolio.value.current = current
-                mfPortfolio.value.pl = current - invested
-                mfPortfolio.value.plPercent = invested > 0 ? ((current - invested) / invested) * 100 : 0
+                dashboardStore.mfPortfolio = {
+                    ...mfPortfolio.value,
+                    invested,
+                    current,
+                    pl: current - invested,
+                    plPercent: invested > 0 ? ((current - invested) / invested) * 100 : 0
+                }
             }
         })
         .catch(e => console.warn("Portfolio fetch failed", e))
@@ -542,28 +550,31 @@ async function fetchAllData() {
     financeApi.getAnalytics(userId)
         .then(anRes => {
             if (anRes && anRes.data) {
-                mfPortfolio.value.xirr = Number(anRes.data.xirr || 0)
-                mfPortfolio.value.allocation = anRes.data.asset_allocation || { equity: 0, debt: 0, hybrid: 0, other: 0 }
-                if (anRes.data.top_gainers?.length > 0) {
-                    const top = anRes.data.top_gainers[0]
-                    mfPortfolio.value.topPerformer = {
-                        schemeName: top.scheme_name || top.scheme,
-                        plPercent: Number(top.pl_percent || top.returns || 0)
-                    }
+                dashboardStore.mfPortfolio = {
+                    ...mfPortfolio.value,
+                    xirr: Number(anRes.data.xirr || 0),
+                    allocation: anRes.data.asset_allocation || { equity: 0, debt: 0, hybrid: 0, other: 0 },
+                    topPerformer: anRes.data.top_gainers?.length > 0 ? {
+                        schemeName: anRes.data.top_gainers[0].scheme_name || anRes.data.top_gainers[0].scheme,
+                        plPercent: Number(anRes.data.top_gainers[0].pl_percent || anRes.data.top_gainers[0].returns || 0)
+                    } : null,
+                    loading: false
                 }
-                mfPortfolio.value.loading = false
             }
         })
         .catch(e => {
-            console.warn("Analytics fetch failed", e)
-            mfPortfolio.value.loading = false
+            console.warn("Analytics fetch failed", e);
+            dashboardStore.mfPortfolio = { ...mfPortfolio.value, loading: false }
         })
 
     // 4. Timeline
     financeApi.getPerformanceTimeline('1m', '1d', userId)
         .then(res => {
             const timeline = Array.isArray(res.data) ? res.data : (res.data.timeline || [])
-            mfPortfolio.value.trend = timeline.map((p: any) => Number(p.value || 0))
+            dashboardStore.mfPortfolio = {
+                ...mfPortfolio.value,
+                trend: timeline.map((p: any) => Number(p.value || 0))
+            }
         })
         .catch(e => console.warn("Timeline fetch failed", e))
 
@@ -574,28 +585,28 @@ async function fetchAllData() {
 
     // 6. Net Worth Trend
     financeApi.getNetWorthTimeline(30, userId)
-        .then(res => { netWorthTrend.value = res.data.map((p: any) => Number(p.total || 0)) })
+        .then(res => {
+            dashboardStore.netWorthTrend = res.data.map((p: any) => Number(p.total || 0))
+        })
         .catch(e => console.warn("Net worth trend failed", e))
 
     // 7. Spending Trend
     financeApi.getSpendingTrend(userId)
-        .then(res => { spendingTrend.value = res.data.map((p: any) => Number(p.amount || 0)) })
+        .then(res => {
+            dashboardStore.spendingTrend = res.data.map((p: any) => Number(p.amount || 0))
+        })
         .catch(e => console.warn("Spending trend failed", e))
 }
 
 async function fetchMetadata() {
     const userId = auth.selectedMemberId || undefined
     try {
-        const [catRes, budgetRes, accRes, expRes] = await Promise.all([
-            financeApi.getCategories(),
-            financeApi.getBudgets(undefined, undefined, userId),
-            financeApi.getAccounts(userId),
-            financeApi.getExpenseGroups(userId)
+        await Promise.all([
+            financeStore.fetchCategories(),
+            budgetStore.fetchBudgets(new Date().getFullYear(), new Date().getMonth() + 1, userId),
+            financeStore.fetchAccounts(),
+            expenseGroupStore.fetchGroups()
         ])
-        categories.value = catRes.data
-        budgets.value = budgetRes.data
-        accounts.value = accRes.data
-        expenseGroups.value = expRes.data
     } catch (e) {
         console.error("Failed to fetch dashboard metadata", e)
     }
@@ -603,12 +614,12 @@ async function fetchMetadata() {
 
 onMounted(async () => {
     await fetchMetadata()
-    await fetchAllData()
+    fetchAllData() // fire-and-forget, loading managed internally
 })
 
 watch(() => auth.selectedMemberId, async () => {
     await fetchMetadata()
-    await fetchAllData()
+    fetchAllData()
 })
 </script>
 

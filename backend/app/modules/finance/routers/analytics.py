@@ -6,7 +6,7 @@ from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.finance.services.analytics_service import AnalyticsService
 
-router = APIRouter()
+router = APIRouter(prefix="/analytics")
 
 @router.get("/metrics")
 def get_metrics(
@@ -107,3 +107,50 @@ def get_heatmap(
         end_date=end_date,
         user_id=user_id
     )
+
+@router.get("/detailed")
+def get_detailed_analytics(
+    account_id: str = None,
+    start_date: datetime = None,
+    end_date: datetime = None,
+    user_id: str = None,
+    category: str = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Consolidated analytics for the Dashboard/Insights view.
+    Offloads heavy client-side processing to the server.
+    """
+    return AnalyticsService.get_detailed_analytics(
+        db,
+        str(current_user.tenant_id),
+        account_id=account_id,
+        start_date=start_date,
+        end_date=end_date,
+        user_id=user_id,
+        category=category
+    )
+@router.get("/merchant-breakdown")
+def get_merchant_breakdown(
+    category: str = None,
+    start_date: datetime = None,
+    end_date: datetime = None,
+    user_id: str = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return AnalyticsService.get_merchant_breakdown(
+        db, 
+        str(current_user.tenant_id),
+        category=category,
+        start_date=start_date,
+        end_date=end_date,
+        user_id=user_id
+    )
+@router.get("/family-wealth")
+def get_family_wealth(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return AnalyticsService.get_family_wealth(db, str(current_user.tenant_id))
