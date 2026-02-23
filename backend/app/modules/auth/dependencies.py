@@ -1,4 +1,5 @@
-from fastapi import Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import Depends, HTTPException, status, Query
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 from backend.app.core.config import settings
@@ -12,6 +13,7 @@ basic_scheme = HTTPBasic(auto_error=False)
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
+    token_query: Optional[str] = Query(None, alias="token"),
     basic_auth: HTTPBasicCredentials = Depends(basic_scheme),
     db: Session = Depends(get_db)
 ) -> models.User:
@@ -22,9 +24,10 @@ def get_current_user(
     )
     
     # Priority 1: Bearer Token (JWT)
-    if token:
+    final_token = token or token_query
+    if final_token:
         try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            payload = jwt.decode(final_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             email: str = payload.get("sub")
             tenant_id: str = payload.get("tenant_id")
             if email is None or tenant_id is None:

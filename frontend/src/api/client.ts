@@ -94,6 +94,8 @@ export const financeApi = {
         apiClient.put(`/finance/accounts/${id}/balance`, { ...data, account_id: id }),
     getTransactions: (accountId?: string, page: number = 1, limit: number = 50, startDate?: string, endDate?: string, search?: string, category?: string, sortBy: string = 'date', sortOrder: string = 'desc', userId?: string) =>
         apiClient.get('/finance/transactions', { params: { account_id: accountId, page, limit, start_date: startDate, end_date: endDate, search, category, sort_by: sortBy, sort_order: sortOrder, user_id: userId } }),
+    searchTransactions: (q: string, limit: number = 10) =>
+        apiClient.get('/finance/transactions', { params: { search: q, limit, page: 1, sort_by: 'date', sort_order: 'desc' } }),
     createTransaction: (data: any) => apiClient.post('/finance/transactions', data),
     updateTransaction: (id: string, data: TransactionUpdate) => apiClient.put(`/finance/transactions/${id}`, data),
     smartCategorize: (data: { transaction_id: string, category: string, create_rule: boolean, apply_to_similar: boolean, exclude_from_reports?: boolean }) =>
@@ -163,23 +165,34 @@ export const financeApi = {
     createFolder: (formData: FormData) => apiClient.post('/finance/vault/folders', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
-    getDocuments: (params?: { transaction_id?: string, parent_id?: string, file_type?: string, skip?: number, limit?: number }) =>
+    getDocuments: (params?: { transaction_id?: string, parent_id?: string, file_type?: string, search?: string, skip?: number, limit?: number }) =>
         apiClient.get('/finance/vault', { params }),
     updateDocument: (id: string, formData: FormData) => apiClient.put(`/finance/vault/${id}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
     listVersions: (id: string) => apiClient.get(`/finance/vault/${id}/versions`),
     deleteDocument: (id: string) => apiClient.delete(`/finance/vault/${id}`),
+    linkDocToTransaction: (docId: string, transactionId: string | null) =>
+        apiClient.patch(`/finance/vault/${docId}/link-transaction`, { transaction_id: transactionId }),
     syncVault: () => apiClient.post('/finance/vault/sync'),
     getDocument: (id: string) => apiClient.get(`/finance/vault/${id}`),
+
     getDocumentDownloadUrl: (id: string, version?: number) => {
-        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/download`
-        if (version) url += `?version=${version}`
+        const token = localStorage.getItem('access_token')
+        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/download?token=${token}`
+        if (version) url += `&version=${version}`
         return url
     },
     getDocumentViewUrl: (id: string, version?: number) => {
-        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/view`
-        if (version) url += `?version=${version}`
+        const token = localStorage.getItem('access_token')
+        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/view?token=${token}`
+        if (version) url += `&version=${version}`
+        return url
+    },
+    getDocumentThumbnailUrl: (id: string, version?: number) => {
+        const token = localStorage.getItem('access_token')
+        let url = `${apiClient.defaults.baseURL}/finance/vault/${id}/thumbnail?token=${token}`
+        if (version) url += `&version=${version}`
         return url
     },
     getDocumentBlob: (id: string, version?: number) => {
