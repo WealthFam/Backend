@@ -3,13 +3,14 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_foreground_task/flutter_foreground_task.dart' as flutter_foreground_task;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:mobile_app/core/config/app_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/core/services/notification_service.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart' as flutter_foreground_task;
 
 import 'package:mobile_app/core/services/foreground_service.dart';
 
@@ -57,24 +58,41 @@ void backgroundMessageHandler(SmsMessage message) async {
        return;
     }
 
+    final sendDebugPayload = prefs.getBool(AppConfig.keySendDebugPayload) ?? false;
+
     // 4. Try to get Location in background
     double? lat;
     double? lng;
-    try {
-      // Background location requires additional permissions and might be slow.
-      // We check if we have permission first.
-      Position? position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
-      ).timeout(const Duration(seconds: 5));
-      if (position != null) {
+    if (sendDebugPayload) {
+      try {
+        // Background location requires additional permissions and might be slow.
+        // We check if we have permission first.
+        Position? position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+        ).timeout(const Duration(seconds: 5));
         lat = position.latitude;
         lng = position.longitude;
+      } catch (e) {
+        debugPrint("Background SMS: Location fetch failed: $e");
       }
-    } catch (e) {
-      debugPrint("Background SMS: Location fetch failed: $e");
     }
 
     // 5. Send to Backend
+    final payload = {
+      'sender': message.address,
+      'message': message.body,
+      'device_id': deviceId, 
+      'latitude': lat,
+      'longitude': lng,
+    };
+
+    if (sendDebugPayload) {
+      final logsStr = prefs.getStringList('sms_debug_logs') ?? [];
+      logsStr.insert(0, jsonEncode(payload));
+      if (logsStr.length > 10) logsStr.removeLast();
+      await prefs.setStringList('sms_debug_logs', logsStr);
+    }
+
     final url = Uri.parse('$backendUrl/api/v1/ingestion/sms');
     final response = await http.post(
       url,
@@ -82,13 +100,7 @@ void backgroundMessageHandler(SmsMessage message) async {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
       },
-      body: jsonEncode({
-        'sender': message.address,
-        'message': message.body,
-        'device_id': deviceId, 
-        'latitude': lat,
-        'longitude': lng,
-      }),
+      body: jsonEncode(payload),
     );
 
     if (response.statusCode == 200 || response.statusCode == 201) {
@@ -99,6 +111,9 @@ void backgroundMessageHandler(SmsMessage message) async {
        // Update stats if we can
        final current = prefs.getInt('msgs_synced_today') ?? 0;
        await prefs.setInt('msgs_synced_today', current + 1);
+
+       // Optional: Notification for background sync (can be noisy, but good for debugging)
+       // NotificationService().showNotification(title: "SMS Synced", body: "From ${message.address}");
     } else {
        debugPrint("Background SMS: Failed ${response.statusCode}");
        // Add to offline queue
@@ -131,15 +146,40 @@ class SmsService extends ChangeNotifier {
   DateTime? _lastSyncTime;
   int _messagesSyncedToday = 0;
   String? _lastSyncStatus;
+  List<Map<String, dynamic>> _debugLogs = [];
 
   bool get isSyncEnabled => _isSyncEnabled;
   bool get isForegroundServiceEnabled => _isForegroundServiceEnabled;
   DateTime? get lastSyncTime => _lastSyncTime;
+  List<Map<String, dynamic>> get debugLogs => _debugLogs;
   int get messagesSyncedToday => _messagesSyncedToday;
   String? get lastSyncStatus => _lastSyncStatus;
   int get queueCount => (_prefs.getStringList(keyQueue) ?? []).length;
 
+  bool _isRequestingPermission = false;
+
   SmsService(this._config, this._auth);
+
+  Future<bool> _requestSmsPermission() async {
+    if (_isRequestingPermission) {
+      // Wait for the active request to complete
+      while (_isRequestingPermission) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      return (await Permission.sms.status).isGranted;
+    }
+
+    try {
+      _isRequestingPermission = true;
+      var status = await Permission.sms.status;
+      if (status.isGranted) return true;
+      
+      status = await Permission.sms.request();
+      return status.isGranted;
+    } finally {
+      _isRequestingPermission = false;
+    }
+  }
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -156,19 +196,25 @@ class SmsService extends ChangeNotifier {
        }
     }
     
+    _loadDebugLogs();
+    
     if (kIsWeb || !defaultTargetPlatform.shouldUseTelephony) {
        debugPrint("SMS features disabled: Not on Android.");
        return;
     }
 
-    final bool? result = await _telephony.requestPhoneAndSmsPermissions;
-    if (result == true) {
+    final isGranted = await _requestSmsPermission();
+    if (isGranted) {
       // Also request location permissions to ensure we can send location with SMS
       await _requestLocationPermissions();
       
+      // Always save credentials for background listener if authenticated
+      if (_auth.accessToken != null) {
+        await _saveCredentials();
+      }
+
       _startListening();
       if (_isForegroundServiceEnabled && _auth.accessToken != null) {
-        await _saveCredentials();
         ForegroundServiceWrapper.start(
           url: _config.backendUrl,
           token: _auth.accessToken!,
@@ -181,6 +227,18 @@ class SmsService extends ChangeNotifier {
 
     // Listen for config changes (e.g. backend URL update)
     _config.addListener(_handleConfigChange);
+  }
+
+  void _loadDebugLogs() {
+    final savedLogs = _prefs.getStringList('sms_debug_logs');
+    if (savedLogs != null) {
+      _debugLogs = savedLogs.map((e) => jsonDecode(e) as Map<String, dynamic>).toList();
+    }
+  }
+
+  void refreshDebugLogs() {
+    _loadDebugLogs();
+    notifyListeners();
   }
 
   void _handleConfigChange() {
@@ -261,6 +319,13 @@ class SmsService extends ChangeNotifier {
   Future<void> _handleSms(SmsMessage message) async {
     debugPrint("Foreground SMS Received: ${message.address} - ${message.body}");
     if (message.body == null || message.address == null) return;
+    
+    // Show notification for visibility
+    NotificationService().showNotification(
+      title: "New SMS Received",
+      body: "From ${message.address}: ${message.body!.substring(0, message.body!.length > 30 ? 30 : message.body!.length)}...",
+    );
+
     await processSms(message.address!, message.body!, message.date ?? DateTime.now().millisecondsSinceEpoch);
   }
 
@@ -330,41 +395,52 @@ class SmsService extends ChangeNotifier {
       throw Exception("Not Authenticated");
     }
 
-    // Get Location if possible
+    // Get Location if possible and debug payload is enabled
     double? lat;
     double? lng;
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+    if (_config.sendDebugPayload) {
+      try {
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        
+        if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+          Position position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+          ).timeout(const Duration(seconds: 10));
+          lat = position.latitude;
+          lng = position.longitude;
+        }
+      } catch (e) {
+        debugPrint("SmsService: Error getting location: $e");
       }
-      
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        Position position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-        ).timeout(const Duration(seconds: 10));
-        lat = position.latitude;
-        lng = position.longitude;
-      }
-    } catch (e) {
-      debugPrint("SmsService: Error getting location: $e");
     }
 
     final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/sms');
     
+    final payload = {
+      'sender': address,
+      'message': body,
+      'device_id': _auth.deviceId,
+      'latitude': lat,
+      'longitude': lng,
+    };
+
+    if (_config.sendDebugPayload) {
+      _debugLogs.insert(0, payload);
+      if (_debugLogs.length > 10) _debugLogs.removeLast();
+      await _prefs.setStringList('sms_debug_logs', _debugLogs.map((e) => jsonEncode(e)).toList());
+      notifyListeners();
+    }
+
     final response = await http.post(
       url,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ${_auth.accessToken}',
       },
-      body: jsonEncode({
-        'sender': address,
-        'message': body,
-        'device_id': _auth.deviceId,
-        'latitude': lat,
-        'longitude': lng,
-      }),
+      body: jsonEncode(payload),
     );
 
     if (response.statusCode != 200 && response.statusCode != 201) {
@@ -425,6 +501,38 @@ class SmsService extends ChangeNotifier {
   
   // --- Manual Sync ---
   
+  Future<void> syncUnsyncedOnStart() async {
+    if (kIsWeb || !defaultTargetPlatform.shouldUseTelephony) return;
+    debugPrint("SmsService: Starting background sync of recent messages...");
+    await syncLastHours(120);
+  }
+
+  Future<int> pushAllUnsynced() async {
+    if (kIsWeb || !defaultTargetPlatform.shouldUseTelephony) return 0;
+    
+    final messages = await _telephony.getInboxSms(
+      columns: [SmsColumn.ADDRESS, SmsColumn.BODY, SmsColumn.DATE],
+    );
+    
+    int pushed = 0;
+    for (final msg in messages) {
+      if (msg.body == null || msg.address == null || msg.date == null) continue;
+      
+      final hash = _computeHash(msg.address!, msg.date.toString(), msg.body!);
+      if (!_isCached(hash)) {
+        try {
+          await _sendToBackend(msg.address!, msg.body!, msg.date!);
+          await _cacheHash(hash);
+          pushed++;
+          _updateSyncStats(true);
+        } catch (e) {
+          debugPrint("Push all failed for one message: $e");
+        }
+      }
+    }
+    return pushed;
+  }
+
   Future<int> syncLastHours(int hours) async {
     final cutoff = DateTime.now().subtract(Duration(hours: hours));
     return syncFromDate(cutoff);
@@ -468,8 +576,8 @@ class SmsService extends ChangeNotifier {
   Future<List<SmsMessage>> getAllMessages() async {
     if (kIsWeb || !defaultTargetPlatform.shouldUseTelephony) return [];
     
-    final bool? perms = await _telephony.requestPhoneAndSmsPermissions;
-    if (perms != true) {
+    final isGranted = await _requestSmsPermission();
+    if (!isGranted) {
       debugPrint("SmsService: READ_SMS permission denied");
       return [];
     }
@@ -491,8 +599,8 @@ class SmsService extends ChangeNotifier {
 
   Future<List<SmsMessage>> querySpecificAddress(String address) async {
     if (kIsWeb || !defaultTargetPlatform.shouldUseTelephony) return [];
-     final bool? perms = await _telephony.requestPhoneAndSmsPermissions;
-    if (perms != true) return [];
+    final isGranted = await _requestSmsPermission();
+    if (!isGranted) return [];
 
     try {
       debugPrint("SmsService: Deep querying for address: $address");

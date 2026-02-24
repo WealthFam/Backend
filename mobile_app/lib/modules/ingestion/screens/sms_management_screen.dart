@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:telephony/telephony.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/ingestion/services/sms_service.dart';
+import 'package:mobile_app/modules/ingestion/screens/sms_debug_logs_screen.dart';
 import 'package:intl/intl.dart';
 
 class SmsManagementScreen extends StatefulWidget {
@@ -215,68 +216,229 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Container(
-          height: 40,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.onSurface.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: TextField(
-            controller: _filterController,
-            onChanged: (_) => _filterMessages(),
-            style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16, height: 1.0),
-            cursorColor: theme.colorScheme.primary,
-            textAlignVertical: TextAlignVertical.center,
-            decoration: InputDecoration(
-               hintText: "Search SMS...",
-               hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-               border: InputBorder.none,
-               prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant, size: 20),
-               contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-               isDense: true,
-            ),
-          ),
-        ),
+        title: const Text('SMS Management'),
         actions: [
           IconButton(
-            icon: Icon(Icons.saved_search, color: theme.colorScheme.onSurface),
-            tooltip: 'Deep Search Address',
-            onPressed: _isProcessing ? null : _deepQueryAddress,
-          ),
-          IconButton(
-            icon: Icon(Icons.calendar_month, color: theme.colorScheme.onSurface),
-            tooltip: 'Sync from Date',
-            onPressed: _isProcessing ? null : _pickAndSyncDate,
+            icon: Icon(Icons.bug_report, color: theme.colorScheme.onSurface),
+            tooltip: 'View Debug Payloads',
+            onPressed: () {
+               Navigator.push(context, MaterialPageRoute(builder: (_) => const SmsDebugLogsScreen()));
+            },
           ),
           IconButton(
             icon: Icon(Icons.refresh, color: theme.colorScheme.onSurface),
             onPressed: _isLoading ? null : _loadMessages,
           ),
-          if (_selectedHashes.isNotEmpty)
-            TextButton(
-              onPressed: _isProcessing ? null : _pushBulk,
-              child: Text('PUSH (${_selectedHashes.length})', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
-            ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : displayList.isEmpty
-              ? Center(child: Text(_filterController.text.isEmpty ? 'No SMS messages found' : 'No matching SMS found', 
-                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant)))
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: displayList.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final msg = displayList[index];
-                    final hash = smsService.computeHash(msg.address ?? '', (msg.date ?? 0).toString(), msg.body ?? '');
-                    final isSynced = smsService.isCached(hash);
-                    final isSelected = _selectedHashes.contains(hash);
-
-                    return _buildSmsCard(msg, hash, isSynced, isSelected);
-                  },
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStatusCard(
+                  context,
+                  icon: Icons.sync,
+                  color: AppTheme.primary,
+                  title: 'Auto-Sync Active',
+                  subtitle: 'Listening for SMS...',
+                  trailing: Switch(
+                    value: smsService.isSyncEnabled, 
+                    onChanged: (v) => smsService.toggleSync(v),
+                  ), 
                 ),
+                const SizedBox(height: 16),
+                _buildStatusCard(
+                  context,
+                  icon: Icons.all_inclusive,
+                  color: theme.colorScheme.secondary,
+                  title: 'Persistent Sync',
+                  subtitle: 'Keep app alive for better reliability',
+                  trailing: Switch(
+                    value: smsService.isForegroundServiceEnabled,
+                    onChanged: (v) async {
+                      try {
+                        await smsService.toggleForegroundService(v);
+                        if (mounted) {
+                           ScaffoldMessenger.of(context).showSnackBar(
+                             SnackBar(content: Text(v ? 'Background Sync Started' : 'Background Sync Stopped'))
+                           );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                           ScaffoldMessenger.of(context).showSnackBar(
+                             SnackBar(
+                               content: Text('Operation Failed: $e'), 
+                               backgroundColor: AppTheme.danger,
+                               duration: const Duration(seconds: 10),
+                             )
+                           );
+                        }
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.onSurface.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: TextField(
+                    controller: _filterController,
+                    onChanged: (_) => _filterMessages(),
+                    style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16),
+                    decoration: InputDecoration(
+                       hintText: "Search SMS...",
+                       hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                       border: InputBorder.none,
+                       prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant),
+                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : displayList.isEmpty
+                    ? Center(child: Text(_filterController.text.isEmpty ? 'No SMS messages found' : 'No matching SMS found', 
+                        style: TextStyle(color: theme.colorScheme.onSurfaceVariant)))
+                    : ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: displayList.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final msg = displayList[index];
+                          final hash = smsService.computeHash(msg.address ?? '', (msg.date ?? 0).toString(), msg.body ?? '');
+                          final isSynced = smsService.isCached(hash);
+                          final isSelected = _selectedHashes.contains(hash);
+
+                          return _buildSmsCard(msg, hash, isSynced, isSelected);
+                        },
+                      ),
+          ),
+        ],
+      ),
+      floatingActionButton: _selectedHashes.isNotEmpty ? FloatingActionButton.extended(
+        onPressed: _isProcessing ? null : () async {
+           bool? confirm = await showDialog<bool>(
+             context: context,
+             builder: (c) => AlertDialog(
+               title: const Text("Bulk Push"),
+               content: Text("Push ${_selectedHashes.length} selected messages to the server?"),
+               actions: [
+                 TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Cancel")),
+                 TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Proceed")),
+               ],
+             )
+           );
+           if (confirm == true) _pushBulk();
+        },
+        icon: const Icon(Icons.cloud_upload),
+        label: Text("Push (${_selectedHashes.length})"),
+        backgroundColor: theme.primaryColor,
+        foregroundColor: theme.colorScheme.onPrimary,
+      ) : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endContained,
+      bottomNavigationBar: BottomAppBar(
+        color: theme.colorScheme.surface,
+        elevation: 8,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              icon: Icon(Icons.saved_search, color: theme.colorScheme.onSurface),
+              tooltip: 'Deep Search Address',
+              onPressed: _isProcessing ? null : _deepQueryAddress,
+            ),
+            IconButton(
+              icon: Icon(Icons.calendar_month, color: theme.colorScheme.onSurface),
+              tooltip: 'Sync from Date',
+              onPressed: _isProcessing ? null : () async {
+                 bool? confirm = await showDialog<bool>(
+                   context: context,
+                   builder: (c) => AlertDialog(
+                     title: const Text("Sync from Date"),
+                     content: const Text("This will search and potentially re-sync messages from a chosen date. Proceed?"),
+                     actions: [
+                       TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Cancel")),
+                       TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Proceed")),
+                     ],
+                   )
+                 );
+                 if (confirm == true) _pickAndSyncDate();
+              },
+            ),
+            IconButton(
+              icon: Icon(Icons.cleaning_services_outlined, color: AppTheme.danger),
+              tooltip: 'Clear Cache & Force Push All',
+              onPressed: _isProcessing ? null : () async {
+                 bool? confirm = await showDialog<bool>(
+                   context: context,
+                   builder: (c) => AlertDialog(
+                     title: const Text("Force Push All"),
+                     content: const Text("This will clear the local SMS sync cache and push ALL messages in your inbox to the server. This may take a while and cause duplicate notifications. Proceed?"),
+                     actions: [
+                       TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Cancel")),
+                       TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Proceed", style: TextStyle(color: Colors.red))),
+                     ],
+                   )
+                 );
+                 if (confirm != true) return;
+
+                 setState(() => _isProcessing = true);
+                 try {
+                   await context.read<SmsService>().clearCache();
+                   final count = await context.read<SmsService>().pushAllUnsynced();
+                   if (mounted) {
+                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cleared cache & Pushed $count messages')));
+                     _loadMessages();
+                   }
+                 } finally {
+                   if (mounted) setState(() => _isProcessing = false);
+                 }
+              },
+            ),
+            IconButton(
+              icon: Icon(Icons.cloud_upload_outlined, color: theme.colorScheme.primary),
+              tooltip: 'Push All Unsynced',
+              onPressed: _isProcessing ? null : () async {
+                 bool? confirm = await showDialog<bool>(
+                   context: context,
+                   builder: (c) => AlertDialog(
+                     title: const Text("Push All Unsynced"),
+                     content: const Text("This will send all currently unsynced messages to the backend. Proceed?"),
+                     actions: [
+                       TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Cancel")),
+                       TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Proceed")),
+                     ],
+                   )
+                 );
+                 if (confirm != true) return;
+
+                 setState(() => _isProcessing = true);
+                 try {
+                   final count = await context.read<SmsService>().pushAllUnsynced();
+                   if (mounted) {
+                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pushed $count unsynced messages')));
+                     _loadMessages();
+                   }
+                 } finally {
+                   if (mounted) setState(() => _isProcessing = false);
+                 }
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -286,7 +448,7 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
     final dateStr = DateFormat('dd MMM yyyy, hh:mm a').format(date);
 
     return InkWell(
-      onLongPress: isSynced ? null : () {
+      onLongPress: () {
         setState(() {
           if (isSelected) {
             _selectedHashes.remove(hash);
@@ -340,25 +502,83 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
               msg.body ?? '',
               style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
             ),
-            if (!isSynced) ...[
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: ElevatedButton.icon(
-                  onPressed: _isProcessing ? null : () => _pushSingle(msg),
-                  icon: const Icon(Icons.upload, size: 16),
-                  label: const Text('Push Now'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                onPressed: _isProcessing ? null : () => _pushSingle(msg),
+                icon: Icon(isSynced ? Icons.refresh : Icons.upload, size: 16),
+                label: Text(isSynced ? 'Resend' : 'Push Now'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isSynced ? theme.colorScheme.surfaceContainerHighest : theme.primaryColor,
+                  foregroundColor: isSynced ? theme.colorScheme.onSurfaceVariant : Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: isSynced ? 0 : 2,
                 ),
               ),
-            ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatusCard(BuildContext context, {
+    required IconData icon, 
+    required Color color, 
+    required String title, 
+    required String subtitle,
+    Widget? trailing,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.dividerColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(subtitle, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 14)),
+              ],
+            ),
+          ),
+          if (trailing != null) trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSecurityToggle(BuildContext context, {
+    required String title,
+    required String subtitle,
+    required bool value,
+    required Function(bool) onChanged,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+      trailing: Switch(
+        value: value,
+        onChanged: onChanged,
+        activeThumbColor: AppTheme.primary,
       ),
     );
   }
