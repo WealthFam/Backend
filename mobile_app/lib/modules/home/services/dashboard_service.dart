@@ -6,7 +6,6 @@ import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/models/dashboard_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 class DashboardService extends ChangeNotifier {
   final AppConfig _config;

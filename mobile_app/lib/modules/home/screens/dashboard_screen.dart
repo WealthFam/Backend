@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:mobile_app/modules/ingestion/services/sms_service.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/home/services/dashboard_service.dart';
@@ -13,7 +14,8 @@ import 'package:mobile_app/modules/home/models/transaction_category.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final VoidCallback? onMenuPressed;
+  const DashboardScreen({super.key, this.onMenuPressed});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -47,43 +49,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ? const Center(child: CircularProgressIndicator())
             : CustomScrollView(
                 slivers: [
-                SliverAppBar(
-                  expandedHeight: 120,
+                                SliverAppBar(
                   floating: true,
                   pinned: true,
-                  flexibleSpace: FlexibleSpaceBar(
-                    title: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Overview',
-                          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        if (dashboard.maskingFactor > 1.0) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppTheme.warning.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppTheme.warning.withOpacity(0.5)),
-                            ),
-                            child: const Text(
-                              'PRIVACY',
-                              style: TextStyle(
-                                color: AppTheme.warning,
-                                fontSize: 8,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
+                  leading: widget.onMenuPressed != null ? IconButton(
+                    icon: const Icon(Icons.menu),
+                    onPressed: widget.onMenuPressed,
+                  ) : null,
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Overview',
+                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      if (dashboard.maskingFactor > 1.0) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.warning.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: AppTheme.warning.withOpacity(0.5)),
+                          ),
+                          child: const Text(
+                            'PRIVACY',
+                            style: TextStyle(
+                              color: AppTheme.warning,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                        ],
+                        ),
                       ],
-                    ),
-                    centerTitle: false,
-                    titlePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    ],
                   ),
+                  bottom: dashboard.data != null 
+                    ? PreferredSize(
+                        preferredSize: const Size.fromHeight(130),
+                        child: _buildSummarySection(context, dashboard.data!.summary, formatAmount),
+                      )
+                    : null,
                   actions: [
                     if (dashboard.members.isNotEmpty) 
                        PopupMenuButton<String>(
@@ -128,8 +135,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 if (dashboard.data != null) ...[
-                  SliverToBoxAdapter(child: _buildSummarySection(context, dashboard.data!.summary, formatAmount)),
-                  SliverToBoxAdapter(child: _buildInvestmentsEntry(context)), // New Entry Point
+                  SliverToBoxAdapter(child: _buildInvestmentsEntry(context)), // Restored Entry Point
                 
                 // Triage Banner
                 if (dashboard.data!.pendingTriageCount > 0)
@@ -165,6 +171,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       childCount: dashboard.data!.recentTransactions.length,
                     ),
                   ),
+                  SliverToBoxAdapter(child: _buildSyncHealthCard(context)),
                   const SliverToBoxAdapter(child: SizedBox(height: 32)),
                 ],
               ],
@@ -780,4 +787,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  Widget _buildSyncHealthCard(BuildContext context) {
+    final sms = context.watch<SmsService>();
+    final theme = Theme.of(context);
+    final lastSyncStr = sms.lastSyncTime != null 
+        ? DateFormat('HH:mm').format(sms.lastSyncTime!) 
+        : 'Never';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.dividerColor),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.health_and_safety_outlined, size: 16, color: theme.primaryColor),
+              const SizedBox(width: 8),
+              const Text('Sync Health', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const Spacer(),
+              Text(sms.lastSyncStatus ?? 'Standby', 
+                style: TextStyle(
+                  color: sms.lastSyncStatus == 'Success' ? AppTheme.success : theme.colorScheme.onSurfaceVariant,
+                  fontSize: 12, fontWeight: FontWeight.bold
+                )
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildHealthStat(context, 'Last Sync', lastSyncStr),
+              _buildHealthStat(context, 'Today', sms.messagesSyncedToday.toString()),
+              _buildHealthStat(context, 'Queue', sms.queueCount.toString(), isWarning: sms.queueCount > 0),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHealthStat(BuildContext context, String label, String value, {bool isWarning = false}) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11)),
+        Text(value, style: TextStyle(
+          fontWeight: FontWeight.bold, 
+          fontSize: 16,
+          color: isWarning ? AppTheme.warning : theme.colorScheme.onSurface
+        )),
+      ],
+    );
+  }
+
 }

@@ -16,7 +16,6 @@ class ConfigScreen extends StatefulWidget {
 class _ConfigScreenState extends State<ConfigScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _backendCtrl;
-  late TextEditingController _webUiCtrl;
   late TextEditingController _deviceIdCtrl;
   bool _isLoading = false;
 
@@ -26,14 +25,12 @@ class _ConfigScreenState extends State<ConfigScreen> {
     final config = context.read<AppConfig>();
     final auth = context.read<AuthService>();
     _backendCtrl = TextEditingController(text: config.backendUrl);
-    _webUiCtrl = TextEditingController(text: config.webUiUrl);
     _deviceIdCtrl = TextEditingController(text: auth.deviceId ?? '');
   }
 
   @override
   void dispose() {
     _backendCtrl.dispose();
-    _webUiCtrl.dispose();
     _deviceIdCtrl.dispose();
     super.dispose();
   }
@@ -45,7 +42,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     
     await context.read<AppConfig>().setUrls(
       backend: _backendCtrl.text.trim(),
-      webUi: _webUiCtrl.text.trim(),
+      webUi: context.read<AppConfig>().webUiUrl,
     );
 
     if (_deviceIdCtrl.text.isNotEmpty) {
@@ -125,21 +122,6 @@ class _ConfigScreenState extends State<ConfigScreen> {
                 },
               ),
               const SizedBox(height: 24),
-              
-              TextFormField(
-                controller: _webUiCtrl,
-                style: TextStyle(color: theme.colorScheme.onSurface),
-                decoration: const InputDecoration(
-                  labelText: 'Web Dashboard URL',
-                  hintText: 'http://192.168.0.9:80',
-                  prefixIcon: Icon(Icons.web),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Required';
-                  if (!value.startsWith('http')) return 'Must start with http/https';
-                  return null;
-                },
-              ),
 
               const SizedBox(height: 24),
 
