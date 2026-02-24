@@ -573,7 +573,8 @@ class TransactionService:
         is_transfer_override: bool = False,
         to_account_id_override: Optional[str] = None,
         exclude_from_reports_override: Optional[bool] = None,
-        create_rule: bool = False
+        create_rule: bool = False,
+        account_id_override: Optional[str] = None
     ):
         pending = db.query(ingestion_models.PendingTransaction).filter(
             ingestion_models.PendingTransaction.id == pending_id,
@@ -585,6 +586,7 @@ class TransactionService:
         final_to_account_id = to_account_id_override or pending.to_account_id
         final_category = category_override or pending.category or "Uncategorized"
         final_exclude = exclude_from_reports_override if exclude_from_reports_override is not None else pending.exclude_from_reports
+        final_account_id = account_id_override or pending.account_id
         
         # Sync exclude if it was forced to transfer here
         if is_transfer_override:
@@ -602,7 +604,7 @@ class TransactionService:
             CategoryService.create_category_rule(db, rule_create, tenant_id)
 
         txn_create = schemas.TransactionCreate(
-            account_id=pending.account_id,
+            account_id=final_account_id,
             amount=pending.amount,
             date=pending.date,
             description=pending.description,
