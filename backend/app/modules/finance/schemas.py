@@ -496,3 +496,5 @@ class BalanceSnapshotRead(BalanceSnapshotBase):
 
     class Config:
         from_attributes = True
+
+CategoryRead.model_rebuild()

@@ -170,19 +170,28 @@ def seed_data():
                 db.add(order)
             db.commit()
 
-        # 6. Categories
-        categories = db.query(Category).filter(Category.tenant_id == tenant_id).all()
         if not categories:
             logger.info("Seeding categories...")
-            cat_map = {}
-            for name in ["Food", "Transport", "Shopping", "Salary", "Investments", "Transfers"]:
+            
+            # 1. Root: Food
+            food = Category(tenant_id=tenant_id, name="Food", type="expense", icon="🍔")
+            db.add(food)
+            db.commit()
+            db.refresh(food)
+            
+            # 2. Children of Food
+            db.add_all([
+                Category(tenant_id=tenant_id, name="Groceries", type="expense", icon="🛒", parent_id=food.id),
+                Category(tenant_id=tenant_id, name="Dining Out", type="expense", icon="🍕", parent_id=food.id),
+            ])
+            
+            # 3. Others
+            for name in ["Transport", "Shopping", "Salary", "Investments", "Transfers"]:
                 ctype = "expense"
                 if name == "Salary": ctype = "income"
                 elif name == "Transfers": ctype = "transfer"
-                
-                cat = Category(tenant_id=tenant_id, name=name, type=ctype)
-                db.add(cat)
-                cat_map[name] = cat
+                db.add(Category(tenant_id=tenant_id, name=name, type=ctype))
+            
             db.commit()
             categories = db.query(Category).filter(Category.tenant_id == tenant_id).all()
         

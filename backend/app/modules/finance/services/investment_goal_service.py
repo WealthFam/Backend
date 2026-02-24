@@ -95,12 +95,12 @@ class InvestmentGoalService:
                 progress = min(float(current_amount) / float(goal.target_amount) * 100, 100.0)
             
             # Convert to schema
-            goal_data = schemas.InvestmentGoalRead.from_orm(goal)
+            goal_data = schemas.InvestmentGoalRead.model_validate(goal)
 
             results.append(schemas.InvestmentGoalProgress(
-                **goal_data.dict(exclude={'holdings', 'assets'}),
-                holdings=[h.dict() for h in processed_holdings],
-                assets=[a.dict() for a in processed_assets],
+                **goal_data.model_dump(exclude={'holdings', 'assets'}),
+                holdings=processed_holdings,
+                assets=processed_assets,
                 current_amount=current_amount,
                 progress_percentage=progress,
                 holdings_count=len(processed_holdings),

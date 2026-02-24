@@ -554,6 +554,7 @@ def list_mobile_transactions(
     page_size: int = 20,
     month: Optional[int] = None,
     year: Optional[int] = None,
+    member_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -563,6 +564,18 @@ def list_mobile_transactions(
     from backend.app.modules.finance import models
     from sqlalchemy import or_
     
+    # Authorization logic for member_id
+    target_user_id = None # Default to None (All) for Adults
+    
+    if current_user.role == "CHILD":
+        # Child can only see their own data
+        target_user_id = str(current_user.id)
+        if member_id and member_id != target_user_id:
+            raise HTTPException(status_code=403, detail="Children can only view their own data")
+    elif member_id:
+        # Adults can view specific member
+        target_user_id = member_id
+        
     query = db.query(models.Transaction).options(
         joinedload(models.Transaction.account)
     ).filter(
@@ -571,12 +584,13 @@ def list_mobile_transactions(
         models.Transaction.exclude_from_reports == False
     )
     
-    # Filter by user ownership
-    query = query.join(
-        models.Account, models.Transaction.account_id == models.Account.id
-    ).filter(
-        or_(models.Account.owner_id == str(current_user.id), models.Account.owner_id == None)
-    )
+    # Filter by user ownership if target_user_id is set
+    if target_user_id:
+        query = query.join(
+            models.Account, models.Transaction.account_id == models.Account.id
+        ).filter(
+            or_(models.Account.owner_id == target_user_id, models.Account.owner_id == None)
+        )
     
     if month and year:
         start_date = datetime(year, month, 1)
@@ -752,11 +766,7 @@ def get_categories(
     db: Session = Depends(get_db)
 ):
     from backend.app.modules.finance.services.category_service import CategoryService
-    cats = CategoryService.get_categories(db, str(current_user.tenant_id))
-    return [
-        schemas.Category(id=str(c.id), name=c.name, icon=c.icon, type=getattr(c, 'type', 'expense')) 
-        for c in cats
-    ]
+    return CategoryService.get_categories(db, str(current_user.tenant_id), tree=True)
 
 @router.patch("/transactions/{transaction_id}", response_model=schemas.RecentTransaction)
 def update_transaction_category(
