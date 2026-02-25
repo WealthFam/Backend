@@ -137,18 +137,18 @@ export function useTransactionState(
         switch (value) {
             case 'today':
                 start = today.toISOString().split('T')[0]
-                end = start
+                end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString().split('T')[0]
                 break
             case 'this-week': {
                 const weekStart = new Date(today)
                 weekStart.setDate(today.getDate() - today.getDay())
                 start = weekStart.toISOString().split('T')[0]
-                end = today.toISOString().split('T')[0]
+                end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString().split('T')[0]
                 break
             }
             case 'this-month':
                 start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
-                end = today.toISOString().split('T')[0]
+                end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString().split('T')[0]
                 break
             case 'last-month': {
                 const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)

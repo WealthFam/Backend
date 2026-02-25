@@ -75,10 +75,27 @@ class IngestionService:
             db.commit()
             db.refresh(account)
             
+        is_fallback_account = False
         if not account:
-             # Fallback if no mask was present in SMS at all
-             # For V1, we log/skip
-             return {"status": "skipped", "reason": f"No account found and no mask in SMS"}
+             # Fallback if no mask was present in SMS at all, send to triage
+             account = db.query(finance_models.Account).filter(
+                 finance_models.Account.tenant_id == tenant_id,
+                 finance_models.Account.name == "Unmatched Account"
+             ).first()
+             
+             if not account:
+                 account = finance_models.Account(
+                     tenant_id=tenant_id,
+                     name="Unmatched Account",
+                     type=finance_models.AccountType.BANK,
+                     is_verified=False,
+                     balance=0.0
+                 )
+                 db.add(account)
+                 db.commit()
+                 db.refresh(account)
+                 
+             is_fallback_account = True
             
         # Create Transaction or Move to Triage
         
@@ -130,6 +147,10 @@ class IngestionService:
         # Auto-ingest if we have a real category
         # If the category came from the parser (not None), we treat it as high confidence
         is_auto_ingest = (category and category != "Uncategorized")
+        
+        # Force triage if fallback account is used
+        if is_fallback_account:
+            is_auto_ingest = False
         
         from backend.app.modules.notifications import NotificationService
         balance_synced = False

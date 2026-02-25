@@ -12,6 +12,8 @@ import 'package:mobile_app/core/services/notification_service.dart';
 import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 import 'package:mobile_app/modules/home/services/funds_service.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
+import 'package:mobile_app/modules/home/services/goals_service.dart';
+import 'package:mobile_app/modules/vault/services/vault_service.dart';
 import 'package:mobile_app/core/services/foreground_service.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
@@ -40,6 +42,8 @@ void main() async {
   final dashboard = DashboardService(config, auth);
   final funds = FundsService(config, auth);
   final categories = CategoriesService(config, auth);
+  final vault = VaultService(config, auth);
+  final goals = GoalsService(config, auth);
   
   // Listen for data from Foreground Task Isolate
   FlutterForegroundTask.addTaskDataCallback((data) {
@@ -56,6 +60,8 @@ void main() async {
     dashboard: dashboard, 
     funds: funds,
     categories: categories,
+    vault: vault,
+    goals: goals,
   ));
 }
 
@@ -78,6 +84,8 @@ class MyApp extends StatelessWidget {
   final DashboardService dashboard;
   final FundsService funds;
   final CategoriesService categories;
+  final VaultService vault;
+  final GoalsService goals;
 
   const MyApp({
     super.key, 
@@ -88,6 +96,8 @@ class MyApp extends StatelessWidget {
     required this.dashboard,
     required this.funds,
     required this.categories,
+    required this.vault,
+    required this.goals,
   });
 
   @override
@@ -101,6 +111,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: dashboard),
         ChangeNotifierProvider.value(value: funds),
         ChangeNotifierProvider.value(value: categories),
+        ChangeNotifierProvider.value(value: vault),
+        ChangeNotifierProvider.value(value: goals),
       ],
       child: Consumer<AuthService>(
         builder: (context, auth, _) {

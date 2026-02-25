@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppConfig extends ChangeNotifier {
   static const String keyBackendUrl = 'backend_url';
   static const String keyWebUiUrl = 'web_ui_url';
-  
-  // Defaults from requirements
+  static const String keySendDebugPayload = 'show_debug_payload';
+
   static const String defaultBackendUrl = 'http://192.168.0.9:8000';
   static const String defaultWebUiUrl = 'http://192.168.0.9:80';
 
@@ -14,15 +14,18 @@ class AppConfig extends ChangeNotifier {
 
   String _backendUrl = defaultBackendUrl;
   String _webUiUrl = defaultWebUiUrl;
+  bool _sendDebugPayload = false;
 
   String get backendUrl => _backendUrl;
   String get webUiUrl => _webUiUrl;
+  bool get sendDebugPayload => _sendDebugPayload;
   bool get isInitialized => _initialized;
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     _backendUrl = _prefs.getString(keyBackendUrl) ?? defaultBackendUrl;
     _webUiUrl = _prefs.getString(keyWebUiUrl) ?? defaultWebUiUrl;
+    _sendDebugPayload = _prefs.getBool(keySendDebugPayload) ?? false;
     _initialized = true;
     notifyListeners();
   }
@@ -43,6 +46,12 @@ class AppConfig extends ChangeNotifier {
     }
     _webUiUrl = value;
     await _prefs.setString(keyWebUiUrl, value);
+    notifyListeners();
+  }
+
+  Future<void> setDebugPayload(bool value) async {
+    _sendDebugPayload = value;
+    await _prefs.setBool(keySendDebugPayload, value);
     notifyListeners();
   }
 

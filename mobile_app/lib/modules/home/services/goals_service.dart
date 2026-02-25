@@ -1,0 +1,71 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:mobile_app/core/config/app_config.dart';
+import 'package:mobile_app/modules/auth/services/auth_service.dart';
+
+class GoalsService extends ChangeNotifier {
+  final AppConfig _config;
+  final AuthService _auth;
+
+  List<dynamic> _goals = [];
+  List<dynamic> _expenseGroups = [];
+  bool _isLoading = false;
+
+  String? _error;
+  
+  List<dynamic> get goals => _goals;
+  List<dynamic> get expenseGroups => _expenseGroups;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
+
+  GoalsService(this._config, this._auth);
+
+  Future<void> fetchGoals() async {
+    if (_auth.accessToken == null) return;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final url = '${_config.backendUrl}/api/v1/finance/investment-goals';
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer ${_auth.accessToken}'},
+      );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        _goals = decoded is List ? decoded : [];
+        _error = null;
+      } else {
+        _error = 'Failed to load: ${response.statusCode}';
+      }
+    } catch (e) {
+      debugPrint('Goals Fetch Error: $e');
+      _error = 'Error: $e';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchExpenseGroups() async {
+    if (_auth.accessToken == null) return;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final response = await http.get(
+        Uri.parse('${_config.backendUrl}/api/v1/finance/expense-groups/'),
+        headers: {'Authorization': 'Bearer ${_auth.accessToken}'},
+      );
+      if (response.statusCode == 200) {
+        _expenseGroups = jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Expense Groups Fetch Error: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+}

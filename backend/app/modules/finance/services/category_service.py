@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict
 import json
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from backend.app.modules.finance import models, schemas
 
@@ -10,7 +10,7 @@ class CategoryService:
     def get_categories(db: Session, tenant_id: str, tree: bool = False) -> List[models.Category]:
         if tree:
             # Return only root categories, subcategories will be loaded via relationship
-            return db.query(models.Category).filter(
+            return db.query(models.Category).options(joinedload(models.Category.subcategories)).filter(
                 models.Category.tenant_id == tenant_id,
                 models.Category.parent_id == None
             ).all()

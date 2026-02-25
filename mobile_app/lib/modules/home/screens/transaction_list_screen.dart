@@ -199,7 +199,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
 
 class _EditCategorySheet extends StatefulWidget {
   final dynamic txn;
-  const _EditCategorySheet({super.key, required this.txn});
+  const _EditCategorySheet({required this.txn});
 
   @override
   State<_EditCategorySheet> createState() => _EditCategorySheetState();
@@ -242,7 +242,7 @@ class _EditCategorySheetState extends State<_EditCategorySheet> {
           const SizedBox(height: 24),
           
           DropdownButtonFormField<String>(
-            value: categories.contains(_selectedCategory) ? _selectedCategory : null,
+            initialValue: categories.contains(_selectedCategory) ? _selectedCategory : null,
             decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
             items: categories.map<DropdownMenuItem<String>>((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
             onChanged: (v) => setState(() => _selectedCategory = v!),
@@ -431,7 +431,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
              const SizedBox(height: 24),
              
              DropdownButtonFormField<String>(
-               value: _selectedAccountId,
+               initialValue: _selectedAccountId,
                decoration: const InputDecoration(labelText: 'Account'),
                items: _accounts.map<DropdownMenuItem<String>>((acc) {
                  return DropdownMenuItem(
@@ -469,7 +469,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   final dropdownValue = isValid ? _category : (items.isNotEmpty ? items.first.value : null);
 
                   return DropdownButtonFormField<String>(
-                    value: dropdownValue,
+                    initialValue: dropdownValue,
                     decoration: const InputDecoration(labelText: 'Category'),
                     items: items,
                     onChanged: (v) => setState(() => _category = v),

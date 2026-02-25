@@ -176,6 +176,29 @@ class NotificationService {
     await _notifications.cancel(999);
   }
 
+  /// Show a one-off notification (e.g. for SMS received events)
+  Future<void> showNotification({required String title, required String body, int id = 100}) async {
+    try {
+      await _notifications.show(
+        id,
+        title,
+        body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'wealthfam_sms',
+            'WealthFam SMS Sync',
+            channelDescription: 'Notifications for SMS sync events',
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+            autoCancel: true,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint("NotificationService.showNotification error: $e");
+    }
+  }
+
   Future<void> updateNow({required String url, required String token}) async {
     debugPrint("NotificationService: updateNow called with url=$url");
     try {

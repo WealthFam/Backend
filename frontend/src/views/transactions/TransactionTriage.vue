@@ -504,6 +504,21 @@ const { formatAmount } = useCurrency()
                                             </v-autocomplete>
                                         </div>
                                     </div>
+                                    
+                                    <div class="modern-account-select pt-1">
+                                        <div class="d-flex align-center gap-2">
+                                            <span class="text-caption font-weight-black opacity-60 flex-shrink-0"
+                                                style="width: 70px">Account</span>
+                                            <v-autocomplete v-model="txn.account_id" :items="accountOptions"
+                                                item-title="title" item-value="value" placeholder="Select Account"
+                                                variant="outlined" density="comfortable" rounded="lg" hide-details
+                                                class="flex-grow-1" bg-color="surface">
+                                                <template v-slot:prepend-inner>
+                                                    <Landmark :size="18" class="text-primary mr-2" />
+                                                </template>
+                                            </v-autocomplete>
+                                        </div>
+                                    </div>
 
                                     <!-- Target Account (Conditional) -->
                                     <v-expand-transition>

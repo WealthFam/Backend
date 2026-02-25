@@ -130,8 +130,14 @@ class Category(BaseModel):
     name: str
     icon: Optional[str] = None
     type: str = "expense"
+    parent_id: Optional[str] = None
+    subcategories: List['Category'] = []
+
+    model_config = ConfigDict(from_attributes=True)
 
 class UpdateTransactionCategoryRequest(BaseModel):
     category: str
     create_rule: bool = False
     rule_keywords: Optional[List[str]] = None
+
+Category.model_rebuild()

@@ -714,6 +714,7 @@ class TriageApproveRequest(BaseModel):
     category: Optional[str] = None
     is_transfer: bool = False
     to_account_id: Optional[str] = None
+    account_id: Optional[str] = None
     exclude_from_reports: Optional[bool] = None
     create_rule: bool = False
 
@@ -732,7 +733,8 @@ def approve_triage(
         is_transfer_override=payload.is_transfer,
         to_account_id_override=payload.to_account_id,
         exclude_from_reports_override=payload.exclude_from_reports,
-        create_rule=payload.create_rule
+        create_rule=payload.create_rule,
+        account_id_override=payload.account_id
     )
     if not txn:
         raise HTTPException(status_code=404, detail="Pending transaction not found")
