@@ -75,6 +75,13 @@ class HdfcSmsParser(BaseSmsParser):
                 confidence=0.95,
                 txn_type="DEBIT",
                 field_map={"amount": 1, "mask": 2, "date": 3, "ref_id": 4, "balance": 5}
+            ),
+            # Received (Common in UPI credits)
+            TransactionPattern(
+                regex=re.compile(r"(?i)(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*Received\s*in\s*A/c\s*(?:.*?|x*|\*|X*)(\d+)\s*on\s*([\d/:-]+)\s*from\s*(.*?)(?:(?:\s+?|\().*?Ref[:\.\s]*(\w+)(?:\))?)?$", re.IGNORECASE),
+                confidence=1.0,
+                txn_type="CREDIT",
+                field_map={"amount": 1, "mask": 2, "date": 3, "recipient": 4, "ref_id": 5}
             )
         ]
 

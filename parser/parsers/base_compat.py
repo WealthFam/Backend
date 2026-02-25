@@ -100,19 +100,42 @@ class BaseParser(ABC):
             return hint or datetime.now()
         
         # Standardize separators
-        clean_date = date_str.replace("/", "-").replace(".", "-").strip()
+        clean_date = date_str.replace("/", "-").replace(".", "-").replace(",", " ").strip()
         
-        # Handle ISO format with colon separator (e.g., "2026-02-01:19:44:53")
-        if ":" in clean_date and len(clean_date.split(":")) >= 3:
-            try:
-                # Replace first colon after date with space
-                parts = clean_date.split(":")
-                if len(parts[0].split("-")) == 3:  # YYYY-MM-DD part
-                    clean_date = parts[0] + " " + ":".join(parts[1:])
-                    return datetime.strptime(clean_date, "%Y-%m-%d %H:%M:%S")
-            except:
-                pass
-        
+        # 1. Try ISO-like with time (YYYY-MM-DD HH:MM:SS or variations)
+        # Handle "2026-02-01:19:44:53" or "01-02-2026 19:44"
+        try:
+            # Replace first colon after date or a space with a standard separator if needed
+            # We use dateutil-like heuristic if we had it, but sticking to standard formats
+            dt_formats = [
+                "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+                "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M",
+                "%d-%b-%Y %H:%M:%S", "%d-%b-%Y %H:%M",
+                "%d-%m-%y %H:%M:%S", "%d-%m-%y %H:%M",
+                "%d-%b-%y %H:%M:%S", "%d-%b-%y %H:%M",
+            ]
+            
+            # Pre-processing for "2026-02-01:19:44:53"
+            norm_date = clean_date
+            if ":" in clean_date and " " not in clean_date:
+                # If there's a colon but no space, the first colon might be the date/time separator
+                parts = clean_date.split("-")
+                if len(parts) == 3: # Likely starts with YYYY-MM-DD or DD-MM-YYYY
+                    if ":" in parts[2]: # separator is in the 3rd part?
+                         # e.g. "2026-02-01:19:44:53"
+                         sub_parts = parts[2].split(":", 1)
+                         norm_date = "-".join(parts[:2]) + "-" + sub_parts[0] + " " + sub_parts[1]
+            
+            for fmt in dt_formats:
+                try:
+                    dt = datetime.strptime(norm_date, fmt)
+                    if dt.year < 100: dt = dt.replace(year=dt.year + 2000)
+                    return dt
+                except: continue
+        except:
+            pass
+
+        # 2. Try Date-only formats
         formats = [
             "%d-%m-%Y", "%d-%m-%y",
             "%d-%b-%Y", "%d-%b-%y",
@@ -124,14 +147,21 @@ class BaseParser(ABC):
         for fmt in formats:
             try:
                 dt = datetime.strptime(clean_date, fmt)
-                # Handle year 24 vs 2024
                 if dt.year < 100:
                     dt = dt.replace(year=dt.year + 2000)
+                
+                # If hint has time, preserve it? 
+                # Actually, usually hinted time is "received_at", 
+                # but if the SMS had a date, we want that date.
+                # If the hint is also from today, we might want the hint's time.
+                if hint and dt.date() == hint.date():
+                    return dt.replace(hour=hint.hour, minute=hint.minute, second=hint.second)
+                
                 return dt
             except:
                 continue
         
-        return hint or datetime.now() 
+        return hint or datetime.now()
 
     def _parse_mask(self, mask_str: Optional[str]) -> Optional[str]:
         if not mask_str:

@@ -57,6 +57,20 @@ class IciciSmsParser(BaseSmsParser):
                 confidence=1.0,
                 txn_type="DEBIT",
                 field_map={"amount": 1, "mask": 2, "recipient": 3, "date": 4, "ref_id": 5}
+            ),
+            # UPI Credit
+            TransactionPattern(
+                regex=re.compile(r"(?i)(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*credited\s*to\s*ICICI\s*Bank\s*A/c\s*([xX]*\d+)\s*on\s*(\d{2}-[a-z]{3}-\d{2,4})\s*from\s*(.*?)\s*\.\s*UPI\s*Ref\s*(?:No)?\s*(\w+)", re.IGNORECASE),
+                confidence=1.0,
+                txn_type="CREDIT",
+                field_map={"amount": 1, "mask": 2, "date": 3, "recipient": 4, "ref_id": 5}
+            ),
+            # Account Credit
+            TransactionPattern(
+                regex=re.compile(r"(?i)A/c\s*([xX]*\d+)\s*is\s*credited\s*for\s*(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*on\s*(\d{2}-[a-z]{3}-\d{2,4})(?:.*?[Ii]nfo:\s*(.*?))?\.(?:\s*Ref[:\s]+(\w+))?", re.IGNORECASE),
+                confidence=0.95,
+                txn_type="CREDIT",
+                field_map={"mask": 1, "amount": 2, "date": 3, "recipient": 4, "ref_id": 5}
             )
         ]
 
