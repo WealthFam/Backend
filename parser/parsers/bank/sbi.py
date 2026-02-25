@@ -56,6 +56,13 @@ class SbiSmsParser(BaseSmsParser):
                 confidence=1.0,
                 txn_type="DEBIT",
                 field_map={"amount": 1, "mask": 2, "recipient": 3, "date": 4, "ref_id": 5}
+            ),
+            # UPI/Generic Credit
+            TransactionPattern(
+                regex=re.compile(r"(?i)(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*credited\s*to\s*SBI\s*A/c\s*(?:.*?|x*|X*)(\d+)\s*on\s*(\d{2}[A-Z]{3,}\d{2,4}|\d{2}[-/]\d{2}[-/]\d{2,4})\s*(?:from\s*(.*?))?(?:\s*Ref[:\.\s-]+(\w+))?", re.IGNORECASE),
+                confidence=1.0,
+                txn_type="CREDIT",
+                field_map={"amount": 1, "mask": 2, "date": 3, "recipient": 4, "ref_id": 5}
             )
         ]
 

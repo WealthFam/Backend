@@ -9,9 +9,9 @@ class GenericSmsParser(BaseSmsParser):
     """
     Parser for common Indian bank SMS formats.
     """
-    DEBIT_PATTERN = re.compile(r"(?i)(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*debited\s*from.*?a/c\s*([xX]*\d+)(?:.*to\s+([^.]+))?", re.IGNORECASE)
-    CREDIT_PATTERN = re.compile(r"(?i)(?:credited|deposited).*?(?:Rs\.?|INR)\s*([\d,]+\.?\d*).*?a/c\s*([xX]*\d+)(?:.*from\s+([^.]+))?", re.IGNORECASE)
-    SPENT_PATTERN = re.compile(r"(?i)Spent\s*(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*on\s*.*?card\s*([xX]*\d+)(?:.*at\s+([^.]+))?", re.IGNORECASE)
+    DEBIT_PATTERN = re.compile(r"(?i)(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*debited\s*from.*?a/c\s*([xX]*\d+)(?:.*on\s*([\d/-]+))?(?:.*to\s+([^.]+))?", re.IGNORECASE)
+    CREDIT_PATTERN = re.compile(r"(?i)(?:credited|deposited).*?(?:Rs\.?|INR)\s*([\d,]+\.?\d*).*?a/c\s*([xX]*\d+)(?:.*on\s*([\d/-]+))?(?:.*from\s+([^.]+))?", re.IGNORECASE)
+    SPENT_PATTERN = re.compile(r"(?i)Spent\s*(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*on\s*.*?card\s*([xX]*\d+)(?:.*on\s*([\d/-]+))?(?:.*at\s+([^.]+))?", re.IGNORECASE)
     REF_PATTERN = re.compile(r"(?i)\b(?:Ref|UTR|TXN#|Ref\s*No|reference\s*number)(?:[\s:\.-]|\bis\b)+([a-zA-Z0-9]{3,})")
 
     def can_handle(self, sender: str, message: str) -> bool:
@@ -29,25 +29,32 @@ class GenericSmsParser(BaseSmsParser):
         # 1. Try Debit
         match = self.DEBIT_PATTERN.search(clean_content_no_comma)
         if match:
-            return self._create_txn(Decimal(match.group(1)), match.group(3) or "Unknown", match.group(2), "DEBIT", content, get_ref(), "SMS", date_hint)
+            return self._create_txn(Decimal(match.group(1)), match.group(4) or "Unknown", match.group(2), match.group(3), "DEBIT", content, get_ref(), "SMS", date_hint)
 
         # 2. Try Spent
         match = self.SPENT_PATTERN.search(clean_content_no_comma)
         if match:
-            return self._create_txn(Decimal(match.group(1)), match.group(3) or "Unknown", match.group(2), "DEBIT", content, get_ref(), "SMS", date_hint)
+            return self._create_txn(Decimal(match.group(1)), match.group(4) or "Unknown", match.group(2), match.group(3), "DEBIT", content, get_ref(), "SMS", date_hint)
 
         # 3. Try Credit
         match = self.CREDIT_PATTERN.search(clean_content_no_comma)
         if match:
-            return self._create_txn(Decimal(match.group(1)), match.group(3) or "Unknown", match.group(2), "CREDIT", content, get_ref(), "SMS", date_hint)
+            return self._create_txn(Decimal(match.group(1)), match.group(4) or "Unknown", match.group(2), match.group(3), "CREDIT", content, get_ref(), "SMS", date_hint)
 
         return None
 
-    def _create_txn(self, amount, recipient, account_mask, type_str, raw, ref_id, source, date_hint=None):
+    def _create_txn(self, amount, recipient, account_mask, date_str, type_str, raw, ref_id, source, date_hint=None):
         clean_recipient = RecipientParser.extract(recipient)
+        txn_date = self._parse_date(date_str, date_hint) if hasattr(self, '_parse_date') else (date_hint or datetime.now())
+        
+        # GenericSmsParser doesn't inherit from BaseParser in a way that _parse_date is easily accessible if not using parse_with_confidence
+        # But it DOES inherit from BaseSmsParser -> BaseParser.
+        # Wait, GenericSmsParser.parse is called. 
+        # I should use self._parse_date (inherited from BaseParser)
+        
         return ParsedTransaction(
             amount=amount,
-            date=date_hint or datetime.now(),
+            date=txn_date,
             description=f"Ingested: {clean_recipient or recipient}",
             type=type_str,
             account_mask=account_mask,
