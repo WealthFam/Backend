@@ -63,18 +63,38 @@ const AVATARS: Record<string, string> = {
     'kid': '🧒'
 }
 
-const navItems = [
-    { title: 'Dashboard', icon: LayoutDashboard, to: '/' },
-    { title: 'Transactions', icon: Wallet, to: '/transactions' },
-    { title: 'Budgets', icon: PieChart, to: '/budgets' },
-    { title: 'Categories', icon: Tags, to: '/categories' },
-    { title: 'Insights', icon: Sparkles, to: '/insights' },
-    { title: 'Mutual Funds', icon: Coins, to: '/mutual-funds' },
-    { title: 'Financial Goals', icon: Target, to: '/investment-goals' },
-    { title: 'Expense Groups', icon: Layers, to: '/expense-groups' },
-    { title: 'Loans', icon: Landmark, to: '/loans' },
-    { title: 'Vault', icon: ShieldCheck, to: '/vault' },
-    { title: 'Settings', icon: Settings, to: '/settings' },
+const navGroups = [
+    {
+        name: 'Financial',
+        items: [
+            { title: 'Dashboard', icon: LayoutDashboard, to: '/' },
+            { title: 'Transactions', icon: Wallet, to: '/transactions' },
+            { title: 'Budgets', icon: PieChart, to: '/budgets' },
+            { title: 'Categories', icon: Tags, to: '/categories' },
+        ]
+    },
+    {
+        name: 'Wealth',
+        items: [
+            { title: 'Mutual Funds', icon: Coins, to: '/mutual-funds' },
+            { title: 'Financial Goals', icon: Target, to: '/investment-goals' },
+            { title: 'Insights', icon: Sparkles, to: '/insights' },
+        ]
+    },
+    {
+        name: 'Management',
+        items: [
+            { title: 'Expense Groups', icon: Layers, to: '/expense-groups' },
+            { title: 'Loans', icon: Landmark, to: '/loans' },
+            { title: 'Vault', icon: ShieldCheck, to: '/vault' },
+        ]
+    },
+    {
+        name: 'Account',
+        items: [
+            { title: 'Settings', icon: Settings, to: '/settings' },
+        ]
+    }
 ]
 
 function logout() {
@@ -293,34 +313,41 @@ onUnmounted(() => {
         </v-app-bar>
 
         <!-- Side Navigation -->
-        <v-navigation-drawer v-model="drawer" :rail="rail" permanent class="premium-sidebar" width="280" border="0">
-            <v-list nav class="mt-4" :class="rail ? 'px-2' : 'px-4'">
-                <template v-for="item in navItems" :key="item.title">
-                    <v-tooltip :text="item.title" location="right" v-if="rail">
-                        <template v-slot:activator="{ props }">
-                            <v-list-item v-bind="props" :to="item.to" :active="route.path === item.to" rounded="xl"
-                                class="nav-list-item mb-2" color="primary" link>
-                                <template v-slot:prepend>
-                                    <div class="nav-icon-wrapper">
-                                        <component :is="item.icon" :size="22" class="nav-icon"
-                                            :class="{ 'active-icon': route.path === item.to }" />
-                                    </div>
-                                </template>
-                            </v-list-item>
-                        </template>
-                    </v-tooltip>
+        <v-navigation-drawer v-model="drawer" :rail="rail" permanent class="premium-sidebar" width="280" border="0"
+            :rail-width="rail ? 80 : 280">
+            <v-list nav class="mt-4" :class="rail ? 'px-0' : 'px-4'">
+                <div v-for="group in navGroups" :key="group.name" class="nav-group-wrapper mb-4">
+                    <v-list-subheader v-if="!rail" class="nav-subheader">{{ group.name }}</v-list-subheader>
+                    <v-divider v-else class="mx-4 mb-2 opacity-10"></v-divider>
 
-                    <v-list-item v-else :to="item.to" :active="route.path === item.to" rounded="xl"
-                        class="nav-list-item mb-2" color="primary" link>
-                        <template v-slot:prepend>
-                            <div class="nav-icon-wrapper mr-4">
-                                <component :is="item.icon" :size="22" class="nav-icon"
-                                    :class="{ 'active-icon': route.path === item.to }" />
-                            </div>
-                        </template>
-                        <v-list-item-title class="nav-title">{{ item.title }}</v-list-item-title>
-                    </v-list-item>
-                </template>
+                    <template v-for="item in group.items" :key="item.title">
+                        <v-tooltip :text="item.title" location="right" v-if="rail">
+                            <template v-slot:activator="{ props }">
+                                <v-list-item v-bind="props" :to="item.to" :active="route.path === item.to" rounded="xl"
+                                    class="nav-list-item mb-2" color="primary" link>
+                                    <template v-slot:prepend>
+                                        <div class="nav-icon-wrapper rail-mode-item">
+                                            <component :is="item.icon" :size="20" class="nav-icon"
+                                                :class="{ 'active-icon': route.path === item.to }" />
+                                            <span class="rail-label">{{ item.title }}</span>
+                                        </div>
+                                    </template>
+                                </v-list-item>
+                            </template>
+                        </v-tooltip>
+
+                        <v-list-item v-else :to="item.to" :active="route.path === item.to" rounded="xl"
+                            class="nav-list-item mb-1" color="primary" link>
+                            <template v-slot:prepend>
+                                <div class="nav-icon-wrapper mr-4">
+                                    <component :is="item.icon" :size="20" class="nav-icon"
+                                        :class="{ 'active-icon': route.path === item.to }" />
+                                </div>
+                            </template>
+                            <v-list-item-title class="nav-title">{{ item.title }}</v-list-item-title>
+                        </v-list-item>
+                    </template>
+                </div>
             </v-list>
 
             <template v-slot:append>
@@ -515,25 +542,66 @@ onUnmounted(() => {
     box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.15) !important;
 }
 
+.nav-list-item.v-list-item--active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 20%;
+    height: 60%;
+    width: 4px;
+    background: rgb(var(--v-theme-primary));
+    border-radius: 0 4px 4px 0;
+}
+
 :deep(.nav-icon-wrapper) {
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    transition: all 0.3s ease;
+}
+
+.rail-mode-item {
+    flex-direction: column;
+    width: 64px;
+    height: 52px;
+}
+
+.rail-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    margin-top: 4px;
+    text-align: center;
+    opacity: 0.8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60px;
+}
+
+.nav-subheader {
+    font-size: 0.65rem !important;
+    font-weight: 900 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.15em !important;
+    color: rgb(var(--v-theme-on-surface), 0.4) !important;
+    height: 32px !important;
+    padding-left: 20px !important;
 }
 
 .nav-list-item.v-list-item--active :deep(.nav-icon) {
     color: rgb(var(--v-theme-primary)) !important;
 }
 
-.nav-list-item.v-list-item--active :deep(.nav-title) {
+.nav-list-item.v-list-item--active :deep(.nav-title),
+.nav-list-item.v-list-item--active :deep(.rail-label) {
     color: rgb(var(--v-theme-primary)) !important;
-    font-weight: 700 !important;
+    font-weight: 800 !important;
 }
 
 .nav-icon {
-    color: rgb(var(--v-theme-on-surface), 0.7);
-    /* text-slate-600 */
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    /* text-slate-500 */
     transition: all 0.2s;
 }
 
@@ -543,7 +611,7 @@ onUnmounted(() => {
 }
 
 .nav-title {
-    font-size: 0.9375rem;
+    font-size: 0.90rem;
     font-weight: 600 !important;
     letter-spacing: -0.01em;
 }
