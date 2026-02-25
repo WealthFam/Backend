@@ -63,38 +63,18 @@ const AVATARS: Record<string, string> = {
     'kid': '🧒'
 }
 
-const navGroups = [
-    {
-        name: 'Financial',
-        items: [
-            { title: 'Dashboard', icon: LayoutDashboard, to: '/' },
-            { title: 'Transactions', icon: Wallet, to: '/transactions' },
-            { title: 'Budgets', icon: PieChart, to: '/budgets' },
-            { title: 'Categories', icon: Tags, to: '/categories' },
-        ]
-    },
-    {
-        name: 'Wealth',
-        items: [
-            { title: 'Mutual Funds', icon: Coins, to: '/mutual-funds' },
-            { title: 'Financial Goals', icon: Target, to: '/investment-goals' },
-            { title: 'Insights', icon: Sparkles, to: '/insights' },
-        ]
-    },
-    {
-        name: 'Management',
-        items: [
-            { title: 'Expense Groups', icon: Layers, to: '/expense-groups' },
-            { title: 'Loans', icon: Landmark, to: '/loans' },
-            { title: 'Vault', icon: ShieldCheck, to: '/vault' },
-        ]
-    },
-    {
-        name: 'Account',
-        items: [
-            { title: 'Settings', icon: Settings, to: '/settings' },
-        ]
-    }
+const navItems = [
+    { title: 'Dashboard', icon: LayoutDashboard, to: '/' },
+    { title: 'Transactions', icon: Wallet, to: '/transactions' },
+    { title: 'Budgets', icon: PieChart, to: '/budgets' },
+    { title: 'Categories', icon: Tags, to: '/categories' },
+    { title: 'Insights', icon: Sparkles, to: '/insights' },
+    { title: 'Mutual Funds', icon: Coins, to: '/mutual-funds' },
+    { title: 'Financial Goals', icon: Target, to: '/investment-goals' },
+    { title: 'Expense Groups', icon: Layers, to: '/expense-groups' },
+    { title: 'Loans', icon: Landmark, to: '/loans' },
+    { title: 'Vault', icon: ShieldCheck, to: '/vault' },
+    { title: 'Settings', icon: Settings, to: '/settings' },
 ]
 
 function logout() {
@@ -139,8 +119,14 @@ onUnmounted(() => {
     stopPolling()
 })
 
-// Watch for mobile screen size to handle drawer properly? 
-// Vuetify handles mobile with temporary/permanent props.
+// Hyper-Premium Sidebar Interactions
+const mouseX = ref(0)
+const mouseY = ref(0)
+function handleMouseMove(e: MouseEvent) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    mouseX.value = e.clientX - rect.left
+    mouseY.value = e.clientY - rect.top
+}
 </script>
 
 <template>
@@ -313,41 +299,32 @@ onUnmounted(() => {
         </v-app-bar>
 
         <!-- Side Navigation -->
-        <v-navigation-drawer v-model="drawer" :rail="rail" permanent class="premium-sidebar" width="280" border="0"
-            :rail-width="rail ? 80 : 280">
-            <v-list nav class="mt-4" :class="rail ? 'px-0' : 'px-4'">
-                <div v-for="group in navGroups" :key="group.name" class="nav-group-wrapper mb-4">
-                    <v-list-subheader v-if="!rail" class="nav-subheader">{{ group.name }}</v-list-subheader>
-                    <v-divider v-else class="mx-4 mb-2 opacity-10"></v-divider>
-
-                    <template v-for="item in group.items" :key="item.title">
-                        <v-tooltip :text="item.title" location="right" v-if="rail">
-                            <template v-slot:activator="{ props }">
-                                <v-list-item v-bind="props" :to="item.to" :active="route.path === item.to" rounded="xl"
-                                    class="nav-list-item mb-2" color="primary" link>
-                                    <template v-slot:prepend>
-                                        <div class="nav-icon-wrapper rail-mode-item">
-                                            <component :is="item.icon" :size="20" class="nav-icon"
-                                                :class="{ 'active-icon': route.path === item.to }" />
-                                            <span class="rail-label">{{ item.title }}</span>
-                                        </div>
-                                    </template>
-                                </v-list-item>
-                            </template>
-                        </v-tooltip>
-
-                        <v-list-item v-else :to="item.to" :active="route.path === item.to" rounded="xl"
-                            class="nav-list-item mb-1" color="primary" link>
-                            <template v-slot:prepend>
-                                <div class="nav-icon-wrapper mr-4">
-                                    <component :is="item.icon" :size="20" class="nav-icon"
-                                        :class="{ 'active-icon': route.path === item.to }" />
+        <v-navigation-drawer v-model="drawer" :rail="rail" permanent floating class="aether-drawer" width="280"
+            :rail-width="rail ? 88 : 280" @mousemove="handleMouseMove"
+            :style="{ '--mouse-x': mouseX + 'px', '--mouse-y': mouseY + 'px' }">
+            <v-list nav class="px-0 py-4">
+                <template v-for="(item, index) in navItems" :key="item.title">
+                    <v-tooltip :text="item.title" location="right" v-if="rail" offset="12">
+                        <template v-slot:activator="{ props }">
+                            <v-list-item v-bind="props" :to="item.to" :active="route.path === item.to"
+                                class="nav-item-aether rail-mode-item mb-1" link
+                                :style="{ transitionDelay: `${index * 40}ms` }">
+                                <div class="rail-item-content">
+                                    <component :is="item.icon" :size="20" class="nav-icon" />
+                                    <span class="rail-label-tiny">{{ item.title }}</span>
                                 </div>
-                            </template>
+                            </v-list-item>
+                        </template>
+                    </v-tooltip>
+
+                    <v-list-item v-else :to="item.to" :active="route.path === item.to" class="nav-item-aether mb-1" link
+                        :style="{ transitionDelay: `${index * 40}ms` }">
+                        <div class="nav-item-content-horizontal">
+                            <component :is="item.icon" :size="20" class="nav-icon mr-4" />
                             <v-list-item-title class="nav-title">{{ item.title }}</v-list-item-title>
-                        </v-list-item>
-                    </template>
-                </div>
+                        </div>
+                    </v-list-item>
+                </template>
             </v-list>
 
             <template v-slot:append>
@@ -520,123 +497,188 @@ onUnmounted(() => {
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
 }
 
-.premium-sidebar {
-    background: rgba(var(--v-theme-surface), 0.75) !important;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-right: 1px solid rgba(var(--v-border-color), 0.12) !important;
+.layout-main {
+    transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.nav-list-item {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+/* Aether V3 Architecture (Vuetify-Native, Minimal CSS) */
+.aether-drawer {
+    background: rgba(var(--v-theme-surface), 0.7) !important;
+    backdrop-filter: blur(28px) saturate(190%) !important;
+    border-right: 1px solid rgba(var(--v-theme-on-surface), 0.1) !important;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    position: relative;
+    overflow: visible !important;
 }
 
-.nav-list-item:not(.v-list-item--active):hover {
-    background: rgba(var(--v-theme-on-surface), 0.05) !important;
-    transform: translateX(4px);
-}
-
-.nav-list-item.v-list-item--active {
-    background: rgba(var(--v-theme-primary), 0.12) !important;
-    color: rgb(var(--v-theme-primary)) !important;
-    box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.15) !important;
-}
-
-.nav-list-item.v-list-item--active::after {
+/* Cursor-Reactive Light Sweep Overlay */
+.aether-drawer::after {
     content: '';
     position: absolute;
-    left: 0;
-    top: 20%;
-    height: 60%;
-    width: 4px;
-    background: rgb(var(--v-theme-primary));
-    border-radius: 0 4px 4px 0;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(600px circle at var(--mouse-x) var(--mouse-y),
+            rgba(var(--v-theme-primary), 0.08),
+            transparent 40%);
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.5s ease;
 }
 
-:deep(.nav-icon-wrapper) {
+.aether-drawer:hover::after {
+    opacity: 1;
+}
+
+.aether-drawer :deep(.v-navigation-drawer__content) {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    z-index: 1;
+}
+
+.aether-drawer :deep(.v-navigation-drawer__content)::-webkit-scrollbar {
+    display: none;
+}
+
+
+
+.rail-item-content {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    width: 100%;
+}
+
+.rail-label-tiny {
+    font-size: 0.45rem;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-top: 2px;
+    opacity: 0.6;
     transition: all 0.3s ease;
-}
-
-.rail-mode-item {
-    flex-direction: column;
-    width: 64px;
-    height: 52px;
-}
-
-.rail-label {
-    font-size: 0.65rem;
-    font-weight: 800;
-    margin-top: 4px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-align: center;
+}
+
+.nav-title {
+    font-size: 0.7rem;
+    font-weight: 900;
+    text-align: left;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     opacity: 0.8;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 60px;
 }
 
-.nav-subheader {
-    font-size: 0.65rem !important;
-    font-weight: 900 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.15em !important;
-    color: rgb(var(--v-theme-on-surface), 0.4) !important;
-    height: 32px !important;
-    padding-left: 20px !important;
+.nav-item-content-horizontal {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
 }
 
-.nav-list-item.v-list-item--active :deep(.nav-icon) {
+.nav-item-aether {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    border-radius: 0 !important;
+    min-height: 52px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding: 0 24px !important;
+}
+
+/* Ensure rail mode stays centered */
+.rail-mode-item {
+    padding: 0 !important;
+    min-height: 64px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.nav-item-aether.v-list-item--active .nav-title {
+    opacity: 1;
+    color: rgb(var(--v-theme-primary));
+}
+
+/* Hover State */
+.nav-item-aether:not(.v-list-item--active):hover {
+    background: rgba(var(--v-theme-primary), 0.1) !important;
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.nav-item-aether:hover :deep(.nav-icon) {
     color: rgb(var(--v-theme-primary)) !important;
+    transform: scale(1.1);
 }
 
-.nav-list-item.v-list-item--active :deep(.nav-title),
-.nav-list-item.v-list-item--active :deep(.rail-label) {
+/* Infinite Edge Selection (Active State) */
+.nav-item-aether.v-list-item--active {
+    background: transparent !important;
+}
+
+.nav-item-aether.v-list-item--active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    /* Flush with edges */
+    background: linear-gradient(90deg,
+            rgba(var(--v-theme-primary), 0.3) 0%,
+            rgba(var(--v-theme-primary), 0.1) 100%);
+    border-left: 4px solid rgb(var(--v-theme-primary));
+    /* Bold accent bar */
+    box-shadow: inset 20px 0 30px -15px rgba(var(--v-theme-primary), 0.15);
+    z-index: 0;
+    animation: aetherPulse 4s infinite alternate cubic-bezier(0.45, 0.05, 0.55, 0.95);
+}
+
+@keyframes aetherPulse {
+    0% {
+        opacity: 0.8;
+        filter: brightness(1);
+    }
+
+    100% {
+        opacity: 1;
+        filter: brightness(1.25);
+    }
+}
+
+/* Reset rail active inset for Infinite Edge */
+.rail-mode-item.v-list-item--active::before {
+    inset: 0;
+}
+
+.nav-item-aether.v-list-item--active :deep(.nav-icon) {
+    color: rgb(var(--v-theme-primary)) !important;
+    filter: drop-shadow(0 0 5px rgba(var(--v-theme-primary), 0.4));
+}
+
+.nav-item-aether.v-list-item--active :deep(.nav-title) {
     color: rgb(var(--v-theme-primary)) !important;
     font-weight: 800 !important;
 }
 
 .nav-icon {
     color: rgb(var(--v-theme-on-surface), 0.6);
-    /* text-slate-500 */
-    transition: all 0.2s;
-}
-
-.active-icon {
-    color: rgb(var(--v-theme-primary));
-    transform: scale(1.1);
+    transition: all 0.3s ease;
 }
 
 .nav-title {
-    font-size: 0.90rem;
-    font-weight: 600 !important;
-    letter-spacing: -0.01em;
+    font-size: 0.875rem;
+    font-weight: 600;
 }
 
 .sidebar-footer {
-    background: rgba(var(--v-theme-on-surface), 0.05);
+    border-top: 1px solid rgba(var(--v-theme-on-surface), 0.05) !important;
+    opacity: 0.5;
 }
 
-.os-label {
-    display: block;
-    font-size: 0.65rem;
-    font-weight: 800;
-    color: rgb(var(--v-theme-on-surface), 0.5);
-    /* text-slate-600 */
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-}
-
-.build-info {
-    font-size: 0.75rem;
-    color: #64748b;
-    font-weight: 500;
-    margin-top: 2px;
-}
-
+/* Main Layout Overrides */
 .layout-main {
     z-index: 1;
     background: transparent !important;
@@ -654,6 +696,21 @@ onUnmounted(() => {
     }
 }
 
+
+.os-label {
+    font-size: 0.65rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: rgb(var(--v-theme-on-surface), 0.3);
+}
+
+.build-info {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: rgb(var(--v-theme-on-surface), 0.2);
+    letter-spacing: 0.05em;
+}
 
 .date-chip-v2 {
     display: flex;
