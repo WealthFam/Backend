@@ -78,13 +78,11 @@ export function useTransactionState(
     async function fetchData() {
         try {
             // Load master data via stores
-            if (accounts.value.length === 0) {
-                await Promise.all([
-                    financeStore.fetchAccounts(),
-                    financeStore.fetchCategories(),
-                    groupStore.fetchGroups()
-                ])
-            }
+            await Promise.all([
+                financeStore.fetchAccounts(),
+                financeStore.fetchCategories(),
+                groupStore.fetchGroups()
+            ])
 
             // Set account from route query if available
             if (!selectedAccount.value && route.query.account_id) {
