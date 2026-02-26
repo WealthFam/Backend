@@ -80,10 +80,12 @@ class TransactionCreate(TransactionBase):
 
 class TransactionUpdate(BaseModel):
     description: Optional[str] = None
+    recipient: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = None
     date: Optional[datetime] = None
     amount: Optional[Decimal] = None
+    account_id: Optional[UUID] = None
     is_transfer: Optional[bool] = None
     to_account_id: Optional[str] = None
     linked_transaction_id: Optional[str] = None
