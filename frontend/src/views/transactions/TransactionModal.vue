@@ -165,11 +165,40 @@ async function openDoc(docId: string) {
 
 const categoryOptions = computed(() => {
     const list: any[] = []
+
+    // Helper to build hierarchy manually if not provided as tree
+    const buildTree = (flatList: any[]) => {
+        const lookup = new Map();
+        const roots: any[] = [];
+
+        // First pass: put everything in a map
+        flatList.forEach(c => {
+            lookup.set(c.id || c.name, { ...c, subcategories: [] });
+        });
+
+        // Second pass: link children to parents
+        flatList.forEach(c => {
+            const parentKey = c.parent_id;
+            if (parentKey && lookup.has(parentKey)) {
+                lookup.get(parentKey).subcategories.push(lookup.get(c.id || c.name));
+            } else if (!parentKey) {
+                roots.push(lookup.get(c.id || c.name));
+            } else {
+                // If parent_id exists but parent not found, treat as root to avoid losing it
+                roots.push(lookup.get(c.id || c.name));
+            }
+        });
+        return roots;
+    }
+
     const flatten = (cats: any[], depth = 0) => {
-        cats.forEach(c => {
+        // Sort alphabetically to maintain order
+        const sorted = [...cats].sort((a, b) => a.name.localeCompare(b.name))
+
+        sorted.forEach(c => {
             const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : ''
             list.push({
-                label: `${prefix}${c.icon || '🏷️'} ${c.name}`,
+                title: `${prefix}${c.icon || '🏷️'} ${c.name}`,
                 value: c.name
             })
             if (c.subcategories && c.subcategories.length > 0) {
@@ -177,11 +206,17 @@ const categoryOptions = computed(() => {
             }
         })
     }
-    flatten(props.categories)
+
+    // Check if we already have a tree structure (some roots have subcategories)
+    const hasTreeStructure = props.categories.some(c => c.subcategories && c.subcategories.length > 0)
+    const tree = hasTreeStructure ? props.categories.filter(c => !c.parent_id) : buildTree(props.categories)
+
+    flatten(tree)
+
     if (!list.find(o => o.value === 'Uncategorized')) {
-        list.push({ label: '🏷️ Uncategorized', value: 'Uncategorized' })
+        list.push({ title: '🏷️ Uncategorized', value: 'Uncategorized' })
     }
-    return list.map(o => ({ title: o.label, value: o.value }))
+    return list
 })
 
 const accountOptions = computed(() => {
@@ -327,6 +362,13 @@ function getIconColor(item: any) {
                                 <v-col cols="12" class="mb-1">
                                     <v-text-field v-model="localForm.description" label="Description"
                                         placeholder="What was this for?" variant="outlined" density="comfortable"
+                                        rounded="lg" class="premium-modal-input font-weight-bold" hide-details
+                                        autocomplete="off" />
+                                </v-col>
+
+                                <v-col cols="12" class="mb-1">
+                                    <v-text-field v-model="localForm.recipient" label="Merchant / Payee"
+                                        placeholder="Who did you pay?" variant="outlined" density="comfortable"
                                         rounded="lg" class="premium-modal-input font-weight-bold" hide-details
                                         autocomplete="off" />
                                 </v-col>
@@ -601,7 +643,7 @@ function getIconColor(item: any) {
                                             </div>
                                             <div class="flex-grow-1 min-w-0">
                                                 <div class="text-caption font-weight-bold text-truncate">{{ doc.filename
-                                                    }}</div>
+                                                }}</div>
                                                 <div class="text-tiny opacity-50">{{ doc.file_type }} - {{
                                                     doc.transaction_id ? '(linked)' :
                                                         'Free' }}</div>
@@ -632,7 +674,7 @@ function getIconColor(item: any) {
                                             </div>
                                         </template>
                                         <v-list-item-title class="text-caption font-weight-bold">{{ doc.filename
-                                            }}</v-list-item-title>
+                                        }}</v-list-item-title>
                                         <template v-slot:append>
                                             <div class="d-flex gap-1">
                                                 <v-btn icon variant="text" density="compact" @click="openDoc(doc.id)">
