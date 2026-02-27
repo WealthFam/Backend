@@ -20,3 +20,5 @@ services:
       - PARSER_SERVICE_URL=http://localhost:8001/v1
       - PARSER_DATABASE_URL=duckdb:////data/ingestion_engine_parser.duckdb
       - SECRET_KEY=${SECRET_KEY:-CHANGE_THIS_IN_PROD}
+      - ALGORITHM=HS256
+      - DEMO_MODE=${DEMO_MODE:-false}
