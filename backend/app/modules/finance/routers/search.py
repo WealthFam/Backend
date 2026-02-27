@@ -8,7 +8,6 @@ from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
 from sqlalchemy import func
 from backend.app.modules.finance.models import Account, Loan, InvestmentGoal, MutualFundHolding, Transaction, MutualFundsMeta
-from backend.app.modules.finance.services.mutual_funds import MutualFundService
 
 router = APIRouter(prefix="/search", tags=["Search"])
 

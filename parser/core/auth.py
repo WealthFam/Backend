@@ -1,4 +1,4 @@
-from fastapi import Header, HTTPException, Depends
+from fastapi import Header, HTTPException
 from jose import jwt, JWTError
 from typing import Optional
 from parser.config import settings

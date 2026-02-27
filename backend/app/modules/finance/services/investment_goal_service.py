@@ -1,6 +1,5 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from backend.app.modules.finance import models, schemas
 from decimal import Decimal
 

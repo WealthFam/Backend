@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Numeric, Boolean
 from sqlalchemy import Enum as SqlEnum
-from sqlalchemy.orm import relationship, backref, foreign
+from sqlalchemy.orm import relationship, backref
 import enum
 from backend.app.core.database import Base
 

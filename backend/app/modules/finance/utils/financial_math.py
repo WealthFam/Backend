@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta
-from typing import List, Dict, Tuple
-import math
+from datetime import datetime
+from typing import List, Tuple
 
 def xirr(cash_flows: List[Tuple[datetime, float]], guess: float = 0.1) -> float:
     """

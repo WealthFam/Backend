@@ -22,8 +22,6 @@ from backend.app.modules.mobile.router import router as mobile_router
 from backend.app.modules.vault.router import router as vault_router
 
 # Background Tasks
-from backend.app.modules.ingestion.email_sync import EmailSyncService
-from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.core.scheduler import start_scheduler, stop_scheduler
 
 def create_application() -> FastAPI:
@@ -90,7 +88,6 @@ def create_application() -> FastAPI:
                 
                 async def wait_and_trigger():
                     import requests
-                    import time
                     max_retries = 10
                     url = f"{settings.PARSER_SERVICE_URL}/health"
                     for i in range(max_retries):

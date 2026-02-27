@@ -3,7 +3,6 @@ import os
 import tempfile
 import imaplib
 import email
-from email.header import decode_header
 import logging
 
 logger = logging.getLogger(__name__)

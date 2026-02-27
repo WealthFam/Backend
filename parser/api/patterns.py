@@ -8,7 +8,6 @@ import re
 from parser.db.database import get_db
 from parser.db.models import PatternRule
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from parser.core.auth import get_current_tenant
 
 router = APIRouter(prefix="/v1/patterns", tags=["patterns"])

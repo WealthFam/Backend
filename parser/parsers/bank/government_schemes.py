@@ -1,9 +1,7 @@
 import re
 from typing import Optional, List
 from datetime import datetime
-from decimal import Decimal
 from parser.parsers.base_compat import BaseSmsParser, BaseEmailParser, ParsedTransaction, TransactionPattern
-from parser.parsers.utils.recipient_parser import RecipientParser
 
 class EpfoSmsParser(BaseSmsParser):
     """

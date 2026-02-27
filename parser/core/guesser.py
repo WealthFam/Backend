@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Optional
 
 class CategoryGuesser:
     # Basic keyword-based category hints

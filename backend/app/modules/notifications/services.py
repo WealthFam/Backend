@@ -1,5 +1,4 @@
 from sqlalchemy.orm import Session
-from datetime import datetime
 from backend.app.modules.notifications.models import Alert
 
 class NotificationService:
