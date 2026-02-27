@@ -884,7 +884,7 @@ class TransactionService:
         if sync_to_parser and old_name != new_name:
              try:
                  from backend.app.modules.ingestion.parser_service import ExternalParserService
-                 ExternalParserService.create_alias(old_name, new_name)
+                 ExternalParserService.create_alias(tenant_id, old_name, new_name)
              except Exception as e:
                  logger.error(f"Failed to sync alias to parser: {e}")
                  

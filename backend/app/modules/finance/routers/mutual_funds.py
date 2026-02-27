@@ -250,8 +250,9 @@ def preview_cas_pdf(
             temp_path = tmp.name
         # File is now closed, safe to read on Windows
         
+        tenant_id = str(current_user.tenant_id)
         # 1. Parse raw transactions
-        raw_transactions = CASParser.parse_pdf(temp_path, password)
+        raw_transactions = CASParser.parse_pdf(tenant_id, temp_path, password)
         
         # 2. Map to schemes
         mapped_transactions = MutualFundService.map_transactions_to_schemes(raw_transactions)
