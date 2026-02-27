@@ -45,6 +45,7 @@ export function useTransactionModals(
         id: string
         type: string
         description: string
+        recipient: string
         category: string
         amount: number | null
         date: string
@@ -60,6 +61,7 @@ export function useTransactionModals(
         id: '',
         type: 'DEBIT',
         description: '',
+        recipient: '',
         category: '',
         amount: null,
         date: new Date().toISOString().slice(0, 16),
@@ -132,6 +134,7 @@ export function useTransactionModals(
             id: txn.id,
             type: isDebit ? 'DEBIT' : 'CREDIT',
             description: txn.description,
+            recipient: txn.recipient || '',
             category: txn.category,
             amount: Math.abs(txn.amount),
             date: txn.date ? txn.date.slice(0, 16) : new Date().toISOString().slice(0, 16),

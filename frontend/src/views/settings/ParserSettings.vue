@@ -525,7 +525,6 @@ import { parserApi, financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useAiStore } from '@/stores/ai'
 import { useCurrency } from '@/composables/useCurrency'
-import axios from 'axios'
 
 const aiStore = useAiStore()
 const { formatAmount } = useCurrency()
