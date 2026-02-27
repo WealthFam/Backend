@@ -5,27 +5,33 @@ from sqlalchemy import func
 import datetime
 from parser.db.database import get_db
 from parser.db.models import RequestLog
+from parser.core.auth import get_current_tenant
 
 router = APIRouter(prefix="/v1", tags=["Analytics"])
 
 @router.get("/stats")
-def get_stats(db: Session = Depends(get_db)):
+def get_stats(db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
     """
-    Get ingestion performance analytics for the last 24 hours.
+    Get ingestion performance analytics for the last 24 hours, scoped to tenant.
     """
-    
-
     since = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
     
     status_counts = db.query(
         RequestLog.status, func.count(RequestLog.id)
-    ).filter(RequestLog.created_at >= since).group_by(RequestLog.status).all()
+    ).filter(
+        RequestLog.tenant_id == tenant_id,
+        RequestLog.created_at >= since
+    ).group_by(RequestLog.status).all()
     
     source_counts = db.query(
         RequestLog.source, func.count(RequestLog.id)
-    ).filter(RequestLog.created_at >= since).group_by(RequestLog.source).all()
+    ).filter(
+        RequestLog.tenant_id == tenant_id,
+        RequestLog.created_at >= since
+    ).group_by(RequestLog.source).all()
 
     success_logs = db.query(RequestLog).filter(
+        RequestLog.tenant_id == tenant_id,
         RequestLog.status == "success",
         RequestLog.created_at >= since
     ).all()

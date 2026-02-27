@@ -12,11 +12,10 @@ class Settings(BaseSettings):
     
     # Database
     # Default to data folder in root
-    PARSER_DATABASE_URL: str = "duckdb:///data/ingestion_engine_parser.duckdb"
-
-    @property
-    def DATABASE_URL(self):
-        return self.PARSER_DATABASE_URL
+    DATABASE_URL: str = "duckdb:///data/ingestion_engine_parser.duckdb"
+    # Security
+    SECRET_KEY: str = "CHANGE_THIS_TO_A_SECURE_SECRET_IN_PRODUCTION"
+    ALGORITHM: str = "HS256"
     
     model_config = ConfigDict(case_sensitive=True, env_file=".env", extra="ignore")
 

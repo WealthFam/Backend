@@ -1,14 +1,44 @@
+import logging
+import jwt
 import requests
 from typing import Optional, Dict, Any, List
-from datetime import datetime
-import logging
+from datetime import datetime, timedelta
 from backend.app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class ExternalParserService:
     @staticmethod
-    def parse_sms(sender: str, body: str, received_at: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+    def _get_auth_header(tenant_id: str) -> Dict[str, str]:
+        """
+        Generates a short-lived internal JWT for the parser service.
+        """
+        payload = {
+            "sub": tenant_id,
+            "exp": datetime.utcnow() + timedelta(minutes=5)
+        }
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        return {"Authorization": f"Bearer {token}"}
+
+    @staticmethod
+    def trigger_migration(tenant_id: str) -> bool:
+        """
+        Forces the parser service to migrate old 'system_tenant' records to this active tenant_id.
+        Should only be called once during backend startup for single-tenant instances.
+        """
+        try:
+            url = f"{settings.PARSER_SERVICE_URL}/migrate-tenant"
+            response = requests.post(
+                url, 
+                headers=ExternalParserService._get_auth_header(tenant_id), 
+                timeout=10
+            )
+            return response.status_code == 200
+        except Exception as e:
+            logger.error(f"Error triggering parser tenant migration: {e}")
+            return False
+    @staticmethod
+    def parse_sms(tenant_id: str, sender: str, body: str, received_at: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
         """
         Call the external parser microservice for SMS ingestion.
         """
@@ -19,7 +49,7 @@ class ExternalParserService:
             if received_at:
                 payload["received_at"] = received_at.isoformat()
                 
-            response = requests.post(url, json=payload, timeout=30)
+            response = requests.post(url, json=payload, headers=ExternalParserService._get_auth_header(tenant_id), timeout=30)
             
             if response.status_code == 200:
                 return response.json()
@@ -29,7 +59,7 @@ class ExternalParserService:
             return None
 
     @staticmethod
-    def parse_email(subject: str, body_text: str, sender: str = "Unknown", received_at: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+    def parse_email(tenant_id: str, subject: str, body_text: str, sender: str = "Unknown", received_at: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
         """
         Call the external parser microservice for Email ingestion.
         """
@@ -44,7 +74,7 @@ class ExternalParserService:
             if received_at:
                 payload["received_at"] = received_at.isoformat()
                 
-            response = requests.post(url, json=payload, timeout=30)
+            response = requests.post(url, json=payload, headers=ExternalParserService._get_auth_header(tenant_id), timeout=30)
             
             if response.status_code == 200:
                 return response.json()
@@ -54,7 +84,7 @@ class ExternalParserService:
             return None
 
     @staticmethod
-    def sync_ai_config(api_key: str, model_name: str, is_enabled: bool):
+    def sync_ai_config(tenant_id: str, api_key: str, model_name: str, is_enabled: bool):
         """
         Push AI configuration to the microservice.
         """
@@ -65,14 +95,14 @@ class ExternalParserService:
                 "model_name": model_name,
                 "is_enabled": is_enabled
             }
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, headers=ExternalParserService._get_auth_header(tenant_id), timeout=10)
             return response.status_code == 200
         except Exception as e:
             logger.error(f"Error syncing AI config: {e}")
             return False
 
     @staticmethod
-    def parse_file(file_content: bytes, filename: str, mapping: Optional[Dict] = None, header_row_index: Optional[int] = None, password: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def parse_file(tenant_id: str, file_content: bytes, filename: str, mapping: Optional[Dict] = None, header_row_index: Optional[int] = None, password: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Call the external parser microservice for File ingestion.
         """
@@ -89,7 +119,7 @@ class ExternalParserService:
             if password:
                 data['password'] = password
                 
-            response = requests.post(url, files=files, data=data, timeout=30)
+            response = requests.post(url, files=files, data=data, headers=ExternalParserService._get_auth_header(tenant_id), timeout=30)
             
             if response.status_code == 200:
                 return response.json()
@@ -99,7 +129,7 @@ class ExternalParserService:
             return {"status": "error", "message": str(e)}
 
     @staticmethod
-    def parse_cas(file_content: bytes, password: str) -> Optional[Dict[str, Any]]:
+    def parse_cas(tenant_id: str, file_content: bytes, password: str) -> Optional[Dict[str, Any]]:
         """
         Call the external parser microservice for CAS parsing.
         """
@@ -109,7 +139,7 @@ class ExternalParserService:
             files = {'file': ('cas.pdf', file_content, 'application/pdf')}
             data = {'password': password}
             
-            response = requests.post(url, files=files, data=data, timeout=60)
+            response = requests.post(url, files=files, data=data, headers=ExternalParserService._get_auth_header(tenant_id), timeout=60)
             
             if response.status_code == 200:
                 return response.json() 
@@ -119,7 +149,7 @@ class ExternalParserService:
             return None
 
     @staticmethod
-    def create_pattern(source: str, regex_pattern: str, mapping: Dict[str, Any]) -> bool:
+    def create_pattern(tenant_id: str, source: str, regex_pattern: str, mapping: Dict[str, Any]) -> bool:
         """
         Push a new regex pattern to the microservice.
         """
@@ -130,48 +160,48 @@ class ExternalParserService:
                 "regex_pattern": regex_pattern,
                 "mapping": mapping
             }
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, headers=ExternalParserService._get_auth_header(tenant_id), timeout=10)
             return response.status_code == 200
         except Exception as e:
             logger.error(f"Error creating pattern in external parser: {e}")
             return False
 
     @staticmethod
-    def create_alias(pattern: str, alias: str) -> bool:
+    def create_alias(tenant_id: str, pattern: str, alias: str) -> bool:
         """
         Push a new merchant alias to the microservice.
         """
         try:
             url = f"{settings.PARSER_SERVICE_URL}/config/aliases"
             payload = {"pattern": pattern, "alias": alias}
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, headers=ExternalParserService._get_auth_header(tenant_id), timeout=10)
             return response.status_code == 200
         except Exception as e:
             logger.error(f"Error creating alias in external parser: {e}")
             return False
 
     @staticmethod
-    def update_alias(alias_id: str, pattern: str, alias: str) -> bool:
+    def update_alias(tenant_id: str, alias_id: str, pattern: str, alias: str) -> bool:
         """
         Update an existing merchant alias.
         """
         try:
             url = f"{settings.PARSER_SERVICE_URL}/config/aliases/{alias_id}"
             payload = {"pattern": pattern, "alias": alias}
-            response = requests.put(url, json=payload, timeout=10)
+            response = requests.put(url, json=payload, headers=ExternalParserService._get_auth_header(tenant_id), timeout=10)
             return response.status_code == 200
         except Exception as e:
             logger.error(f"Error updating alias in external parser: {e}")
             return False
 
     @staticmethod
-    def get_aliases() -> List[Dict[str, Any]]:
+    def get_aliases(tenant_id: str) -> List[Dict[str, Any]]:
         """
         Get all merchant aliases from the microservice.
         """
         try:
             url = f"{settings.PARSER_SERVICE_URL}/config/aliases"
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, headers=ExternalParserService._get_auth_header(tenant_id), timeout=10)
             if response.status_code == 200:
                 return response.json()
             return []
@@ -180,13 +210,13 @@ class ExternalParserService:
             return []
 
     @staticmethod
-    def delete_alias(alias_id: str) -> bool:
+    def delete_alias(tenant_id: str, alias_id: str) -> bool:
         """
         Delete a merchant alias.
         """
         try:
             url = f"{settings.PARSER_SERVICE_URL}/config/aliases/{alias_id}"
-            response = requests.delete(url, timeout=10)
+            response = requests.delete(url, headers=ExternalParserService._get_auth_header(tenant_id), timeout=10)
             return response.status_code == 200
         except Exception as e:
             logger.error(f"Error deleting alias: {e}")

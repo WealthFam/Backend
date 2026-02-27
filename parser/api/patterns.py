@@ -9,6 +9,7 @@ from parser.db.database import get_db
 from parser.db.models import PatternRule
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from parser.core.auth import get_current_tenant
 
 router = APIRouter(prefix="/v1/patterns", tags=["patterns"])
 
@@ -80,10 +81,11 @@ async def list_patterns(
     search: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=100),
     skip: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant)
 ):
     """List all saved parser patterns with optional filters."""
-    query = db.query(PatternRule).filter(PatternRule.is_active == True)
+    query = db.query(PatternRule).filter(PatternRule.is_active == True, PatternRule.tenant_id == tenant_id)
     
     if bank:
         query = query.filter(PatternRule.source.ilike(f"%{bank}%"))
@@ -121,9 +123,9 @@ async def list_patterns(
 
 
 @router.get("/{pattern_id}")
-async def get_pattern(pattern_id: str, db: Session = Depends(get_db)):
+async def get_pattern(pattern_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
     """Get a single pattern by ID."""
-    pattern = db.query(PatternRule).filter(PatternRule.id == pattern_id).first()
+    pattern = db.query(PatternRule).filter(PatternRule.id == pattern_id, PatternRule.tenant_id == tenant_id).first()
     
     if not pattern:
         raise HTTPException(404, "Pattern not found")
@@ -141,9 +143,10 @@ async def get_pattern(pattern_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=201)
-async def create_pattern(pattern: PatternCreate, db: Session = Depends(get_db)):
+async def create_pattern(pattern: PatternCreate, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
     """Create a new pattern manually."""
     new_pattern = PatternRule(
+        tenant_id=tenant_id,
         source=pattern.bank_name,  # Store bank_name as source
         regex_pattern=pattern.regex_pattern,
         mapping_json=pattern.field_mapping,  # Store field_mapping as mapping_json
@@ -173,10 +176,11 @@ async def create_pattern(pattern: PatternCreate, db: Session = Depends(get_db)):
 async def update_pattern(
     pattern_id: str, 
     update: PatternUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant)
 ):
     """Update an existing pattern."""
-    pattern = db.query(PatternRule).filter(PatternRule.id == pattern_id).first()
+    pattern = db.query(PatternRule).filter(PatternRule.id == pattern_id, PatternRule.tenant_id == tenant_id).first()
     
     if not pattern:
         raise HTTPException(404, "Pattern not found")
@@ -210,9 +214,9 @@ async def update_pattern(
 
 
 @router.delete("/{pattern_id}")
-async def delete_pattern(pattern_id: str, db: Session = Depends(get_db)):
+async def delete_pattern(pattern_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
     """Delete a pattern."""
-    pattern = db.query(PatternRule).filter(PatternRule.id == pattern_id).first()
+    pattern = db.query(PatternRule).filter(PatternRule.id == pattern_id, PatternRule.tenant_id == tenant_id).first()
     
     if not pattern:
         raise HTTPException(404, "Pattern not found")
@@ -283,9 +287,10 @@ async def test_pattern(test: PatternTest):
 
 
 @router.get("/banks/list")
-async def get_banks(db: Session = Depends(get_db)):
+async def get_banks(db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
     """Get list of unique bank names from patterns."""
     banks = db.query(PatternRule.source)\
+        .filter(PatternRule.tenant_id == tenant_id)\
         .filter(PatternRule.source.isnot(None))\
         .filter(PatternRule.is_active == True)\
         .distinct()\

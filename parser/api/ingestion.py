@@ -6,6 +6,7 @@ import json
 import hashlib
 
 from parser.db.database import get_db
+from parser.core.auth import get_current_tenant
 from parser.core.pipeline import IngestionPipeline
 from parser.schemas.transaction import IngestionResult, ParsedItem, TransactionMeta
 from parser.parsers.bank.hdfc import HdfcSmsParser, HdfcEmailParser
@@ -108,9 +109,10 @@ class EmailIngestRequest(BaseModel):
 def ingest_sms(
     payload: SmsIngestRequest,
     x_api_key: Optional[str] = Header(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant)
 ):
-    pipeline = IngestionPipeline(db)
+    pipeline = IngestionPipeline(db, tenant_id=tenant_id)
     result = pipeline.run(payload.body, "SMS", sender=payload.sender, date_hint=payload.received_at)
     return result
 
@@ -118,9 +120,10 @@ def ingest_sms(
 def ingest_email(
     payload: EmailIngestRequest,
     x_api_key: Optional[str] = Header(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant)
 ):
-    pipeline = IngestionPipeline(db)
+    pipeline = IngestionPipeline(db, tenant_id=tenant_id)
     result = pipeline.run(payload.body_text, "EMAIL", sender=payload.sender, subject=payload.subject, date_hint=payload.received_at)
     return result
 
@@ -131,7 +134,8 @@ async def ingest_file(
     mapping_override: Optional[str] = Form(None), 
     header_row_index: Optional[int] = Form(None),
     password: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant)
 ):
     
     
@@ -144,7 +148,10 @@ async def ingest_file(
     header_idx = header_row_index or 0
     
     if account_fingerprint:
-        saved = db.query(FileParsingConfig).filter(FileParsingConfig.fingerprint == account_fingerprint).first()
+        saved = db.query(FileParsingConfig).filter(
+            FileParsingConfig.fingerprint == account_fingerprint,
+            FileParsingConfig.tenant_id == tenant_id
+        ).first()
         if saved:
             mapping = saved.columns_json
             if header_row_index is None:
@@ -159,6 +166,7 @@ async def ingest_file(
         try:
             analysis = UniversalParser.analyze(content, filename)
             db.add(RequestLog(
+                tenant_id=tenant_id,
                 input_hash=file_hash, 
                 source="FILE", 
                 input_payload={"filename": filename, "op": "analyze"},
@@ -169,6 +177,7 @@ async def ingest_file(
             return IngestionResult(status="analysis_required", results=[], logs=["No mapping found. Analysis: " + json.dumps(analysis, default=str)])
         except Exception as e:
             db.add(RequestLog(
+                tenant_id=tenant_id,
                 input_hash=file_hash, 
                 source="FILE", 
                 status="failed",
@@ -180,7 +189,7 @@ async def ingest_file(
 
     try:
         raw_txns, skipped_logs = UniversalParser.parse(content, filename, mapping, header_idx, password=password)
-        pipeline = IngestionPipeline(db)
+        pipeline = IngestionPipeline(db, tenant_id=tenant_id)
         results = []
         
         for t_dict in raw_txns:
@@ -206,6 +215,7 @@ async def ingest_file(
         )
         
         db.add(RequestLog(
+            tenant_id=tenant_id,
             input_hash=file_hash,
             source="FILE",
             status=output.status,
@@ -217,6 +227,7 @@ async def ingest_file(
         return output
     except Exception as e:
         db.add(RequestLog(
+            tenant_id=tenant_id,
             input_hash=file_hash,
             source="FILE",
             status="failed",
@@ -229,8 +240,9 @@ async def ingest_file(
 @router.post("/cas", response_model=IngestionResult)
 async def ingest_cas(
     file: UploadFile = File(...),
-    password: str = Form(...),
-    db: Session = Depends(get_db)
+    password: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant)
 ):
     content = await file.read()
     file_hash = hashlib.sha256(content).hexdigest()
@@ -238,7 +250,7 @@ async def ingest_cas(
     
     try:
         data = CasParser.parse(content, password)
-        pipeline = IngestionPipeline(db)
+        pipeline = IngestionPipeline(db, tenant_id=tenant_id)
         results = []
         
         for t_dict in data:
@@ -266,6 +278,7 @@ async def ingest_cas(
         )
         
         db.add(RequestLog(
+            tenant_id=tenant_id,
             input_hash=file_hash,
             source="CAS",
             status=output.status,
@@ -277,6 +290,7 @@ async def ingest_cas(
         return output
     except Exception as e:
         db.add(RequestLog(
+            tenant_id=tenant_id,
             input_hash=file_hash,
             source="CAS",
             status="failed",
