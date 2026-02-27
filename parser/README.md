@@ -8,12 +8,22 @@ A production-ready microservice for parsing financial transactions from various 
 - **Bank-Specific Robustness**: Includes refined parsers for HDFC, SBI, ICICI, Axis, Kotak, and more.
 - **AI-Powered Fallback**: Uses Google Gemini for complex or non-standard messages.
 - **User-Trainable Patterns**: Dynamic regex-based parsing rules configurable via API.
+- **Tenant Isolation**: Strict `tenant_id` mapping for all logs, patterns, and configurations.
 - **Advanced Robustness**:
     - **Cross-Source Deduplication**: Automatically detects if an SMS and Email represent the same transaction within a 15-minute window.
-    - **Fuzzy Merchant Normalization**: Uses Levenshtein distance (rapidfuzz) to group similar merchant names (e.g., "AMZ*PAY" → "Amazon").
+    - **Fuzzy Merchant Normalization**: Uses Levenshtein distance (rapidfuzz) to group similar merchant names.
     - **Financial Classification**: Automatically filters out OTPs and promotional spam.
 - **Monitoring & Analytics**: Built-in `/v1/stats` endpoint to track parser performance and status breakdowns.
-- **Mutual Fund CAS Support**: PDF statement parsing for CAMS/Karvy Consolidated Account Statements.
+- **Mutual Fund CAS Support**: PDF statement parsing with tenant-scoped processing.
+
+## 🔐 Security & Architecture
+
+This service is designed for multi-tenant environments with a focus on data privacy:
+
+- **JWT Authentication**: Every request must include a Bearer JWT. The service decodes the `tenant_id` (or `sub`) claim to scope all database operations.
+- **Strict Data Partitioning**: All database models (logs, pattern rules, merchant aliases, AI configs) are explicitly scoped with a `tenant_id` column and index.
+- **Internal Service Auth**: The main backend communicates with the parser using short-lived, internal JWTs signed with a shared `SECRET_KEY`.
+- **Stateless Processing**: While the parser maintains a configuration database (DuckDB), the ingestion logic is stateless and scoped per-request.
 
 ## 🛠 Setup
 
