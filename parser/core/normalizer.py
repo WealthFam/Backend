@@ -22,7 +22,7 @@ class MerchantNormalizer:
     }
 
     @staticmethod
-    def normalize(raw_merchant: str, db: Optional['Session'] = None) -> str:
+    def normalize(raw_merchant: str, db: Optional['Session'] = None, tenant_id: Optional[str] = None) -> str:
         if not raw_merchant: 
             return "Unknown"
         
@@ -38,10 +38,11 @@ class MerchantNormalizer:
             return raw_merchant.title()
 
         # 2. Database Lookup (Priority)
-        if db:
+        if db and tenant_id:
             from parser.db.models import MerchantAlias
-            # Check for exact matches on raw or cleaned name in aliases
+            # Check for exact matches on raw or cleaned name in aliases, scoped by tenant
             alias_match = db.query(MerchantAlias).filter(
+                MerchantAlias.tenant_id == tenant_id,
                 (MerchantAlias.pattern.ilike(clean)) | (MerchantAlias.pattern.ilike(raw_merchant))
             ).first()
             if alias_match:
@@ -56,9 +57,11 @@ class MerchantNormalizer:
         # 4. Fuzzy Matching (Recall Helper)
         # Match against keys of ALIASES
         choices = list(MerchantNormalizer.ALIASES.keys())
-        if db:
+        if db and tenant_id:
             from parser.db.models import MerchantAlias
-            db_aliases = db.query(MerchantAlias.alias).distinct().all()
+            db_aliases = db.query(MerchantAlias.alias).filter(
+                MerchantAlias.tenant_id == tenant_id
+            ).distinct().all()
             choices.extend([r[0] for r in db_aliases])
 
         result = process.extractOne(clean, choices, scorer=fuzz.WRatio)

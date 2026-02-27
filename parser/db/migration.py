@@ -26,15 +26,24 @@ def run_auto_migrations(engine: Engine):
             );
             """))
             
-            # 2. Update pattern_rules with AI fields and new columns
+            # 2. Add tenant_id to all tables
+            safe_add_column("request_logs", "tenant_id", "VARCHAR DEFAULT 'system_tenant'")
+            safe_add_column("file_parsing_configs", "tenant_id", "VARCHAR DEFAULT 'system_tenant'")
+            safe_add_column("ai_configs", "tenant_id", "VARCHAR DEFAULT 'system_tenant'")
+            safe_add_column("pattern_rules", "tenant_id", "VARCHAR DEFAULT 'system_tenant'")
+            safe_add_column("merchant_aliases", "tenant_id", "VARCHAR DEFAULT 'system_tenant'")
+            safe_add_column("ai_call_cache", "tenant_id", "VARCHAR DEFAULT 'system_tenant'")
+
+            # 3. Update pattern_rules with AI fields and new columns
             safe_add_column("pattern_rules", "is_ai_generated", "BOOLEAN DEFAULT FALSE")
             safe_add_column("pattern_rules", "confidence", "JSON")
             safe_add_column("pattern_rules", "date_format", "VARCHAR")
 
-            # 3. Create ai_call_cache table if not exists
+            # 4. Create ai_call_cache table if not exists
             connection.execute(text("""
             CREATE TABLE IF NOT EXISTS ai_call_cache (
                 id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
                 content_hash VARCHAR NOT NULL,
                 source VARCHAR NOT NULL,
                 response_json JSON NOT NULL,
@@ -48,6 +57,14 @@ def run_auto_migrations(engine: Engine):
             connection.commit()
             print("Parser Service migrations complete.")
             
+            # --- Single Tenant Migration ---
+            # Automatically migrate old 'system_tenant' records to the actual active tenant ID
+            try:
+                from parser.db.migrate_tenant import migrate_to_single_tenant
+                migrate_to_single_tenant(engine)
+            except Exception as outer_e:
+                print(f"Non-critical: Single tenant migration skipped or failed: {outer_e}")
+                
     except Exception as e:
         print(f"CRITICAL: Parser migration failed: {e}")
         raise e

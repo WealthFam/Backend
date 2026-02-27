@@ -12,12 +12,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 class GeminiParser:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, tenant_id: str):
         self.db = db
+        self.tenant_id = tenant_id
         self.config = self._get_config()
 
     def _get_config(self) -> Optional[AIConfig]:
-        return self.db.query(AIConfig).first()
+        return self.db.query(AIConfig).filter(AIConfig.tenant_id == self.tenant_id).first()
 
     def parse(self, content: str, source: str, date_hint: Optional[Any] = None) -> Optional[Transaction]:
         if not self.config:

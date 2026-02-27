@@ -7,13 +7,15 @@ from parser.db.models import PatternRule
 from parser.schemas.transaction import Transaction, TransactionType, AccountInfo, MerchantInfo
 
 class PatternParser:
-    def __init__(self, db: Session, source: str):
+    def __init__(self, db: Session, source: str, tenant_id: str):
         self.db = db
         self.source = source
+        self.tenant_id = tenant_id
         self.rules = self._load_rules()
 
     def _load_rules(self) -> List[PatternRule]:
         return self.db.query(PatternRule).filter(
+            PatternRule.tenant_id == self.tenant_id,
             PatternRule.source == self.source,
             PatternRule.is_active == True
         ).all()

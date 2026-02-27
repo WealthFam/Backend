@@ -129,7 +129,7 @@ def ingest_sms(
     from backend.app.modules.ingestion.parser_service import ExternalParserService
     from backend.app.modules.ingestion.base import ParsedTransaction
 
-    parser_response = ExternalParserService.parse_sms(payload.sender, payload.message, received_at=payload.received_at)
+    parser_response = ExternalParserService.parse_sms(str(current_user.tenant_id), payload.sender, payload.message, received_at=payload.received_at)
     
     # Accept "processed", "success", and "duplicate_submission"
     status = parser_response.get("status") if parser_response else "offline"
@@ -228,7 +228,7 @@ def ingest_email(
     from backend.app.modules.ingestion.parser_service import ExternalParserService
     from backend.app.modules.ingestion.base import ParsedTransaction
 
-    parser_response = ExternalParserService.parse_email(payload.subject, payload.body, payload.sender or "Manual Input", received_at=payload.received_at)
+    parser_response = ExternalParserService.parse_email(str(current_user.tenant_id), payload.subject, payload.body, payload.sender or "Manual Input", received_at=payload.received_at)
     
     status = parser_response.get("status") if parser_response else "offline"
     
@@ -483,7 +483,7 @@ async def analyze_file(
         
         # Call External Parser without mapping to trigger analysis
         from backend.app.modules.ingestion.parser_service import ExternalParserService
-        response = ExternalParserService.parse_file(content, file.filename)
+        response = ExternalParserService.parse_file(str(current_user.tenant_id), content, file.filename)
         
         # Microservice returns "analysis_required" and puts analysis JSON in logs[0]
         # logic from parser/api/ingestion.py: logs=["No mapping found. Analysis: " + json.dumps(analysis)]
@@ -520,7 +520,7 @@ async def parse_file(
         content = await file.read()
         
         from backend.app.modules.ingestion.parser_service import ExternalParserService
-        response = ExternalParserService.parse_file(content, file.filename, mapping_dict, header_row_index=header_row_index)
+        response = ExternalParserService.parse_file(str(current_user.tenant_id), content, file.filename, mapping_dict, header_row_index=header_row_index)
         
         if response:
              if response.get("status") == "success":
@@ -843,7 +843,7 @@ def list_aliases(
     Get all merchant aliases from external parser.
     """
     from backend.app.modules.ingestion.parser_service import ExternalParserService
-    return ExternalParserService.get_aliases()
+    return ExternalParserService.get_aliases(str(current_user.tenant_id))
 
 @router.post("/aliases")
 def create_alias(
@@ -857,7 +857,7 @@ def create_alias(
     from backend.app.modules.ingestion.parser_service import ExternalParserService
     
     # 1. Create Rule in Parser
-    success = ExternalParserService.create_alias(payload.pattern, payload.alias)
+    success = ExternalParserService.create_alias(str(current_user.tenant_id), payload.pattern, payload.alias)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to create alias in parser service")
 
@@ -912,7 +912,7 @@ def update_alias(
     Update an existing merchant alias.
     """
     from backend.app.modules.ingestion.parser_service import ExternalParserService
-    success = ExternalParserService.update_alias(alias_id, payload.pattern, payload.alias)
+    success = ExternalParserService.update_alias(str(current_user.tenant_id), alias_id, payload.pattern, payload.alias)
     if not success:
         raise HTTPException(status_code=404, detail="Alias not found or failed to update")
 
@@ -989,7 +989,7 @@ def delete_alias(
     Delete an alias rule.
     """
     from backend.app.modules.ingestion.parser_service import ExternalParserService
-    success = ExternalParserService.delete_alias(alias_id)
+    success = ExternalParserService.delete_alias(str(current_user.tenant_id), alias_id)
     if not success:
         raise HTTPException(status_code=404, detail="Alias not found or failed to delete")
     return {"status": "deleted"}
@@ -1208,6 +1208,7 @@ def sync_ai_to_parser(
     raw_key = AIService.get_raw_api_key(db, tenant_id)
     
     success = ExternalParserService.sync_ai_config(
+        tenant_id=tenant_id,
         api_key=raw_key or "",
         model_name=settings_data.get("model_name", "gemini-pro"),
         is_enabled=settings_data.get("is_enabled", False)

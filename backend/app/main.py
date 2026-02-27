@@ -54,21 +54,62 @@ def create_application() -> FastAPI:
     application.include_router(vault_router, prefix=f"{settings.API_V1_STR}/finance/vault", tags=["Vault"])
     
     
-    # DB Creation (Dev only - migrations removed, use fresh schema.sql for setup)
-    # Checks for existing tables.
-    
-    # Create tables first
-    Base.metadata.create_all(bind=engine)
-
     # Run Auto-Migrations (DuckDB Schema Evolution)
-    run_auto_migrations(engine)
+    # run_auto_migrations(engine)  <-- REFACTORED TO STARTUP EVENT
+
 
     # --- Background Tasks ---
     
     @application.on_event("startup")
     async def startup_event():
+        # --- Database Setup ---
+        try:
+            logger.info("Initializing database and running migrations...")
+            # Create tables first
+            Base.metadata.create_all(bind=engine)
+            # Run Auto-Migrations (DuckDB Schema Evolution)
+            run_auto_migrations(engine)
+            logger.info("Database initialization complete.")
+        except Exception as e:
+            logger.error(f"Database initialization failed: {e}")
+            # Non-fatal during startup might be better, but DuckDB usually needs this
+        
         # Start Scheduler (Handles both recurring checks and email auto-sync)
         start_scheduler()
+        
+        # Trigger single-tenant migration on the parser service if we have exactly one tenant
+        try:
+            logger.info("Checking if Parser needs single-tenant data migration...")
+            db = SessionLocal()
+            from backend.app.modules.auth.models import Tenant
+            tenants = db.query(Tenant).limit(2).all()
+            if len(tenants) == 1:
+                from backend.app.modules.ingestion.parser_service import ExternalParserService
+                single_tenant_id = tenants[0].id
+                logger.info(f"Found single active backend tenant {single_tenant_id}. Triggering parser data migration.")
+                
+                async def wait_and_trigger():
+                    import requests
+                    import time
+                    max_retries = 10
+                    url = f"{settings.PARSER_SERVICE_URL}/health"
+                    for i in range(max_retries):
+                        try:
+                            # Use internal health check to wait for service
+                            if requests.get(url, timeout=2).status_code == 200:
+                                logger.info(f"Parser is healthy. Firing migration for tenant {single_tenant_id}...")
+                                ExternalParserService.trigger_migration(single_tenant_id)
+                                return
+                        except:
+                            pass
+                        logger.info(f"Waiting for Parser service... (Attempt {i+1}/{max_retries})")
+                        await asyncio.sleep(2)
+                    logger.warning("Parser service did not become healthy in time. Migration trigger skipped.")
+
+                asyncio.create_task(wait_and_trigger())
+            db.close()
+        except Exception as e:
+            logger.error(f"Failed to check/trigger parser migration: {e}")
         
         # Seed Demo Data (Only if DEMO_MODE is true)
         demo_mode = str(os.getenv("DEMO_MODE", "false")).lower()

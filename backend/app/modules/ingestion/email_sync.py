@@ -160,7 +160,7 @@ class EmailSyncService:
                             from backend.app.modules.ingestion.base import ParsedTransaction
 
                             sender_id = msg.get("From")
-                            parser_response = ExternalParserService.parse_email(subject, body, sender_id)
+                            parser_response = ExternalParserService.parse_email(tenant_id, subject, body, sender_id)
                             
                             status = parser_response.get("status") if parser_response else "offline"
                             
