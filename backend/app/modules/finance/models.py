@@ -5,6 +5,8 @@ from sqlalchemy import Column, String, DateTime, ForeignKey, Numeric, Boolean
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.orm import relationship, backref
 from backend.app.core.database import Base
+from backend.app.core import timezone
+from backend.app.core.timezone import UTCDateTime
 import enum
 
 class AccountType(str, enum.Enum):
@@ -21,7 +23,7 @@ class BalanceSnapshot(Base):
     account_id = Column(String, ForeignKey("accounts.id"), nullable=False, index=True)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     balance = Column(Numeric(15, 2), nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = Column(UTCDateTime, default=timezone.utcnow, nullable=False)
     source = Column(String, default="MANUAL") # SMS, EMAIL, MANUAL, CSV
     
     account = relationship("Account", backref=backref("snapshots", cascade="all, delete-orphan"))
@@ -41,14 +43,14 @@ class Account(Base):
     
     # Sync Anchors (Bank Reported)
     last_synced_balance = Column(Numeric(15, 2), nullable=True)
-    last_synced_at = Column(DateTime, nullable=True)
+    last_synced_at = Column(UTCDateTime, nullable=True)
     last_synced_limit = Column(Numeric(15, 2), nullable=True)
 
     billing_day = Column(Numeric(2, 0), nullable=True) # 1-31
     due_day = Column(Numeric(2, 0), nullable=True) # 1-31
     is_verified = Column(Boolean, default=True, nullable=False) # False = Auto-detected from SMS
     import_config = Column(String, nullable=True) # JSON config for CSV/Excel mapping
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan",
                                primaryjoin="Account.id == Transaction.account_id",
@@ -72,7 +74,7 @@ class Transaction(Base):
     account_id = Column(String, nullable=False, index=True)  # No FK to avoid DuckDB constraint
     type = Column(SqlEnum(TransactionType), default=TransactionType.DEBIT, nullable=False)
     amount = Column(Numeric(15, 2), nullable=False) # Precision for currency
-    date = Column(DateTime, nullable=False, index=True)
+    date = Column(UTCDateTime, nullable=False, index=True)
     description = Column(String, nullable=True)
     recipient = Column(String, nullable=True) # Extracted merchant/payee name
     category = Column(String, nullable=True) # Keeping simple string for now, could be FK later
@@ -89,7 +91,7 @@ class Transaction(Base):
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
     is_emi = Column(Boolean, default=False, nullable=False)
     loan_id = Column(String, ForeignKey("loans.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
     expense_group = relationship("ExpenseGroup", back_populates="transactions")
 
@@ -128,7 +130,7 @@ class CategoryRule(Base):
     is_transfer = Column(Boolean, default=False, nullable=False)
     to_account_id = Column(String, nullable=True) # Destination Account ID if it's a transfer rule
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class IgnoredSuggestion(Base):
     __tablename__ = "ignored_suggestions"
@@ -136,7 +138,7 @@ class IgnoredSuggestion(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     pattern = Column(String, nullable=False) # The description/keyword to ignore
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class Category(Base):
     __tablename__ = "categories"
@@ -148,7 +150,7 @@ class Category(Base):
     color = Column(String, default="#3B82F6") # Hex color code
     type = Column(String, default="expense") # expense/income
     parent_id = Column(String, ForeignKey("categories.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
     subcategories = relationship("Category", backref=backref("parent", remote_side=[id]))
 
@@ -164,7 +166,7 @@ class Budget(Base):
     category = Column(String, nullable=False, index=True) # e.g. "Food"
     amount_limit = Column(Numeric(15, 2), nullable=False) # Monthly Limit
     period = Column(String, default="MONTHLY") # For future extensibility
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(UTCDateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class ExpenseGroup(Base):
     __tablename__ = "expense_groups"
@@ -174,9 +176,9 @@ class ExpenseGroup(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    start_date = Column(DateTime, nullable=True)
-    end_date = Column(DateTime, nullable=True)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+    start_date = Column(UTCDateTime, nullable=True)
+    end_date = Column(UTCDateTime, nullable=True)
     budget = Column(Numeric(15, 2), default=0.0)
     icon = Column(String, nullable=True)
 
@@ -209,13 +211,13 @@ class RecurringTransaction(Base):
     account_id = Column(String, nullable=False, index=True)
     
     frequency = Column(SqlEnum(Frequency), default=Frequency.MONTHLY, nullable=False)
-    start_date = Column(DateTime, nullable=False)
-    next_run_date = Column(DateTime, nullable=False, index=True)
+    start_date = Column(UTCDateTime, nullable=False)
+    next_run_date = Column(UTCDateTime, nullable=False, index=True)
     
     is_active = Column(Boolean, default=True, nullable=False)
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
-    last_run_date = Column(DateTime, nullable=True) # To track when it last ran
-    created_at = Column(DateTime, default=datetime.utcnow)
+    last_run_date = Column(UTCDateTime, nullable=True) # To track when it last ran
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class Loan(Base):
     __tablename__ = "loans"
@@ -226,7 +228,7 @@ class Loan(Base):
     
     principal_amount = Column(Numeric(15, 2), nullable=False)
     interest_rate = Column(Numeric(5, 2), nullable=False) # Annual Interest Rate %
-    start_date = Column(DateTime, nullable=False)
+    start_date = Column(UTCDateTime, nullable=False)
     tenure_months = Column(Numeric(5,0), nullable=False)
     
     emi_amount = Column(Numeric(15, 2), nullable=False)
@@ -235,7 +237,7 @@ class Loan(Base):
     bank_account_id = Column(String, nullable=True) # Source account for EMI deduction
     loan_type = Column(SqlEnum(LoanType), default=LoanType.OTHER, nullable=False)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
     account = relationship("Account", back_populates="loan_details")
 
@@ -248,7 +250,7 @@ class MutualFundsMeta(Base):
     isin_reinvest = Column(String, nullable=True)
     fund_house = Column(String, nullable=True)
     category = Column(String, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(UTCDateTime, default=datetime.utcnow)
 
 class SelectionType(enum.Enum):
     MANUAL = "MANUAL"
@@ -261,12 +263,12 @@ class InvestmentGoal(Base):
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     target_amount = Column(Numeric(15, 2), nullable=False)
-    target_date = Column(DateTime, nullable=True)
+    target_date = Column(UTCDateTime, nullable=True)
     icon = Column(String, default="🎯")
     color = Column(String, default="#3b82f6")
     is_completed = Column(Boolean, default=False)
     owner_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
     holdings = relationship("MutualFundHolding", back_populates="goal")
     assets = relationship("GoalAsset", back_populates="goal", cascade="all, delete-orphan")
@@ -294,7 +296,7 @@ class GoalAsset(Base):
     # For mutual funds, we might still use the separate holding relationship or link here. 
     # To keep it simple, we can migrate MF linking here eventually, but for now allow both or use this for "Portfolio" link.
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
     goal = relationship("InvestmentGoal", back_populates="assets")
     linked_account = relationship("Account")
@@ -328,7 +330,7 @@ class MutualFundHolding(Base):
     last_nav = Column(Numeric(15, 4), nullable=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
     goal_id = Column(String, ForeignKey("investment_goals.id"), nullable=True)
-    last_updated_at = Column(DateTime, default=datetime.utcnow)
+    last_updated_at = Column(UTCDateTime, default=datetime.utcnow)
 
     goal = relationship("InvestmentGoal", back_populates="holdings")
     meta = relationship("MutualFundsMeta", foreign_keys=[scheme_code], primaryjoin="MutualFundHolding.scheme_code == MutualFundsMeta.scheme_code")
@@ -352,13 +354,13 @@ class MutualFundOrder(Base):
     amount = Column(Numeric(15, 2), nullable=False)
     units = Column(Numeric(15, 4), nullable=False)
     nav = Column(Numeric(15, 4), nullable=False)
-    order_date = Column(DateTime, nullable=False, index=True)
+    order_date = Column(UTCDateTime, nullable=False, index=True)
     folio_number = Column(String, nullable=True, index=True)
     status = Column(String, default="COMPLETED")
     external_id = Column(String, nullable=True)
     import_source = Column(String, default="MANUAL")
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class PortfolioTimelineCache(Base):
     """Cache for portfolio timeline snapshots to avoid recalculating historical data"""
@@ -366,12 +368,12 @@ class PortfolioTimelineCache(Base):
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
-    snapshot_date = Column(DateTime, nullable=False, index=True)  # Date of this snapshot
+    snapshot_date = Column(UTCDateTime, nullable=False, index=True)  # Date of this snapshot
     portfolio_hash = Column(String, nullable=False, index=True)  # Hash of scheme_codes to detect changes
     portfolio_value = Column(Numeric(15, 2), nullable=False)
     invested_value = Column(Numeric(15, 2), nullable=False)
     benchmark_value = Column(Numeric(15, 2), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
     
     # Composite index for fast lookups
     __table_args__ = (
@@ -384,8 +386,8 @@ class MutualFundSyncLog(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
-    started_at = Column(DateTime, default=datetime.utcnow)
-    completed_at = Column(DateTime, nullable=True)
+    started_at = Column(UTCDateTime, default=datetime.utcnow)
+    completed_at = Column(UTCDateTime, nullable=True)
     status = Column(String, default="running") # running, completed, error
     num_funds_updated = Column(Numeric(10, 0), default=0)
     error_message = Column(String, nullable=True)

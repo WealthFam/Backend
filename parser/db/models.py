@@ -1,8 +1,8 @@
-from sqlalchemy import Column, String, Integer, DateTime, Text, Boolean, JSON
-from sqlalchemy.sql import func
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, JSON
 from parser.db.database import Base
 import uuid
-import datetime
+from parser.core import timezone
+from parser.core.timezone import UTCDateTime
 
 def generate_uuid():
     return str(uuid.uuid4())
@@ -12,7 +12,7 @@ class RequestLog(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     tenant_id = Column(String, index=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
     source = Column(String, nullable=False) # SMS, EMAIL, FILE
     input_hash = Column(String, index=True) # For idempotency
     input_payload = Column(JSON, nullable=True)
@@ -28,8 +28,8 @@ class FileParsingConfig(Base):
     format = Column(String, default="EXCEL")
     header_row_index = Column(Integer, default=0)
     columns_json = Column(JSON, nullable=False) # {"date": "Transaction Date", ...}
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
 
 class AIConfig(Base):
     __tablename__ = "ai_configs"
@@ -54,7 +54,7 @@ class PatternRule(Base):
     is_active = Column(Boolean, default=True)
     is_ai_generated = Column(Boolean, default=False)
     confidence = Column(JSON, nullable=True)  # AI's confidence in this pattern
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class MerchantAlias(Base):
     __tablename__ = "merchant_aliases"
@@ -63,7 +63,7 @@ class MerchantAlias(Base):
     tenant_id = Column(String, index=True, nullable=False)
     pattern = Column(String, nullable=False, unique=True) # The raw string to match (e.g. "BUNDL TECHNOLOGIES")
     alias = Column(String, nullable=False) # The clean name (e.g. "Swiggy")
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class AICallCache(Base):
     __tablename__ = "ai_call_cache"
@@ -73,4 +73,4 @@ class AICallCache(Base):
     content_hash = Column(String, index=True, nullable=False)
     source = Column(String, nullable=False)
     response_json = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)

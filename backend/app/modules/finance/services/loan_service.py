@@ -1,8 +1,7 @@
 from sqlalchemy.orm import Session
 from backend.app.modules.finance.models import Account, AccountType, Loan, Transaction, TransactionType
-from backend.app.modules.finance import schemas
-from datetime import datetime
-from decimal import Decimal
+from backend.app.modules.finance import models, schemas
+from backend.app.core import timezone
 import uuid
 from dateutil.relativedelta import relativedelta
 
@@ -23,7 +22,7 @@ class LoanService:
             # Anchor Logic
             last_synced_balance=loan_data.principal_amount,
             last_synced_limit=loan_data.principal_amount,
-            last_synced_at=loan_data.start_date or datetime.utcnow()
+            last_synced_at=loan_data.start_date or timezone.utcnow()
         )
         db.add(new_account)
         db.flush() # Generate ID
@@ -143,7 +142,7 @@ class LoanService:
         progress = (paid / principal * 100) if principal > 0 else 0
         
         # Calculate next EMI date
-        today = datetime.utcnow()
+        today = timezone.utcnow()
         # Simple logic: finds next occurrence of emi_date
         next_date = today.replace(day=int(loan.emi_date))
         if next_date < today:
@@ -203,7 +202,7 @@ class LoanService:
             status = "PENDING"
             if (current_date.year, current_date.month) in paid_months:
                 status = "PAID"
-            elif current_date < datetime.utcnow():
+            elif current_date < timezone.utcnow():
                 status = "OVERDUE"
             
             schedule.append(schemas.AmortizationScheduleItem(

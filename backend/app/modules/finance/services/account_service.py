@@ -3,6 +3,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 import logging
 from backend.app.modules.finance import models, schemas
+from backend.app.core import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class AccountService:
         # Anchor the initial balance if provided
         if db_account.balance is not None:
              db_account.last_synced_balance = db_account.balance
-             db_account.last_synced_at = datetime.utcnow()
+             db_account.last_synced_at = timezone.utcnow()
              if db_account.credit_limit:
                  db_account.last_synced_limit = db_account.credit_limit
 

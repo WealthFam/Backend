@@ -4,6 +4,7 @@ import requests
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from backend.app.core.config import settings
+from backend.app.core import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ class ExternalParserService:
         """
         payload = {
             "sub": tenant_id,
-            "exp": datetime.utcnow() + timedelta(minutes=5)
+            "exp": timezone.utcnow() + timedelta(minutes=5)
         }
         token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
         return {"Authorization": f"Bearer {token}"}

@@ -1,4 +1,5 @@
 from datetime import datetime
+from backend.app.core import timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from backend.app.modules.finance import models
@@ -9,7 +10,7 @@ class MobileService:
         """Lightweight endpoint for mobile notifications - only returns essential data"""
         
         # 1. Today's total spending
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = timezone.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         today_query = db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.amount < 0,
@@ -28,7 +29,7 @@ class MobileService:
         today_total = abs(float(today_query.scalar() or 0))
         
         # 2. Month's total spending
-        month_start = datetime(datetime.utcnow().year, datetime.utcnow().month, 1)
+        month_start = datetime(timezone.utcnow().year, timezone.utcnow().month, 1)
         month_query = db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.amount < 0,

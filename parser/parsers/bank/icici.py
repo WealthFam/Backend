@@ -1,3 +1,4 @@
+from parser.core import timezone
 import re
 from typing import Optional, List
 from datetime import datetime
@@ -89,7 +90,7 @@ class IciciSmsParser(BaseSmsParser):
             try:
                 txn_date = datetime.strptime(date_str, "%d-%b-%Y")
             except:
-                txn_date = date_hint or datetime.now()
+                txn_date = date_hint or timezone.utcnow()
             
         clean_recipient = RecipientParser.extract(recipient)
         return ParsedTransaction(
@@ -149,9 +150,9 @@ class IciciEmailParser(BaseEmailParser):
                     txn_date = datetime.strptime(date_str, fmt)
                     break
                 except: continue
-            if not txn_date: txn_date = date_hint or datetime.now()
+            if not txn_date: txn_date = date_hint or timezone.utcnow()
         except:
-            txn_date = datetime.now()
+            txn_date = timezone.utcnow()
                 
         clean_recipient = RecipientParser.extract(recipient)
         return ParsedTransaction(

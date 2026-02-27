@@ -1,7 +1,7 @@
+from parser.core import timezone
 import re
 from typing import Optional, List
 from datetime import datetime
-from decimal import Decimal
 from parser.parsers.base_compat import BaseSmsParser, BaseEmailParser, ParsedTransaction, TransactionPattern
 from parser.parsers.utils.recipient_parser import RecipientParser
 
@@ -47,9 +47,9 @@ class RblSmsParser(BaseSmsParser):
 
     def _create_txn(self, amount, recipient, account_mask, date_str, type_str, raw, ref_id=None, balance=None):
         try:
-            txn_date = datetime.strptime(date_str, "%d-%m-%y") if date_str else datetime.now()
+            txn_date = datetime.strptime(date_str, "%d-%m-%y") if date_str else timezone.utcnow()
         except:
-            txn_date = datetime.now()
+            txn_date = timezone.utcnow()
 
         return ParsedTransaction(
             amount=amount,

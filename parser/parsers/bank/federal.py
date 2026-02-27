@@ -1,7 +1,7 @@
+from parser.core import timezone
 import re
 from typing import Optional, List
 from datetime import datetime
-from decimal import Decimal
 from parser.parsers.base_compat import BaseSmsParser, BaseEmailParser, ParsedTransaction, TransactionPattern
 from parser.parsers.utils.recipient_parser import RecipientParser
 
@@ -46,9 +46,9 @@ class FederalBankSmsParser(BaseSmsParser):
     def _create_txn(self, amount, recipient, account_mask, date_str, type_str, raw, ref_id=None, balance=None):
         try:
             date_str = date_str.replace("/", "-") if date_str else None
-            txn_date = self._parse_date(date_str) if date_str else (date_hint or datetime.now())
+            txn_date = self._parse_date(date_str) if date_str else (date_hint or timezone.utcnow())
         except:
-            txn_date = datetime.now()
+            txn_date = timezone.utcnow()
 
         return ParsedTransaction(
             amount=amount,

@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Numeric
-from sqlalchemy.orm import relationship, foreign, remote
+from sqlalchemy.orm import relationship
 from backend.app.core.database import Base
+from backend.app.core import timezone
+from backend.app.core.timezone import UTCDateTime
 
 class EmailConfiguration(Base):
     __tablename__ = "email_configurations"
@@ -17,9 +18,9 @@ class EmailConfiguration(Base):
     folder = Column(String, default="INBOX", nullable=False)
     is_active = Column(Boolean, default=True)
     auto_sync_enabled = Column(Boolean, default=False)
-    last_sync_at = Column(DateTime, nullable=True) # General expense sync
-    cas_last_sync_at = Column(DateTime, nullable=True) # Mutual fund CAS sync
-    created_at = Column(DateTime, default=datetime.utcnow)
+    last_sync_at = Column(UTCDateTime, nullable=True) # General expense sync
+    cas_last_sync_at = Column(UTCDateTime, nullable=True) # Mutual fund CAS sync
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class EmailSyncLog(Base):
     __tablename__ = "email_sync_logs"
@@ -27,8 +28,8 @@ class EmailSyncLog(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     config_id = Column(String, ForeignKey("email_configurations.id"), nullable=False, index=True)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
-    started_at = Column(DateTime, default=datetime.utcnow)
-    completed_at = Column(DateTime, nullable=True)
+    started_at = Column(UTCDateTime, default=timezone.utcnow)
+    completed_at = Column(UTCDateTime, nullable=True)
     status = Column(String, default="running") # running, completed, error
     items_processed = Column(Numeric(10, 0), default=0)
     message = Column(String, nullable=True) # JSON or text log
@@ -47,7 +48,7 @@ class PendingTransaction(Base):
                           uselist=False,
                           sync_backref=False)
     amount = Column(Numeric(15, 2), nullable=False)
-    date = Column(DateTime, nullable=False)
+    date = Column(UTCDateTime, nullable=False)
     description = Column(String, nullable=True)
     recipient = Column(String, nullable=True)
     category = Column(String, nullable=True)
@@ -63,7 +64,7 @@ class PendingTransaction(Base):
     location_name = Column(String, nullable=True)
     expense_group_id = Column(String, nullable=True) # No FK to keep ingestion decoupled
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class MobileDevice(Base):
     __tablename__ = "mobile_devices"
@@ -78,8 +79,8 @@ class MobileDevice(Base):
     is_approved = Column(Boolean, default=False)
     is_enabled = Column(Boolean, default=True)  # Toggle for ingestion
     is_ignored = Column(Boolean, default=False) # Soft Reject
-    last_seen_at = Column(DateTime, default=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    last_seen_at = Column(UTCDateTime, default=timezone.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class UnparsedMessage(Base):
     __tablename__ = "unparsed_messages"
@@ -91,7 +92,7 @@ class UnparsedMessage(Base):
     content_hash = Column(String, nullable=True, index=True)
     subject = Column(String, nullable=True)
     sender = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class ParsingPattern(Base):
     __tablename__ = "parsing_patterns"
@@ -103,7 +104,7 @@ class ParsingPattern(Base):
     mapping_config = Column(String, nullable=False) # JSON: { "amount": 1, "date": 2, ... }
     is_active = Column(Boolean, default=True)
     description = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class AIConfiguration(Base):
     __tablename__ = "ai_configurations"
@@ -119,8 +120,8 @@ class AIConfiguration(Base):
     # { "parsing": "...", "insights": "..." }
     prompts_json = Column(String, nullable=True) 
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
 
 class AICallCache(Base):
     __tablename__ = "ai_call_cache"
@@ -131,7 +132,7 @@ class AICallCache(Base):
     provider = Column(String, nullable=False)
     model_name = Column(String, nullable=False)
     response_json = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class IngestionEvent(Base):
     __tablename__ = "ingestion_events"
@@ -143,7 +144,7 @@ class IngestionEvent(Base):
     status = Column(String, nullable=False) # success, error, warning, skipped
     message = Column(String, nullable=True)
     data_json = Column(String, nullable=True) # Extra metadata like sender, message preview, etc.
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class IgnoredPattern(Base):
     __tablename__ = "ignored_patterns"
@@ -152,4 +153,4 @@ class IgnoredPattern(Base):
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     pattern = Column(String, nullable=False) # merchant, description or recipient
     source = Column(String, nullable=True) # SMS, EMAIL, ALL
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)

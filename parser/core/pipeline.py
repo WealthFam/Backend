@@ -4,8 +4,8 @@ from parser.core.classifier import FinancialClassifier
 from parser.parsers.registry import ParserRegistry
 from parser.db.models import RequestLog, PatternRule, AICallCache
 import hashlib
-import json
 from datetime import datetime, timedelta
+from parser.core import timezone
 from rapidfuzz import fuzz
 from decimal import Decimal
 from parser.schemas.transaction import Transaction, IngestionResult, ParsedItem, AccountInfo, MerchantInfo, TransactionType
@@ -69,7 +69,7 @@ class IngestionPipeline:
             if isinstance(pt_date, str):
                 final_date = datetime.fromisoformat(pt_date)
             else:
-                final_date = pt_date or datetime.now()
+                final_date = pt_date or timezone.utcnow()
 
             return Transaction(
                 amount=get_decimal(safe_pt_get("amount")),
@@ -137,7 +137,7 @@ class IngestionPipeline:
         input_hash = hashlib.sha256(f"{self.tenant_id}:{source}:{content}".encode()).hexdigest()
         
         # Check last 5 mins
-        cutoff = datetime.utcnow() - timedelta(minutes=5)
+        cutoff = timezone.utcnow() - timedelta(minutes=5)
         existing = self.db.query(RequestLog).filter(
             RequestLog.tenant_id == self.tenant_id,
             RequestLog.input_hash == input_hash,
@@ -255,7 +255,7 @@ class IngestionPipeline:
                     pt = Transaction(
                         amount=get_decimal(tx_data.get("amount")),
                         type=txn_type,
-                        date=datetime.fromisoformat(tx_data["date"]) if tx_data.get("date") else datetime.now(),
+                        date=datetime.fromisoformat(tx_data["date"]) if tx_data.get("date") else timezone.utcnow(),
                         account=AccountInfo(mask=tx_data.get("account_mask"), provider=source),
                         merchant=MerchantInfo(raw=tx_data.get("merchant"), cleaned=tx_data.get("merchant")),
                         description=tx_data.get("description", content[:50]),
@@ -346,7 +346,7 @@ class IngestionPipeline:
              # 6. Cross-Source Deduplication (New Robust Feature)
              # Check if this EXACT transaction details appeared from another source recently
              # We check logs in the last 15 minutes for similar records
-             duplicate_window = datetime.utcnow() - timedelta(minutes=15)
+             duplicate_window = timezone.utcnow() - timedelta(minutes=15)
              
              # Search previously successful extractions
              # Note: output_payload is stored as JSON in DuckDB

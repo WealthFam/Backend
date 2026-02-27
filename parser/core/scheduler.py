@@ -5,7 +5,8 @@ Handles periodic cleanup tasks and maintenance operations.
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from parser.db.database import SessionLocal
 from sqlalchemy import text
-from datetime import datetime, timedelta
+from datetime import timedelta
+from parser.core import timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ def cleanup_old_logs():
     """Delete request logs older than 24 hours to save disk space and improve performance."""
     try:
         with SessionLocal() as db:
-            cutoff = datetime.utcnow() - timedelta(hours=24)
+            cutoff = timezone.utcnow() - timedelta(hours=24)
             
             # Use distinct parameters for safety
             result = db.execute(

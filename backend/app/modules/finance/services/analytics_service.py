@@ -1,10 +1,10 @@
-from typing import List, Optional, Dict
+from typing import Optional
 from datetime import datetime, date, timedelta
-from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text, or_
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.transaction_service import TransactionService
+from backend.app.core import timezone
 
 class AnalyticsService:
     @staticmethod
@@ -76,7 +76,7 @@ class AnalyticsService:
         # 2. Monthly Spending (or Filtered Spending)
         # Default to current month if no dates provided
         if not start_date and not end_date:
-            today = datetime.utcnow()
+            today = timezone.utcnow()
             start_date = datetime(today.year, today.month, 1)
             
         monthly_spending_query = db.query(func.sum(models.Transaction.amount)).filter(
@@ -251,7 +251,7 @@ class AnalyticsService:
             
             if intel["billing_day"]:
                 billing_day = int(intel["billing_day"])
-                today = datetime.utcnow().date()
+                today = timezone.utcnow().date()
                 
                 # Determine Last Statement Date
                 # 1. Try date in current month
@@ -305,7 +305,7 @@ class AnalyticsService:
             intel["minimum_due"] = minimum_due
 
             if intel["due_day"]:
-                today = datetime.utcnow().date() # Ensure date object
+                today = timezone.utcnow().date() # Ensure date object
                 try:
                     # If we have a last statement date, Due Date is strictly next month from that?
                     # Or same month? Usually 20-50 days grace.
@@ -330,7 +330,7 @@ class AnalyticsService:
             credit_intelligence.append(intel)
 
         # 7. Calculate today's total spending
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = timezone.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         today_spending_query = db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.amount < 0,
@@ -405,7 +405,7 @@ class AnalyticsService:
         
         # 3. Reconstruct timeline day by day
         timeline = []
-        now = datetime.utcnow()
+        now = timezone.utcnow()
         start_history = now - timedelta(days=days)
         
         # Optimization: Pre-fetch all snapshots and transactions for the period
@@ -481,7 +481,7 @@ class AnalyticsService:
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
         
-        now = datetime.utcnow()
+        now = timezone.utcnow()
         start_date = datetime(now.year, now.month, 1)
         
         # Daily spending
@@ -548,7 +548,7 @@ class AnalyticsService:
         recs = recs_query.all()
         
         # 3. Discretionary Spending Heuristic
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        thirty_days_ago = timezone.utcnow() - timedelta(days=30)
         recent_txns_query = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= thirty_days_ago,
@@ -565,7 +565,7 @@ class AnalyticsService:
         daily_burn = total_recent / 30.0 if total_recent > 0 else 0
         
         forecast = []
-        today = datetime.utcnow().date()
+        today = timezone.utcnow().date()
         running_bal = current_balance
         
         for i in range(days):
@@ -634,7 +634,7 @@ class AnalyticsService:
             
             budgets = [DummyBudget(c) for c in categories]
 
-        now = datetime.utcnow()
+        now = timezone.utcnow()
         # Calculate start of the first month in range
         first_month_offset = months - 1
         current_m = now.month

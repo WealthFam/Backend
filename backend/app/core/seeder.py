@@ -9,7 +9,8 @@ from backend.app.modules.finance.models import (
     Loan, LoanType, MutualFundsMeta, MutualFundHolding, MutualFundOrder,
     Budget, ExpenseGroup
 )
-from datetime import datetime, timedelta
+from datetime import timedelta
+from backend.app.core import timezone
 import random
 import uuid
 
@@ -54,23 +55,23 @@ def seed_data():
             # Bank
             acc_bank = Account(
                 id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="HDFC Salary", type=AccountType.BANK, 
-                balance=50000, last_synced_balance=50000, last_synced_at=datetime.utcnow()
+                balance=50000, last_synced_balance=50000, last_synced_at=timezone.utcnow()
             )
             # Credit Card
             acc_cc = Account(
                 id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="Amazon Pay ICICI", type=AccountType.CREDIT_CARD, 
                 credit_limit=200000, balance=15000, 
-                last_synced_balance=15000, last_synced_limit=200000, last_synced_at=datetime.utcnow()
+                last_synced_balance=15000, last_synced_limit=200000, last_synced_at=timezone.utcnow()
             )
             # Wallet
             acc_wallet = Account(
                 id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="Cash & Wallet", type=AccountType.WALLET, 
-                balance=2500, last_synced_balance=2500, last_synced_at=datetime.utcnow()
+                balance=2500, last_synced_balance=2500, last_synced_at=timezone.utcnow()
             )
             # Loan Account
             acc_loan = Account(
                 id=str(uuid.uuid4()), tenant_id=tenant_id, owner_id=user_id, name="Home Loan", type=AccountType.LOAN, 
-                balance=0, last_synced_balance=0, last_synced_at=datetime.utcnow()
+                balance=0, last_synced_balance=0, last_synced_at=timezone.utcnow()
             )
             
             db.add_all([acc_bank, acc_cc, acc_wallet, acc_loan])
@@ -115,7 +116,7 @@ def seed_data():
                     account_id=accounts_dict["LOAN"].id,
                     principal_amount=5000000,
                     interest_rate=8.5,
-                    start_date=datetime.now() - timedelta(days=365*2), # 2 years ago
+                    start_date=timezone.utcnow() - timedelta(days=365*2), # 2 years ago
                     tenure_months=240, # 20 years
                     emi_amount=43391,
                     emi_date=5,
@@ -154,7 +155,7 @@ def seed_data():
             
             # Order History (SIP)
             for i in range(6):
-                order_date = datetime.now() - timedelta(days=30*i)
+                order_date = timezone.utcnow() - timedelta(days=30*i)
                 order = MutualFundOrder(
                     tenant_id=tenant_id,
                     user_id=user_id,
@@ -218,7 +219,7 @@ def seed_data():
                 account_id=accounts_dict["BANK"].id,
                 type=TransactionType.DEBIT,
                 amount=15000,
-                date=datetime.now() - timedelta(days=2),
+                date=timezone.utcnow() - timedelta(days=2),
                 description="Credit Card Bill Payment",
                 category=transfer_cat_id,
                 is_transfer=True,
@@ -232,7 +233,7 @@ def seed_data():
                 account_id=accounts_dict["CREDIT_CARD"].id,
                 type=TransactionType.CREDIT,
                 amount=15000,
-                date=datetime.now() - timedelta(days=2),
+                date=timezone.utcnow() - timedelta(days=2),
                 description="Bill Payment Received",
                 category=transfer_cat_id,
                 is_transfer=True,
@@ -248,7 +249,7 @@ def seed_data():
                 account_id=accounts_dict["BANK"].id,
                 type=TransactionType.CREDIT,
                 amount=85000,
-                date=datetime.now().replace(day=1), # 1st of month
+                date=timezone.utcnow().replace(day=1), # 1st of month
                 description="Salary",
                 category=get_cat_id("Salary")
             ))
@@ -261,7 +262,7 @@ def seed_data():
                     account_id=accounts_dict["CREDIT_CARD"].id,
                     type=TransactionType.DEBIT,
                     amount=random.randint(100, 2000),
-                    date=datetime.now() - timedelta(days=random.randint(1, 20)),
+                    date=timezone.utcnow() - timedelta(days=random.randint(1, 20)),
                     description=f"Purchase at Shop {i}",
                     category=shopping_cat_id
                 ))
@@ -306,7 +307,6 @@ def seed_data():
 
     except Exception as e:
         logger.info(f"Error seeding data: {e}")
-        import traceback
         logger.exception("Traceback:")
         db.rollback()
     finally:

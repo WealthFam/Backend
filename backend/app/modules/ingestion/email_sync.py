@@ -4,7 +4,8 @@ from email.header import decode_header
 import re
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
+from backend.app.core import timezone
 from sqlalchemy.orm import Session
 from backend.app.modules.ingestion import models as ingestion_models
 # from backend.app.modules.ingestion.registry import EmailParserRegistry
@@ -248,7 +249,7 @@ class EmailSyncService:
             # Update Log Success
             if log_entry:
                 log_entry.status = "completed"
-                log_entry.completed_at = datetime.utcnow()
+                log_entry.completed_at = timezone.utcnow()
                 log_entry.items_processed = stats["processed"]
                 log_entry.message = f"Found {stats['total_fetched']}, Processed {stats['processed']}"
                 if stats["errors"]:
@@ -266,7 +267,7 @@ class EmailSyncService:
             # Update Log Error
             if log_entry:
                 log_entry.status = "error"
-                log_entry.completed_at = datetime.utcnow()
+                log_entry.completed_at = timezone.utcnow()
                 log_entry.message = str(e)
                 db.commit()
 

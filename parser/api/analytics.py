@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import Optional
 from sqlalchemy import func
 import datetime
+from parser.core import timezone
 from parser.db.database import get_db
 from parser.db.models import RequestLog
 from parser.core.auth import get_current_tenant
@@ -14,7 +14,7 @@ def get_stats(db: Session = Depends(get_db), tenant_id: str = Depends(get_curren
     """
     Get ingestion performance analytics for the last 24 hours, scoped to tenant.
     """
-    since = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
+    since = timezone.utcnow() - datetime.timedelta(hours=24)
     
     status_counts = db.query(
         RequestLog.status, func.count(RequestLog.id)
@@ -62,5 +62,5 @@ def get_stats(db: Session = Depends(get_db), tenant_id: str = Depends(get_curren
             "source_breakdown": {s: c for s, c in source_counts}
         },
         "parser_performance": parser_breakdown,
-        "server_time": datetime.datetime.utcnow().isoformat()
+        "server_time": timezone.to_iso(timezone.utcnow())
     }

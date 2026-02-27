@@ -1,3 +1,4 @@
+from parser.core import timezone
 from google import genai
 from google.genai import types, errors
 from sqlalchemy.orm import Session
@@ -44,7 +45,7 @@ class GeminiParser:
         model_id = self.config.model_name or "gemini-1.5-flash"
 
         # Determine reference date
-        ref_date = datetime.now()
+        ref_date = timezone.utcnow()
         if date_hint and isinstance(date_hint, datetime):
             ref_date = date_hint
         elif date_hint and isinstance(date_hint, str):
@@ -111,7 +112,7 @@ class GeminiParser:
             
             # Robust Date Parsing
             extracted_date = data.get("date")
-            final_date = datetime.now()
+            final_date = timezone.utcnow()
             if extracted_date:
                 try:
                     if "-" in extracted_date and len(extracted_date) == 10:
@@ -120,7 +121,7 @@ class GeminiParser:
                         from dateutil import parser as date_parser
                         final_date = date_parser.parse(extracted_date)
                 except:
-                    final_date = datetime.now()
+                    final_date = timezone.utcnow()
 
             # Map to Schema
             return Transaction(
@@ -172,7 +173,7 @@ class GeminiParser:
         )
         model_id = self.config.model_name or "gemini-1.5-flash"
 
-        ref_date = datetime.now()
+        ref_date = timezone.utcnow()
         if date_hint and isinstance(date_hint, datetime):
             ref_date = date_hint
         elif date_hint and isinstance(date_hint, str):

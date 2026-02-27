@@ -1,4 +1,6 @@
 from sqlalchemy import text
+import logging
+logger = logging.getLogger(__name__)
 from sqlalchemy.engine import Engine
 
 def run_auto_migrations(engine: Engine):
@@ -9,12 +11,18 @@ def run_auto_migrations(engine: Engine):
         with engine.connect() as connection:
             print("Running Parser Service migrations...")
             
-            # Helper to add columns safely
+            # Helper to add columns safely (handling TIMESTAMPTZ for sqlite/duckdb locally vs postgres in prod)
             def safe_add_column(table, col, type_def):
                 try:
-                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {type_def}"))
+                    # SQLite/DuckDB doesn't natively love 'TIMESTAMPTZ' syntax in ALTER statements the same way Postgres does
+                    # We normalize it for local dev vs prod
+                    final_type = type_def
+                    if engine.dialect.name in ['sqlite', 'duckdb']:
+                        final_type = type_def.replace('TIMESTAMPTZ', 'TIMESTAMP')
+                    
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {final_type}"))
                 except Exception as e:
-                    print(f"DEBUG: safe_add_column potential issue: {e}")
+                    logger.info(f"DEBUG: safe_add_column potential issue on {table}.{col}: {e}")
 
             # 1. Create merchant_aliases table if not exists
             connection.execute(text("""
@@ -22,7 +30,7 @@ def run_auto_migrations(engine: Engine):
                 id VARCHAR PRIMARY KEY,
                 pattern VARCHAR NOT NULL UNIQUE,
                 alias VARCHAR NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
             """))
             
@@ -47,7 +55,7 @@ def run_auto_migrations(engine: Engine):
                 content_hash VARCHAR NOT NULL,
                 source VARCHAR NOT NULL,
                 response_json JSON NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
             """))
             # Index for performance

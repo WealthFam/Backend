@@ -1,11 +1,10 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import logging
-import casparser
 import tempfile
 import os
 from datetime import datetime, date
 from decimal import Decimal
-from parser.schemas.transaction import Transaction, TransactionType, AccountInfo, MerchantInfo
+from parser.core import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ class CasParser:
                 folios = []
                 # Statement period for virtual transaction dates
                 period = data.get("statement_period", {})
-                val_date_str = period.get("to") or period.get("from") or datetime.now().strftime("%Y-%m-%d")
+                val_date_str = period.get("to") or period.get("from") or timezone.utcnow().strftime("%Y-%m-%d")
                 
                 for acc in data.get("accounts", []):
                     mf_list = acc.get("mutual_funds", [])
@@ -159,7 +158,7 @@ class CasParser:
                             # Statement period for virtual transaction dates
                             # Statement period for virtual transaction dates
                             period = data.get("statement_period", {})
-                            val_date_str = period.get("to") or period.get("from") or datetime.now().strftime("%Y-%m-%d")
+                            val_date_str = period.get("to") or period.get("from") or timezone.utcnow().strftime("%Y-%m-%d")
                             
                             transactions = [{
                                 "date": val_date_str,

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.database import SessionLocal
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.recurring_service import RecurringService
+from backend.app.core import timezone
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.ingestion.email_sync import EmailSyncService
 from backend.app.modules.ingestion import models as ingestion_models
@@ -23,12 +24,11 @@ def daily_recurrence_check():
     try:
         # Find tenants who have active recurring transactions due
         # We use a raw distinct query or ORM distinct
-        from datetime import datetime
         
         # optimized: Get distinct tenant_ids that have due items
         due_tenants = db.query(models.RecurringTransaction.tenant_id).filter(
             models.RecurringTransaction.is_active == True,
-            models.RecurringTransaction.next_run_date <= datetime.utcnow()
+            models.RecurringTransaction.next_run_date <= timezone.utcnow()
         ).distinct().all()
         
         tenant_ids = [t[0] for t in due_tenants]
@@ -55,7 +55,6 @@ def auto_sync_job():
     """
     logger.info("[AutoSync] Checking for scheduled syncs...")
     db: Session = SessionLocal()
-    from datetime import datetime
     try:
         configs = db.query(ingestion_models.EmailConfiguration).filter(
             ingestion_models.EmailConfiguration.is_active == True,
@@ -79,7 +78,7 @@ def auto_sync_job():
                 )
                 
                 if result.get("status") == "completed":
-                    config.last_sync_at = datetime.utcnow()
+                    config.last_sync_at = timezone.utcnow()
                     db.commit()
                     
             except Exception as e:

@@ -1,3 +1,4 @@
+from parser.core import timezone
 import re
 from typing import Optional, List
 from datetime import datetime
@@ -84,9 +85,9 @@ class SbiSmsParser(BaseSmsParser):
                     txn_date = datetime.strptime(date_str, fmt)
                     break
                 except: continue
-            if not txn_date: txn_date = date_hint or datetime.now()
+            if not txn_date: txn_date = date_hint or timezone.utcnow()
         except:
-            txn_date = datetime.now()
+            txn_date = timezone.utcnow()
             
         clean_recipient = RecipientParser.extract(recipient)
         return ParsedTransaction(
@@ -141,9 +142,9 @@ class SbiEmailParser(BaseEmailParser):
                     txn_date = datetime.strptime(date_str, fmt)
                     break
                 except: continue
-            if not txn_date: txn_date = date_hint or datetime.now()
+            if not txn_date: txn_date = date_hint or timezone.utcnow()
         except:
-            txn_date = datetime.now()
+            txn_date = timezone.utcnow()
             
         clean_recipient = RecipientParser.extract(recipient)
         return ParsedTransaction(

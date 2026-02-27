@@ -1,11 +1,12 @@
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import json
-from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
+from backend.app.core import timezone
 
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
@@ -122,7 +123,7 @@ def ingest_sms(
             return {"status": "skipped", "reason": "Ingestion disabled for this device"}
             
         # Update last seen
-        device.last_seen_at = datetime.utcnow()
+        device.last_seen_at = timezone.utcnow()
         db.commit()
 
     # 2. Parsing (Call External Microservice)
@@ -170,9 +171,9 @@ def ingest_sms(
             try:
                 txn_date = datetime.fromisoformat(txn_date.replace("Z", "+00:00"))
             except:
-                txn_date = datetime.utcnow()
+                txn_date = timezone.utcnow()
         else:
-            txn_date = datetime.utcnow()
+            txn_date = timezone.utcnow()
 
         # Map to ParsedTransaction
         parsed = ParsedTransaction(
@@ -258,9 +259,9 @@ def ingest_email(
             try:
                 txn_date = datetime.fromisoformat(txn_date.replace("Z", "+00:00"))
             except:
-                txn_date = datetime.utcnow()
+                txn_date = timezone.utcnow()
         else:
-            txn_date = datetime.utcnow()
+            txn_date = timezone.utcnow()
 
         # Map to ParsedTransaction
         parsed = ParsedTransaction(
@@ -465,7 +466,7 @@ def sync_specific_email(
     )
     
     if result.get("status") == "completed":
-        config.last_sync_at = datetime.utcnow()
+        config.last_sync_at = timezone.utcnow()
         db.commit()
         
     return result

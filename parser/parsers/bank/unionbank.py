@@ -1,7 +1,7 @@
+from parser.core import timezone
 import re
 from typing import Optional, List
 from datetime import datetime
-from decimal import Decimal
 from parser.parsers.base_compat import BaseSmsParser, BaseEmailParser, ParsedTransaction, TransactionPattern
 from parser.parsers.utils.recipient_parser import RecipientParser
 
@@ -56,9 +56,9 @@ class UnionBankSmsParser(BaseSmsParser):
         try:
             # Handle both / and -
             date_str = date_str.replace("/", "-") if date_str else None
-            txn_date = datetime.strptime(date_str, "%d-%m-%Y") if date_str else datetime.now()
+            txn_date = datetime.strptime(date_str, "%d-%m-%Y") if date_str else timezone.utcnow()
         except:
-            txn_date = datetime.now()
+            txn_date = timezone.utcnow()
 
         return ParsedTransaction(
             amount=amount,

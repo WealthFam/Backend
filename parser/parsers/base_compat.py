@@ -1,7 +1,8 @@
+from parser.core import timezone
 from datetime import datetime
 from decimal import Decimal
+from rapidfuzz import fuzz
 from typing import Optional, List, Dict, Any
-import re
 from abc import ABC, abstractmethod
 from pydantic import BaseModel, model_validator
 
@@ -97,7 +98,7 @@ class BaseParser(ABC):
 
     def _parse_date(self, date_str: Optional[str], hint: Optional[datetime]) -> datetime:
         if not date_str:
-            return hint or datetime.now()
+            return hint or timezone.utcnow()
         
         # Standardize separators
         clean_date = date_str.replace("/", "-").replace(".", "-").replace(",", " ").strip()
@@ -161,7 +162,7 @@ class BaseParser(ABC):
             except:
                 continue
         
-        return hint or datetime.now()
+        return hint or timezone.utcnow()
 
     def _parse_mask(self, mask_str: Optional[str]) -> Optional[str]:
         if not mask_str:

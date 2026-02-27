@@ -1,4 +1,6 @@
-from typing import Optional, Dict, List, Any
+from parser.core import timezone
+from typing import Optional, List
+from rapidfuzz import fuzz
 from sqlalchemy.orm import Session
 import re
 from datetime import datetime
@@ -59,9 +61,9 @@ class PatternParser:
                 # Normalize
                 amount = self._clean_amount(str(amount_str))
                 
-                txn_date = datetime.now()
+                txn_date = timezone.utcnow()
                 if date_str:
-                    txn_date = self._parse_date(str(date_str), getattr(rule, 'date_format', None)) or datetime.now()
+                    txn_date = self._parse_date(str(date_str), getattr(rule, 'date_format', None)) or timezone.utcnow()
 
                 return Transaction(
                     amount=amount,

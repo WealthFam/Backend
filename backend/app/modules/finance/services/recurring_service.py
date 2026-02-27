@@ -1,8 +1,8 @@
 from typing import List, Optional
-from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
 from backend.app.modules.finance import models, schemas
+from backend.app.core import timezone
 
 class RecurringService:
     @staticmethod
@@ -69,7 +69,7 @@ class RecurringService:
         due_items = db.query(models.RecurringTransaction).filter(
             models.RecurringTransaction.tenant_id == tenant_id,
             models.RecurringTransaction.is_active == True,
-            models.RecurringTransaction.next_run_date <= datetime.utcnow()
+            models.RecurringTransaction.next_run_date <= timezone.utcnow()
         ).all()
         
         count = 0
@@ -96,13 +96,13 @@ class RecurringService:
                 # (i.e. if date <= last_synced_at, it won't update balance)
                 TransactionService.create_transaction(db, txn_create, tenant_id)
                 count += 1
-                item.last_run_date = datetime.utcnow()
+                item.last_run_date = timezone.utcnow()
             except ValueError as e:
                 # Duplicate transaction? Just move on and update next_run_date to avoid stuck loop
                 # checking if it was a dupe error from our service
                 if "Duplicate" in str(e):
                     # It already exists, so we mark it as processed to advance the schedule
-                    item.last_run_date = datetime.utcnow()
+                    item.last_run_date = timezone.utcnow()
                 else:
                     print(f"Error creating recurring transaction {item.id}: {e}")
             except Exception as e:
@@ -131,12 +131,11 @@ class RecurringService:
         """
         Analyzes transaction history to find recurring patterns (Monthly/Weekly).
         """
-        from sqlalchemy import func, and_, desc
         from collections import defaultdict
         import statistics
 
         # 1. Fetch recent debit transactions (last 6 months)
-        six_months_ago = datetime.utcnow() - relativedelta(months=6)
+        six_months_ago = timezone.utcnow() - relativedelta(months=6)
         transactions = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.type == models.TransactionType.DEBIT,
