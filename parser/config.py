@@ -1,3 +1,4 @@
+import os
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
 
@@ -10,12 +11,13 @@ class Settings(BaseSettings):
     # Here we want to be explicit about the data folder per request
     
     # Database
-    # Use a prefixed variable to avoid collision with global DATABASE_URL in Render/Docker
+    # Default to data folder in root
     PARSER_DATABASE_URL: str = "duckdb:///data/ingestion_engine_parser.duckdb"
-    
+
     @property
-    def DATABASE_URL(self) -> str:
+    def DATABASE_URL(self):
         return self.PARSER_DATABASE_URL
+    
     # Security
     SECRET_KEY: str = "CHANGE_THIS_TO_A_SECURE_SECRET_IN_PRODUCTION"
     ALGORITHM: str = "HS256"

@@ -1,6 +1,5 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import NullPool
 from backend.app.core.config import settings
 
 # DuckDB is primarily a synchronous in-process database.
@@ -11,8 +10,9 @@ from backend.app.core.config import settings
 engine = create_engine(
     settings.DATABASE_URL,
     connect_args={"read_only": False}, 
-    # Use NullPool for DuckDB to ensure locks are released immediately after use.
-    poolclass=NullPool
+    # DuckDB specific: allow multithreaded access if needed, 
+    # though usually single-process is safer for writes.
+    pool_pre_ping=True
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

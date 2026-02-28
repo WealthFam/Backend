@@ -22,6 +22,8 @@ from backend.app.modules.mobile.router import router as mobile_router
 from backend.app.modules.vault.router import router as vault_router
 
 # Background Tasks
+from backend.app.modules.ingestion.email_sync import EmailSyncService
+from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.core.scheduler import start_scheduler, stop_scheduler
 
 def create_application() -> FastAPI:
@@ -52,9 +54,6 @@ def create_application() -> FastAPI:
     application.include_router(vault_router, prefix=f"{settings.API_V1_STR}/finance/vault", tags=["Vault"])
     
     
-    # Run Auto-Migrations (DuckDB Schema Evolution)
-    # run_auto_migrations(engine)  <-- REFACTORED TO STARTUP EVENT
-
 
     # --- Background Tasks ---
     
@@ -71,11 +70,11 @@ def create_application() -> FastAPI:
         except Exception as e:
             logger.error(f"Database initialization failed: {e}")
             # Non-fatal during startup might be better, but DuckDB usually needs this
-        
+
         # Start Scheduler (Handles both recurring checks and email auto-sync)
         start_scheduler()
         
-        # 2. Seed Demo Data (Only if DEMO_MODE is true)
+        # Seed Demo Data (Only if DEMO_MODE is true)
         demo_mode = str(os.getenv("DEMO_MODE", "false")).lower()
         logger.info(f"Startup Config: DEMO_MODE={demo_mode}")
         
@@ -91,8 +90,8 @@ def create_application() -> FastAPI:
 
         # 3. Trigger single-tenant migration on the parser service
         # This aligns any old 'system_tenant' data in the parser DB with the active tenant.
+        db = SessionLocal()
         try:
-            db = SessionLocal()
             from backend.app.modules.auth.models import Tenant
             # Find the most recent active tenant
             tenants = db.query(Tenant).order_by(Tenant.created_at.desc()).limit(2).all()
@@ -139,9 +138,10 @@ def create_application() -> FastAPI:
                 else:
                     log_msg += "Automatic migration trigger skipped (multiple tenants require manual action)."
                 logger.info(log_msg)
-            db.close()
         except Exception as e:
             logger.error(f"Failed to check/trigger parser migration: {e}")
+        finally:
+            db.close()
 
     @application.on_event("shutdown")
     async def stop_scheduler_event():
