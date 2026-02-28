@@ -354,7 +354,6 @@ class BudgetService:
             if ai_insights:
                 return ai_insights
         except Exception as e:
-            print(f"DEBUG: AI Insight Generation Failed: {e}")
             pass
 
         # Fallback to hardcoded rules if AI is disabled or fails

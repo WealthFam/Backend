@@ -59,18 +59,8 @@ def create_application() -> FastAPI:
     
     @application.on_event("startup")
     async def startup_event():
-        # --- Database Setup ---
-        try:
-            logger.info("Initializing database and running migrations...")
-            # Create tables first
-            Base.metadata.create_all(bind=engine)
-            # Run Auto-Migrations (DuckDB Schema Evolution)
-            run_auto_migrations(engine)
-            logger.info("Database initialization complete.")
-        except Exception as e:
-            logger.error(f"Database initialization failed: {e}")
-            # Non-fatal during startup might be better, but DuckDB usually needs this
-
+        # --- Background Tasks ---
+        
         # Start Scheduler (Handles both recurring checks and email auto-sync)
         start_scheduler()
         

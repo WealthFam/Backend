@@ -27,7 +27,7 @@ def run_auto_migrations(engine: Engine):
                     
                     connection.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {final_type}"))
                 except Exception as e:
-                    logger.info(f"DEBUG: safe_add_column potential issue on {table}.{col}: {e}")
+                    pass
 
             # 1. Add columns to existing tables since CREATE TABLE IF NOT EXISTS won't add them
             safe_add_column("pending_transactions", "latitude", "DECIMAL(10, 8)")
@@ -161,6 +161,9 @@ def run_auto_migrations(engine: Engine):
             safe_add_column("transactions", "exclude_from_reports", "BOOLEAN DEFAULT FALSE")
             safe_add_column("pending_transactions", "exclude_from_reports", "BOOLEAN DEFAULT FALSE")
             safe_add_column("recurring_transactions", "exclude_from_reports", "BOOLEAN DEFAULT FALSE")
+            safe_add_column("recurring_transactions", "latitude", "DECIMAL(10, 8)")
+            safe_add_column("recurring_transactions", "longitude", "DECIMAL(11, 8)")
+            safe_add_column("recurring_transactions", "location_name", "VARCHAR")
             safe_add_column("category_rules", "exclude_from_reports", "BOOLEAN DEFAULT FALSE")
             
             # 11. Loans Table
