@@ -41,7 +41,7 @@ class IngestionPipeline:
         self.db = db
         self.tenant_id = tenant_id
 
-    def _convert_to_schema_txn(self, pt: Any) -> Transaction:
+    def _convert_to_schema_txn(self, pt: Any, date_hint: Optional[Any] = None) -> Transaction:
         """Helper to convert backend-style ParsedTransaction or dict to microservice Transaction"""
         
         
@@ -70,10 +70,27 @@ class IngestionPipeline:
 
             # Handle date parsing
             pt_date = pt.get("date") if isinstance(pt, dict) else getattr(pt, "date", None)
+            
+            # Use hint as context if we only have a date string but no year, 
+            # or if the parser failed to return a valid date.
+            final_date = None
             if isinstance(pt_date, str):
-                final_date = datetime.fromisoformat(pt_date)
-            else:
-                final_date = pt_date or timezone.utcnow()
+                try:
+                    final_date = datetime.fromisoformat(pt_date)
+                except: pass
+            elif isinstance(pt_date, datetime):
+                final_date = pt_date
+            
+            # Fallback to date_hint if available, otherwise now
+            if not final_date:
+                if date_hint:
+                    if isinstance(date_hint, datetime):
+                        final_date = date_hint
+                    else:
+                        try: final_date = datetime.fromisoformat(date_hint)
+                        except: final_date = timezone.utcnow()
+                else:
+                    final_date = timezone.utcnow()
 
             return Transaction(
                 amount=get_decimal(safe_pt_get("amount")),
@@ -247,7 +264,7 @@ class IngestionPipeline:
                     if not AIGuardrail.should_allow_ai_parsing(content, source):
                         logs.append("Blocked by AI Guardrail: Content does not meet strict transaction heuristics.")
                         if best_regex_match:
-                            parsed_txn = self._convert_to_schema_txn(best_regex_match)
+                            parsed_txn = self._convert_to_schema_txn(best_regex_match, date_hint=date_hint)
                             parser_used = "Best Regex (AI Guardrail Blocked)"
                         else:
                             parsed_txn = None
@@ -309,18 +326,18 @@ class IngestionPipeline:
 
                     # Compare AI results with best regex match
                     if not best_regex_match or ai_confidence >= best_regex_match.confidence:
-                        parsed_txn = self._convert_to_schema_txn(pt)
+                        parsed_txn = self._convert_to_schema_txn(pt, date_hint=date_hint)
                         parser_used = "Gemini AI"
                         logs.append("Extracted via AI (High Confidence)")
                     else:
-                        parsed_txn = self._convert_to_schema_txn(best_regex_match)
+                        parsed_txn = self._convert_to_schema_txn(best_regex_match, date_hint=date_hint)
                         parser_used = "Best Regex"
                 else:
                     if ai_data and ai_data.get("error"):
                         logs.append(f"AI Error: {ai_data['error']}")
 
                     if best_regex_match:
-                        parsed_txn = self._convert_to_schema_txn(best_regex_match)
+                        parsed_txn = self._convert_to_schema_txn(best_regex_match, date_hint=date_hint)
                         parser_used = "Best Regex (AI Failed)"
             except AIGuardrailBlocked:
                 pass
@@ -328,10 +345,10 @@ class IngestionPipeline:
                 logger.error(f"AI Parser failed: {str(e)}")
                 logs.append(f"AI Parser failed: {str(e)}")
                 if best_regex_match:
-                    parsed_txn = self._convert_to_schema_txn(best_regex_match)
+                    parsed_txn = self._convert_to_schema_txn(best_regex_match, date_hint=date_hint)
                     parser_used = "Best Regex (AI Error)"
         else:
-            parsed_txn = self._convert_to_schema_txn(best_regex_match)
+            parsed_txn = self._convert_to_schema_txn(best_regex_match, date_hint=date_hint)
             parser_used = f"{best_regex_match.source if hasattr(best_regex_match, 'source') else 'Regex'} ({best_regex_match.confidence})"
 
 

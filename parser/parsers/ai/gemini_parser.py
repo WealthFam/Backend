@@ -186,6 +186,7 @@ class GeminiParser:
         Return ONLY valid JSON.
         
         Input: "{content}"
+        Reference Date: {ref_date_str}
         
         Required JSON Structure:
         {{
@@ -209,6 +210,10 @@ class GeminiParser:
                 "type": "DEBIT" or "CREDIT"
             }}
         }}
+
+        Rules:
+        1. If date is missing/relative (e.g. 'today', 'yesterday'), calculate it based on reference date: {ref_date_str}.
+        2. ALWAYS return date in ISO format (YYYY-MM-DD).
 
         Rules for Regex:
         1. Use [\d,\.]+ for amounts.

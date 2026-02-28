@@ -10,8 +10,17 @@ class TransactionValidator:
         warnings = []
         
         # 1. Future Date Check
-        # Allow 1 day buffer for timezones
-        if txn.date > timezone.utcnow() + timedelta(days=1):
+        # Convert both to naive UTC for a safe comparison that never fails with TypeError
+        # This handles both aware and naive inputs by normalizing to UTC then stripping tzinfo.
+        from datetime import timezone as dt_timezone
+        curr_utc = txn.date
+        if curr_utc.tzinfo is None:
+            curr_utc = curr_utc.replace(tzinfo=dt_timezone.utc)
+        curr_utc_naive = curr_utc.astimezone(dt_timezone.utc).replace(tzinfo=None)
+        
+        now_utc_naive = timezone.utcnow().replace(tzinfo=None)
+        
+        if curr_utc_naive > now_utc_naive + timedelta(days=1):
             warnings.append(f"Future date detected: {txn.date}. This might be a parsing error.")
             
         # 2. Currency Mismatch

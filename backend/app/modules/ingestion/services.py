@@ -15,6 +15,9 @@ class IngestionService:
         """
         Log an ingestion event for auditing.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"INGESTION EVENT: {event_type} | STATUS: {status} | MESSAGE: {message}")
         event = ingestion_models.IngestionEvent(
             tenant_id=tenant_id,
             device_id=device_id,
@@ -114,6 +117,9 @@ class IngestionService:
         is_dup, reason, existing_id = TransactionDeduplicator.check_duplicate(db, tenant_id, parsed, str(account.id), final_amount)
         
         if is_dup:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"INGESTION SKIPPED: Duplicate detected - {reason} (Existing ID: {existing_id})")
             return {"status": "skipped", "reason": f"Deduplicated: {reason}", "deduplicated": True, "existing_id": existing_id}
 
         # --- IGNORE PATTERN CHECK ---
