@@ -32,7 +32,10 @@ class TransferService:
             is_transfer=True,
             external_id=pending.external_id,
             source=pending.source,
-            exclude_from_reports=pending.exclude_from_reports
+            exclude_from_reports=pending.exclude_from_reports,
+            latitude=pending.latitude,
+            longitude=pending.longitude,
+            location_name=pending.location_name
         )
         
         # We need to handle the balance sync flag from pending for the source side
@@ -58,7 +61,10 @@ class TransferService:
             is_transfer=True,
             external_id=f"LINKED-{pending.external_id}" if pending.external_id else None,
             source=pending.source,
-            exclude_from_reports=pending.exclude_from_reports
+            exclude_from_reports=pending.exclude_from_reports,
+            latitude=pending.latitude,
+            longitude=pending.longitude,
+            location_name=pending.location_name
         )
         
         target_txn = TransactionService.create_transaction(

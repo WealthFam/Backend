@@ -216,6 +216,11 @@ class RecurringTransaction(Base):
     
     is_active = Column(Boolean, default=True, nullable=False)
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
+    
+    latitude = Column(Numeric(10, 7), nullable=True)
+    longitude = Column(Numeric(10, 7), nullable=True)
+    location_name = Column(String, nullable=True)
+
     last_run_date = Column(UTCDateTime, nullable=True) # To track when it last ran
     created_at = Column(UTCDateTime, default=timezone.utcnow)
 

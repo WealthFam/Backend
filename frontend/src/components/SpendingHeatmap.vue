@@ -37,8 +37,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import L from 'leaflet'
+import { MapPin } from 'lucide-vue-next'
+// @ts-ignore - plugin compatibility
+if (typeof window !== 'undefined') window.L = L
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.heat'
 import { financeApi } from '@/api/client'
@@ -85,6 +88,7 @@ onMounted(() => {
 const mapContainer = ref<HTMLElement | null>(null)
 let map: L.Map | null = null
 let heatLayer: any = null
+let markerLayer: L.LayerGroup | null = null
 
 const hasLocationData = computed(() => data.value && data.value.length > 0)
 
@@ -112,6 +116,13 @@ const initMap = () => {
     }).addTo(map)
 
     updateHeatmap()
+
+    // Ensure layout is captured correctly - sometimes Leaflet needs a trigger
+    setTimeout(() => {
+        if (map) {
+            map.invalidateSize()
+        }
+    }, 500)
 }
 
 const updateHeatmap = () => {
@@ -123,27 +134,79 @@ const updateHeatmap = () => {
 
     if (!hasLocationData.value) return
 
+    // Ensure map is correctly sized (especially after layout animations)
+    map.invalidateSize()
+    const size = map.getSize()
+
+    if (size.x === 0 || size.y === 0) {
+        // Retry shortly if layout hasn't settled
+        setTimeout(updateHeatmap, 200)
+        return
+    }
+
+    if (markerLayer) {
+        map.removeLayer(markerLayer)
+    }
+    markerLayer = L.layerGroup().addTo(map)
+
     // Prepare heatmap data: [lat, lng, intensity]
     const heatPoints = data.value.map(p => {
-        const intensity = Math.min(Math.abs(p.amount) / 1000, 1)
+        // Boost intensity calculation for deeper colors
+        const intensity = Math.min(Math.abs(p.amount) / 500, 1.2)
+
+        // Add marker for each point
+        if (markerLayer) {
+            const marker = L.circleMarker([p.latitude, p.longitude], {
+                radius: 4,
+                fillColor: '#ffffff',
+                color: '#3b82f6',
+                weight: 1,
+                opacity: 0.8,
+                fillOpacity: 0.6
+            })
+
+            const tooltipContent = `
+                <div class="pa-2">
+                    <div class="text-caption font-weight-bold mb-1">${p.category || 'Expense'}</div>
+                    <div class="text-subtitle-2 font-weight-black">₹${Math.abs(p.amount).toLocaleString()}</div>
+                    <div class="text-10 opacity-70 mt-1">${p.recipient || p.description || 'Raw Transaction'}</div>
+                </div>
+            `
+            marker.bindPopup(tooltipContent, { closeButton: false })
+
+            // Show data on hover
+            marker.on('mouseover', function (e) {
+                this.openPopup()
+            })
+            marker.on('mouseout', function (e) {
+                this.closePopup()
+            })
+
+            marker.addTo(markerLayer)
+        }
+
         return [p.latitude, p.longitude, intensity]
     })
 
     // @ts-ignore - leaflet.heat is not in types
     heatLayer = L.heatLayer(heatPoints as any, {
-        radius: 25,
+        radius: 30,
         blur: 15,
         maxZoom: 17,
+        minOpacity: 0.5,
         gradient: {
-            0.4: '#3b82f6',
-            0.6: '#10b981',
-            0.7: '#f59e0b',
-            0.8: '#ef4444'
+            0.2: '#3b82f6',
+            0.4: '#10b981',
+            0.6: '#f59e0b',
+            0.8: '#ef4444',
+            1.0: '#7f1d1d'
         }
     }).addTo(map)
 
-    // Fit bounds if we have multiple points
-    if (data.value.length > 1) {
+    // Ensure map is visible and focused on the data
+    if (data.value.length === 1) {
+        map.setView([data.value[0].latitude, data.value[0].longitude], 13)
+    } else if (data.value.length > 1) {
         const bounds = L.latLngBounds(data.value.map(p => [p.latitude, p.longitude] as L.LatLngTuple))
         map.fitBounds(bounds, { padding: [50, 50] })
     }
@@ -187,6 +250,7 @@ onUnmounted(() => {
 .heatmap-canvas {
     height: 100%;
     width: 100%;
+    min-height: 500px;
     z-index: 1;
 }
 
@@ -199,7 +263,7 @@ onUnmounted(() => {
     width: 100px;
     height: 6px;
     border-radius: 3px;
-    background: linear-gradient(to right, #3b82f6, #10b981, #f59e0b, #ef4444);
+    background: linear-gradient(to right, #3b82f6, #10b981, #f59e0b, #ef4444, #7f1d1d);
 }
 
 .no-data-overlay {

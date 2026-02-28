@@ -88,7 +88,10 @@ class RecurringService:
                 category=item.category,
                 source="RECURRING",
                 external_id=f"rec_{item.id}_{item.next_run_date.strftime('%Y%m%d')}", # De-dup key
-                exclude_from_reports=item.exclude_from_reports
+                exclude_from_reports=item.exclude_from_reports,
+                latitude=item.latitude,
+                longitude=item.longitude,
+                location_name=item.location_name
             )
             
             try:
