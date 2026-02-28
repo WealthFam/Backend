@@ -1,5 +1,5 @@
 import logging
-import jwt
+from jose import jwt
 import requests
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta

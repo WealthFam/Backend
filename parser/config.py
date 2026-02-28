@@ -10,8 +10,12 @@ class Settings(BaseSettings):
     # Here we want to be explicit about the data folder per request
     
     # Database
-    # Default to data folder in root
-    DATABASE_URL: str = "duckdb:///data/ingestion_engine_parser.duckdb"
+    # Use a prefixed variable to avoid collision with global DATABASE_URL in Render/Docker
+    PARSER_DATABASE_URL: str = "duckdb:///data/ingestion_engine_parser.duckdb"
+    
+    @property
+    def DATABASE_URL(self) -> str:
+        return self.PARSER_DATABASE_URL
     # Security
     SECRET_KEY: str = "CHANGE_THIS_TO_A_SECURE_SECRET_IN_PRODUCTION"
     ALGORITHM: str = "HS256"
