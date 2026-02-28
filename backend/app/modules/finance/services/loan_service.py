@@ -32,7 +32,6 @@ class LoanService:
             account_id=new_account.id,
             tenant_id=tenant_id,
             balance=loan_data.principal_amount,
-            credit_limit=loan_data.principal_amount,
             timestamp=new_account.last_synced_at,
             source="LOAN_CREATION"
         ))

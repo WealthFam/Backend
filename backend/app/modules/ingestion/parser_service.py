@@ -162,6 +162,8 @@ class ExternalParserService:
                 "mapping": mapping
             }
             response = requests.post(url, json=payload, headers=ExternalParserService._get_auth_header(tenant_id), timeout=10)
+            if response.status_code != 200:
+                logger.error(f"Parser API pattern creation failed with {response.status_code}: {response.text}")
             return response.status_code == 200
         except Exception as e:
             logger.error(f"Error creating pattern in external parser: {e}")

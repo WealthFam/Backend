@@ -1,12 +1,15 @@
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
 from backend.app.core import timezone
+
+logger = logging.getLogger(__name__)
 
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
@@ -1103,14 +1106,14 @@ def label_message(
             import json
             
             ExternalParserService.create_pattern(
+                tenant_id=str(current_user.tenant_id),
                 source=msg.source,
                 regex_pattern=pattern_str,
                 mapping=json.loads(mapping_json)
             )
             # Legacy local save removed to enforce single source of truth
         except Exception as e:
-            logger.error(f"Error creating pattern: {e}")
-            pass
+            logger.exception("Error creating pattern:")
         
     db.delete(msg)
     db.commit()
