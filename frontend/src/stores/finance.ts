@@ -28,7 +28,7 @@ export const useFinanceStore = defineStore('finance', () => {
         error.value = null
         try {
             const [cats, accs, recs] = await Promise.all([
-                financeApi.getCategories(),
+                financeApi.getCategories(true),
                 financeApi.getAccounts(),
                 financeApi.getRecurringTransactions(userId)
             ])
@@ -47,9 +47,9 @@ export const useFinanceStore = defineStore('finance', () => {
     }
 
     async function fetchCategories() {
-        if (categories.value.length > 0) return // Cache hit?
+        // We removed the length check to ensure fresh hierarchical data is always fetched
         try {
-            const res = await financeApi.getCategories()
+            const res = await financeApi.getCategories(true)
             categories.value = res.data
         } catch (e) {
             console.error("Failed to fetch categories", e)

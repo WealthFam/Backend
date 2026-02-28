@@ -86,6 +86,7 @@ def update_ai_settings(
     try:
         from backend.app.modules.ingestion.parser_service import ExternalParserService
         ExternalParserService.sync_ai_config(
+            tenant_id=str(current_user.tenant_id),
             api_key=config.api_key or "",
             model_name=config.model_name,
             is_enabled=config.is_enabled
@@ -107,7 +108,7 @@ def test_ai_connection(
     # Use generic 'SMS' source for testing as it fits the snippet format best
     try:
          # We use parse_sms as a proxy for generic parsing since content is short text
-        res = ExternalParserService.parse_sms("TEST_SENDER", content)
+        res = ExternalParserService.parse_sms(str(current_user.tenant_id), "TEST_SENDER", content)
         
         if res and res.get("status") in ["success", "processed"]:
             results = res.get("results", [])
@@ -147,7 +148,7 @@ def get_merchant_aliases(
     current_user: auth_models.User = Depends(get_current_user)
 ):
     from backend.app.modules.ingestion.parser_service import ExternalParserService
-    return ExternalParserService.get_aliases()
+    return ExternalParserService.get_aliases(str(current_user.tenant_id))
 
 @router.post("/aliases")
 def create_merchant_alias(
@@ -159,7 +160,7 @@ def create_merchant_alias(
     alias = payload.get("alias")
     if not pattern or not alias:
         raise HTTPException(status_code=400, detail="Pattern and alias are required")
-    success = ExternalParserService.create_alias(pattern, alias)
+    success = ExternalParserService.create_alias(str(current_user.tenant_id), pattern, alias)
     return {"status": "success" if success else "failed"}
 
 @router.delete("/aliases/{alias_id}")
@@ -168,5 +169,5 @@ def delete_merchant_alias(
     current_user: auth_models.User = Depends(get_current_user)
 ):
     from backend.app.modules.ingestion.parser_service import ExternalParserService
-    success = ExternalParserService.delete_alias(alias_id)
+    success = ExternalParserService.delete_alias(str(current_user.tenant_id), alias_id)
     return {"status": "success" if success else "failed"}

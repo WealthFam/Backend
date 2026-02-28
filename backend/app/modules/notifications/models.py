@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean
 from backend.app.core.database import Base
+from backend.app.core.timezone import UTCDateTime
 
 class Alert(Base):
     __tablename__ = "mobile_alerts"
@@ -15,5 +16,5 @@ class Alert(Base):
     category = Column(String, default="INFO") # INFO, EXPENSE, EMERGENCY
     
     is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=True) # For auto-cleanup
+    created_at = Column(UTCDateTime, default=datetime.utcnow)
+    expires_at = Column(UTCDateTime, nullable=True) # For auto-cleanup

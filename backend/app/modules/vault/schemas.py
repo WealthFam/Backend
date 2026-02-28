@@ -1,8 +1,7 @@
 from pydantic import BaseModel
-from typing import Optional, List, Union
+from typing import Optional
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID
 from .models import DocumentType
 
 class DocumentBase(BaseModel):

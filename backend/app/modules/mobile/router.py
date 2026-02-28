@@ -6,14 +6,13 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from backend.app.core.database import get_db
-from backend.app.core.config import settings
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth import security, services as auth_services
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.ingestion import models as ingestion_models
+from backend.app.core import timezone
 from backend.app.modules.ingestion.services import IngestionService
 from backend.app.modules.mobile import schemas
-from backend.app.modules.notifications import NotificationService, Alert
 from backend.app.modules.finance.services.analytics_service import AnalyticsService
 
 router = APIRouter(tags=["Mobile"])
@@ -57,7 +56,7 @@ def mobile_login(
     else:
         # Update name and seen time
         device.device_name = payload.device_name
-        device.last_seen_at = datetime.utcnow()
+        device.last_seen_at = timezone.utcnow()
         
     db.commit()
     db.refresh(device)
@@ -115,7 +114,7 @@ def register_device_manually(
         device.device_name = payload.device_name
         if payload.fcm_token:
             device.fcm_token = payload.fcm_token
-        device.last_seen_at = datetime.utcnow()
+        device.last_seen_at = timezone.utcnow()
         
     db.commit()
     db.refresh(device)
@@ -157,7 +156,7 @@ def device_heartbeat(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
         
-    device.last_seen_at = datetime.utcnow()
+    device.last_seen_at = timezone.utcnow()
     db.commit()
     db.refresh(device)
     
@@ -404,7 +403,7 @@ def get_mobile_dashboard(
         # Adults can view specific member
         target_user_id = member_id
         
-    now = datetime.utcnow()
+    now = timezone.utcnow()
     target_month = month or now.month
     target_year = year or now.year
     
@@ -530,7 +529,6 @@ def list_mobile_triage(
     )
     
     enriched = []
-    from backend.app.modules.finance import models
     for txn in items:
         # Use relationship for owner info
         owner_name = "Unknown"
@@ -862,7 +860,7 @@ def test_device_notification(
         db, 
         str(current_user.tenant_id),
         title="🧪 Test Notification",
-        body=f"Sent to {device.device_name} at {datetime.now().strftime('%H:%M:%S')}",
+        body=f"Sent to {device.device_name} at {timezone.utcnow().strftime('%H:%M:%S')}",
         user_id=device.user_id,
         category="INFO"
     )

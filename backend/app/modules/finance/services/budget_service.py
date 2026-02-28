@@ -1,9 +1,10 @@
-from typing import List, Dict, Optional
+from typing import List
 from decimal import Decimal
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from backend.app.modules.finance import models, schemas
+from backend.app.core import timezone
 
 class BudgetService:
     @staticmethod
@@ -13,7 +14,7 @@ class BudgetService:
         """
         Get global budget overview data (OVERALL stats).
         """
-        now = datetime.utcnow()
+        now = timezone.utcnow()
         if not year: year = now.year
         if not month: month = now.month
         
@@ -118,7 +119,7 @@ class BudgetService:
                 children_map[c.parent_id].append(c.name)
 
         # Determine period
-        now = datetime.utcnow()
+        now = timezone.utcnow()
         if not year: year = now.year
         if not month: month = now.month
         
@@ -242,7 +243,7 @@ class BudgetService:
         
         if existing:
             existing.amount_limit = budget.amount_limit
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = timezone.utcnow()
             db.commit()
             db.refresh(existing)
             return existing
@@ -274,7 +275,7 @@ class BudgetService:
         tenant_id = str(tenant_id)
         
         # 0. Determine Periods
-        now = datetime.utcnow()
+        now = timezone.utcnow()
         if not year: year = now.year
         if not month: month = now.month
         
@@ -389,7 +390,7 @@ class BudgetService:
                     "content": f"You've used {overall['percentage']:.0f}% of your total budget. Proceed with caution for the remaining days.",
                     "icon": "⚠️"
                 })
-            elif overall["percentage"] > 0 and overall["percentage"] < 50 and datetime.utcnow().day > 15:
+            elif overall["percentage"] > 0 and overall["percentage"] < 50 and timezone.utcnow().day > 15:
                 insights.append({
                     "id": "overall_good",
                     "type": "success",

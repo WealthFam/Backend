@@ -1,5 +1,6 @@
+from parser.core import timezone
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import List
 from parser.schemas.transaction import Transaction
 
 class TransactionValidator:
@@ -10,7 +11,7 @@ class TransactionValidator:
         
         # 1. Future Date Check
         # Allow 1 day buffer for timezones
-        if txn.date > datetime.now() + timedelta(days=1):
+        if txn.date > timezone.utcnow() + timedelta(days=1):
             warnings.append(f"Future date detected: {txn.date}. This might be a parsing error.")
             
         # 2. Currency Mismatch
@@ -30,8 +31,8 @@ class TransactionValidator:
         If date is TODAY, and time component is missing (00:00:00), 
         add current time to make sorting better.
         """
-        if txn.date.date() == datetime.now().date():
+        if txn.date.date() == timezone.utcnow().date():
             # Check if time is 00:00/midnight (likely default)
             if txn.date.hour == 0 and txn.date.minute == 0 and txn.date.second == 0:
-                 now = datetime.now()
+                 now = timezone.utcnow()
                  txn.date = txn.date.replace(hour=now.hour, minute=now.minute, second=now.second)

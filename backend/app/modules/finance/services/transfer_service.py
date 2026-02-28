@@ -1,8 +1,6 @@
 from sqlalchemy.orm import Session
-from backend.app.modules.finance.models import Transaction, TransactionType
+from backend.app.modules.finance.models import Transaction
 from backend.app.modules.ingestion.models import PendingTransaction
-import uuid
-from datetime import datetime
 
 class TransferService:
     """

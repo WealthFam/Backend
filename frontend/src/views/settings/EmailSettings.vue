@@ -91,7 +91,7 @@
                                 <div v-if="config.last_sync_at" class="text-caption font-weight-medium">
                                     {{ formatDate(config.last_sync_at).meta }}
                                     <span class="text-medium-emphasis">({{ formatDate(config.last_sync_at).day
-                                        }})</span>
+                                    }})</span>
                                 </div>
                                 <div v-else class="text-caption text-warning font-weight-bold">Never</div>
                             </div>
@@ -101,7 +101,7 @@
                                 :loading="syncStatus && syncStatus.status === 'running' && syncStatus.configId === config.id"
                                 @click="handleSync(config.id)" class="font-weight-bold">
                                 {{ syncStatus && syncStatus.status === 'running' && syncStatus.configId === config.id ?
-                                'Scanning...' : 'Sync' }}
+                                    'Scanning...' : 'Sync' }}
                                 <template v-slot:append
                                     v-if="!(syncStatus && syncStatus.status === 'running' && syncStatus.configId === config.id)">
                                     <RefreshCw :size="12" class="ml-1" />
@@ -384,6 +384,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
+import { useConfirmStore } from '@/stores/confirm'
 import { Settings, RefreshCw, Clock, Plus, Mail, Server, UserCheck, Search, Lock, X, CheckCircle2, XCircle, MailOpen, Loader2 } from 'lucide-vue-next'
 
 const emailConfigs = ref<any[]>([])
@@ -392,6 +393,7 @@ const searchQuery = ref('')
 const loading = ref(false)
 
 const notify = useNotificationStore()
+const confirmDialog = useConfirmStore()
 
 const showEmailModal = ref(false)
 const editingEmailConfig = ref<string | null>(null)
@@ -519,7 +521,8 @@ async function rewindSync(hours: number) {
 async function resetSyncHistory() {
     if (!editingEmailConfig.value) return
     const configId = editingEmailConfig.value
-    if (!confirm("This will force a DEEP SCAN of ALL emails. This takes time. Continue?")) return
+    const isConfirmed = await confirmDialog.prompt("This will force a DEEP SCAN of ALL emails. This takes time. Continue?", "Deep Scan", "Scan Now", "Cancel")
+    if (!isConfirmed) return
     try {
         await financeApi.updateEmailConfig(configId, { reset_sync_history: true })
         notify.info("Deep scan requested. Starting...")
@@ -532,7 +535,8 @@ async function resetSyncHistory() {
 }
 
 async function deleteEmailConfig(id: string) {
-    if (!confirm("Are you sure you want to remove this email account? This will stop future syncs.")) return
+    const isConfirmed = await confirmDialog.prompt("Are you sure you want to remove this email account? This will stop future syncs.", "Remove Account", "Remove", "Cancel")
+    if (!isConfirmed) return
     try {
         await financeApi.deleteEmailConfig(id)
         notify.success("Email account removed")

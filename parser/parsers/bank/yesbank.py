@@ -1,7 +1,7 @@
+from parser.core import timezone
 import re
 from typing import Optional, List
 from datetime import datetime
-from decimal import Decimal
 from parser.parsers.base_compat import BaseSmsParser, BaseEmailParser, ParsedTransaction, TransactionPattern
 from parser.parsers.utils.recipient_parser import RecipientParser
 
@@ -37,7 +37,7 @@ class YesBankSmsParser(BaseSmsParser):
         return matches[0] if matches else None
 
     def _create_txn(self, amount, recipient, type_str, raw, ref_id=None, date_str=None, date_hint=None):
-        txn_date = date_hint or datetime.now()
+        txn_date = date_hint or timezone.utcnow()
         if date_str:
             # Try some common formats
             for fmt in ["%d%m%y", "%m%d%y"]:

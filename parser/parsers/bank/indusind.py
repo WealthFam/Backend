@@ -1,7 +1,7 @@
+from parser.core import timezone
 import re
 from typing import Optional, List
 from datetime import datetime
-from decimal import Decimal
 from parser.parsers.base_compat import BaseSmsParser, BaseEmailParser, ParsedTransaction, TransactionPattern
 from parser.parsers.utils.recipient_parser import RecipientParser
 
@@ -44,7 +44,7 @@ class IndusIndSmsParser(BaseSmsParser):
         return matches[0] if matches else None
 
     def _create_txn(self, amount, recipient, account_mask, date_str, type_str, raw, balance=None, date_hint=None):
-        txn_date = date_hint or datetime.now()
+        txn_date = date_hint or timezone.utcnow()
         if date_str:
             for fmt in ["%d-%m-%y", "%d-%m-%Y"]:
                 try:

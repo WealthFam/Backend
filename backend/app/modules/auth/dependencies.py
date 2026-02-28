@@ -1,10 +1,10 @@
-from typing import List, Optional
+from typing import Optional
 from fastapi import Depends, HTTPException, status, Query
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 from backend.app.core.config import settings
 from backend.app.core.database import get_db
-from backend.app.modules.auth import models, schemas, security, services
+from backend.app.modules.auth import models, schemas, services
 
 from fastapi.security import OAuth2PasswordBearer, HTTPBasic, HTTPBasicCredentials
 

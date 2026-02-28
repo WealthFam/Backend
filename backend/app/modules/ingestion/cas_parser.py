@@ -3,7 +3,6 @@ import os
 import tempfile
 import imaplib
 import email
-from email.header import decode_header
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,7 +13,7 @@ class CASParser:
     """
 
     @staticmethod
-    def parse_pdf(file_path: str, password: Optional[str] = None) -> List[Dict[str, Any]]:
+    def parse_pdf(tenant_id: str, file_path: str, password: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Parses a CAS PDF using the External Parser Microservice.
         """
@@ -26,7 +25,7 @@ class CASParser:
             from backend.app.modules.ingestion.parser_service import ExternalParserService
             
             # Call Microservice
-            response = ExternalParserService.parse_cas(content, password or "")
+            response = ExternalParserService.parse_cas(tenant_id, content, password or "")
             
             if not response or response.get("status") != "success":
                 raise ValueError(f"CAS Parsing failed via microservice: {response.get('logs') if response else 'Unknown Error'}")
@@ -103,7 +102,7 @@ class CASParser:
                             temp_path = f.name
                             
                         try:
-                            transactions = CASParser.parse_pdf(temp_path, password)
+                            transactions = CASParser.parse_pdf(str(email_config.tenant_id), temp_path, password)
                             all_found_transactions.extend(transactions)
                         except Exception:
                             pass

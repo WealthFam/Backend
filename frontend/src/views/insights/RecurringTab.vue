@@ -200,11 +200,13 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
 import { financeApi } from '@/api/client'
+import { useConfirmStore } from '@/stores/confirm'
 import { Plus, X, ChevronDown, CalendarClock, Trash2, Wallet, CreditCard, Sparkles } from 'lucide-vue-next'
 import { getCategoryLucideIcon } from '@/utils/iconMapping'
 
 const store = useFinanceStore()
 const authStore = useAuthStore()
+const confirmDialog = useConfirmStore()
 const { formatAmount } = useCurrency()
 
 const showAddModal = ref(false)
@@ -274,8 +276,9 @@ async function saveRecurrence() {
     }
 }
 
-function deleteRecurrence(id: string) {
-    if (!confirm("Stop this subscription?")) return;
+async function deleteRecurrence(id: string) {
+    const isConfirmed = await confirmDialog.prompt("Stop this subscription?", "Stop Subscription", "Stop", "Keep")
+    if (!isConfirmed) return;
     financeApi.deleteRecurring(id).then(() => store.fetchRecurring(authStore.selectedMemberId || undefined))
 }
 

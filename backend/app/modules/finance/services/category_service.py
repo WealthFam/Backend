@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List, Optional
 import json
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func

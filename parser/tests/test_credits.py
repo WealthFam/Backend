@@ -1,5 +1,4 @@
 import unittest
-from datetime import datetime
 from decimal import Decimal
 from parser.parsers.bank.hdfc import HdfcSmsParser
 from parser.parsers.bank.icici import IciciSmsParser

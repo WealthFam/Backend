@@ -119,8 +119,14 @@ onUnmounted(() => {
     stopPolling()
 })
 
-// Watch for mobile screen size to handle drawer properly? 
-// Vuetify handles mobile with temporary/permanent props.
+// Hyper-Premium Sidebar Interactions
+const mouseX = ref(0)
+const mouseY = ref(0)
+function handleMouseMove(e: MouseEvent) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    mouseX.value = e.clientX - rect.left
+    mouseY.value = e.clientY - rect.top
+}
 </script>
 
 <template>
@@ -293,32 +299,30 @@ onUnmounted(() => {
         </v-app-bar>
 
         <!-- Side Navigation -->
-        <v-navigation-drawer v-model="drawer" :rail="rail" permanent class="premium-sidebar" width="280" border="0">
-            <v-list nav class="mt-4" :class="rail ? 'px-2' : 'px-4'">
-                <template v-for="item in navItems" :key="item.title">
-                    <v-tooltip :text="item.title" location="right" v-if="rail">
+        <v-navigation-drawer v-model="drawer" :rail="rail" permanent floating class="aether-drawer" width="280"
+            :rail-width="rail ? 88 : 280" @mousemove="handleMouseMove"
+            :style="{ '--mouse-x': mouseX + 'px', '--mouse-y': mouseY + 'px' }">
+            <v-list nav class="px-0 py-4">
+                <template v-for="(item, index) in navItems" :key="item.title">
+                    <v-tooltip :text="item.title" location="right" v-if="rail" offset="12">
                         <template v-slot:activator="{ props }">
-                            <v-list-item v-bind="props" :to="item.to" :active="route.path === item.to" rounded="xl"
-                                class="nav-list-item mb-2" color="primary" link>
-                                <template v-slot:prepend>
-                                    <div class="nav-icon-wrapper">
-                                        <component :is="item.icon" :size="22" class="nav-icon"
-                                            :class="{ 'active-icon': route.path === item.to }" />
-                                    </div>
-                                </template>
+                            <v-list-item v-bind="props" :to="item.to" :active="route.path === item.to"
+                                class="nav-item-aether rail-mode-item mb-1" link
+                                :style="{ transitionDelay: `${index * 40}ms` }">
+                                <div class="rail-item-content">
+                                    <component :is="item.icon" :size="20" class="nav-icon" />
+                                    <span class="rail-label-tiny">{{ item.title }}</span>
+                                </div>
                             </v-list-item>
                         </template>
                     </v-tooltip>
 
-                    <v-list-item v-else :to="item.to" :active="route.path === item.to" rounded="xl"
-                        class="nav-list-item mb-2" color="primary" link>
-                        <template v-slot:prepend>
-                            <div class="nav-icon-wrapper mr-4">
-                                <component :is="item.icon" :size="22" class="nav-icon"
-                                    :class="{ 'active-icon': route.path === item.to }" />
-                            </div>
-                        </template>
-                        <v-list-item-title class="nav-title">{{ item.title }}</v-list-item-title>
+                    <v-list-item v-else :to="item.to" :active="route.path === item.to" class="nav-item-aether mb-1" link
+                        :style="{ transitionDelay: `${index * 40}ms` }">
+                        <div class="nav-item-content-horizontal">
+                            <component :is="item.icon" :size="20" class="nav-icon mr-4" />
+                            <v-list-item-title class="nav-title">{{ item.title }}</v-list-item-title>
+                        </div>
                     </v-list-item>
                 </template>
             </v-list>
@@ -493,82 +497,188 @@ onUnmounted(() => {
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
 }
 
-.premium-sidebar {
-    background: rgba(var(--v-theme-surface), 0.75) !important;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-right: 1px solid rgba(var(--v-border-color), 0.12) !important;
+.layout-main {
+    transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.nav-list-item {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+/* Aether V3 Architecture (Vuetify-Native, Minimal CSS) */
+.aether-drawer {
+    background: rgba(var(--v-theme-surface), 0.7) !important;
+    backdrop-filter: blur(28px) saturate(190%) !important;
+    border-right: 1px solid rgba(var(--v-theme-on-surface), 0.1) !important;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    position: relative;
+    overflow: visible !important;
 }
 
-.nav-list-item:not(.v-list-item--active):hover {
-    background: rgba(var(--v-theme-on-surface), 0.05) !important;
-    transform: translateX(4px);
+/* Cursor-Reactive Light Sweep Overlay */
+.aether-drawer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(600px circle at var(--mouse-x) var(--mouse-y),
+            rgba(var(--v-theme-primary), 0.08),
+            transparent 40%);
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.5s ease;
 }
 
-.nav-list-item.v-list-item--active {
-    background: rgba(var(--v-theme-primary), 0.12) !important;
-    color: rgb(var(--v-theme-primary)) !important;
-    box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.15) !important;
+.aether-drawer:hover::after {
+    opacity: 1;
 }
 
-:deep(.nav-icon-wrapper) {
+.aether-drawer :deep(.v-navigation-drawer__content) {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    z-index: 1;
+}
+
+.aether-drawer :deep(.v-navigation-drawer__content)::-webkit-scrollbar {
+    display: none;
+}
+
+
+
+.rail-item-content {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    width: 100%;
 }
 
-.nav-list-item.v-list-item--active :deep(.nav-icon) {
-    color: rgb(var(--v-theme-primary)) !important;
-}
-
-.nav-list-item.v-list-item--active :deep(.nav-title) {
-    color: rgb(var(--v-theme-primary)) !important;
-    font-weight: 700 !important;
-}
-
-.nav-icon {
-    color: rgb(var(--v-theme-on-surface), 0.7);
-    /* text-slate-600 */
-    transition: all 0.2s;
-}
-
-.active-icon {
-    color: rgb(var(--v-theme-primary));
-    transform: scale(1.1);
+.rail-label-tiny {
+    font-size: 0.45rem;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-top: 2px;
+    opacity: 0.6;
+    transition: all 0.3s ease;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-align: center;
 }
 
 .nav-title {
-    font-size: 0.9375rem;
-    font-weight: 600 !important;
-    letter-spacing: -0.01em;
+    font-size: 0.7rem;
+    font-weight: 900;
+    text-align: left;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+.nav-item-content-horizontal {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+}
+
+.nav-item-aether {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    border-radius: 0 !important;
+    min-height: 52px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding: 0 24px !important;
+}
+
+/* Ensure rail mode stays centered */
+.rail-mode-item {
+    padding: 0 !important;
+    min-height: 64px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.nav-item-aether.v-list-item--active .nav-title {
+    opacity: 1;
+    color: rgb(var(--v-theme-primary));
+}
+
+/* Hover State */
+.nav-item-aether:not(.v-list-item--active):hover {
+    background: rgba(var(--v-theme-primary), 0.1) !important;
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.nav-item-aether:hover :deep(.nav-icon) {
+    color: rgb(var(--v-theme-primary)) !important;
+    transform: scale(1.1);
+}
+
+/* Infinite Edge Selection (Active State) */
+.nav-item-aether.v-list-item--active {
+    background: transparent !important;
+}
+
+.nav-item-aether.v-list-item--active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    /* Flush with edges */
+    background: linear-gradient(90deg,
+            rgba(var(--v-theme-primary), 0.3) 0%,
+            rgba(var(--v-theme-primary), 0.1) 100%);
+    border-left: 4px solid rgb(var(--v-theme-primary));
+    /* Bold accent bar */
+    box-shadow: inset 20px 0 30px -15px rgba(var(--v-theme-primary), 0.15);
+    z-index: 0;
+    animation: aetherPulse 4s infinite alternate cubic-bezier(0.45, 0.05, 0.55, 0.95);
+}
+
+@keyframes aetherPulse {
+    0% {
+        opacity: 0.8;
+        filter: brightness(1);
+    }
+
+    100% {
+        opacity: 1;
+        filter: brightness(1.25);
+    }
+}
+
+/* Reset rail active inset for Infinite Edge */
+.rail-mode-item.v-list-item--active::before {
+    inset: 0;
+}
+
+.nav-item-aether.v-list-item--active :deep(.nav-icon) {
+    color: rgb(var(--v-theme-primary)) !important;
+    filter: drop-shadow(0 0 5px rgba(var(--v-theme-primary), 0.4));
+}
+
+.nav-item-aether.v-list-item--active :deep(.nav-title) {
+    color: rgb(var(--v-theme-primary)) !important;
+    font-weight: 800 !important;
+}
+
+.nav-icon {
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    transition: all 0.3s ease;
+}
+
+.nav-title {
+    font-size: 0.875rem;
+    font-weight: 600;
 }
 
 .sidebar-footer {
-    background: rgba(var(--v-theme-on-surface), 0.05);
+    border-top: 1px solid rgba(var(--v-theme-on-surface), 0.05) !important;
+    opacity: 0.5;
 }
 
-.os-label {
-    display: block;
-    font-size: 0.65rem;
-    font-weight: 800;
-    color: rgb(var(--v-theme-on-surface), 0.5);
-    /* text-slate-600 */
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-}
-
-.build-info {
-    font-size: 0.75rem;
-    color: #64748b;
-    font-weight: 500;
-    margin-top: 2px;
-}
-
+/* Main Layout Overrides */
 .layout-main {
     z-index: 1;
     background: transparent !important;
@@ -586,6 +696,21 @@ onUnmounted(() => {
     }
 }
 
+
+.os-label {
+    font-size: 0.65rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: rgb(var(--v-theme-on-surface), 0.3);
+}
+
+.build-info {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: rgb(var(--v-theme-on-surface), 0.2);
+    letter-spacing: 0.05em;
+}
 
 .date-chip-v2 {
     display: flex;

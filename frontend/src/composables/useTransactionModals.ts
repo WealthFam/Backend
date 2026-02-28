@@ -45,6 +45,7 @@ export function useTransactionModals(
         id: string
         type: string
         description: string
+        recipient: string
         category: string
         amount: number | null
         date: string
@@ -60,6 +61,7 @@ export function useTransactionModals(
         id: '',
         type: 'DEBIT',
         description: '',
+        recipient: '',
         category: '',
         amount: null,
         date: new Date().toISOString().slice(0, 16),
@@ -132,6 +134,7 @@ export function useTransactionModals(
             id: txn.id,
             type: isDebit ? 'DEBIT' : 'CREDIT',
             description: txn.description,
+            recipient: txn.recipient || '',
             category: txn.category,
             amount: Math.abs(txn.amount),
             date: txn.date ? txn.date.slice(0, 16) : new Date().toISOString().slice(0, 16),
@@ -152,37 +155,41 @@ export function useTransactionModals(
     /**
      * Handle form submission (create or update)
      */
-    async function handleSubmit() {
+    async function handleSubmit(data?: typeof defaultForm) {
+        // Use supplied data from modal or fall back to internal form state
+        const submissionData = data || form.value
+
         try {
             // Validation
-            if (!form.value.account_id) {
+            if (!submissionData.account_id) {
                 notify.error('Please select an account')
                 return
             }
-            if (!form.value.amount || Number(form.value.amount) === 0) {
+            if (!submissionData.amount || Number(submissionData.amount) === 0) {
                 notify.error('Please enter a valid amount')
                 return
             }
-            if (!form.value.date) {
+            if (!submissionData.date) {
                 notify.error('Please select a date')
                 return
             }
 
-            const finalAmount = Math.abs(Number(form.value.amount)) * (form.value.type === 'DEBIT' ? -1 : 1)
+            const finalAmount = Math.abs(Number(submissionData.amount)) * (submissionData.type === 'DEBIT' ? -1 : 1)
 
             const payload = {
-                description: form.value.description,
-                category: form.value.category,
+                description: submissionData.description,
+                recipient: submissionData.recipient,
+                category: submissionData.category,
                 amount: finalAmount,
-                date: new Date(form.value.date).toISOString(),
-                account_id: form.value.account_id,
-                is_transfer: form.value.is_transfer,
-                to_account_id: form.value.to_account_id,
-                linked_transaction_id: form.value.linked_transaction_id,
-                exclude_from_reports: form.value.exclude_from_reports,
-                is_emi: form.value.is_emi,
-                loan_id: form.value.loan_id,
-                expense_group_id: form.value.expense_group_id
+                date: new Date(submissionData.date).toISOString(),
+                account_id: submissionData.account_id,
+                is_transfer: submissionData.is_transfer,
+                to_account_id: submissionData.to_account_id,
+                linked_transaction_id: submissionData.linked_transaction_id,
+                exclude_from_reports: submissionData.exclude_from_reports,
+                is_emi: submissionData.is_emi,
+                loan_id: submissionData.loan_id,
+                expense_group_id: submissionData.expense_group_id
             }
 
             if (isEditing.value && editingTxnId.value) {
@@ -190,7 +197,7 @@ export function useTransactionModals(
                 notify.success('Transaction updated')
 
                 // Smart Categorization Detection
-                if (form.value.category !== originalCategory.value && form.value.category) {
+                if (submissionData.category !== originalCategory.value && submissionData.category) {
                     const txn = transactions.value.find(t => t.id === editingTxnId.value)
                     if (txn) {
                         const pattern = txn.recipient || txn.description

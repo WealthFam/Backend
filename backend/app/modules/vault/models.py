@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Numeric, Boolean
 from sqlalchemy import Enum as SqlEnum
-from sqlalchemy.orm import relationship, backref, foreign
+from sqlalchemy.orm import relationship, backref
 import enum
 from backend.app.core.database import Base
+from backend.app.core.timezone import UTCDateTime
 
 class DocumentType(str, enum.Enum):
     INVOICE = "INVOICE"
@@ -35,11 +36,11 @@ class DocumentVault(Base):
     
     # Cloud Sync & Versioning
     gdrive_file_id = Column(String, nullable=True, index=True)
-    last_synced_at = Column(DateTime, nullable=True)
+    last_synced_at = Column(UTCDateTime, nullable=True)
     current_version = Column(Numeric(5, 0), default=1)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=datetime.utcnow)
+    updated_at = Column(UTCDateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships are handled here or via backrefs from other modules
     # In FastAPI/SQLAlchemy, its often easier to import from finance if needed
@@ -78,7 +79,7 @@ class DocumentVersion(Base):
     filename = Column(String, nullable=False)
     thumbnail_path = Column(String, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=datetime.utcnow)
     
     document = relationship(
         "DocumentVault", 
@@ -96,6 +97,6 @@ class VaultSyncHistory(Base):
     items_processed = Column(Numeric(10, 0), default=0)
     error_details = Column(String, nullable=True)
     
-    started_at = Column(DateTime, default=datetime.utcnow)
-    completed_at = Column(DateTime, nullable=True)
+    started_at = Column(UTCDateTime, default=datetime.utcnow)
+    completed_at = Column(UTCDateTime, nullable=True)
 

@@ -1,8 +1,10 @@
+from parser.core import timezone
 import unittest
 import requests
-import time
 import uuid
-from datetime import datetime
+from fastapi.testclient import TestClient
+from datetime import datetime, timedelta
+import json
 
 BASE_URL = "http://localhost:8001"
 
@@ -28,7 +30,7 @@ class TestParserMicroservice(unittest.TestCase):
         payload = {
             "sender": "HDFCBK",
             "body": f"Rs.1234.00 debited from a/c XX1234 on 13-01-26 to VPA IND*AMZN Pay India. Ref {unique_id}. Not you? Call 1800...",
-            "received_at": datetime.now().isoformat()
+            "received_at": timezone.utcnow().isoformat()
         }
         resp = requests.post(f"{BASE_URL}/v1/ingest/sms", json=payload)
         self.assertEqual(resp.status_code, 200)
@@ -51,7 +53,7 @@ class TestParserMicroservice(unittest.TestCase):
         payload = {
             "sender": "SBIINB",
             "body": f"Txn of Rs.500.00 on SBI A/c XX9999 at ZOMATO MEDIA on 13-01-26. Ref: {unique_id}",
-            "received_at": datetime.now().isoformat()
+            "received_at": timezone.utcnow().isoformat()
         }
         resp = requests.post(f"{BASE_URL}/v1/ingest/sms", json=payload)
         self.assertEqual(resp.status_code, 200)
@@ -69,7 +71,7 @@ class TestParserMicroservice(unittest.TestCase):
         payload = {
             "sender": "ICICIB",
             "body": f"INR 2,000.00 spent using ICICI Bank Card XX8888 on 28-Jan-26 on UBER RIDES. Avl Limit: INR 50,000. Ref {unique_id}",
-            "received_at": datetime.now().isoformat()
+            "received_at": timezone.utcnow().isoformat()
         }
         resp = requests.post(f"{BASE_URL}/v1/ingest/sms", json=payload)
         self.assertEqual(resp.status_code, 200)
@@ -85,7 +87,7 @@ class TestParserMicroservice(unittest.TestCase):
         payload = {
             "sender": "TM-JIO",
             "body": f"Your plan expires tomorrow. Recharge now. {uuid.uuid4()}",
-            "received_at": datetime.now().isoformat()
+            "received_at": timezone.utcnow().isoformat()
         }
         resp = requests.post(f"{BASE_URL}/v1/ingest/sms", json=payload)
         self.assertEqual(resp.status_code, 200)
@@ -98,7 +100,7 @@ class TestParserMicroservice(unittest.TestCase):
         payload = {
             "sender": "TESTBK",
             "body": f"Test Transaction Rs. 100 {unique_id}",
-            "received_at": datetime.now().isoformat()
+            "received_at": timezone.utcnow().isoformat()
         }
         # First call
         requests.post(f"{BASE_URL}/v1/ingest/sms", json=payload)
@@ -124,7 +126,7 @@ class TestParserMicroservice(unittest.TestCase):
         ingest_payload = {
              "sender": "CHAIWALA",
              "body": f"Paid Rs 50.00 to Local Chaiwala on 28-02-2026. Ref {unique_id}",
-             "received_at": datetime.now().isoformat()
+             "received_at": timezone.utcnow().isoformat()
         }
         resp = requests.post(f"{BASE_URL}/v1/ingest/sms", json=ingest_payload)
         data = resp.json()

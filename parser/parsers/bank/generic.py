@@ -1,3 +1,4 @@
+from parser.core import timezone
 import re
 from typing import Optional
 from datetime import datetime
@@ -45,7 +46,7 @@ class GenericSmsParser(BaseSmsParser):
 
     def _create_txn(self, amount, recipient, account_mask, date_str, type_str, raw, ref_id, source, date_hint=None):
         clean_recipient = RecipientParser.extract(recipient)
-        txn_date = self._parse_date(date_str, date_hint) if hasattr(self, '_parse_date') else (date_hint or datetime.now())
+        txn_date = self._parse_date(date_str, date_hint) if hasattr(self, '_parse_date') else (date_hint or timezone.utcnow())
         
         # GenericSmsParser doesn't inherit from BaseParser in a way that _parse_date is easily accessible if not using parse_with_confidence
         # But it DOES inherit from BaseSmsParser -> BaseParser.
@@ -135,9 +136,9 @@ class GenericEmailParser(BaseEmailParser):
                     txn_date = datetime.strptime(date_str, fmt)
                     break
                 except: continue
-            if not txn_date: txn_date = date_hint or datetime.now()
+            if not txn_date: txn_date = date_hint or timezone.utcnow()
         except:
-            txn_date = datetime.now()
+            txn_date = timezone.utcnow()
             
         clean_recipient = RecipientParser.extract(recipient)
         return ParsedTransaction(

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from backend.app.modules.auth import models, schemas, security
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
 class AuthService:
     @staticmethod

@@ -16,23 +16,24 @@ def run_auto_migrations(engine: Engine):
         with engine.connect() as connection:
             logger.info("Running auto-migration for mobile features...")
             
-            # Helper to add columns safely
+            # Helper to add columns safely (handling TIMESTAMPTZ for sqlite/duckdb locally vs postgres in prod)
             def safe_add_column(table, col, type_def):
                 try:
-                    # DuckDB supports ADD COLUMN IF NOT EXISTS in newer versions
-                    # but we can also check existence to be sure
-                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {type_def}"))
+                    # SQLite/DuckDB doesn't natively love 'TIMESTAMPTZ' syntax in ALTER statements the same way Postgres does
+                    # We normalize it for local dev vs prod
+                    final_type = type_def
+                    if engine.dialect.name in ['sqlite', 'duckdb']:
+                        final_type = type_def.replace('TIMESTAMPTZ', 'TIMESTAMP')
+                    
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {final_type}"))
                 except Exception as e:
-                    logger.info(f"DEBUG: safe_add_column potential issue: {e}")
-                    # If it failed because it already exists, we are fine. 
-                    # If it failed for another reason, we might want to know, but 
-                    # we don't want to abort the whole migration if possible.
-                
+                    logger.info(f"DEBUG: safe_add_column potential issue on {table}.{col}: {e}")
+
             # 1. Add columns to existing tables since CREATE TABLE IF NOT EXISTS won't add them
             safe_add_column("pending_transactions", "latitude", "DECIMAL(10, 8)")
             safe_add_column("pending_transactions", "longitude", "DECIMAL(11, 8)")
             safe_add_column("pending_transactions", "location_name", "VARCHAR")
-            safe_add_column("pending_transactions", "created_at", "TIMESTAMP")
+            safe_add_column("pending_transactions", "created_at", "TIMESTAMPTZ")
             safe_add_column("pending_transactions", "is_transfer", "BOOLEAN DEFAULT FALSE")
             safe_add_column("pending_transactions", "to_account_id", "VARCHAR")
 
@@ -45,7 +46,7 @@ def run_auto_migrations(engine: Engine):
 
             # 1c. Balance Refactoring sync fields
             safe_add_column("accounts", "last_synced_balance", "NUMERIC(15, 2)")
-            safe_add_column("accounts", "last_synced_at", "TIMESTAMP")
+            safe_add_column("accounts", "last_synced_at", "TIMESTAMPTZ")
             safe_add_column("accounts", "last_synced_limit", "NUMERIC(15, 2)")
             safe_add_column("pending_transactions", "balance_is_synced", "BOOLEAN DEFAULT FALSE")
 
@@ -61,8 +62,8 @@ def run_auto_migrations(engine: Engine):
                 is_approved BOOLEAN DEFAULT FALSE,
                 is_enabled BOOLEAN DEFAULT TRUE,
                 is_ignored BOOLEAN DEFAULT FALSE,
-                last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id),
                 FOREIGN KEY(user_id) REFERENCES users (id)
             );
@@ -81,7 +82,7 @@ def run_auto_migrations(engine: Engine):
                 raw_content VARCHAR NOT NULL,
                 subject VARCHAR,
                 sender VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))
@@ -96,7 +97,7 @@ def run_auto_migrations(engine: Engine):
                 status VARCHAR NOT NULL,
                 message VARCHAR,
                 data_json TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))
@@ -113,9 +114,9 @@ def run_auto_migrations(engine: Engine):
                 folder VARCHAR DEFAULT 'INBOX',
                 is_active BOOLEAN DEFAULT TRUE,
                 auto_sync_enabled BOOLEAN DEFAULT FALSE,
-                last_sync_at TIMESTAMP,
-                cas_last_sync_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_sync_at TIMESTAMPTZ,
+                cas_last_sync_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))
@@ -129,8 +130,8 @@ def run_auto_migrations(engine: Engine):
                 id VARCHAR PRIMARY KEY,
                 config_id VARCHAR NOT NULL,
                 tenant_id VARCHAR NOT NULL,
-                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP,
+                started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMPTZ,
                 status VARCHAR DEFAULT 'running',
                 items_processed NUMERIC(10, 0) DEFAULT 0,
                 message VARCHAR,
@@ -151,7 +152,7 @@ def run_auto_migrations(engine: Engine):
                 tenant_id VARCHAR NOT NULL,
                 pattern VARCHAR NOT NULL,
                 source VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))
@@ -170,13 +171,13 @@ def run_auto_migrations(engine: Engine):
                 account_id VARCHAR NOT NULL UNIQUE,
                 principal_amount NUMERIC(15, 2) NOT NULL,
                 interest_rate NUMERIC(5, 2) NOT NULL,
-                start_date TIMESTAMP NOT NULL,
+                start_date TIMESTAMPTZ NOT NULL,
                 tenure_months NUMERIC(5, 0) NOT NULL,
                 emi_amount NUMERIC(15, 2) NOT NULL,
                 emi_date NUMERIC(2, 0) NOT NULL,
                 loan_type VARCHAR DEFAULT 'OTHER' NOT NULL,
                 bank_account_id VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id),
                 FOREIGN KEY(account_id) REFERENCES accounts (id)
             );
@@ -197,7 +198,7 @@ def run_auto_migrations(engine: Engine):
                 name VARCHAR NOT NULL,
                 description VARCHAR,
                 is_active BOOLEAN DEFAULT TRUE NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))
@@ -207,8 +208,8 @@ def run_auto_migrations(engine: Engine):
             safe_add_column("pending_transactions", "expense_group_id", "VARCHAR")
 
             # 14b. Add Date Range to Expense Groups
-            safe_add_column("expense_groups", "start_date", "TIMESTAMP")
-            safe_add_column("expense_groups", "end_date", "TIMESTAMP")
+            safe_add_column("expense_groups", "start_date", "TIMESTAMPTZ")
+            safe_add_column("expense_groups", "end_date", "TIMESTAMPTZ")
             safe_add_column("expense_groups", "budget", "DECIMAL(15, 2) DEFAULT 0")
 
             # 15. Investment Goals
@@ -218,12 +219,12 @@ def run_auto_migrations(engine: Engine):
                 tenant_id VARCHAR NOT NULL,
                 name VARCHAR NOT NULL,
                 target_amount NUMERIC(15, 2) NOT NULL,
-                target_date TIMESTAMP,
+                target_date TIMESTAMPTZ,
                 icon VARCHAR DEFAULT '🎯',
                 color VARCHAR DEFAULT '#3b82f6',
                 is_completed BOOLEAN DEFAULT FALSE,
                 owner_id VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id),
                 FOREIGN KEY(owner_id) REFERENCES users (id)
             );
@@ -248,7 +249,7 @@ def run_auto_migrations(engine: Engine):
                 manual_amount NUMERIC(15, 2),
                 interest_rate NUMERIC(5, 2),
                 linked_account_id VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id),
                 FOREIGN KEY(goal_id) REFERENCES investment_goals (id),
                 FOREIGN KEY(linked_account_id) REFERENCES accounts (id)
@@ -265,7 +266,7 @@ def run_auto_migrations(engine: Engine):
                 account_id VARCHAR NOT NULL,
                 tenant_id VARCHAR NOT NULL,
                 balance NUMERIC(15, 2) NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 source VARCHAR DEFAULT 'MANUAL',
                 FOREIGN KEY(account_id) REFERENCES accounts (id),
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
@@ -295,11 +296,11 @@ def run_auto_migrations(engine: Engine):
                 is_shared BOOLEAN DEFAULT TRUE,
                 description VARCHAR,
                 gdrive_file_id VARCHAR,
-                last_synced_at TIMESTAMP,
+                last_synced_at TIMESTAMPTZ,
                 current_version NUMERIC(5, 0) DEFAULT 1,
                 thumbnail_path VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id),
                 FOREIGN KEY(owner_id) REFERENCES users (id)
                 -- NOTE: No FK on transaction_id — DuckDB blocks UPDATE on parent rows when FK exists
@@ -310,9 +311,9 @@ def run_auto_migrations(engine: Engine):
             safe_add_column("document_vault", "is_folder", "BOOLEAN DEFAULT FALSE")
             safe_add_column("document_vault", "is_shared", "BOOLEAN DEFAULT TRUE")
             safe_add_column("document_vault", "gdrive_file_id", "VARCHAR")
-            safe_add_column("document_vault", "last_synced_at", "TIMESTAMP")
+            safe_add_column("document_vault", "last_synced_at", "TIMESTAMPTZ")
             safe_add_column("document_vault", "current_version", "NUMERIC(5, 0) DEFAULT 1")
-            safe_add_column("document_vault", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            safe_add_column("document_vault", "updated_at", "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP")
             safe_add_column("document_vault", "thumbnail_path", "VARCHAR")
 
             connection.execute(text("""
@@ -324,7 +325,7 @@ def run_auto_migrations(engine: Engine):
                 file_size NUMERIC(15, 0) NOT NULL,
                 filename VARCHAR NOT NULL,
                 thumbnail_path VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
             """))
 
@@ -359,11 +360,11 @@ def run_auto_migrations(engine: Engine):
                     is_shared BOOLEAN DEFAULT TRUE,
                     description VARCHAR,
                     gdrive_file_id VARCHAR,
-                    last_synced_at TIMESTAMP,
+                    last_synced_at TIMESTAMPTZ,
                     current_version NUMERIC(5, 0) DEFAULT 1,
                     thumbnail_path VARCHAR,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(tenant_id) REFERENCES tenants (id),
                     FOREIGN KEY(owner_id) REFERENCES users (id)
                 );
@@ -391,7 +392,7 @@ def run_auto_migrations(engine: Engine):
                 tenant_id VARCHAR NOT NULL,
                 key VARCHAR NOT NULL,
                 value VARCHAR,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))
@@ -405,8 +406,8 @@ def run_auto_migrations(engine: Engine):
                 message VARCHAR,
                 items_processed NUMERIC(10, 0) DEFAULT 0,
                 error_details VARCHAR,
-                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP,
+                started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMPTZ,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))

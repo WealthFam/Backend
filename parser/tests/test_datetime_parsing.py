@@ -1,7 +1,6 @@
 import unittest
 from datetime import datetime
-from decimal import Decimal
-from parser.parsers.base_compat import BaseParser, ParsedTransaction
+from parser.parsers.base_compat import BaseParser
 
 class MockParser(BaseParser):
     def parse(self, content, date_hint=None):

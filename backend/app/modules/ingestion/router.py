@@ -1,11 +1,15 @@
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import json
-from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File, Form
+import logging
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
+from backend.app.core import timezone
+
+logger = logging.getLogger(__name__)
 
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
@@ -122,14 +126,14 @@ def ingest_sms(
             return {"status": "skipped", "reason": "Ingestion disabled for this device"}
             
         # Update last seen
-        device.last_seen_at = datetime.utcnow()
+        device.last_seen_at = timezone.utcnow()
         db.commit()
 
     # 2. Parsing (Call External Microservice)
     from backend.app.modules.ingestion.parser_service import ExternalParserService
     from backend.app.modules.ingestion.base import ParsedTransaction
 
-    parser_response = ExternalParserService.parse_sms(payload.sender, payload.message, received_at=payload.received_at)
+    parser_response = ExternalParserService.parse_sms(str(current_user.tenant_id), payload.sender, payload.message, received_at=payload.received_at)
     
     # Accept "processed", "success", and "duplicate_submission"
     status = parser_response.get("status") if parser_response else "offline"
@@ -170,9 +174,9 @@ def ingest_sms(
             try:
                 txn_date = datetime.fromisoformat(txn_date.replace("Z", "+00:00"))
             except:
-                txn_date = datetime.utcnow()
+                txn_date = timezone.utcnow()
         else:
-            txn_date = datetime.utcnow()
+            txn_date = timezone.utcnow()
 
         # Map to ParsedTransaction
         parsed = ParsedTransaction(
@@ -228,7 +232,7 @@ def ingest_email(
     from backend.app.modules.ingestion.parser_service import ExternalParserService
     from backend.app.modules.ingestion.base import ParsedTransaction
 
-    parser_response = ExternalParserService.parse_email(payload.subject, payload.body, payload.sender or "Manual Input", received_at=payload.received_at)
+    parser_response = ExternalParserService.parse_email(str(current_user.tenant_id), payload.subject, payload.body, payload.sender or "Manual Input", received_at=payload.received_at)
     
     status = parser_response.get("status") if parser_response else "offline"
     
@@ -258,9 +262,9 @@ def ingest_email(
             try:
                 txn_date = datetime.fromisoformat(txn_date.replace("Z", "+00:00"))
             except:
-                txn_date = datetime.utcnow()
+                txn_date = timezone.utcnow()
         else:
-            txn_date = datetime.utcnow()
+            txn_date = timezone.utcnow()
 
         # Map to ParsedTransaction
         parsed = ParsedTransaction(
@@ -465,7 +469,7 @@ def sync_specific_email(
     )
     
     if result.get("status") == "completed":
-        config.last_sync_at = datetime.utcnow()
+        config.last_sync_at = timezone.utcnow()
         db.commit()
         
     return result
@@ -483,7 +487,7 @@ async def analyze_file(
         
         # Call External Parser without mapping to trigger analysis
         from backend.app.modules.ingestion.parser_service import ExternalParserService
-        response = ExternalParserService.parse_file(content, file.filename)
+        response = ExternalParserService.parse_file(str(current_user.tenant_id), content, file.filename)
         
         # Microservice returns "analysis_required" and puts analysis JSON in logs[0]
         # logic from parser/api/ingestion.py: logs=["No mapping found. Analysis: " + json.dumps(analysis)]
@@ -520,7 +524,7 @@ async def parse_file(
         content = await file.read()
         
         from backend.app.modules.ingestion.parser_service import ExternalParserService
-        response = ExternalParserService.parse_file(content, file.filename, mapping_dict, header_row_index=header_row_index)
+        response = ExternalParserService.parse_file(str(current_user.tenant_id), content, file.filename, mapping_dict, header_row_index=header_row_index)
         
         if response:
              if response.get("status") == "success":
@@ -843,7 +847,7 @@ def list_aliases(
     Get all merchant aliases from external parser.
     """
     from backend.app.modules.ingestion.parser_service import ExternalParserService
-    return ExternalParserService.get_aliases()
+    return ExternalParserService.get_aliases(str(current_user.tenant_id))
 
 @router.post("/aliases")
 def create_alias(
@@ -857,7 +861,7 @@ def create_alias(
     from backend.app.modules.ingestion.parser_service import ExternalParserService
     
     # 1. Create Rule in Parser
-    success = ExternalParserService.create_alias(payload.pattern, payload.alias)
+    success = ExternalParserService.create_alias(str(current_user.tenant_id), payload.pattern, payload.alias)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to create alias in parser service")
 
@@ -912,7 +916,7 @@ def update_alias(
     Update an existing merchant alias.
     """
     from backend.app.modules.ingestion.parser_service import ExternalParserService
-    success = ExternalParserService.update_alias(alias_id, payload.pattern, payload.alias)
+    success = ExternalParserService.update_alias(str(current_user.tenant_id), alias_id, payload.pattern, payload.alias)
     if not success:
         raise HTTPException(status_code=404, detail="Alias not found or failed to update")
 
@@ -989,7 +993,7 @@ def delete_alias(
     Delete an alias rule.
     """
     from backend.app.modules.ingestion.parser_service import ExternalParserService
-    success = ExternalParserService.delete_alias(alias_id)
+    success = ExternalParserService.delete_alias(str(current_user.tenant_id), alias_id)
     if not success:
         raise HTTPException(status_code=404, detail="Alias not found or failed to delete")
     return {"status": "deleted"}
@@ -1102,14 +1106,14 @@ def label_message(
             import json
             
             ExternalParserService.create_pattern(
+                tenant_id=str(current_user.tenant_id),
                 source=msg.source,
                 regex_pattern=pattern_str,
                 mapping=json.loads(mapping_json)
             )
             # Legacy local save removed to enforce single source of truth
         except Exception as e:
-            logger.error(f"Error creating pattern: {e}")
-            pass
+            logger.exception("Error creating pattern:")
         
     db.delete(msg)
     db.commit()
@@ -1208,6 +1212,7 @@ def sync_ai_to_parser(
     raw_key = AIService.get_raw_api_key(db, tenant_id)
     
     success = ExternalParserService.sync_ai_config(
+        tenant_id=tenant_id,
         api_key=raw_key or "",
         model_name=settings_data.get("model_name", "gemini-pro"),
         is_enabled=settings_data.get("is_enabled", False)

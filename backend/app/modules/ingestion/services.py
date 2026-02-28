@@ -1,8 +1,7 @@
 import json
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 import hashlib
-from typing import Optional, Dict, Any, List
+from typing import Optional
 from backend.app.modules.finance import models as finance_models
 from backend.app.modules.finance.services.transaction_service import TransactionService
 from backend.app.modules.finance import schemas as finance_schemas

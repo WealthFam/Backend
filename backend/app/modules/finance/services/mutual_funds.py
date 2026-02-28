@@ -1,10 +1,10 @@
 import threading
-import time
 import httpx
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
-from backend.app.modules.finance.models import MutualFundsMeta, MutualFundHolding, MutualFundOrder, PortfolioTimelineCache, MutualFundSyncLog
+from backend.app.core import timezone
+from backend.app.modules.finance.models import MutualFundsMeta, MutualFundHolding, MutualFundOrder, MutualFundSyncLog
 
 MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 
@@ -45,7 +45,7 @@ class MutualFundService:
             holdings = db.query(MutualFundHolding).filter(MutualFundHolding.tenant_id == tenant_id).all()
             if not holdings:
                 sync_log.status = "completed"
-                sync_log.completed_at = datetime.utcnow()
+                sync_log.completed_at = timezone.utcnow()
                 db.commit()
                 return {"status": "completed", "updated": 0}
 
@@ -95,7 +95,7 @@ class MutualFundService:
 
             # 6. Update Sync Log
             sync_log.status = "completed"
-            sync_log.completed_at = datetime.utcnow()
+            sync_log.completed_at = timezone.utcnow()
             sync_log.num_funds_updated = updated_count
             db.commit()
 
@@ -110,7 +110,7 @@ class MutualFundService:
         except Exception as e:
             db.rollback()
             sync_log.status = "error"
-            sync_log.completed_at = datetime.utcnow()
+            sync_log.completed_at = timezone.utcnow()
             sync_log.error_message = str(e)
             db.commit()
             raise e
@@ -304,9 +304,7 @@ class MutualFundService:
         Returns the same list with 'is_duplicate' flag set.
         """
         try:
-            from sqlalchemy import func
             from datetime import datetime, date
-            import traceback
         
             for txn in transactions:
                 is_duplicate = False
@@ -497,7 +495,6 @@ class MutualFundService:
         # Priority 2: Check by exact match with precision handling
         # Use rounding to avoid float representation issues in DuckDB/Python
         from sqlalchemy import func
-        from datetime import date
         
         txn_date = data['date'].date() if isinstance(data['date'], datetime) else data['date']
         # Preserve original type but use normalized for robust duplication check
@@ -734,7 +731,7 @@ class MutualFundService:
         
         # Check for updates needed (Stale > 24h or None)
         updates_made = False
-        today = datetime.utcnow().date()
+        today = timezone.utcnow().date()
         
         async def fetch_nav_and_sparkline(scheme_code):
             """Fetch both current NAV and 30-day history concurrently"""
@@ -1121,7 +1118,7 @@ class MutualFundService:
                     earliest_order = orders[-1].order_date
                     start_date = earliest_order.date() if hasattr(earliest_order, 'date') else earliest_order
                 else:
-                    start_date = (datetime.now() - timedelta(days=365)).date()
+                    start_date = (timezone.utcnow() - timedelta(days=365)).date()
                 
                 valid_history = []
                 for entry in raw_history:
@@ -1218,7 +1215,6 @@ class MutualFundService:
     @staticmethod
     def get_scheme_info(db: Session, tenant_id: str, scheme_code: str):
         """Fetch general scheme information without requiring a holding."""
-        from backend.app.modules.auth.models import User
         
         # 1. Fetch Metadata
         meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == scheme_code).first()
@@ -1240,7 +1236,7 @@ class MutualFundService:
                 mf_data = response.json()
                 raw_history = mf_data.get("data", [])
                 
-                start_date = (datetime.now() - timedelta(days=365)).date()
+                start_date = (timezone.utcnow() - timedelta(days=365)).date()
                 
                 valid_history = []
                 for entry in raw_history:
@@ -1550,7 +1546,6 @@ class MutualFundService:
         from datetime import date, timedelta
         from ..utils.financial_math import calculate_start_date, add_months
         from ..models import PortfolioTimelineCache
-        import httpx
         import hashlib
         
         # Get all transactions for EXISTING holdings only

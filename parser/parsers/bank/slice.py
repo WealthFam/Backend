@@ -1,3 +1,4 @@
+from parser.core import timezone
 import re
 from typing import List, Optional
 from datetime import datetime
@@ -38,7 +39,7 @@ class SliceSmsParser(BaseSmsParser):
                 amount_str = match.group("amount").replace(",", "")
                 date_str = match.group("date")
                 
-                txn_date = self._parse_date(date_str) or date_hint or datetime.now()
+                txn_date = self._parse_date(date_str) or date_hint or timezone.utcnow()
                 
                 # Check for balance group presence
                 balance = None

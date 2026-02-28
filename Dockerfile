@@ -40,6 +40,9 @@ COPY version.json ./
 ENV APP_DATABASE_URL="duckdb:////data/family_finance_v3.duckdb"
 ENV PARSER_SERVICE_URL="http://localhost:8001/v1"
 ENV PARSER_DATABASE_URL="duckdb:////data/ingestion_engine_parser.duckdb"
+ENV SECRET_KEY="CHANGE_THIS_TO_A_SECURE_SECRET_IN_PRODUCTION"
+ENV ALGORITHM="HS256"
+ENV DEMO_MODE="false"
 ENV PYTHONPATH="/app"
 
 EXPOSE 80 8000 8001

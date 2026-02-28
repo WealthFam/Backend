@@ -11,6 +11,7 @@ from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
+from backend.app.core import timezone
 from backend.app.modules.ingestion.cas_parser import CASParser
 from backend.app.modules.ingestion import models as ingestion_models
 
@@ -250,8 +251,9 @@ def preview_cas_pdf(
             temp_path = tmp.name
         # File is now closed, safe to read on Windows
         
+        tenant_id = str(current_user.tenant_id)
         # 1. Parse raw transactions
-        raw_transactions = CASParser.parse_pdf(temp_path, password)
+        raw_transactions = CASParser.parse_pdf(tenant_id, temp_path, password)
         
         # 2. Map to schemes
         mapped_transactions = MutualFundService.map_transactions_to_schemes(raw_transactions)
@@ -285,7 +287,6 @@ def preview_cas_email(
     db: Session = Depends(get_db)
 ):
     """Scan emails for CAS and return mapped transactions for review."""
-    from datetime import datetime
     
     # Find email config
     query = db.query(ingestion_models.EmailConfiguration).filter(
@@ -301,7 +302,7 @@ def preview_cas_email(
     # Handle period-based timestamp reset
     if period:
         from datetime import timedelta
-        now = datetime.utcnow()
+        now = timezone.utcnow()
         if period == '3m':
             config.cas_last_sync_at = now - timedelta(days=90)
         elif period == '6m':
@@ -358,8 +359,7 @@ def confirm_import(
                 ingestion_models.EmailConfiguration.tenant_id == tenant_id
             ).first()
             if config:
-                from datetime import datetime
-                config.cas_last_sync_at = datetime.utcnow()
+                config.cas_last_sync_at = timezone.utcnow()
                 db.commit()
 
     return stats

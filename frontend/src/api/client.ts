@@ -312,13 +312,26 @@ export const financeApi = {
     removeGoalAsset: (assetId: string) => apiClient.delete(`/finance/investment-goals/assets/${assetId}`),
 }
 
-// Parser Microservice API (Port 8001)
 const parserClient = axios.create({
     baseURL: import.meta.env.VITE_PARSER_API_URL || '/parser',
     headers: {
         'Content-Type': 'application/json',
     },
 })
+
+// Request interceptor for Parser calls
+parserClient.interceptors.request.use(
+    async (config) => {
+        const token = localStorage.getItem('access_token')
+        if (token && config.headers) {
+            config.headers.Authorization = `Bearer ${token}`
+        }
+        return config
+    },
+    (error) => {
+        return Promise.reject(error)
+    }
+)
 
 export const parserApi = {
     getHealth: () => parserClient.get('/health'),
@@ -331,9 +344,10 @@ export const parserApi = {
     getAliases: () => parserClient.get('/config/aliases'),
     createAlias: (pattern: string, alias: string) => parserClient.post('/config/aliases', { pattern, alias }),
     deleteAlias: (id: string) => parserClient.delete(`/config/aliases/${id}`),
-    getPatterns: () => parserClient.get('/config/patterns'),
-    createPattern: (data: any) => parserClient.post('/config/patterns', data),
-    deletePattern: (id: string) => parserClient.delete(`/config/patterns/${id}`),
+    getPatterns: (params?: { limit?: number, skip?: number }) => parserClient.get('/patterns', { params }),
+    createPattern: (data: any) => parserClient.post('/patterns', data),
+    updatePattern: (id: string, data: any) => parserClient.put(`/patterns/${id}`, data),
+    deletePattern: (id: string) => parserClient.delete(`/patterns/${id}`),
 }
 
 export const aiApi = {

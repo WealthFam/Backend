@@ -4,8 +4,8 @@ from parser.core.classifier import FinancialClassifier
 from parser.parsers.registry import ParserRegistry
 from parser.db.models import RequestLog, PatternRule, AICallCache
 import hashlib
-import json
 from datetime import datetime, timedelta
+from parser.core import timezone
 from rapidfuzz import fuzz
 from decimal import Decimal
 from parser.schemas.transaction import Transaction, IngestionResult, ParsedItem, AccountInfo, MerchantInfo, TransactionType
@@ -15,6 +15,10 @@ from parser.core.normalizer import MerchantNormalizer
 from parser.core.validator import TransactionValidator
 from parser.core.guesser import CategoryGuesser
 import logging
+
+class AIGuardrailBlocked(Exception):
+    """Exception raised when content is blocked by AI Guardrail heuristics."""
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +37,9 @@ def get_digits(s):
 
 class IngestionPipeline:
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, tenant_id: str):
         self.db = db
+        self.tenant_id = tenant_id
 
     def _convert_to_schema_txn(self, pt: Any) -> Transaction:
         """Helper to convert backend-style ParsedTransaction or dict to microservice Transaction"""
@@ -68,7 +73,7 @@ class IngestionPipeline:
             if isinstance(pt_date, str):
                 final_date = datetime.fromisoformat(pt_date)
             else:
-                final_date = pt_date or datetime.now()
+                final_date = pt_date or timezone.utcnow()
 
             return Transaction(
                 amount=get_decimal(safe_pt_get("amount")),
@@ -110,12 +115,14 @@ class IngestionPipeline:
         try:
             # Check if this pattern already exists to avoid duplicates
             existing = self.db.query(PatternRule).filter(
+                PatternRule.tenant_id == self.tenant_id,
                 PatternRule.source == source,
                 PatternRule.regex_pattern == regex
             ).first()
             
             if not existing:
                 new_rule = PatternRule(
+                    tenant_id=self.tenant_id,
                     source=source,
                     regex_pattern=regex,
                     mapping_json=mapping,
@@ -131,11 +138,12 @@ class IngestionPipeline:
 
     def run(self, content: str, source: str, sender: Optional[str] = None, subject: Optional[str] = None, date_hint: Optional[str] = None) -> IngestionResult:
         # 1. Idempotency Check
-        input_hash = hashlib.sha256(f"{source}:{content}".encode()).hexdigest()
+        input_hash = hashlib.sha256(f"{self.tenant_id}:{source}:{content}".encode()).hexdigest()
         
         # Check last 5 mins
-        cutoff = datetime.utcnow() - timedelta(minutes=5)
+        cutoff = timezone.utcnow() - timedelta(minutes=5)
         existing = self.db.query(RequestLog).filter(
+            RequestLog.tenant_id == self.tenant_id,
             RequestLog.input_hash == input_hash,
             RequestLog.created_at >= cutoff
         ).first()
@@ -144,7 +152,13 @@ class IngestionPipeline:
             return IngestionResult(status="duplicate_submission", results=[], logs=["Duplicate submission detected"])
 
         # Create Log Entry
-        log = RequestLog(input_hash=input_hash, source=source, input_payload={"content": content, "sender": sender, "subject": subject, "date_hint": date_hint}, status="processing")
+        log = RequestLog(
+            tenant_id=self.tenant_id,
+            input_hash=input_hash, 
+            source=source, 
+            input_payload={"content": content, "sender": sender, "subject": subject, "date_hint": date_hint}, 
+            status="processing"
+        )
         self.db.add(log)
         self.db.commit()
 
@@ -197,7 +211,7 @@ class IngestionPipeline:
         # B. User Patterns (as a fallback or secondary engine)
         if not potential_matches or max(m.confidence for m in potential_matches) < 0.9:
             try:
-                p_parser = PatternParser(self.db, source)
+                p_parser = PatternParser(self.db, source, tenant_id=self.tenant_id)
                 pt = p_parser.parse(content)
                 if pt:
                     if not hasattr(pt, 'confidence') or pt.confidence is None:
@@ -220,6 +234,7 @@ class IngestionPipeline:
                 
                 # Check permanent AI Cache first
                 cached = self.db.query(AICallCache).filter(
+                    AICallCache.tenant_id == self.tenant_id,
                     AICallCache.content_hash == input_hash
                 ).first()
                 
@@ -227,7 +242,20 @@ class IngestionPipeline:
                     logs.append("Reusing cached AI response")
                     ai_data = cached.response_json
                 else:
-                    ai_parser = GeminiParser(self.db)
+                    # --- AI GUARDRAIL PRE-CHECK ---
+                    from parser.core.ai_filter import AIGuardrail
+                    if not AIGuardrail.should_allow_ai_parsing(content, source):
+                        logs.append("Blocked by AI Guardrail: Content does not meet strict transaction heuristics.")
+                        if best_regex_match:
+                            parsed_txn = self._convert_to_schema_txn(best_regex_match)
+                            parser_used = "Best Regex (AI Guardrail Blocked)"
+                        else:
+                            parsed_txn = None
+                            parser_used = "None (Blocked)"
+                        # Skip the entire AI section by raising an exception
+                        raise AIGuardrailBlocked("Blocked by AIGuardrail to protect Gemini quota")
+                    
+                    ai_parser = GeminiParser(self.db, tenant_id=self.tenant_id)
                     ai_data = ai_parser.parse_with_pattern(content, source, date_hint=date_hint)
                 
                 if ai_data and ai_data.get("transaction"):
@@ -244,7 +272,7 @@ class IngestionPipeline:
                     pt = Transaction(
                         amount=get_decimal(tx_data.get("amount")),
                         type=txn_type,
-                        date=datetime.fromisoformat(tx_data["date"]) if tx_data.get("date") else datetime.now(),
+                        date=datetime.fromisoformat(tx_data["date"]) if tx_data.get("date") else timezone.utcnow(),
                         account=AccountInfo(mask=tx_data.get("account_mask"), provider=source),
                         merchant=MerchantInfo(raw=tx_data.get("merchant"), cleaned=tx_data.get("merchant")),
                         description=tx_data.get("description", content[:50]),
@@ -259,6 +287,7 @@ class IngestionPipeline:
                     # Save a permanent copy of the AI response to avoid re-parsing
                     try:
                         new_cache = AICallCache(
+                            tenant_id=self.tenant_id,
                             content_hash=input_hash,
                             source=source,
                             response_json=ai_data
@@ -293,6 +322,8 @@ class IngestionPipeline:
                     if best_regex_match:
                         parsed_txn = self._convert_to_schema_txn(best_regex_match)
                         parser_used = "Best Regex (AI Failed)"
+            except AIGuardrailBlocked:
+                pass
             except Exception as e:
                 logger.error(f"AI Parser failed: {str(e)}")
                 logs.append(f"AI Parser failed: {str(e)}")
@@ -313,7 +344,7 @@ class IngestionPipeline:
                  # Use the recipient (if extracted) as the seed for normalization/aliasing
                  # Otherwise fallback to raw description
                  name_seed = parsed_txn.recipient or parsed_txn.merchant.raw
-                 parsed_txn.merchant.cleaned = MerchantNormalizer.normalize(name_seed, db=self.db)
+                 parsed_txn.merchant.cleaned = MerchantNormalizer.normalize(name_seed, db=self.db, tenant_id=self.tenant_id)
                  
                  # Update description if it was raw/missing
                  if not parsed_txn.description or parsed_txn.description == parsed_txn.merchant.raw:
@@ -334,13 +365,14 @@ class IngestionPipeline:
              # 6. Cross-Source Deduplication (New Robust Feature)
              # Check if this EXACT transaction details appeared from another source recently
              # We check logs in the last 15 minutes for similar records
-             duplicate_window = datetime.utcnow() - timedelta(minutes=15)
+             duplicate_window = timezone.utcnow() - timedelta(minutes=15)
              
              # Search previously successful extractions
              # Note: output_payload is stored as JSON in DuckDB
              # Using a slightly fuzzy match: same amount, mask, and merchant
              # Due to DuckDB JSON limitations, we fetch and filter in Python for robustness
              recent_successes = self.db.query(RequestLog).filter(
+                 RequestLog.tenant_id == self.tenant_id,
                  RequestLog.status == "success",
                  RequestLog.created_at >= duplicate_window,
                  RequestLog.input_hash != input_hash # Not ourselves

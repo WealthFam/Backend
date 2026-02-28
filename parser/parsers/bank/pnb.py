@@ -1,7 +1,7 @@
+from parser.core import timezone
 import re
 from typing import Optional, List
 from datetime import datetime
-from decimal import Decimal
 from parser.parsers.base_compat import BaseSmsParser, BaseEmailParser, ParsedTransaction, TransactionPattern
 from parser.parsers.utils.recipient_parser import RecipientParser
 
@@ -55,7 +55,7 @@ class PnbSmsParser(BaseSmsParser):
         try:
             txn_date = datetime.strptime(date_str, "%d-%m-%Y")
         except:
-            txn_date = datetime.now()
+            txn_date = timezone.utcnow()
 
         return ParsedTransaction(
             amount=amount,

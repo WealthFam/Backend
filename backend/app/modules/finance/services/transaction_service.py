@@ -368,15 +368,11 @@ class TransactionService:
         # Snapshot old state for balance adjustment
         old_amount = db_txn.amount
         old_date = db_txn.date
+        old_account_id = db_txn.account_id
         
         update_data = txn_update.model_dump(exclude_unset=True)
         
-        # ... (Transfer logic remains same) ...
-        # But we need to keep the code structure valid. 
-        # Since I'm replacing a huge block, I'll just insert the logic helper around the existing code
-        # implicitly by how I structure the replacement.
-        
-        # Re-implementing the transfer logic block matching original file...
+        # --- Transfer logic remains same ---
         is_transfer_update = update_data.get('is_transfer')
         to_account_id = update_data.get('to_account_id')
         
@@ -384,16 +380,13 @@ class TransactionService:
             db_txn.is_transfer = True
             db_txn.exclude_from_reports = True
             
-            # Case A: User selected an EXISTING transaction to link (Manual Match)
             if update_data.get('linked_transaction_id'):
-                # 1. Unlink any old one
                 if db_txn.linked_transaction_id:
                      old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
                      if old_linked:
                         old_linked.linked_transaction_id = None
                         db.add(old_linked)
 
-                # 2. Link the new target
                 target_id = update_data['linked_transaction_id']
                 target_txn = db.query(models.Transaction).filter(models.Transaction.id == target_id).first()
                 
@@ -405,7 +398,6 @@ class TransactionService:
                     target_txn.exclude_from_reports = True 
                     db.add(target_txn)
 
-            # Case B: User selected an ACCOUNT to transfer to (Auto Create)
             elif to_account_id:
                 if db_txn.linked_transaction_id:
                      old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
@@ -442,43 +434,48 @@ class TransactionService:
 
                 db_txn.linked_transaction_id = None
         
+        # Apply updates to db_txn
         for key, value in update_data.items():
             if key in ['is_transfer', 'to_account_id']: continue
             if key == 'tags' and value is not None:
                 setattr(db_txn, key, json.dumps(value))
             elif key in ['linked_transaction_id', 'expense_group_id', 'loan_id'] and value == "":
                 setattr(db_txn, key, None)
+            elif key == 'account_id' and value:
+                db_txn.account_id = str(value)
             else:
                 setattr(db_txn, key, value)
         
+        # Recalculate type based on final amount
+        db_txn.type = models.TransactionType.DEBIT if db_txn.amount < 0 else models.TransactionType.CREDIT
+        
         # --- Balance Adjustment Logic ---
-        # Did amount or date change?
         new_amount = db_txn.amount
         new_date = db_txn.date
+        new_account_id = db_txn.account_id
         
-        if new_amount != old_amount or new_date != old_date:
-            account = db.query(models.Account).filter(models.Account.id == db_txn.account_id).first()
-            if account:
-                anchor_date = account.last_synced_at
-                balance_delta = 0
-                
-                # 1. Revert Old (if it was contributing)
+        if new_amount != old_amount or new_date != old_date or new_account_id != old_account_id:
+            # 1. Revert from Old Account
+            old_acc = db.query(models.Account).filter(models.Account.id == old_account_id).first()
+            if old_acc:
+                anchor_date = old_acc.last_synced_at
                 if not anchor_date or old_date > anchor_date:
-                    if account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                        balance_delta += old_amount
+                    if old_acc.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                        old_acc.balance = (old_acc.balance or 0) + old_amount
                     else:
-                        balance_delta -= old_amount
+                        old_acc.balance = (old_acc.balance or 0) - old_amount
+                    db.add(old_acc)
 
-                # 2. Apply New (if it should contribute)
+            # 2. Apply to New/Current Account
+            new_acc = db.query(models.Account).filter(models.Account.id == new_account_id).first()
+            if new_acc:
+                anchor_date = new_acc.last_synced_at
                 if not anchor_date or new_date > anchor_date:
-                    if account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                        balance_delta -= new_amount
+                    if new_acc.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                        new_acc.balance = (new_acc.balance or 0) - new_amount
                     else:
-                        balance_delta += new_amount
-                        
-                if balance_delta != 0:
-                    account.balance = (account.balance or 0) + balance_delta
-                    db.add(account)
+                        new_acc.balance = (new_acc.balance or 0) + new_amount
+                    db.add(new_acc)
         # -------------------------------
                 
         db.commit()
@@ -887,7 +884,7 @@ class TransactionService:
         if sync_to_parser and old_name != new_name:
              try:
                  from backend.app.modules.ingestion.parser_service import ExternalParserService
-                 ExternalParserService.create_alias(old_name, new_name)
+                 ExternalParserService.create_alias(tenant_id, old_name, new_name)
              except Exception as e:
                  logger.error(f"Failed to sync alias to parser: {e}")
                  

@@ -3,7 +3,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from sqlalchemy.orm import Session
-from datetime import datetime
+from backend.app.core import timezone
 import json
 from . import models
 from backend.app.modules.auth.models import TenantSetting
@@ -18,7 +18,6 @@ class GoogleDriveService:
     def _get_service(db: Session, tenant_id: str):
         """Initialize GDrive service using credentials from DB"""
         from google.oauth2.credentials import Credentials
-        from google_auth_oauthlib.flow import InstalledAppFlow
         from google.auth.transport.requests import Request
 
         setting = db.query(TenantSetting).filter(
@@ -233,7 +232,7 @@ class GoogleDriveService:
                     # Update existing content
                     service.files().update(fileId=doc.gdrive_file_id, media_body=media).execute()
 
-                doc.last_synced_at = datetime.utcnow()
+                doc.last_synced_at = timezone.utcnow()
                 items_count += 1
 
             # Success! Commit everything
@@ -246,7 +245,7 @@ class GoogleDriveService:
                 history.status = "success"
                 history.message = "Sync to cloud complete"
                 history.items_processed = items_count
-                history.completed_at = datetime.utcnow()
+                history.completed_at = timezone.utcnow()
                 db.commit()
 
             return {"status": "success", "message": "Sync to cloud complete"}
@@ -264,7 +263,7 @@ class GoogleDriveService:
                     status="error",
                     message=f"Sync failed: {str(e)}",
                     error_details=str(e),
-                    completed_at=datetime.utcnow()
+                    completed_at=timezone.utcnow()
                 )
                 db.add(error_history)
                 db.commit()

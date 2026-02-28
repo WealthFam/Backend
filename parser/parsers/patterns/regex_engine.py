@@ -1,4 +1,6 @@
-from typing import Optional, Dict, List, Any
+from parser.core import timezone
+from typing import Optional, List
+from rapidfuzz import fuzz
 from sqlalchemy.orm import Session
 import re
 from datetime import datetime
@@ -7,13 +9,15 @@ from parser.db.models import PatternRule
 from parser.schemas.transaction import Transaction, TransactionType, AccountInfo, MerchantInfo
 
 class PatternParser:
-    def __init__(self, db: Session, source: str):
+    def __init__(self, db: Session, source: str, tenant_id: str):
         self.db = db
         self.source = source
+        self.tenant_id = tenant_id
         self.rules = self._load_rules()
 
     def _load_rules(self) -> List[PatternRule]:
         return self.db.query(PatternRule).filter(
+            PatternRule.tenant_id == self.tenant_id,
             PatternRule.source == self.source,
             PatternRule.is_active == True
         ).all()
@@ -57,9 +61,9 @@ class PatternParser:
                 # Normalize
                 amount = self._clean_amount(str(amount_str))
                 
-                txn_date = datetime.now()
+                txn_date = timezone.utcnow()
                 if date_str:
-                    txn_date = self._parse_date(str(date_str), getattr(rule, 'date_format', None)) or datetime.now()
+                    txn_date = self._parse_date(str(date_str), getattr(rule, 'date_format', None)) or timezone.utcnow()
 
                 return Transaction(
                     amount=amount,

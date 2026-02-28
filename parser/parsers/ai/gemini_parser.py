@@ -1,3 +1,4 @@
+from parser.core import timezone
 from google import genai
 from google.genai import types, errors
 from sqlalchemy.orm import Session
@@ -12,12 +13,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 class GeminiParser:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, tenant_id: str):
         self.db = db
+        self.tenant_id = tenant_id
         self.config = self._get_config()
 
     def _get_config(self) -> Optional[AIConfig]:
-        return self.db.query(AIConfig).first()
+        return self.db.query(AIConfig).filter(AIConfig.tenant_id == self.tenant_id).first()
 
     def parse(self, content: str, source: str, date_hint: Optional[Any] = None) -> Optional[Transaction]:
         if not self.config:
@@ -43,7 +45,7 @@ class GeminiParser:
         model_id = self.config.model_name or "gemini-1.5-flash"
 
         # Determine reference date
-        ref_date = datetime.now()
+        ref_date = timezone.utcnow()
         if date_hint and isinstance(date_hint, datetime):
             ref_date = date_hint
         elif date_hint and isinstance(date_hint, str):
@@ -110,7 +112,7 @@ class GeminiParser:
             
             # Robust Date Parsing
             extracted_date = data.get("date")
-            final_date = datetime.now()
+            final_date = timezone.utcnow()
             if extracted_date:
                 try:
                     if "-" in extracted_date and len(extracted_date) == 10:
@@ -119,7 +121,7 @@ class GeminiParser:
                         from dateutil import parser as date_parser
                         final_date = date_parser.parse(extracted_date)
                 except:
-                    final_date = datetime.now()
+                    final_date = timezone.utcnow()
 
             # Map to Schema
             return Transaction(
@@ -171,7 +173,7 @@ class GeminiParser:
         )
         model_id = self.config.model_name or "gemini-1.5-flash"
 
-        ref_date = datetime.now()
+        ref_date = timezone.utcnow()
         if date_hint and isinstance(date_hint, datetime):
             ref_date = date_hint
         elif date_hint and isinstance(date_hint, str):
