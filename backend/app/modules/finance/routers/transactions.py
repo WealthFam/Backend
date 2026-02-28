@@ -21,29 +21,29 @@ def create_transaction(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/transactions", response_model=schemas.TransactionPagination)
-def read_transactions(
-    account_id: Optional[str] = None,
-    page: int = 1,
-    limit: int = 50,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
     search: Optional[str] = None,
     category: Optional[str] = None,
     sort_by: Optional[str] = "date",
     sort_order: Optional[str] = "desc",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     user_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     skip = (page - 1) * limit
+    
+    # Handle empty strings from frontend
+    s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
+    e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
+
     items = TransactionService.get_transactions(
-        db, str(current_user.tenant_id), account_id, skip, limit, start_date, end_date, 
+        db, str(current_user.tenant_id), account_id, skip, limit, s_date, e_date, 
         search=search, category=category, user_role=current_user.role,
         sort_by=sort_by, sort_order=sort_order, user_id=user_id
     )
     total = TransactionService.count_transactions(
-        db, str(current_user.tenant_id), account_id, start_date, end_date, 
+        db, str(current_user.tenant_id), account_id, s_date, e_date, 
         search=search, category=category, user_role=current_user.role, user_id=user_id
     )
     

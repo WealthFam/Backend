@@ -11,6 +11,11 @@ class AnalyticsService:
     def get_summary_metrics(db: Session, tenant_id: str, user_role: str = "ADULT", account_id: str = None, start_date: datetime = None, end_date: datetime = None, user_id: str = None, exclude_hidden: bool = False):
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
+            
+        if end_date:
+            from backend.app.core.timezone import ensure_utc
+            # Make end_date inclusive of the whole day (23:59:59.999999)
+            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
         
         # 1. Accounts & Net Worth (Accounts are filtered by owner_id if user_id is provided)
         accounts_query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
@@ -739,6 +744,11 @@ class AnalyticsService:
     def get_heatmap_data(db: Session, tenant_id: str, start_date: datetime = None, end_date: datetime = None, user_id: str = None):
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
+        
+        if end_date:
+            # Make end_date inclusive of the whole day
+            end_date = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+
         """
         Get transaction coordinates and weights for heatmap visualization.
         """
@@ -768,9 +778,9 @@ class AnalyticsService:
         
         return [
             {
-                "lat": float(row.latitude),
-                "lng": float(row.longitude),
-                "weight": abs(float(row.amount)),
+                "latitude": float(row.latitude),
+                "longitude": float(row.longitude),
+                "amount": abs(float(row.amount)),
                 "category": row.category,
                 "description": row.description
             }
@@ -783,10 +793,10 @@ class AnalyticsService:
         if category in [None, "null", "undefined", "", "OVERALL"]:
             category = None
             
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"DEBUG: get_merchant_breakdown - category='{category}' (type: {type(category)})")
-        logger.info(f"DEBUG: get_merchant_breakdown - tenant_id='{tenant_id}', user_id='{user_id}'")
+        if end_date:
+            from backend.app.core.timezone import ensure_utc
+            # Make end_date inclusive of the whole day
+            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         query = db.query(
             models.Transaction.recipient.label('merchant'),
@@ -813,7 +823,6 @@ class AnalyticsService:
             sub_category_names = []
             
             if category == "Uncategorized":
-                logger.info("DEBUG: get_merchant_breakdown - Filtering for Uncategorized")
                 query = query.filter(or_(models.Transaction.category == None, models.Transaction.category == "Uncategorized"))
             else:
                 parent_cat = db.query(Category).filter(
@@ -831,10 +840,8 @@ class AnalyticsService:
                 
                 if sub_category_names:
                     filter_list = [category] + sub_category_names
-                    logger.info(f"DEBUG: get_merchant_breakdown - Filtering by list: {filter_list}")
                     query = query.filter(models.Transaction.category.in_(filter_list))
                 else:
-                    logger.info(f"DEBUG: get_merchant_breakdown - Filtering by single name: '{category}'")
                     query = query.filter(models.Transaction.category == category)
 
         results = query.group_by(models.Transaction.recipient).order_by(func.sum(models.Transaction.amount).asc()).all()
@@ -914,6 +921,10 @@ class AnalyticsService:
 
     @staticmethod
     def get_detailed_analytics(db: Session, tenant_id: str, account_id: str = None, start_date: datetime = None, end_date: datetime = None, user_id: str = None, category: str = None):
+        if end_date:
+            # Make end_date inclusive of the whole day
+            end_date = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+
         """
         Consolidated analytics for the Dashboard/Insights view.
         Offloads heavy client-side processing to the server.

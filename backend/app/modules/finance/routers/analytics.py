@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
@@ -11,19 +12,23 @@ router = APIRouter(prefix="/analytics")
 @router.get("/metrics")
 def get_metrics(
     account_id: str = None,
-    start_date: datetime = None,
-    end_date: datetime = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     user_id: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Handle empty strings from frontend
+    s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
+    e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
+    
     return AnalyticsService.get_summary_metrics(
         db, 
         str(current_user.tenant_id), 
         user_role=current_user.role,
         account_id=account_id,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=s_date,
+        end_date=e_date,
         user_id=user_id
     )
 
@@ -94,30 +99,38 @@ def get_mobile_summary(
     )
 @router.get("/heatmap")
 def get_heatmap(
-    start_date: datetime = None,
-    end_date: datetime = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     user_id: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Handle empty strings from frontend
+    s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
+    e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
+
     return AnalyticsService.get_heatmap_data(
         db, 
         str(current_user.tenant_id),
-        start_date=start_date,
-        end_date=end_date,
+        start_date=s_date,
+        end_date=e_date,
         user_id=user_id
     )
 
 @router.get("/detailed")
 def get_detailed_analytics(
     account_id: str = None,
-    start_date: datetime = None,
-    end_date: datetime = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     user_id: str = None,
     category: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Handle empty strings from frontend
+    s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
+    e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
+
     """
     Consolidated analytics for the Dashboard/Insights view.
     Offloads heavy client-side processing to the server.
@@ -126,26 +139,30 @@ def get_detailed_analytics(
         db,
         str(current_user.tenant_id),
         account_id=account_id,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=s_date,
+        end_date=e_date,
         user_id=user_id,
         category=category
     )
 @router.get("/merchant-breakdown")
 def get_merchant_breakdown(
     category: str = None,
-    start_date: datetime = None,
-    end_date: datetime = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     user_id: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Handle empty strings from frontend
+    s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
+    e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
+
     return AnalyticsService.get_merchant_breakdown(
         db, 
         str(current_user.tenant_id),
         category=category,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=s_date,
+        end_date=e_date,
         user_id=user_id
     )
 @router.get("/family-wealth")

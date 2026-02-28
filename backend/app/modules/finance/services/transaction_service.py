@@ -24,8 +24,6 @@ class TransactionService:
         reason = None
         existing_id = None
         
-        logger.info(f"Creating transaction. Source: {transaction.source}, Amount: {transaction.amount}, Date: {transaction.date}, Account: {transaction.account_id}")
-
         if getattr(transaction, 'source', 'MANUAL') != 'MANUAL':
             is_dup, reason, existing_id = TransactionDeduplicator.check_raw_duplicate(
                 db, tenant_id, str(transaction.account_id), transaction.amount, transaction.date, 
@@ -98,7 +96,10 @@ class TransactionService:
             content_hash=txn_hash,
             exclude_from_reports=final_exclude,
             is_emi=getattr(transaction, 'is_emi', False),
-            loan_id=getattr(transaction, 'loan_id', None)
+            loan_id=getattr(transaction, 'loan_id', None),
+            latitude=getattr(transaction, 'latitude', None),
+            longitude=getattr(transaction, 'longitude', None),
+            location_name=getattr(transaction, 'location_name', None)
         )
         
         # Update Account Balance
@@ -107,7 +108,11 @@ class TransactionService:
             if db_account:
                 # ANCHOR CHECK: If this transaction is older than (or equal to) the last sync,
                 # we assume it's already factored into the anchored balance.
-                if db_account.last_synced_at and transaction.date <= db_account.last_synced_at:
+                from backend.app.core import timezone
+                last_sync = timezone.ensure_utc(db_account.last_synced_at)
+                txn_date = timezone.ensure_utc(transaction.date)
+                
+                if last_sync and txn_date <= last_sync:
                     pass # Do not update balance
                 else:
                     current_bal = db_account.balance or 0
@@ -122,6 +127,7 @@ class TransactionService:
         db.add(db_transaction)
         db.commit()
         db.refresh(db_transaction)
+        logger.info(f"TRANSACTION CREATED: ID {db_transaction.id} for Account {db_transaction.account_id}")
         return db_transaction
 
     @staticmethod
@@ -142,6 +148,11 @@ class TransactionService:
         sort_by: str = "date",
         sort_order: str = "desc"
     ) -> List[models.Transaction]:
+        if end_date:
+            from backend.app.core.timezone import ensure_utc
+            # Make end_date inclusive of the whole day (23:59:59.999999)
+            # We use replace to keep it on the same day but at the very end
+            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         query = db.query(models.Transaction).options(
             joinedload(models.Transaction.account)
@@ -235,6 +246,11 @@ class TransactionService:
         exclude_from_reports: bool = False,
         exclude_transfers: bool = False
     ) -> int:
+        if end_date:
+            from backend.app.core.timezone import ensure_utc
+            # Make end_date inclusive of the whole day
+            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
+
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
         if category in [None, "null", "undefined", "", "OVERALL"]:
@@ -612,7 +628,10 @@ class TransactionService:
             is_transfer=final_is_transfer,
             to_account_id=final_to_account_id,
             tags=[],
-            exclude_from_reports=final_exclude
+            exclude_from_reports=final_exclude,
+            latitude=pending.latitude,
+            longitude=pending.longitude,
+            location_name=pending.location_name
         )
         
         if txn_create.is_transfer and txn_create.to_account_id:

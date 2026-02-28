@@ -320,6 +320,9 @@ class RecurringTransactionBase(BaseModel):
     next_run_date: datetime
     is_active: bool = True
     exclude_from_reports: bool = False
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    location_name: Optional[str] = None
 
 class RecurringTransactionCreate(RecurringTransactionBase):
     pass
