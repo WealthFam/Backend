@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import L from 'leaflet'
 import { MapPin } from 'lucide-vue-next'
 // @ts-ignore - plugin compatibility
@@ -51,6 +51,8 @@ interface HeatmapDataPoint {
     latitude: number
     longitude: number
     amount: number
+    category?: string
+    description?: string
     recipient?: string
 }
 
@@ -175,11 +177,11 @@ const updateHeatmap = () => {
             marker.bindPopup(tooltipContent, { closeButton: false })
 
             // Show data on hover
-            marker.on('mouseover', function (e) {
-                this.openPopup()
+            marker.on('mouseover', () => {
+                marker.openPopup()
             })
-            marker.on('mouseout', function (e) {
-                this.closePopup()
+            marker.on('mouseout', () => {
+                marker.closePopup()
             })
 
             marker.addTo(markerLayer)

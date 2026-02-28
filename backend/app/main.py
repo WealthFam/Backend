@@ -35,7 +35,7 @@ def create_application() -> FastAPI:
     # Middleware
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # TODO: Restrict in production
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -55,11 +55,9 @@ def create_application() -> FastAPI:
     
     
 
-    # --- Background Tasks ---
-    
+
     @application.on_event("startup")
     async def startup_event():
-        # --- Background Tasks ---
         
         # Start Scheduler (Handles both recurring checks and email auto-sync)
         start_scheduler()
@@ -78,7 +76,7 @@ def create_application() -> FastAPI:
                 logger.error(f"Startup seeding failed: {e}")
                 logger.exception(e)
 
-        # 3. Trigger single-tenant migration on the parser service
+        # Trigger single-tenant migration on the parser service
         # This aligns any old 'system_tenant' data in the parser DB with the active tenant.
         db = SessionLocal()
         try:

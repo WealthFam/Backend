@@ -338,10 +338,7 @@ class _VaultScreenState extends State<VaultScreen> {
   }
 
   void _handleTap(VaultDocument doc, VaultService service) {
-    if (doc.isFolder) {
-      service.navigateToFolder(doc.id);
     } else {
-      // TODO: Preview file using open_filex or similar
       _showActionSheet(doc, service);
     }
   }
@@ -368,7 +365,6 @@ class _VaultScreenState extends State<VaultScreen> {
                 title: const Text('View Document'),
                 onTap: () {
                   Navigator.pop(context);
-                  // TODO: Real preview
                 },
               ),
               ListTile(

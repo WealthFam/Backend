@@ -40,7 +40,6 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
           : _buildExpenseGroupsList(goalsService.expenseGroups),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // TODO: Implement addition
         },
         child: const Icon(Icons.add),
       ),

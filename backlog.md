@@ -7,9 +7,12 @@
 1. [x] **Refactor `Transactions.vue`**: This file is currently >2.6k lines. Extract the "Transactions List", "Analytics", "Triage", and "Heatmap" into dedicated sub-components in `@/views/transactions/`.
 2. [x] **Mutual Fund Auto-Sync**: Implement a "Background Sync" status indicator and a manual "Refresh All" button in the Top Bar for Mutual Fund NAV updates.
 3. **Data Caching Layer**: Implement a Pinia plugin or custom composable to cache frequently accessed data (like Portfolio and Transaction metadata) in `localStorage` to eliminate blank-state flashing.
+4. **CORS Security**: Restrict `allow_origins` in `backend/app/main.py` and `parser/main.py` to specific domains for production environments.
 
 ## 🔵 New Feature Ideas
-4. **AI Rebalancing Assistant**: Expand the "Portfolio Intelligence" feature to suggest specific Buy/Sell quantities to achieve a target asset allocation.
+5. **AI Rebalancing Assistant**: Expand the "Portfolio Intelligence" feature to suggest specific Buy/Sell quantities to achieve a target asset allocation.
+6. **Mobile Content Previews**: Implement file previews using `open_filex` or a similar library for the Vault and Transaction attachments in the Flutter app.
+7. **Mobile Data Entry**: Implement "Add" functionality for Goals and Expense Groups in the mobile application.
 
 
 ## 🟣 Advanced Fintech Features (Long Term)

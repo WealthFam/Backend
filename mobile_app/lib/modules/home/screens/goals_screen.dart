@@ -45,7 +45,6 @@ class _GoalsScreenState extends State<GoalsScreen> {
               : _buildInvestmentGoalsList(goalsService.goals),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // TODO: Implement addition
         },
         child: const Icon(Icons.add),
       ),

@@ -33,7 +33,7 @@ def create_transaction(
 ):
     skip = (page - 1) * limit
     
-    # Handle empty strings from frontend
+    
     s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
     e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
 

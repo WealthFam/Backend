@@ -24,7 +24,7 @@ class BudgetService:
         else:
             end_of_period = datetime(year, month + 1, 1)
             
-        # 1. Spending
+        # Spending
         # Separate expenses (negative) and income (positive)
         # Note: SQL sum would mix them. We need to sum conditionally or fetch all.
         
@@ -52,7 +52,7 @@ class BudgetService:
             total_income = total_income.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         total_income = total_income.scalar() or 0
 
-        # 2. Excluded
+        # Excluded
         excluded_query = db.query(func.sum(func.abs(models.Transaction.amount))).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= start_of_period,
@@ -75,7 +75,7 @@ class BudgetService:
         excluded_income = excluded_income_query.scalar() or 0
         
 
-        # 3. Budget Limit
+        # Budget Limit
         overall_b = db.query(models.Budget).filter(
             models.Budget.tenant_id == tenant_id,
             models.Budget.category == 'OVERALL'
@@ -129,7 +129,7 @@ class BudgetService:
         else:
             end_of_period = datetime(year, month + 1, 1)
         
-        # 1. Fetch raw transaction aggregates
+        # Fetch raw transaction aggregates
         spending_query = db.query(
             models.Transaction.category, 
             func.sum(models.Transaction.amount).label("sum")
@@ -151,7 +151,7 @@ class BudgetService:
         spending_rows = spending_query.group_by(models.Transaction.category).all()
         raw_spending_map = { (row.category or 'Uncategorized'): Decimal(row.sum or 0) for row in spending_rows }
         
-        # 2. Helper for excluded spending (needed for rollups)
+        # Helper for excluded spending (needed for rollups)
         excluded_query = db.query(
             models.Transaction.category,
             func.sum(models.Transaction.amount).label("sum")
@@ -172,7 +172,7 @@ class BudgetService:
         excluded_rows = excluded_query.group_by(models.Transaction.category).all()
         raw_excluded_map = { (row.category or 'Uncategorized'): Decimal(row.sum or 0) for row in excluded_rows }
         
-        # 3. Recursive Rollup Logic
+        # Recursive Rollup Logic
         memo = {}
         def get_all_spending(cat_name):
             if cat_name in memo: return memo[cat_name]
@@ -192,7 +192,7 @@ class BudgetService:
             memo[cat_name] = (total_val, total_ex)
             return total_val, total_ex
 
-        # 4. Prepare Results
+        # Prepare Results
         budget_map = {b.category: b for b in budgets}
         results = []
         
@@ -274,7 +274,7 @@ class BudgetService:
         """
         tenant_id = str(tenant_id)
         
-        # 0. Determine Periods
+        # Determine Periods
         now = timezone.utcnow()
         if not year: year = now.year
         if not month: month = now.month
@@ -292,14 +292,14 @@ class BudgetService:
             else:
                 last_month_dt = datetime(year, month - 1, 1)
 
-        # 1. Fetch Current Data
+        # Fetch Current Data
         overview = BudgetService.get_budget_overview(db, tenant_id, year, month, user_id)
         data = BudgetService.get_budgets(db, tenant_id, year, month, user_id=user_id)
         
-        # 2. Fetch Last Month Data (for comparison)
+        # Fetch Last Month Data (for comparison)
         last_month_overview = BudgetService.get_budget_overview(db, tenant_id, last_month_dt.year, last_month_dt.month, user_id)
         
-        # 3. Fetch YTD Totals (Simple aggregation)
+        # Fetch YTD Totals (Simple aggregation)
         start_of_year = datetime(year, 1, 1)
         
         ytd_query = db.query(
@@ -371,7 +371,7 @@ class BudgetService:
         categories = data # data is already filtered for categories
 
 
-        # 1. Overall Health
+        # Overall Health
         if overall and overall["amount_limit"]:
             if overall["percentage"] > 100:
                 insights.append({
@@ -406,7 +406,7 @@ class BudgetService:
                     "icon": "👍"
                 })
 
-        # 2. Specific Category Pain Points (Top 2 Overspent)
+        # Specific Category Pain Points (Top 2 Overspent)
         overspent_cats = sorted([c for c in categories if c["amount_limit"] and c["percentage"] > 100], key=lambda x: x["percentage"], reverse=True)
         for cat in overspent_cats[:2]:
             insights.append({
@@ -417,7 +417,7 @@ class BudgetService:
                 "icon": "💸"
             })
 
-        # 3. Top Expense (if not overspent)
+        # Top Expense (if not overspent)
         if not overspent_cats:
             top_expense = max([c for c in categories if c["spent"] > 0], key=lambda x: x["spent"], default=None)
             if top_expense:
@@ -429,7 +429,7 @@ class BudgetService:
                     "icon": "📉"
                 })
 
-        # 4. Under-utilized Budgets (Efficiency)
+        # Under-utilized Budgets (Efficiency)
         efficient_cats = [c for c in categories if c["amount_limit"] and c["percentage"] < 50 and c["percentage"] > 0]
         if efficient_cats:
             best_saver = min(efficient_cats, key=lambda x: x["percentage"])
@@ -441,7 +441,7 @@ class BudgetService:
                 "icon": "📉"
             })
 
-        # 5. Income/Savings
+        # Income/Savings
         if ytd_stats["savings_rate"] > 20:
              insights.append({
                 "id": "ytd_save",
@@ -462,7 +462,7 @@ class BudgetService:
                 "icon": "📈"
             })
 
-        # 6. Seasonal/General Tip (Fallback)
+        # Seasonal/General Tip (Fallback)
         if len(insights) < 3:
             insights.append({
                 "id": "general_tip",

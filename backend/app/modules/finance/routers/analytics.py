@@ -18,7 +18,7 @@ def get_metrics(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Handle empty strings from frontend
+    
     s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
     e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
     
@@ -105,7 +105,7 @@ def get_heatmap(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Handle empty strings from frontend
+    
     s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
     e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
 
@@ -127,7 +127,7 @@ def get_detailed_analytics(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Handle empty strings from frontend
+    
     s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
     e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
 
@@ -153,7 +153,7 @@ def get_merchant_breakdown(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Handle empty strings from frontend
+    
     s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
     e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
 

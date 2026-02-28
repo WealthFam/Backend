@@ -12,12 +12,13 @@ from backend.app.modules.finance.models import TransactionType
 from backend.app.modules.finance.services.category_service import CategoryService
 from backend.app.modules.finance.services.transfer_service import TransferService
 from backend.app.modules.ingestion import models as ingestion_models
+from backend.app.core.timezone import ensure_utc
+from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
 
 class TransactionService:
     @staticmethod
     def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None, update_balance: bool = True):
         # 1. Unified Deduplication Check (Ref ID, Hash-Fallback, and Fields)
-        from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
         
         # Skip strict deduplication for MANUAL entries to allow user intent
         is_dup = False
@@ -149,9 +150,6 @@ class TransactionService:
         sort_order: str = "desc"
     ) -> List[models.Transaction]:
         if end_date:
-            from backend.app.core.timezone import ensure_utc
-            # Make end_date inclusive of the whole day (23:59:59.999999)
-            # We use replace to keep it on the same day but at the very end
             end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         query = db.query(models.Transaction).options(
@@ -247,8 +245,6 @@ class TransactionService:
         exclude_transfers: bool = False
     ) -> int:
         if end_date:
-            from backend.app.core.timezone import ensure_utc
-            # Make end_date inclusive of the whole day
             end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         if user_id in [None, "null", "undefined", ""]:

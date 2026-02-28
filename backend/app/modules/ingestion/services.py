@@ -108,7 +108,7 @@ class IngestionService:
         else:
             final_amount = abs(parsed.amount)
 
-        # --- DEDUPLICATION CHECK ---
+        # DEDUPLICATION CHECK
         from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
         message_hash = TransactionDeduplicator.generate_hash(
             tenant_id, str(account.id), parsed.date, final_amount, parsed.description, parsed.recipient
@@ -122,7 +122,7 @@ class IngestionService:
             logger.warning(f"INGESTION SKIPPED: Duplicate detected - {reason} (Existing ID: {existing_id})")
             return {"status": "skipped", "reason": f"Deduplicated: {reason}", "deduplicated": True, "existing_id": existing_id}
 
-        # --- IGNORE PATTERN CHECK ---
+        # IGNORE PATTERN CHECK
         check_text = f"{(parsed.recipient or '')} {(parsed.description or '')}".lower()
         ignored_patterns = db.query(ingestion_models.IgnoredPattern).filter(
             ingestion_models.IgnoredPattern.tenant_id == tenant_id
@@ -132,13 +132,13 @@ class IngestionService:
                 return {"status": "skipped", "reason": f"Ignored by user pattern: {ip.pattern}"}
         
         
-        # 1. Try to detect internal transfer
+        # Try to detect internal transfer
         all_accounts = db.query(finance_models.Account).filter(finance_models.Account.tenant_id == tenant_id).all()
         all_rules = db.query(finance_models.CategoryRule).filter(finance_models.CategoryRule.tenant_id == tenant_id).all()
         
         is_transfer, to_account_id = TransferDetector.detect(parsed.description, parsed.recipient, all_accounts, all_rules)
         
-        # 2. Try to auto-categorize
+        # Try to auto-categorize
         # Prioritize category from parser if available (e.g. from Learned Patterns)
         category = parsed.category
         
@@ -162,7 +162,7 @@ class IngestionService:
 
         if is_auto_ingest:
             # High confidence -> Directly to transactions
-            # --- BALANCE ANCHORING ---
+            # BALANCE ANCHORING
             # If parsed data has a balance, we anchor the account balance immediately as the "New Reality"
             # but only if the message is newer than or same date as last sync.
             if parsed.balance is not None:
@@ -279,7 +279,7 @@ class IngestionService:
         """
         msg_hash = hashlib.md5(raw_content.encode()).hexdigest()
 
-        # 1. Ignore Pattern Check
+        # Ignore Pattern Check
         check_text = f"{(subject or '')} {(raw_content or '')}".lower()
         ignored_patterns = db.query(ingestion_models.IgnoredPattern).filter(
             ingestion_models.IgnoredPattern.tenant_id == tenant_id
@@ -288,7 +288,7 @@ class IngestionService:
             if ip.pattern.lower() in check_text:
                 return # Skip noise
 
-        # 2. Check if already exists to avoid spam
+        # Check if already exists to avoid spam
         existing = db.query(ingestion_models.UnparsedMessage).filter(
             ingestion_models.UnparsedMessage.tenant_id == tenant_id,
             ingestion_models.UnparsedMessage.content_hash == msg_hash

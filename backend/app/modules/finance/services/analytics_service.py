@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, text, or_
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.transaction_service import TransactionService
-from backend.app.core import timezone
+from backend.app.core.timezone import ensure_utc
 
 class AnalyticsService:
     @staticmethod
@@ -13,11 +13,9 @@ class AnalyticsService:
             user_id = None
             
         if end_date:
-            from backend.app.core.timezone import ensure_utc
-            # Make end_date inclusive of the whole day (23:59:59.999999)
             end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
         
-        # 1. Accounts & Net Worth (Accounts are filtered by owner_id if user_id is provided)
+        # Accounts & Net Worth (Accounts are filtered by owner_id if user_id is provided)
         accounts_query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
         if user_id:
             # Show accounts owned by this user OR shared accounts (owner_id is null)
@@ -78,7 +76,7 @@ class AnalyticsService:
             raw_overall_util = (breakdown["credit_debt"] / breakdown["total_credit_limit"]) * 100
             breakdown["overall_credit_utilization"] = max(0, raw_overall_util)
 
-        # 2. Monthly Spending (or Filtered Spending)
+        # Monthly Spending (or Filtered Spending)
         # Default to current month if no dates provided
         if not start_date and not end_date:
             today = timezone.utcnow()
@@ -150,7 +148,7 @@ class AnalyticsService:
         total_excluded = get_excluded_sum(False) # Expenses
         excluded_income = get_excluded_sum(True) # Incomes
         
-        # 3. Overall Budget Health
+        # Overall Budget Health
         all_budgets = db.query(models.Budget).filter(models.Budget.tenant_id == tenant_id).all()
         overall = next((b for b in all_budgets if b.category == 'OVERALL'), None)
         total_budget_limit = float(overall.amount_limit) if overall else 0
@@ -163,7 +161,7 @@ class AnalyticsService:
             "percentage": (float(monthly_spending) / total_budget_limit * 100) if total_budget_limit > 0 else 0
         }
         
-        # 4. Recent Transactions (with owner names)
+        # Recent Transactions (with owner names)
         recent_txns = TransactionService.get_transactions(db, tenant_id, limit=5, user_role=user_role, user_id=user_id, exclude_from_reports=exclude_hidden, exclude_transfers=exclude_hidden)
         
         # Enrich with account owner names
@@ -190,7 +188,7 @@ class AnalyticsService:
             
             enriched_txns.append(txn_dict)
 
-        # 5. Top Spending Category this month
+        # Top Spending Category this month
         top_cat_query = db.query(
             models.Transaction.category,
             func.sum(models.Transaction.amount).label('total')
@@ -222,7 +220,7 @@ class AnalyticsService:
                 "amount": abs(float(top_cat_query[1]))
             }
         
-        # 6. Credit Intelligence
+        # Credit Intelligence
         credit_cards = [a for a in accounts if a.type == 'CREDIT_CARD']
         credit_intelligence = []
         for card in credit_cards:
@@ -528,7 +526,7 @@ class AnalyticsService:
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
         
-        # 1. Starting Balance (Liquid assets only)
+        # Starting Balance (Liquid assets only)
         liquid_accounts_query = db.query(models.Account).filter(
             models.Account.tenant_id == tenant_id,
             models.Account.type.in_(['BANK', 'WALLET'])
@@ -543,7 +541,7 @@ class AnalyticsService:
         
         current_balance = float(sum(acc.balance or 0 for acc in liquid_accounts))
         
-        # 2. Get Recurring Transactions
+        # Get Recurring Transactions
         recs_query = db.query(models.RecurringTransaction).filter(
             models.RecurringTransaction.tenant_id == tenant_id,
             models.RecurringTransaction.is_active == True
@@ -552,7 +550,7 @@ class AnalyticsService:
             recs_query = recs_query.filter(models.RecurringTransaction.account_id == account_id)
         recs = recs_query.all()
         
-        # 3. Discretionary Spending Heuristic
+        # Discretionary Spending Heuristic
         thirty_days_ago = timezone.utcnow() - timedelta(days=30)
         recent_txns_query = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
@@ -746,8 +744,7 @@ class AnalyticsService:
             user_id = None
         
         if end_date:
-            # Make end_date inclusive of the whole day
-            end_date = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         """
         Get transaction coordinates and weights for heatmap visualization.
@@ -794,8 +791,6 @@ class AnalyticsService:
             category = None
             
         if end_date:
-            from backend.app.core.timezone import ensure_utc
-            # Make end_date inclusive of the whole day
             end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         query = db.query(
@@ -831,12 +826,10 @@ class AnalyticsService:
                     Category.parent_id == None
                 ).first()
                 
-                logger.info(f"DEBUG: get_merchant_breakdown - parent_cat found: {parent_cat.id if parent_cat else 'None'}")
                 
                 if parent_cat:
                     subs = db.query(Category).filter(Category.parent_id == parent_cat.id).all()
                     sub_category_names = [s.name for s in subs]
-                    logger.info(f"DEBUG: get_merchant_breakdown - sub_category_names: {sub_category_names}")
                 
                 if sub_category_names:
                     filter_list = [category] + sub_category_names
@@ -852,14 +845,14 @@ class AnalyticsService:
         ]
     @staticmethod
     def get_family_wealth(db: Session, tenant_id: str):
-        # 1. Get all users in the tenant
+        # Get all users in the tenant
         from backend.app.modules.auth.models import User
         family_members = db.query(User).filter(User.tenant_id == tenant_id).all()
         
-        # 2. Get all accounts in the tenant
+        # Get all accounts in the tenant
         accounts = db.query(models.Account).filter(models.Account.tenant_id == tenant_id).all()
         
-        # 3. Calculate breakdown
+        # Calculate breakdown
         member_wealth = []
         shared_wealth = {
             "net_worth": 0,
@@ -922,8 +915,7 @@ class AnalyticsService:
     @staticmethod
     def get_detailed_analytics(db: Session, tenant_id: str, account_id: str = None, start_date: datetime = None, end_date: datetime = None, user_id: str = None, category: str = None):
         if end_date:
-            # Make end_date inclusive of the whole day
-            end_date = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         """
         Consolidated analytics for the Dashboard/Insights view.
@@ -931,7 +923,7 @@ class AnalyticsService:
         """
         from backend.app.modules.finance.models import Transaction, Category, Account
         
-        # 1. Base filter
+        # Base filter
         filters = [
             Transaction.tenant_id == tenant_id,
             Transaction.is_transfer == False,
@@ -955,7 +947,7 @@ class AnalyticsService:
         # We take all relevant transactions for this period
         txns = query.all()
         
-        # 2. Category Breakdown (Hierarchical)
+        # Category Breakdown (Hierarchical)
         db_categories = db.query(Category).filter(Category.tenant_id == tenant_id).all()
         
         cat_totals = {}
@@ -984,7 +976,7 @@ class AnalyticsService:
             top_5.append({"name": "Others", "value": round(others_val, 2)})
             final_categories = top_5
 
-        # 3. Merchant Breakdown
+        # Merchant Breakdown
         merc_totals = {}
         for t in txns:
             m_name = t.recipient or "Unknown"
@@ -997,7 +989,7 @@ class AnalyticsService:
         final_merchants.sort(key=lambda x: x["value"], reverse=True)
         final_merchants = final_merchants[:6] # Top 6 merchants
 
-        # 4. Temporal Heatmap (Category vs Hour)
+        # Temporal Heatmap (Category vs Hour)
         # We only want the top categories for the heatmap grid
         active_cats = [c["name"] for c in final_categories if c["name"] != "Others"]
         heatmap_grid = {cat: {h: 0 for h in range(24)} for cat in active_cats}
@@ -1010,7 +1002,7 @@ class AnalyticsService:
                 if heatmap_grid[t.category][hour] > max_heat:
                     max_heat = heatmap_grid[t.category][hour]
 
-        # 5. Excluded/Shielded Transactions
+        # Excluded/Shielded Transactions
         excluded_filters = [
             Transaction.tenant_id == tenant_id,
             or_(Transaction.is_transfer == True, Transaction.exclude_from_reports == True)
@@ -1035,7 +1027,7 @@ class AnalyticsService:
             
         final_ex_cats = [{"name": k, "value": round(v, 2)} for k, v in ex_cat_map.items()]
 
-        # 6. Trend Data (Daily)
+        # Trend Data (Daily)
         trend_filters = [
             Transaction.tenant_id == tenant_id,
             Transaction.is_transfer == False,
@@ -1092,7 +1084,7 @@ class AnalyticsService:
         
         income_total = float(income_query.scalar() or 0)
 
-        # 7. Account & Type Distributions (for AI Context)
+        # Account & Type Distributions (for AI Context)
         acc_map = {}
         type_map = {}
         for t in txns:
