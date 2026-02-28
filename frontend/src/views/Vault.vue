@@ -285,10 +285,11 @@ import { ref, computed, onMounted } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
+import { useConfirmStore } from '@/stores/confirm'
 import { X, Download, Clock, Upload, FileText, Link2, FileImage, FileVideo, Music, FileCode, FileArchive, Fingerprint, ShieldCheck, Folder, Receipt, Scale, FileSpreadsheet, Presentation, FolderPlus, MoreVertical, UploadCloud, Home, ChevronRight, Search, Trash2 } from 'lucide-vue-next'
 
-
 const notification = useNotificationStore()
+const confirmDialog = useConfirmStore()
 
 // Components
 import FilePreviewModal from './vault/FilePreviewModal.vue'
@@ -444,7 +445,8 @@ async function downloadItem(item: any) {
 }
 
 async function deleteItem(item: any) {
-    if (!confirm(`Delete ${item.is_folder ? 'folder and its contents' : 'file'}?`)) return
+    const isConfirmed = await confirmDialog.prompt(`Delete ${item.is_folder ? 'folder and its contents' : 'file'}?`, 'Confirm Delete', 'Delete', 'Cancel')
+    if (!isConfirmed) return
     try {
         await financeApi.deleteDocument(item.id)
         notification.success('Deleted')

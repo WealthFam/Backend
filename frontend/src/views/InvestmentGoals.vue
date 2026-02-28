@@ -4,6 +4,7 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
 import { useNotificationStore } from '@/stores/notification'
+import { useConfirmStore } from '@/stores/confirm'
 import { useAuthStore } from '@/stores/auth'
 import { useGoalStore } from '@/stores/finance/goals'
 import PremiumSkeleton from '@/components/common/PremiumSkeleton.vue'
@@ -22,6 +23,7 @@ import {
 } from 'lucide-vue-next'
 
 const notify = useNotificationStore()
+const confirmDialog = useConfirmStore()
 const authStore = useAuthStore()
 const goalStore = useGoalStore()
 const { formatAmount } = useCurrency()
@@ -193,7 +195,8 @@ const removeAsset = async (assetId: string) => {
 }
 
 const unlinkHolding = async (goalId: string, holdingId: string) => {
-    if (!confirm('Are you sure you want to remove this mutual fund from the goal?')) return
+    const isConfirmed = await confirmDialog.prompt('Are you sure you want to remove this mutual fund from the goal?', 'Remove Fund', 'Remove', 'Cancel')
+    if (!isConfirmed) return
     try {
         await financeApi.unlinkHoldingFromGoal(goalId, holdingId)
         notify.success("Mutual fund unlinked")
@@ -354,7 +357,7 @@ watch(() => authStore.selectedMemberId, () => {
                                         <div>
                                             <span class="text-h6 font-weight-black">{{
                                                 formatAmount(goal.current_amount)
-                                                }}</span>
+                                            }}</span>
                                             <span class="text-tiny font-weight-bold text-medium-emphasis ml-1">of {{
                                                 formatAmount(goal.target_amount) }}</span>
                                         </div>
@@ -552,7 +555,7 @@ watch(() => authStore.selectedMemberId, () => {
                                                 <v-avatar size="28" color="primary" variant="tonal" class="mr-2">
                                                     <span class="text-caption font-weight-black">{{
                                                         item.raw.initials
-                                                        }}</span>
+                                                    }}</span>
                                                 </v-avatar>
                                             </template>
                                         </v-list-item>
@@ -561,7 +564,7 @@ watch(() => authStore.selectedMemberId, () => {
                                         <div class="d-flex align-center">
                                             <v-avatar size="24" color="primary" variant="tonal" class="mr-2">
                                                 <span class="text-tiny font-weight-black">{{ item.raw.initials
-                                                    }}</span>
+                                                }}</span>
                                             </v-avatar>
                                             <span class="text-body-2 font-weight-bold">{{ item.raw.title }}</span>
                                         </div>

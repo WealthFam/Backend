@@ -325,7 +325,7 @@
                                         Manual
                                     </v-chip>
                                     <span class="text-caption font-mono text-disabled">{{ pattern.id.substring(0, 8)
-                                    }}</span>
+                                        }}</span>
                                 </div>
                             </td>
                             <td class="text-right">
@@ -357,7 +357,7 @@
             <v-card class="rounded-xl">
                 <v-card-title class="d-flex justify-space-between align-center pa-4 border-b">
                     <span class="text-h6 font-weight-bold">{{ isEditingPattern ? 'Edit Pattern' : 'New Pattern'
-                    }}</span>
+                        }}</span>
                     <v-btn icon="X" variant="text" density="comfortable" @click="showPatternModal = false"></v-btn>
                 </v-card-title>
                 <v-card-text class="pa-6">
@@ -369,7 +369,7 @@
                         <v-textarea v-model="patternForm.regex_pattern" label="Regex Pattern"
                             placeholder="Regex to capture transactions..." variant="outlined" rows="3"
                             class="font-mono text-body-2 mb-4" required></v-textarea>
-                        
+
                         <v-text-field v-model="patternForm.date_format" label="Date Format (Optional)"
                             placeholder="e.g. %d-%b-%y for 14-Feb-26" variant="outlined" density="comfortable"
                             class="font-mono text-body-2 mb-4" hint="Python datetime format string"
@@ -523,12 +523,14 @@ import {
 } from 'lucide-vue-next'
 import { parserApi, financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
+import { useConfirmStore } from '@/stores/confirm'
 import { useAiStore } from '@/stores/ai'
 import { useCurrency } from '@/composables/useCurrency'
 
 const aiStore = useAiStore()
 const { formatAmount } = useCurrency()
 const notify = useNotificationStore()
+const confirmDialog = useConfirmStore()
 
 // --- Internal State ---
 const parserStatus = ref({ isOnline: false })
@@ -720,7 +722,8 @@ async function savePattern() {
 }
 
 async function confirmDelete(pattern: any) {
-    if (!confirm(`Are you sure you want to delete the pattern for ${pattern.bank_name}?`)) return
+    const isConfirmed = await confirmDialog.prompt(`Are you sure you want to delete the pattern for ${pattern.bank_name}?`, 'Delete Pattern', 'Delete', 'Cancel')
+    if (!isConfirmed) return
 
     try {
         await parserApi.deletePattern(pattern.id)
