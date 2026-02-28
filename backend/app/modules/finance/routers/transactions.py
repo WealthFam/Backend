@@ -21,6 +21,11 @@ def create_transaction(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/transactions", response_model=schemas.TransactionPagination)
+def get_transactions(
+    page: int = 1,
+    limit: int = 20,
+    account_id: Optional[str] = None,
     search: Optional[str] = None,
     category: Optional[str] = None,
     sort_by: Optional[str] = "date",
