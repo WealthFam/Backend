@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, text, or_
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.transaction_service import TransactionService
-from backend.app.core.timezone import ensure_utc
+from backend.app.core import timezone
 
 class AnalyticsService:
     @staticmethod
@@ -13,7 +13,7 @@ class AnalyticsService:
             user_id = None
             
         if end_date:
-            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
+            end_date = timezone.ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
         
         # Accounts & Net Worth (Accounts are filtered by owner_id if user_id is provided)
         accounts_query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
@@ -744,7 +744,7 @@ class AnalyticsService:
             user_id = None
         
         if end_date:
-            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
+            end_date = timezone.ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         """
         Get transaction coordinates and weights for heatmap visualization.
@@ -791,7 +791,7 @@ class AnalyticsService:
             category = None
             
         if end_date:
-            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
+            end_date = timezone.ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         query = db.query(
             models.Transaction.recipient.label('merchant'),

@@ -59,7 +59,19 @@ def create_application() -> FastAPI:
     @application.on_event("startup")
     async def startup_event():
         
-        # Start Scheduler (Handles both recurring checks and email auto-sync)
+        # 1. Ensure all ORM-defined tables exist (CREATE TABLE IF NOT EXISTS)
+        logger.info("Running Base.metadata.create_all...")
+        Base.metadata.create_all(bind=engine)
+        
+        # 2. Run ALTER TABLE migrations for columns added after initial table creation
+        logger.info("Running auto-migrations...")
+        try:
+            run_auto_migrations(engine)
+        except Exception as e:
+            logger.error(f"Auto-migration failed: {e}")
+            logger.exception(e)
+        
+        # 3. Start Scheduler (Handles both recurring checks and email auto-sync)
         start_scheduler()
         
         # Seed Demo Data (Only if DEMO_MODE is true)
