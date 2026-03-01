@@ -1,6 +1,7 @@
+import calendar
 from typing import Optional
 from datetime import datetime, date, timedelta
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, text, or_
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.transaction_service import TransactionService
@@ -48,14 +49,11 @@ class AnalyticsService:
                 debt_amount = bal if bal > 0 else 0 
                 
                 breakdown["credit_debt"] += debt_amount
-                # Net worth: debt reduces it.
-                breakdown["net_worth"] -= bal 
+                breakdown["net_worth"] -= bal
                 
                 limit = float(acc.credit_limit or 0)
                 breakdown["total_credit_limit"] += limit
                 
-                # Available credit: Limit - Debt. 
-                # If Limit 10000, Balance 200 (Debt 200): Available = 10000 - 200 = 9800.
                 breakdown["available_credit"] += (limit - bal)
             
             elif acc.type == 'INVESTMENT':
@@ -80,8 +78,14 @@ class AnalyticsService:
         # Default to current month if no dates provided
         if not start_date and not end_date:
             today = timezone.utcnow()
-            start_date = datetime(today.year, today.month, 1)
-            
+            start_date = timezone.ensure_utc(datetime(today.year, today.month, 1))
+            last_day = calendar.monthrange(today.year, today.month)[1]
+            end_date = timezone.ensure_utc(datetime(today.year, today.month, last_day, 23, 59, 59))
+        
+        if start_date:
+            start_date = timezone.ensure_utc(start_date).replace(hour=0, minute=0, second=0, microsecond=0)
+        if end_date:
+            end_date = timezone.ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
         monthly_spending_query = db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.amount < 0,
@@ -161,10 +165,20 @@ class AnalyticsService:
             "percentage": (float(monthly_spending) / total_budget_limit * 100) if total_budget_limit > 0 else 0
         }
         
-        # Recent Transactions (with owner names)
-        recent_txns = TransactionService.get_transactions(db, tenant_id, limit=5, user_role=user_role, user_id=user_id, exclude_from_reports=exclude_hidden, exclude_transfers=exclude_hidden)
+        # Recent Transactions (bounded by month if dates provided)
+        recent_txns = TransactionService.get_transactions(
+            db, tenant_id, limit=5, 
+            start_date=start_date, 
+            end_date=end_date,
+            user_role=user_role, user_id=user_id, 
+            exclude_from_reports=exclude_hidden, 
+            exclude_transfers=exclude_hidden
+        )
         
-        # Enrich with account owner names
+        account_ids = list(set(txn.account_id for txn in recent_txns))
+        accounts_with_owners = db.query(models.Account).options(joinedload(models.Account.owner)).filter(models.Account.id.in_(account_ids)).all()
+        account_map = {a.id: a for a in accounts_with_owners}
+
         enriched_txns = []
         for txn in recent_txns:
             txn_dict = {
@@ -178,13 +192,9 @@ class AnalyticsService:
                 "exclude_from_reports": txn.exclude_from_reports
             }
             
-            # Get account owner name
-            account = db.query(models.Account).filter(models.Account.id == txn.account_id).first()
-            if account and account.owner_id:
-                from backend.app.modules.auth.models import User
-                owner = db.query(User).filter(User.id == account.owner_id).first()
-                if owner:
-                    txn_dict["account_owner_name"] = owner.full_name or owner.email.split('@')[0]
+            account = account_map.get(txn.account_id)
+            if account and account.owner:
+                txn_dict["account_owner_name"] = account.owner.full_name or account.owner.email.split('@')[0]
             
             enriched_txns.append(txn_dict)
 
@@ -240,8 +250,6 @@ class AnalyticsService:
                 "days_until_due": None
             }
             if intel["limit"] > 0:
-                # Calculate utilization percentage
-                # Balance is positive (debt). 
                 current_debt = intel["balance"] if intel["balance"] > 0 else 0
                 raw_util = (current_debt / intel["limit"]) * 100
                 intel["utilization"] = max(0, raw_util)
@@ -256,13 +264,9 @@ class AnalyticsService:
                 billing_day = int(intel["billing_day"])
                 today = timezone.utcnow().date()
                 
-                # Determine Last Statement Date
-                # 1. Try date in current month
                 try:
                     this_month_stmt = date(today.year, today.month, billing_day)
                 except ValueError:
-                    # Fallback for short months (e.g. Feb)
-                    import calendar
                     last_day = calendar.monthrange(today.year, today.month)[1]
                     this_month_stmt = date(today.year, today.month, last_day)
 
@@ -275,31 +279,23 @@ class AnalyticsService:
                     try:
                         last_statement_date = date(prev_month_end.year, prev_month_end.month, billing_day)
                     except ValueError:
-                         import calendar
                          last_day = calendar.monthrange(prev_month_end.year, prev_month_end.month)[1]
                          last_statement_date = date(prev_month_end.year, prev_month_end.month, last_day)
             
             if last_statement_date:
                 intel["last_statement_date"] = last_statement_date.isoformat()
                 
-                # Calculate Unbilled Spending (Debits after statement date)
-                # Note: We query DB here. For optimization in future, bulk fetch can be used.
                 unbilled_query = db.query(func.sum(models.Transaction.amount)).filter(
                     models.Transaction.account_id == card.id,
                     models.Transaction.date > last_statement_date,
-                    models.Transaction.amount < 0, # Debits only (Purchases)
+                    models.Transaction.amount < 0,
                     models.Transaction.exclude_from_reports == False
                 )
                 unbilled_raw = unbilled_query.scalar()
                 unbilled_purchases = float(unbilled_raw) if unbilled_raw else 0.0
                 
-                # Statement Balance = Current Balance - Unbilled Purchases
-                # Example: Balance -25k. Unbilled -5k. Result -20k.
-                # Example: Balance -25k. Unbilled 0. Result -25k.
                 statement_balance = intel["balance"] - unbilled_purchases
-                
-                # Heuristic for Minimum Due (5% of statement balance)
-                # Only if we owe money (negative)
+
                 if statement_balance < 0:
                     minimum_due = abs(statement_balance) * 0.05
                     
@@ -308,15 +304,7 @@ class AnalyticsService:
             intel["minimum_due"] = minimum_due
 
             if intel["due_day"]:
-                today = timezone.utcnow().date() # Ensure date object
                 try:
-                    # If we have a last statement date, Due Date is strictly next month from that?
-                    # Or same month? Usually 20-50 days grace.
-                    # Simple logic: If today > due_day (this month), show next month.
-                    # Better logic relative to Last Statement: Statement + ~20 days?
-                    # But we maintain explicit Due Day.
-                    
-                    # Let's stick to "Next Due Date relative to Today"
                     due_date = date(today.year, today.month, int(intel["due_day"]))
                     if due_date < today:
                          # Move to next month
@@ -332,38 +320,99 @@ class AnalyticsService:
 
             credit_intelligence.append(intel)
 
-        # 7. Calculate today's total spending
-        today_start = timezone.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        today_spending_query = db.query(func.sum(models.Transaction.amount)).filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
-            models.Transaction.exclude_from_reports == False,
-            models.Transaction.date >= today_start
+
+        return {
+            "breakdown": breakdown,
+            "monthly_income": monthly_income,
+            "monthly_total": monthly_spending,
+            "monthly_spending": monthly_spending,  # Keep for backward compatibility
+            "total_excluded": total_excluded,
+            "excluded_income": excluded_income,
+            "budget_health": budget_health,
+            "credit_intelligence": credit_intelligence,
+            "recent_transactions": enriched_txns,
+            "top_spending_category": top_spending_category,
+            "currency": accounts[0].currency if accounts else "INR"
+        }
+
+    @staticmethod
+    def get_mobile_summary_metrics(db: Session, tenant_id: str, user_role: str = "ADULT", month: int = None, year: int = None, user_id: str = None):
+        """
+        Specialized aggregator for the mobile dashboard.
+        Calls the core summary and enriches it with mobile-only dashboard metrics.
+        """
+        now = timezone.utcnow()
+        target_month = month or now.month
+        target_year = year or now.year
+        start_date = timezone.ensure_utc(datetime(target_year, target_month, 1))
+        last_day = calendar.monthrange(target_year, target_month)[1]
+        end_date = timezone.ensure_utc(datetime(target_year, target_month, last_day, 23, 59, 59))
+        
+        # 1. Get Base Metrics
+        base = AnalyticsService.get_summary_metrics(
+            db, tenant_id, user_role=user_role, start_date=start_date, end_date=end_date, user_id=user_id, exclude_hidden=True
+        )
+        
+        # 2. Add Daily Real-time Metrics (mobile-only dashboard features)
+        is_current_month = (target_month == now.month and target_year == now.year)
+        today_total = 0.0
+        yesterday_total = 0.0
+        last_month_same_day_total = 0.0
+        prorated_budget = 0.0
+        daily_budget_limit = base["budget_health"]["limit"] / last_day if base["budget_health"]["limit"] > 0 else 0
+
+        if is_current_month:
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            yesterday_start = today_start - timedelta(days=1)
+            yesterday_end = today_start - timedelta(microseconds=1)
+            
+            # Last month same day
+            try:
+                if now.month == 1:
+                    lm_sd_start = timezone.ensure_utc(datetime(now.year - 1, 12, now.day))
+                else:
+                    lm_sd_start = timezone.ensure_utc(datetime(now.year, now.month - 1, now.day))
+            except ValueError:
+                lm_sd_start = today_start - timedelta(days=30)
+            
+            lm_sd_start = lm_sd_start.replace(hour=0, minute=0, second=0, microsecond=0)
+            lm_sd_end = lm_sd_start.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+            def get_daily_sum(d_start, d_end):
+                from backend.app.modules.finance.models import Transaction, Account
+                q = db.query(func.sum(Transaction.amount)).filter(
+                    Transaction.tenant_id == tenant_id,
+                    Transaction.amount < 0,
+                    Transaction.is_transfer == False,
+                    Transaction.exclude_from_reports == False,
+                    Transaction.date >= d_start,
+                    Transaction.date <= d_end
+                )
+                if user_id:
+                    q = q.join(Account, Transaction.account_id == Account.id)\
+                         .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+                return abs(float(q.scalar() or 0))
+
+            today_total = get_daily_sum(today_start, now)
+            yesterday_total = get_daily_sum(yesterday_start, yesterday_end)
+            last_month_same_day_total = get_daily_sum(lm_sd_start, lm_sd_end)
+            prorated_budget = daily_budget_limit * now.day
+
+        # 3. Latest Transaction (mobile callout)
+        from backend.app.modules.finance.models import Transaction, Account
+        latest_txn_query = db.query(Transaction).filter(
+            Transaction.tenant_id == tenant_id,
+            Transaction.amount < 0,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False,
+            Transaction.date >= start_date,
+            Transaction.date <= end_date
         )
         if user_id:
-            today_spending_query = today_spending_query.join(
-                models.Account, models.Transaction.account_id == models.Account.id
-            ).filter(
-                or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
-            )
-        today_total = abs(float(today_spending_query.scalar() or 0))
+            latest_txn_query = latest_txn_query.join(Account, Transaction.account_id == Account.id)\
+                                             .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
         
-        # 8. Get latest transaction (most recent expense)
-        latest_txn_query = db.query(models.Transaction).filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
-            models.Transaction.exclude_from_reports == False
-        )
-        if user_id:
-            latest_txn_query = latest_txn_query.join(
-                models.Account, models.Transaction.account_id == models.Account.id
-            ).filter(
-                or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
-            )
-        latest_txn = latest_txn_query.order_by(models.Transaction.date.desc()).first()
-        
+        latest_txn = latest_txn_query.order_by(Transaction.date.desc()).first()
         latest_transaction_data = None
         if latest_txn:
             latest_transaction_data = {
@@ -373,19 +422,139 @@ class AnalyticsService:
             }
 
         return {
-            "breakdown": breakdown,
+            **base,
             "today_total": today_total,
-            "monthly_income": monthly_income,
-            "monthly_total": monthly_spending,
-            "monthly_spending": monthly_spending,  # Keep for backward compatibility
-            "total_excluded": total_excluded,
-            "excluded_income": excluded_income,
-            "top_spending_category": top_spending_category,
-            "budget_health": budget_health,
-            "credit_intelligence": credit_intelligence,
-            "recent_transactions": enriched_txns,
-            "latest_transaction": latest_transaction_data,
-            "currency": accounts[0].currency if accounts else "INR"
+            "yesterday_total": yesterday_total,
+            "last_month_same_day_total": last_month_same_day_total,
+            "daily_budget_limit": daily_budget_limit,
+            "prorated_budget": prorated_budget,
+            "latest_transaction": latest_transaction_data
+        }
+
+    @staticmethod
+    def get_consolidated_dashboard(db: Session, tenant_id: str, current_user, month: int = None, year: int = None, user_id: str = None):
+        """
+        Premium Consolidated dashboard aggregator.
+        Reduces mobile round-trips to ONE (Summary + Trends + Categories + Investments + Triage).
+        """
+        from backend.app.modules.finance.services.mutual_funds import MutualFundService
+        from backend.app.modules.finance.services.transaction_service import TransactionService
+        from backend.app.modules.auth.models import User
+        
+        now = timezone.utcnow()
+        t_month = month or now.month
+        t_year = year or now.year
+
+        # 1. Base Summary + Stats
+        summary = AnalyticsService.get_mobile_summary_metrics(db, tenant_id, current_user.role, t_month, t_year, user_id)
+        
+        # 2. Daily + Monthly Trends
+        trends = AnalyticsService.get_mobile_dashboard_trends(db, tenant_id, t_year, t_month, user_id)
+        
+        # 3. Category Distribution
+        cats = AnalyticsService.get_mobile_dashboard_categories(db, tenant_id, t_month, t_year, user_id)
+        
+        # 4. Investment Summary (only for Adults)
+        investment_summary = None
+        if current_user.role != "CHILD":
+            inv_data = MutualFundService.get_portfolio_analytics(db, tenant_id, user_id=user_id)
+            if inv_data["current_value"] > 0 or inv_data["total_invested"] > 0:
+                investment_summary = {
+                    "total_invested": inv_data["total_invested"],
+                    "current_value": inv_data["current_value"],
+                    "profit_loss": inv_data.get("profit_loss", inv_data["current_value"] - inv_data["total_invested"]),
+                    "xirr": inv_data["xirr"],
+                    "sparkline": inv_data.get("sparkline", []),
+                    "day_change": inv_data.get("day_change", 0.0),
+                    "day_change_percent": inv_data.get("day_change_percent", 0.0)
+                }
+
+        # 5. Metadata Counters
+        _, triage_count = TransactionService.get_pending_transactions(db, tenant_id, limit=1, user_id=user_id)
+        family_members_count = db.query(User).filter(User.tenant_id == tenant_id).count()
+
+        return {
+            "summary": {
+                "today_total": summary.get("today_total", 0.0),
+                "yesterday_total": summary.get("yesterday_total", 0.0),
+                "last_month_same_day_total": summary.get("last_month_same_day_total", 0.0),
+                "monthly_total": summary.get("monthly_total", 0.0),
+                "currency": summary.get("currency", "INR"),
+                "daily_budget_limit": summary.get("daily_budget_limit", 0.0),
+                "prorated_budget": summary.get("prorated_budget", 0.0)
+            },
+            "budget": summary.get("budget_health", {"limit": 0, "spent": 0, "percentage": 0}),
+            **trends,
+            **cats,
+            "investment_summary": investment_summary,
+            "recent_transactions": summary["recent_transactions"],
+            "pending_triage_count": triage_count,
+            "family_members_count": family_members_count
+        }
+
+    @staticmethod
+    def get_mobile_summary_lightweight(db: Session, tenant_id: str, user_id: str = None):
+        """Standardized lightweight metrics for mobile notifications or background tasks"""
+        from backend.app.modules.finance.models import Transaction, Account
+        
+        # 1. Today's total spending
+        today_start = timezone.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_query = db.query(func.sum(Transaction.amount)).filter(
+            Transaction.tenant_id == tenant_id,
+            Transaction.amount < 0,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False,
+            Transaction.date >= today_start
+        )
+        
+        if user_id:
+            today_query = today_query.join(Account, Transaction.account_id == Account.id)\
+                                     .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+        
+        today_total = abs(float(today_query.scalar() or 0))
+        
+        # 2. Month's total spending
+        now = timezone.utcnow()
+        month_start = timezone.ensure_utc(datetime(now.year, now.month, 1))
+        month_query = db.query(func.sum(Transaction.amount)).filter(
+            Transaction.tenant_id == tenant_id,
+            Transaction.amount < 0,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False,
+            Transaction.date >= month_start
+        )
+        
+        if user_id:
+            month_query = month_query.join(Account, Transaction.account_id == Account.id)\
+                                     .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+        
+        monthly_total = abs(float(month_query.scalar() or 0))
+        
+        # 3. Latest transaction
+        latest_query = db.query(Transaction).filter(
+            Transaction.tenant_id == tenant_id,
+            Transaction.amount < 0,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False
+        )
+        
+        if user_id:
+            latest_query = latest_query.join(Account, Transaction.account_id == Account.id)\
+                                       .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+        
+        latest_txn = latest_query.order_by(Transaction.date.desc()).first()
+        latest_transaction = None
+        if latest_txn:
+            latest_transaction = {
+                "amount": abs(float(latest_txn.amount)),
+                "description": latest_txn.description,
+                "time": latest_txn.date.strftime("%H:%M") if latest_txn.date else ""
+            }
+        
+        return {
+            "today_total": today_total,
+            "monthly_total": monthly_total,
+            "latest_transaction": latest_transaction
         }
 
     @staticmethod
@@ -479,6 +648,7 @@ class AnalyticsService:
             
         return timeline[::-1]
 
+
     @staticmethod
     def get_spending_trend(db: Session, tenant_id: str, user_id: str = None):
         if user_id in [None, "null", "undefined", ""]:
@@ -520,6 +690,90 @@ class AnalyticsService:
             current += timedelta(days=1)
             
         return trend
+
+    @staticmethod
+    def get_mobile_dashboard_trends(db: Session, tenant_id: str, target_year: int, target_month: int, user_id: str = None):
+        """
+        Deep Analysis Result: Web app uses get_spending_trend() or get_detailed_analytics().
+        This specific method serves ONLY the mobile dashboard to prevent regression.
+        - Truncates future dates for the current month.
+        - Returns a 6-month historical overview + daily granularity for the active month.
+        """
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+            
+        now = timezone.utcnow()
+        
+        # 1. Month-wise Trend (Last 6 Months centering on target_date)
+        target_date = timezone.ensure_utc(datetime(target_year, target_month, 1))
+        budget_history = AnalyticsService.get_budget_history(
+            db, tenant_id, months=6, user_id=user_id, target_date=target_date
+        )
+        month_wise_trend = []
+        for m in budget_history:
+            overall = next((cat for cat in m["data"] if cat["category"] == "OVERALL"), None)
+            if overall:
+                month_wise_trend.append({"month": m["month"], "spent": overall["spent"], "budget": overall["limit"], "is_selected": m.get("is_selected", False)})
+            else:
+                total_spent = sum(c["spent"] for c in m["data"] if c["category"] != "OVERALL")
+                total_limit = sum(c["limit"] for c in m["data"] if c["category"] != "OVERALL")
+                month_wise_trend.append({"month": m["month"], "spent": total_spent, "budget": total_limit, "is_selected": m.get("is_selected", False)})
+
+        # 2. Daily Spending Trend (Month-Bounded)
+        month_start = timezone.ensure_utc(datetime(target_year, target_month, 1))
+        last_day = calendar.monthrange(target_year, target_month)[1]
+        month_end = timezone.ensure_utc(datetime(target_year, target_month, last_day, 23, 59, 59))
+        
+        # Limit query to today if it's the current month
+        query_end = min(month_end, now) if month_end > now else month_end
+        
+        # Re-calculate daily budget limit
+        metrics = AnalyticsService.get_summary_metrics(
+            db, tenant_id, start_date=month_start, end_date=month_end, user_id=user_id, exclude_hidden=True
+        )
+        daily_limit = metrics["budget_health"]["limit"] / last_day if metrics["budget_health"]["limit"] > 0 else 0
+
+        # Query daily totals
+        from backend.app.modules.finance.models import Transaction, Account
+        trend_query = db.query(
+            func.date(Transaction.date).label('day'),
+            func.sum(Transaction.amount).label('total')
+        ).filter(
+            Transaction.tenant_id == tenant_id,
+            Transaction.amount < 0,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False,
+            Transaction.date >= month_start,
+            Transaction.date <= query_end
+        )
+        
+        if user_id:
+            trend_query = trend_query.join(Account, Transaction.account_id == Account.id)\
+                                     .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+        
+        row_map = {str(row.day): abs(float(row.total)) for row in trend_query.group_by(func.date(Transaction.date)).all()}
+        
+        # Calculate iteration limit
+        days_to_show = last_day
+        if target_year == now.year and target_month == now.month:
+            days_to_show = now.day
+        elif (target_year, target_month) > (now.year, now.month):
+            days_to_show = 0
+
+        daily_trend = []
+        for i in range(days_to_show):
+            curr_date = (month_start + timedelta(days=i)).date()
+            d_str = curr_date.isoformat()
+            daily_trend.append({
+                "date": d_str,
+                "amount": row_map.get(d_str, 0.0),
+                "daily_limit": daily_limit
+            })
+            
+        return {
+            "month_wise_trend": month_wise_trend,
+            "spending_trend": daily_trend
+        }
 
     @staticmethod
     def get_balance_forecast(db: Session, tenant_id: str, days: int = 30, account_id: str = None, user_id: str = None):
@@ -597,7 +851,7 @@ class AnalyticsService:
             
         return forecast
     @staticmethod
-    def get_budget_history(db: Session, tenant_id: str, months: int = 6, user_id: str = None):
+    def get_budget_history(db: Session, tenant_id: str, months: int = 6, user_id: str = None, target_date: datetime = None):
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
             
@@ -638,12 +892,31 @@ class AnalyticsService:
             budgets = [DummyBudget(c) for c in categories]
 
         now = timezone.utcnow()
-        # Calculate start of the first month in range
-        first_month_offset = months - 1
-        current_m = now.month
-        current_y = now.year
+        current_month_start = datetime(now.year, now.month, 1)
+
+        if not target_date:
+            target_date = now
+            
+        target_month_start = datetime(target_date.year, target_date.month, 1)
         
-        for _ in range(first_month_offset):
+        # Determine End Month (Target + 2, but capped at Current)
+        end_month_start = target_month_start
+        for _ in range(2):
+            m = end_month_start.month + 1
+            y = end_month_start.year
+            if m > 12:
+                m = 1
+                y += 1
+            end_month_start = datetime(y, m, 1)
+        
+        if end_month_start > current_month_start:
+            end_month_start = current_month_start
+            
+        # Start of range is 'months' before end_month_start + 1 month
+        # Actually go back months-1 from end_month_start
+        current_m = end_month_start.month
+        current_y = end_month_start.year
+        for _ in range(months - 1):
             current_m -= 1
             if current_m == 0:
                 current_m = 12
@@ -651,9 +924,11 @@ class AnalyticsService:
         
         start_range = datetime(current_y, current_m, 1)
         
+        last_day = calendar.monthrange(end_month_start.year, end_month_start.month)[1]
+        end_range_full = datetime(end_month_start.year, end_month_start.month, last_day, 23, 59, 59)
+
         # Query spending for ALL categories for the WHOLE period in one go
         # Group by category and month
-        # Note: func.date_trunc('month', ...) is supported by DuckDB
         monthly_stats_query = db.query(
             models.Transaction.category,
             func.date_trunc('month', models.Transaction.date).label('month_start'),
@@ -661,6 +936,7 @@ class AnalyticsService:
         ).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= start_range,
+            models.Transaction.date <= end_range_full,
             models.Transaction.amount < 0,
             models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False
@@ -691,6 +967,7 @@ class AnalyticsService:
             ).filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.date >= start_range,
+                models.Transaction.date <= end_range_full,
                 models.Transaction.amount < 0,
                 models.Transaction.is_transfer == False,
                 models.Transaction.exclude_from_reports == False
@@ -712,22 +989,23 @@ class AnalyticsService:
 
         history = []
         for i in range(months):
-            # Calculate target month and year
-            target_month = now.month - i
-            target_year = now.year
-            while target_month <= 0:
-                target_month += 12
-                target_year -= 1
+            # Calculate target month and year starting from end_month_start
+            m_target = end_month_start.month - i
+            y_target = end_month_start.year
+            while m_target <= 0:
+                m_target += 12
+                y_target -= 1
             
-            m_start = datetime(target_year, target_month, 1).date()
-            month_label = m_start.strftime("%b %Y")
+            m_start_val = date(y_target, m_target, 1)
+            month_label = m_start_val.strftime("%b %Y")
             
             entry = {
                 "month": month_label,
+                "is_selected": (m_target == target_date.month and y_target == target_date.year),
                 "data": []
             }
             
-            month_data = stats_map.get(m_start, {})
+            month_data = stats_map.get(m_start_val, {})
             for b in budgets:
                 entry["data"].append({
                     "category": b.category,
@@ -915,7 +1193,7 @@ class AnalyticsService:
     @staticmethod
     def get_detailed_analytics(db: Session, tenant_id: str, account_id: str = None, start_date: datetime = None, end_date: datetime = None, user_id: str = None, category: str = None):
         if end_date:
-            end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
+            end_date = timezone.ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
 
         """
         Consolidated analytics for the Dashboard/Insights view.
