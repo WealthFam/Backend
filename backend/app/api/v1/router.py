@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.app.api.v1 import mobile
+from backend.app.modules.mobile.api.router import router as mobile_router
 
 api_router = APIRouter()
-api_router.include_router(mobile.router, prefix="/mobile", tags=["Mobile"])
+api_router.include_router(mobile_router, prefix="/mobile", tags=["Mobile"])
