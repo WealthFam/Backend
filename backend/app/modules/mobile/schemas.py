@@ -85,11 +85,27 @@ class CategoryPieItem(BaseModel):
     value: float
     color: Optional[str] = None
 
+class MonthTrendItem(BaseModel):
+    month: str
+    spent: float
+    budget: float
+
+class InvestmentSummary(BaseModel):
+    total_invested: float
+    current_value: float
+    profit_loss: float
+    xirr: Optional[float] = None
+    sparkline: List[float] = []
+    day_change: float = 0.0
+    day_change_percent: float = 0.0
+
 class MobileDashboardResponse(BaseModel):
     summary: DashboardSummary
     budget: BudgetSummary
+    investment_summary: Optional[InvestmentSummary] = None
     spending_trend: List[SpendingTrendItem]
     category_distribution: List[CategoryPieItem]
+    month_wise_trend: List[MonthTrendItem] = []
     recent_transactions: List[RecentTransaction]
     pending_triage_count: int = 0
 

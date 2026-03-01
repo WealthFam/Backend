@@ -14,6 +14,8 @@ from backend.app.core import timezone
 from backend.app.modules.ingestion.services import IngestionService
 from backend.app.modules.mobile import schemas
 from backend.app.modules.finance.services.analytics_service import AnalyticsService
+from backend.app.modules.finance.services.mutual_funds import MutualFundService
+from sqlalchemy import func, or_
 
 router = APIRouter(tags=["Mobile"])
 
@@ -487,10 +489,53 @@ def get_mobile_dashboard(
             daily_limit=daily_budget_limit
         ))
         
-    # --- 3. Pending Triage Count ---
-    pending_count = db.query(ingestion_models.PendingTransaction).filter(
-        ingestion_models.PendingTransaction.tenant_id == str(current_user.tenant_id)
-    ).count()
+    # --- 4. Month-wise Trend (Last 6 Months) ---
+    budget_history = AnalyticsService.get_budget_history(
+        db, 
+        str(current_user.tenant_id), 
+        months=6, 
+        user_id=target_user_id
+    )
+    month_wise_trend = []
+    for m in budget_history:
+        # Extract OVERALL budget/spent or sum of all if no OVERALL
+        overall = next((cat for cat in m["data"] if cat["category"] == "OVERALL"), None)
+        if overall:
+            month_wise_trend.append(schemas.MonthTrendItem(
+                month=m["month"],
+                spent=overall["spent"],
+                budget=overall["limit"]
+            ))
+        else:
+            # Fallback for sum if no OVERALL category exists
+            total_spent = sum(c["spent"] for c in m["data"] if c["category"] != "OVERALL")
+            total_limit = sum(c["limit"] for c in m["data"] if c["category"] != "OVERALL")
+            month_wise_trend.append(schemas.MonthTrendItem(
+                month=m["month"],
+                spent=total_spent,
+                budget=total_limit
+            ))
+
+    # --- 5. Investment Summary ---
+    investment_summary = None
+    if current_user.role != "CHILD":
+        inv_data = MutualFundService.get_portfolio_analytics(db, str(current_user.tenant_id), user_id=target_user_id)
+        if inv_data["current_value"] > 0 or inv_data["total_invested"] > 0:
+            investment_summary = schemas.InvestmentSummary(
+                total_invested=inv_data["total_invested"],
+                current_value=inv_data["current_value"],
+                profit_loss=inv_data.get("profit_loss", inv_data["current_value"] - inv_data["total_invested"]),
+                xirr=inv_data["xirr"],
+                sparkline=inv_data.get("sparkline", []),
+                day_change=inv_data.get("day_change", 0.0),
+                day_change_percent=inv_data.get("day_change_percent", 0.0)
+            )
+
+    # --- 6. Pending Triage Count ---
+    from backend.app.modules.finance.services.transaction_service import TransactionService
+    _, triage_count = TransactionService.get_pending_transactions(
+        db, str(current_user.tenant_id), limit=1, user_id=target_user_id
+    )
 
     # Filter recent transactions to match dashboard logic (Safe display)
     # Filtered by service
@@ -498,13 +543,15 @@ def get_mobile_dashboard(
 
     return {
         "summary": {
-            "today_total": metrics["today_total"],
-            "monthly_total": metrics["monthly_total"],
-            "currency": metrics["currency"]
+            "today_total": metrics.get("today_total", 0),
+            "monthly_total": metrics.get("monthly_total", 0),
+            "currency": metrics.get("currency", "INR")
         },
-        "budget": metrics["budget_health"],
+        "budget": metrics.get("budget_health", {"limit": 0, "spent": 0, "percentage": 0}),
+        "investment_summary": investment_summary,
         "spending_trend": spending_trend,
         "category_distribution": category_distribution,
+        "month_wise_trend": month_wise_trend,
         "recent_transactions": [
             {
                 **txn,
@@ -512,7 +559,7 @@ def get_mobile_dashboard(
             }
             for txn in filtered_recent
         ],
-        "pending_triage_count": pending_count
+        "pending_triage_count": triage_count
     }
 
 @router.get("/triage", response_model=List[schemas.RecentTransaction])
@@ -552,6 +599,7 @@ def list_mobile_transactions(
     page_size: int = 20,
     month: Optional[int] = None,
     year: Optional[int] = None,
+    day: Optional[int] = None,
     member_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -591,9 +639,13 @@ def list_mobile_transactions(
         )
     
     if month and year:
-        start_date = datetime(year, month, 1)
-        last_day = calendar.monthrange(year, month)[1]
-        end_date = datetime(year, month, last_day, 23, 59, 59)
+        if day:
+            start_date = datetime(year, month, day)
+            end_date = datetime(year, month, day, 23, 59, 59)
+        else:
+            start_date = datetime(year, month, 1)
+            last_day = calendar.monthrange(year, month)[1]
+            end_date = datetime(year, month, last_day, 23, 59, 59)
         query = query.filter(models.Transaction.date >= start_date, models.Transaction.date <= end_date)
         
     total_count = query.count()

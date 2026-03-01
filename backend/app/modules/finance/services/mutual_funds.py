@@ -1409,6 +1409,33 @@ class MutualFundService:
         category_allocation = {}
         total_value = 0.0
         
+        # Portfolio Sparkline + Day Change — read directly from cache (fast, no computation)
+        sparkline = []
+        day_change = 0.0
+        day_change_percent = 0.0
+        try:
+            from ..models import PortfolioTimelineCache
+            from datetime import date, timedelta
+            cutoff = date.today() - timedelta(days=30)
+            cached_points = (
+                db.query(PortfolioTimelineCache)
+                .filter(
+                    PortfolioTimelineCache.tenant_id == tenant_id,
+                    PortfolioTimelineCache.snapshot_date >= cutoff,
+                )
+                .order_by(PortfolioTimelineCache.snapshot_date.asc())
+                .all()
+            )
+            if cached_points:
+                sparkline = [float(p.portfolio_value) for p in cached_points]
+                if len(sparkline) >= 2:
+                    prev_val = sparkline[-2]
+                    curr_val = sparkline[-1]
+                    day_change = round(curr_val - prev_val, 2)
+                    day_change_percent = round((day_change / prev_val) * 100, 2) if prev_val > 0 else 0.0
+        except Exception:
+            pass
+
         for h in holdings:
             meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == h.scheme_code).first()
             raw_category = meta.category if meta else "Other"
@@ -1508,7 +1535,11 @@ class MutualFundService:
             "top_losers": top_losers,
             "xirr": xirr_value,
             "total_invested": round(total_invested, 2),
-            "current_value": round(total_value, 2)
+            "current_value": round(total_value, 2),
+            "profit_loss": round(total_value - total_invested, 2),
+            "sparkline": sparkline,
+            "day_change": day_change,
+            "day_change_percent": day_change_percent
         }
     
     @staticmethod
