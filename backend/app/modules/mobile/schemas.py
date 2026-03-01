@@ -15,6 +15,8 @@ class DeviceResponse(DeviceBase):
     last_seen_at: datetime
     created_at: datetime
     user_id: Optional[str] = None
+    user_name: Optional[str] = None
+    user_avatar: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,6 +37,8 @@ class MobileLoginResponse(BaseModel):
     expires_in: int
     device_status: DeviceResponse
     user_role: Optional[str] = "ADULT"
+    user_name: Optional[str] = None
+    user_avatar: Optional[str] = None
 
 class ToggleApprovalRequest(BaseModel):
     is_approved: bool
@@ -53,8 +57,12 @@ class DeviceUpdate(BaseModel):
 
 class DashboardSummary(BaseModel):
     today_total: float
+    yesterday_total: float = 0.0
+    last_month_same_day_total: float = 0.0
     monthly_total: float
     currency: str = "INR"
+    daily_budget_limit: float = 0.0
+    prorated_budget: float = 0.0
 
 class BudgetSummary(BaseModel):
     limit: float
@@ -89,6 +97,7 @@ class MonthTrendItem(BaseModel):
     month: str
     spent: float
     budget: float
+    is_selected: bool = False
 
 class InvestmentSummary(BaseModel):
     total_invested: float
@@ -108,6 +117,24 @@ class MobileDashboardResponse(BaseModel):
     month_wise_trend: List[MonthTrendItem] = []
     recent_transactions: List[RecentTransaction]
     pending_triage_count: int = 0
+    family_members_count: Optional[int] = None
+
+class DashboardSummaryResponse(BaseModel):
+    summary: DashboardSummary
+    budget: BudgetSummary
+    recent_transactions: List[RecentTransaction]
+    pending_triage_count: int
+    family_members_count: int
+
+class DashboardTrendsResponse(BaseModel):
+    month_wise_trend: List[MonthTrendItem]
+    spending_trend: List[SpendingTrendItem]
+
+class DashboardCategoriesResponse(BaseModel):
+    category_distribution: List[CategoryPieItem]
+
+class DashboardInvestmentsResponse(BaseModel):
+    investment_summary: Optional[InvestmentSummary]
 
 class MemberResponse(BaseModel):
     id: str
