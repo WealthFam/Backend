@@ -147,6 +147,7 @@ class SmsService extends ChangeNotifier {
   int _messagesSyncedToday = 0;
   String? _lastSyncStatus;
   List<Map<String, dynamic>> _debugLogs = [];
+  bool _isSyncing = false;
 
   bool get isSyncEnabled => _isSyncEnabled;
   bool get isForegroundServiceEnabled => _isForegroundServiceEnabled;
@@ -154,6 +155,7 @@ class SmsService extends ChangeNotifier {
   List<Map<String, dynamic>> get debugLogs => _debugLogs;
   int get messagesSyncedToday => _messagesSyncedToday;
   String? get lastSyncStatus => _lastSyncStatus;
+  bool get isSyncing => _isSyncing;
   int get queueCount => (_prefs.getStringList(keyQueue) ?? []).length;
 
   bool _isRequestingPermission = false;
@@ -497,6 +499,31 @@ class SmsService extends ChangeNotifier {
     
     await _prefs.setStringList(keyQueue, remaining);
     if (successCount > 0) notifyListeners();
+  }
+
+  Future<void> syncNow() async {
+    if (_isSyncing) return;
+    _isSyncing = true;
+    _lastSyncStatus = "Syncing...";
+    notifyListeners();
+
+    try {
+      // 1. Retry failed ones
+      await retryQueue();
+      
+      // 2. Scan recent inbox (last 72 hours) for missed ones
+      await syncLastHours(72);
+      
+      _lastSyncStatus = "Success";
+    } catch (e) {
+      _lastSyncStatus = "Failed";
+      debugPrint("Manual Sync Error: $e");
+    } finally {
+      _isSyncing = false;
+      _lastSyncTime = DateTime.now();
+      _prefs.setInt('last_sync_time', _lastSyncTime!.millisecondsSinceEpoch);
+      notifyListeners();
+    }
   }
   
   // --- Manual Sync ---
