@@ -1436,8 +1436,13 @@ class MutualFundService:
         except Exception:
             pass
 
+        # Bulk fetch metas for all holdings to avoid N+1 queries
+        scheme_codes = list(set(h.scheme_code for h in holdings))
+        metas = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code.in_(scheme_codes)).all()
+        meta_map = {m.scheme_code: m for m in metas}
+
         for h in holdings:
-            meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == h.scheme_code).first()
+            meta = meta_map.get(h.scheme_code)
             raw_category = meta.category if meta else "Other"
             asset_type = categorize_fund(raw_category)
             current_val = float(h.current_value or 0.0)
