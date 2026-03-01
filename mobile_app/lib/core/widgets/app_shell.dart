@@ -10,6 +10,7 @@ import 'package:mobile_app/modules/home/screens/expense_groups_screen.dart';
 import 'package:mobile_app/modules/vault/screens/vault_screen.dart';
 import 'package:mobile_app/modules/config/screens/sync_settings_screen.dart';
 import 'package:mobile_app/modules/ingestion/screens/sms_management_screen.dart';
+import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 
 /// Key kept for HomeScreen compatibility.
 final GlobalKey<ScaffoldState> appShellScaffoldKey = GlobalKey<ScaffoldState>();
@@ -94,17 +95,18 @@ class AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.read<AuthService>();
+    final dashboard = context.watch<DashboardService>();
     final theme = Theme.of(context);
 
     Widget section(String label) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
           child: Text(
-            label,
+            label.toUpperCase(),
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.onSurfaceVariant,
-              letterSpacing: 0.9,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: theme.primaryColor,
+              letterSpacing: 1.2,
             ),
           ),
         );
@@ -119,15 +121,44 @@ class AppDrawer extends StatelessWidget {
       child: Column(
         children: [
           UserAccountsDrawerHeader(
+            margin: EdgeInsets.zero,
             accountName: Text(
-              auth.isApproved ? 'WealthFam' : 'Pending Approval',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              auth.userName ?? (auth.isApproved ? 'Wealth Management' : 'Pending Approval'),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold, 
+                fontSize: 18,
+                color: Colors.white,
+                shadows: [Shadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
+              ),
             ),
-            accountEmail: Text(auth.userRole ?? 'Family Member'),
-            currentAccountPicture: CircleAvatar(
-              backgroundColor: Colors.white,
-              child: Icon(Icons.account_balance_wallet,
-                  color: theme.primaryColor, size: 32),
+            accountEmail: Text(
+              '${auth.userRole ?? "Family Member"} • ${dashboard.data?.familyMembersCount != null ? "${dashboard.data!.familyMembersCount} Members" : "Family Account"}',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            currentAccountPicture: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
+              ),
+              child: CircleAvatar(
+                backgroundColor: Colors.white,
+                child: auth.userAvatar != null && auth.userAvatar!.length <= 2
+                    ? Text(
+                        auth.userAvatar!,
+                        style: TextStyle(
+                          fontSize: 28, 
+                          fontWeight: FontWeight.bold,
+                          color: theme.primaryColor,
+                        ),
+                      )
+                    : Icon(Icons.account_circle_outlined,
+                        color: theme.primaryColor, size: 40),
+              ),
             ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
