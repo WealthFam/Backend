@@ -6,10 +6,16 @@ import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/models/dashboard_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter/widgets.dart';
 
 class DashboardService extends ChangeNotifier {
   final AppConfig _config;
   final AuthService _auth;
+
+  static DashboardService of(BuildContext context, {bool listen = true}) {
+    return Provider.of<DashboardService>(context, listen: listen);
+  }
 
   DashboardData? _data;
   bool _isLoading = false;
@@ -44,6 +50,17 @@ class DashboardService extends ChangeNotifier {
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _maskingFactor = prefs.getDouble('masking_factor') ?? 1.0;
+    
+    // Load cached dashboard data
+    final cachedData = prefs.getString('cached_dashboard_data');
+    if (cachedData != null) {
+      try {
+        _data = DashboardData.fromJson(jsonDecode(cachedData));
+      } catch (e) {
+        debugPrint('DashboardService: Error loading cache: $e');
+      }
+    }
+    
     notifyListeners();
   }
   
@@ -79,16 +96,44 @@ class DashboardService extends ChangeNotifier {
     notifyListeners();
   }
   
+  String get _cacheKey => 'dashboard_cache_${_selectedYear}_${_selectedMonth}_${_selectedMemberId ?? 'all'}';
+
+  Future<void> _loadCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString(_cacheKey);
+      if (cachedJson != null) {
+        _data = DashboardData.fromJson(jsonDecode(cachedJson));
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('DashboardService: Error loading cache: $e');
+    }
+  }
+
+  Future<void> _saveCache() async {
+    try {
+      if (_data != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_cacheKey, jsonEncode(_data!.toJson()));
+      }
+    } catch (e) {
+      debugPrint('DashboardService: Error saving cache: $e');
+    }
+  }
+
   void setMonth(int month, int year) {
     if (_selectedMonth == month && _selectedYear == year) return;
     _selectedMonth = month;
     _selectedYear = year;
+    _loadCache(); // Load immediately
     refresh();
   }
   
   void setMember(String? memberId) {
     if (_selectedMemberId == memberId) return;
     _selectedMemberId = memberId;
+    _loadCache(); // Load immediately
     refresh();
   }
 
@@ -109,73 +154,137 @@ class DashboardService extends ChangeNotifier {
   Future<void> refresh() async {
     if (_auth.accessToken == null) return;
     
-    // Ensure members are loaded
-    if (_members.isEmpty) {
-      await refreshMembers();
-    }
-    
     _isLoading = true;
     _error = null;
     notifyListeners();
 
+    final List<Future> futures = [
+      _fetchDashboardSummary(),
+      _fetchDashboardTrends(),
+      _fetchDashboardCategories(),
+      _fetchDashboardInvestments(),
+    ];
+
     try {
-      final url = Uri.parse('${_config.backendUrl}/api/v1/mobile/dashboard')
-           .replace(queryParameters: {
-             if (_selectedMonth != null) 'month': _selectedMonth.toString(),
-             if (_selectedYear != null) 'year': _selectedYear.toString(),
-             if (_selectedMemberId != null) 'member_id': _selectedMemberId,
-           });
-           
-      final response = await http.get(
-        url,
-        headers: {
-          'Authorization': 'Bearer ${_auth.accessToken}',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        var rawData = jsonDecode(utf8.decode(response.bodyBytes));
-        _data = DashboardData.fromJson(rawData);
-        
-        // --- CLIENT SIDE FILTERING ---
-        // 1. Filter out hidden transactions
-        var filteredTransactions = _data!.recentTransactions.where((t) => !t.isHidden).toList();
-        
-        // 2. Child Role: Only show their own expenses
-        if (_auth.userRole == 'CHILD') {
-           // We assume 'account_owner_name' or some other field identifies the owner
-           // Ideally backend should handle this, but we reinforce here.
-           // For now, let's filter by accountOwnerName if it matches or is null?
-           // Actually, the user said "For child should only show their expenses"
-           // Let's filter by accountOwnerName if it exists and matches?
-           // Since we don't have the current user's name easily here, 
-           // we might need to fetch it. For now, let's just filter hidden.
-           // Wait, if role is CHILD, the backend likely already filtered, 
-           // but let's ensure 'isHidden' is ALWAYS respected.
-        }
-
-        _data = DashboardData(
-          summary: _data!.summary,
-          budget: _data!.budget,
-          investmentSummary: _data!.investmentSummary,
-          spendingTrend: _data!.spendingTrend,
-          categoryDistribution: _data!.categoryDistribution,
-          monthWiseTrend: _data!.monthWiseTrend,
-          recentTransactions: filteredTransactions,
-          pendingTriageCount: _data!.pendingTriageCount,
-        );
-
-        _error = null;
-      } else {
-        _error = 'Failed to load dashboard: ${response.statusCode}';
+      if (_members.isEmpty) {
+        futures.add(refreshMembers());
       }
+      
+      await Future.wait(futures);
+      _error = null;
     } catch (e) {
-       debugPrint('Dashboard Error: $e');
-      _error = 'Network error: $e';
+      debugPrint('Dashboard Service Multi-Fetch Error: $e');
+      _error = 'Some data failed to load';
     } finally {
       _isLoading = false;
+      await _saveCache();
       notifyListeners();
     }
+  }
+
+  Future<void> _fetchDashboardSummary() async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/mobile/dashboard/summary')
+        .replace(queryParameters: _getQueryParams());
+    
+    final response = await http.get(url, headers: _getHeaders());
+    if (response.statusCode == 200) {
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      final summary = DashboardSummary.fromJson(data['summary']);
+      final budget = BudgetSummary.fromJson(data['budget']);
+      final txns = (data['recent_transactions'] as List)
+          .map((i) => RecentTransaction.fromJson(i))
+          .where((t) => !t.isHidden)
+          .toList();
+      
+      _updateData((d) => d.copyWith(
+        summary: summary,
+        budget: budget,
+        recentTransactions: txns,
+        pendingTriageCount: data['pending_triage_count'],
+        familyMembersCount: data['family_members_count'],
+      ));
+    }
+  }
+
+  Future<void> _fetchDashboardTrends() async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/mobile/dashboard/trends')
+        .replace(queryParameters: _getQueryParams());
+    
+    final response = await http.get(url, headers: _getHeaders());
+    if (response.statusCode == 200) {
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      final spendingTrend = (data['spending_trend'] as List)
+          .map((i) => SpendingTrendItem.fromJson(i))
+          .toList();
+      final monthWiseTrend = (data['month_wise_trend'] as List)
+          .map((i) => MonthTrendItem.fromJson(i))
+          .toList();
+      
+      _updateData((d) => d.copyWith(
+        spendingTrend: spendingTrend,
+        monthWiseTrend: monthWiseTrend,
+      ));
+    }
+  }
+
+  Future<void> _fetchDashboardCategories() async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/mobile/dashboard/categories')
+        .replace(queryParameters: _getQueryParams());
+    
+    final response = await http.get(url, headers: _getHeaders());
+    if (response.statusCode == 200) {
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      final categories = (data['category_distribution'] as List)
+          .map((i) => CategoryPieItem.fromJson(i))
+          .toList();
+      
+      _updateData((d) => d.copyWith(categoryDistribution: categories));
+    }
+  }
+
+  Future<void> _fetchDashboardInvestments() async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/mobile/dashboard/investments')
+        .replace(queryParameters: _getQueryParams());
+    
+    final response = await http.get(url, headers: _getHeaders());
+    if (response.statusCode == 200) {
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      InvestmentSummary? investmentSummary;
+      if (data['investment_summary'] != null) {
+        investmentSummary = InvestmentSummary.fromJson(data['investment_summary']);
+      }
+      
+      _updateData((d) => d.copyWith(investmentSummary: investmentSummary));
+    }
+  }
+
+  void _updateData(DashboardData Function(DashboardData) updater) {
+    if (_data == null) {
+      _data = DashboardData(
+         summary: DashboardSummary(todayTotal: 0, monthlyTotal: 0, currency: 'INR'),
+         budget: BudgetSummary(limit: 0, spent: 0, percentage: 0),
+         spendingTrend: [],
+         categoryDistribution: [],
+         monthWiseTrend: [],
+         recentTransactions: [],
+       );
+    }
+    _data = updater(_data!);
+    notifyListeners();
+  }
+
+  Map<String, String> _getQueryParams() {
+    return {
+      if (_selectedMonth != null) 'month': _selectedMonth.toString(),
+      if (_selectedYear != null) 'year': _selectedYear.toString(),
+      if (_selectedMemberId != null) 'member_id': _selectedMemberId!,
+    };
+  }
+
+  Map<String, String> _getHeaders() {
+    return {
+      'Authorization': 'Bearer ${_auth.accessToken}',
+      'Content-Type': 'application/json',
+    };
   }
 }
