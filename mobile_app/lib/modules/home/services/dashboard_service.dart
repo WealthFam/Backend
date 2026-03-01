@@ -37,7 +37,6 @@ class DashboardService extends ChangeNotifier {
     var now = DateTime.now();
     _selectedMonth = now.month;
     _selectedYear = now.year;
-    // Auto-fetch members on start
     refreshMembers(); 
     loadSettings();
   }
@@ -81,12 +80,14 @@ class DashboardService extends ChangeNotifier {
   }
   
   void setMonth(int month, int year) {
+    if (_selectedMonth == month && _selectedYear == year) return;
     _selectedMonth = month;
     _selectedYear = year;
     refresh();
   }
   
   void setMember(String? memberId) {
+    if (_selectedMemberId == memberId) return;
     _selectedMemberId = memberId;
     refresh();
   }
@@ -157,8 +158,10 @@ class DashboardService extends ChangeNotifier {
         _data = DashboardData(
           summary: _data!.summary,
           budget: _data!.budget,
+          investmentSummary: _data!.investmentSummary,
           spendingTrend: _data!.spendingTrend,
           categoryDistribution: _data!.categoryDistribution,
+          monthWiseTrend: _data!.monthWiseTrend,
           recentTransactions: filteredTransactions,
           pendingTriageCount: _data!.pendingTriageCount,
         );

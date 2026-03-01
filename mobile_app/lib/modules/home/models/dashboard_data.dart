@@ -3,16 +3,20 @@ import 'package:intl/intl.dart';
 class DashboardData {
   final DashboardSummary summary;
   final BudgetSummary budget;
+  final InvestmentSummary? investmentSummary;
   final List<SpendingTrendItem> spendingTrend;
   final List<CategoryPieItem> categoryDistribution;
+  final List<MonthTrendItem> monthWiseTrend;
   final List<RecentTransaction> recentTransactions;
   final int pendingTriageCount;
 
   DashboardData({
     required this.summary,
     required this.budget,
+    this.investmentSummary,
     required this.spendingTrend,
     required this.categoryDistribution,
+    required this.monthWiseTrend,
     required this.recentTransactions,
     this.pendingTriageCount = 0,
   });
@@ -21,11 +25,15 @@ class DashboardData {
     return DashboardData(
       summary: DashboardSummary.fromJson(json['summary']),
       budget: BudgetSummary.fromJson(json['budget']),
+      investmentSummary: json['investment_summary'] != null ? InvestmentSummary.fromJson(json['investment_summary']) : null,
       spendingTrend: (json['spending_trend'] as List)
           .map((i) => SpendingTrendItem.fromJson(i))
           .toList(),
       categoryDistribution: (json['category_distribution'] as List)
           .map((i) => CategoryPieItem.fromJson(i))
+          .toList(),
+      monthWiseTrend: (json['month_wise_trend'] as List? ?? [])
+          .map((i) => MonthTrendItem.fromJson(i))
           .toList(),
       recentTransactions: (json['recent_transactions'] as List)
           .map((i) => RecentTransaction.fromJson(i))
@@ -107,6 +115,38 @@ class BudgetSummary {
   }
 }
 
+class InvestmentSummary {
+  final double totalInvested;
+  final double currentValue;
+  final double profitLoss;
+  final double? xirr;
+  final List<double> sparkline;
+  final double dayChange;
+  final double dayChangePercent;
+
+  InvestmentSummary({
+    required this.totalInvested,
+    required this.currentValue,
+    required this.profitLoss,
+    this.xirr,
+    this.sparkline = const [],
+    this.dayChange = 0.0,
+    this.dayChangePercent = 0.0,
+  });
+
+  factory InvestmentSummary.fromJson(Map<String, dynamic> json) {
+    return InvestmentSummary(
+      totalInvested: (json['total_invested'] as num).toDouble(),
+      currentValue: (json['current_value'] as num).toDouble(),
+      profitLoss: (json['profit_loss'] as num).toDouble(),
+      xirr: json['xirr'] != null ? (json['xirr'] as num).toDouble() : null,
+      sparkline: (json['sparkline'] as List? ?? []).map((v) => (v as num).toDouble()).toList(),
+      dayChange: (json['day_change'] as num? ?? 0).toDouble(),
+      dayChangePercent: (json['day_change_percent'] as num? ?? 0).toDouble(),
+    );
+  }
+}
+
 class CategorySpending {
   final String name;
   final double amount;
@@ -159,4 +199,20 @@ class RecentTransaction {
   }
 
   String get formattedDate => DateFormat('MMM d, h:mm a').format(date);
+}
+
+class MonthTrendItem {
+  final String month;
+  final double spent;
+  final double budget;
+
+  MonthTrendItem({required this.month, required this.spent, required this.budget});
+
+  factory MonthTrendItem.fromJson(Map<String, dynamic> json) {
+    return MonthTrendItem(
+      month: json['month'],
+      spent: (json['spent'] as num).toDouble(),
+      budget: (json['budget'] as num).toDouble(),
+    );
+  }
 }
