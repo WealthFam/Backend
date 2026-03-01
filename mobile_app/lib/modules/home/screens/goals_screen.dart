@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/home/services/goals_service.dart';
+import 'package:mobile_app/core/widgets/app_shell.dart';
 
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
@@ -24,7 +25,9 @@ class _GoalsScreenState extends State<GoalsScreen> {
     final goalsService = context.watch<GoalsService>();
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
+        leading: const DrawerMenuButton(),
         title: const Text('Investment Goals'),
         actions: [
           IconButton(

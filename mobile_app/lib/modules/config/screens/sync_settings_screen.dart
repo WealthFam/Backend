@@ -5,6 +5,8 @@ import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/auth/services/security_service.dart';
+import 'package:mobile_app/modules/home/services/dashboard_service.dart';
+import 'package:mobile_app/core/widgets/app_shell.dart';
 
 class SyncSettingsScreen extends StatefulWidget {
   const SyncSettingsScreen({super.key});
@@ -17,6 +19,7 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _backendCtrl;
   late TextEditingController _deviceIdCtrl;
+  late TextEditingController _maskingCtrl;
   bool _isLoading = false;
 
   @override
@@ -24,14 +27,17 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
     super.initState();
     final config = context.read<AppConfig>();
     final auth = context.read<AuthService>();
+    final dashboard = context.read<DashboardService>();
     _backendCtrl = TextEditingController(text: config.backendUrl);
     _deviceIdCtrl = TextEditingController(text: auth.deviceId ?? '');
+    _maskingCtrl = TextEditingController(text: dashboard.maskingFactor.toString());
   }
 
   @override
   void dispose() {
     _backendCtrl.dispose();
     _deviceIdCtrl.dispose();
+    _maskingCtrl.dispose();
     super.dispose();
   }
 
@@ -47,6 +53,9 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
     if (_deviceIdCtrl.text.isNotEmpty) {
       await context.read<AuthService>().setDeviceId(_deviceIdCtrl.text.trim());
     }
+
+    final maskingFactor = double.tryParse(_maskingCtrl.text) ?? 1.0;
+    await context.read<DashboardService>().setMaskingFactor(maskingFactor);
     
     await Future.delayed(const Duration(milliseconds: 500));
     if (mounted) {
@@ -86,7 +95,9 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      drawer: const AppDrawer(),
       appBar: AppBar(
+        leading: const DrawerMenuButton(),
         title: const Text('Settings'),
         actions: [
           if (_isLoading)
@@ -111,7 +122,7 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
               
               const SizedBox(height: 24),
               _buildSectionTitle('SECURITY & PRIVACY'),
-              _buildSecurityCard(security, config),
+              _buildSecurityCard(security, config, context.watch<DashboardService>()),
               
               const SizedBox(height: 24),
               _buildSectionTitle('DEVICE INFO'),
@@ -199,7 +210,7 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
     );
   }
 
-  Widget _buildSecurityCard(SecurityService security, AppConfig config) {
+  Widget _buildSecurityCard(SecurityService security, AppConfig config, DashboardService dashboard) {
     return Card(
       child: Column(
         children: [
@@ -225,6 +236,39 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
             value: config.sendDebugPayload,
             onChanged: (v) => config.setDebugPayload(v),
             icon: Icons.bug_report_outlined,
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.calculate_outlined, size: 20, color: Colors.grey),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Masking Factor', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      Text('Divide amounts to hide wealth', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 60,
+                  child: TextFormField(
+                    controller: _maskingCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/modules/home/models/transaction_category.dart';
+import 'package:mobile_app/core/widgets/app_shell.dart';
 
 class CategoriesManagementScreen extends StatefulWidget {
   const CategoriesManagementScreen({super.key});
@@ -149,7 +150,9 @@ class _CategoriesManagementScreenState extends State<CategoriesManagementScreen>
     final theme = Theme.of(context);
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
+        leading: const DrawerMenuButton(),
         title: const Text('Categories & Hierarchy'),
         actions: [
           IconButton(

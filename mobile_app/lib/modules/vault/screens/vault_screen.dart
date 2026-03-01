@@ -5,6 +5,7 @@ import 'package:mobile_app/modules/vault/services/vault_service.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:mobile_app/core/widgets/app_shell.dart';
 
 class VaultScreen extends StatefulWidget {
   const VaultScreen({super.key});
@@ -37,13 +38,14 @@ class _VaultScreenState extends State<VaultScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         leading: vaultService.canGoBack 
           ? IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: () => vaultService.goBack(),
             )
-          : null,
+          : const DrawerMenuButton(),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

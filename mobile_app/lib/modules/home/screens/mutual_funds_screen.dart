@@ -6,6 +6,7 @@ import 'package:mobile_app/modules/home/services/funds_service.dart';
 import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 import 'package:mobile_app/modules/home/models/fund_models.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:mobile_app/core/widgets/app_shell.dart';
 import 'dart:math' as math;
 
 class MutualFundsScreen extends StatefulWidget {
@@ -41,7 +42,9 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
  
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      drawer: const AppDrawer(),
       appBar: AppBar(
+        leading: const DrawerMenuButton(),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
