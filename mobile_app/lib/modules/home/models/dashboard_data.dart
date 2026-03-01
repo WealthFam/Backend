@@ -9,6 +9,7 @@ class DashboardData {
   final List<MonthTrendItem> monthWiseTrend;
   final List<RecentTransaction> recentTransactions;
   final int pendingTriageCount;
+  final int? familyMembersCount;
 
   DashboardData({
     required this.summary,
@@ -19,6 +20,7 @@ class DashboardData {
     required this.monthWiseTrend,
     required this.recentTransactions,
     this.pendingTriageCount = 0,
+    this.familyMembersCount,
   });
 
   factory DashboardData.fromJson(Map<String, dynamic> json) {
@@ -26,19 +28,58 @@ class DashboardData {
       summary: DashboardSummary.fromJson(json['summary']),
       budget: BudgetSummary.fromJson(json['budget']),
       investmentSummary: json['investment_summary'] != null ? InvestmentSummary.fromJson(json['investment_summary']) : null,
-      spendingTrend: (json['spending_trend'] as List)
+      spendingTrend: (json['spending_trend'] as List? ?? [])
           .map((i) => SpendingTrendItem.fromJson(i))
           .toList(),
-      categoryDistribution: (json['category_distribution'] as List)
+      categoryDistribution: (json['category_distribution'] as List? ?? [])
           .map((i) => CategoryPieItem.fromJson(i))
           .toList(),
       monthWiseTrend: (json['month_wise_trend'] as List? ?? [])
           .map((i) => MonthTrendItem.fromJson(i))
           .toList(),
-      recentTransactions: (json['recent_transactions'] as List)
+      recentTransactions: (json['recent_transactions'] as List? ?? [])
           .map((i) => RecentTransaction.fromJson(i))
           .toList(),
       pendingTriageCount: json['pending_triage_count'] ?? 0,
+      familyMembersCount: json['family_members_count'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'summary': summary.toJson(),
+      'budget': budget.toJson(),
+      'investment_summary': investmentSummary?.toJson(),
+      'spending_trend': spendingTrend.map((i) => i.toJson()).toList(),
+      'category_distribution': categoryDistribution.map((i) => i.toJson()).toList(),
+      'month_wise_trend': monthWiseTrend.map((i) => i.toJson()).toList(),
+      'recent_transactions': recentTransactions.map((i) => i.toJson()).toList(),
+      'pending_triage_count': pendingTriageCount,
+      'family_members_count': familyMembersCount,
+    };
+  }
+
+  DashboardData copyWith({
+    DashboardSummary? summary,
+    BudgetSummary? budget,
+    InvestmentSummary? investmentSummary,
+    List<SpendingTrendItem>? spendingTrend,
+    List<CategoryPieItem>? categoryDistribution,
+    List<MonthTrendItem>? monthWiseTrend,
+    List<RecentTransaction>? recentTransactions,
+    int? pendingTriageCount,
+    int? familyMembersCount,
+  }) {
+    return DashboardData(
+      summary: summary ?? this.summary,
+      budget: budget ?? this.budget,
+      investmentSummary: investmentSummary ?? this.investmentSummary,
+      spendingTrend: spendingTrend ?? this.spendingTrend,
+      categoryDistribution: categoryDistribution ?? this.categoryDistribution,
+      monthWiseTrend: monthWiseTrend ?? this.monthWiseTrend,
+      recentTransactions: recentTransactions ?? this.recentTransactions,
+      pendingTriageCount: pendingTriageCount ?? this.pendingTriageCount,
+      familyMembersCount: familyMembersCount ?? this.familyMembersCount,
     );
   }
 }
@@ -57,6 +98,12 @@ class SpendingTrendItem {
       dailyLimit: (json['daily_limit'] as num).toDouble(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'date': date,
+    'amount': amount,
+    'daily_limit': dailyLimit,
+  };
   
   DateTime get dateTime => DateTime.parse(date);
 }
@@ -73,26 +120,53 @@ class CategoryPieItem {
       value: (json['value'] as num).toDouble(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'value': value,
+  };
 }
 
 class DashboardSummary {
   final double todayTotal;
+  final double yesterdayTotal;
+  final double lastMonthSameDayTotal;
   final double monthlyTotal;
   final String currency;
+  final double dailyBudgetLimit;
+  final double proratedBudget;
 
   DashboardSummary({
     required this.todayTotal,
+    this.yesterdayTotal = 0.0,
+    this.lastMonthSameDayTotal = 0.0,
     required this.monthlyTotal,
     required this.currency,
+    this.dailyBudgetLimit = 0.0,
+    this.proratedBudget = 0.0,
   });
 
   factory DashboardSummary.fromJson(Map<String, dynamic> json) {
     return DashboardSummary(
       todayTotal: (json['today_total'] as num).toDouble(),
+      yesterdayTotal: (json['yesterday_total'] as num? ?? 0.0).toDouble(),
+      lastMonthSameDayTotal: (json['last_month_same_day_total'] as num? ?? 0.0).toDouble(),
       monthlyTotal: (json['monthly_total'] as num).toDouble(),
       currency: json['currency'] ?? 'INR',
+      dailyBudgetLimit: (json['daily_budget_limit'] as num? ?? 0.0).toDouble(),
+      proratedBudget: (json['prorated_budget'] as num? ?? 0.0).toDouble(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'today_total': todayTotal,
+    'yesterday_total': yesterdayTotal,
+    'last_month_same_day_total': lastMonthSameDayTotal,
+    'monthly_total': monthlyTotal,
+    'currency': currency,
+    'daily_budget_limit': dailyBudgetLimit,
+    'prorated_budget': proratedBudget,
+  };
 }
 
 class BudgetSummary {
@@ -113,6 +187,12 @@ class BudgetSummary {
       percentage: (json['percentage'] as num).toDouble(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'limit': limit,
+    'spent': spent,
+    'percentage': percentage,
+  };
 }
 
 class InvestmentSummary {
@@ -145,23 +225,16 @@ class InvestmentSummary {
       dayChangePercent: (json['day_change_percent'] as num? ?? 0).toDouble(),
     );
   }
-}
 
-class CategorySpending {
-  final String name;
-  final double amount;
-
-  CategorySpending({
-    required this.name,
-    required this.amount,
-  });
-
-  factory CategorySpending.fromJson(Map<String, dynamic> json) {
-    return CategorySpending(
-      name: json['name'],
-      amount: (json['amount'] as num).toDouble(),
-    );
-  }
+  Map<String, dynamic> toJson() => {
+    'total_invested': totalInvested,
+    'current_value': currentValue,
+    'profit_loss': profitLoss,
+    'xirr': xirr,
+    'sparkline': sparkline,
+    'day_change': dayChange,
+    'day_change_percent': dayChangePercent,
+  };
 }
 
 class RecentTransaction {
@@ -198,6 +271,17 @@ class RecentTransaction {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'date': date.toIso8601String(),
+    'description': description,
+    'amount': amount,
+    'category': category,
+    'account_name': accountName,
+    'account_owner_name': accountOwnerName,
+    'is_hidden': isHidden,
+  };
+
   String get formattedDate => DateFormat('MMM d, h:mm a').format(date);
 }
 
@@ -205,14 +289,28 @@ class MonthTrendItem {
   final String month;
   final double spent;
   final double budget;
+  final bool isSelected;
 
-  MonthTrendItem({required this.month, required this.spent, required this.budget});
+  MonthTrendItem({
+    required this.month, 
+    required this.spent, 
+    required this.budget,
+    this.isSelected = false,
+  });
 
   factory MonthTrendItem.fromJson(Map<String, dynamic> json) {
     return MonthTrendItem(
       month: json['month'],
       spent: (json['spent'] as num).toDouble(),
       budget: (json['budget'] as num).toDouble(),
+      isSelected: json['is_selected'] ?? false,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'month': month,
+    'spent': spent,
+    'budget': budget,
+    'is_selected': isSelected,
+  };
 }
