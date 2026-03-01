@@ -100,7 +100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   bottom: dashboard.data != null 
                     ? PreferredSize(
-                        preferredSize: const Size.fromHeight(160),
+                        preferredSize: const Size.fromHeight(180),
                         child: _buildSummarySection(context, dashboard.data!.summary, formatAmount),
                       )
                     : null,
@@ -164,6 +164,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildSummarySection(BuildContext context, DashboardSummary summary, Function(double) format) {
+    // Trend for Today vs Yesterday
+    final todayDiff = summary.todayTotal - summary.yesterdayTotal;
+    final todayTrendIcon = todayDiff < 0 ? Icons.arrow_downward : (todayDiff > 0 ? Icons.arrow_upward : null);
+    final todayTrendColor = todayDiff < 0 ? Colors.greenAccent : (todayDiff > 0 ? Colors.orangeAccent : Colors.white70);
+    final todayTrendText = todayDiff != 0 ? '${todayDiff > 0 ? "+" : ""}${format(todayDiff.abs())}' : 'Same as yesterday';
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Row(
@@ -178,6 +184,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const AnalyticsScreen()));
               },
+              trend: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 4,
+                    width: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: (summary.proratedBudget > 0 ? (summary.monthlyTotal / (summary.proratedBudget * 1.5)) : 0.0).clamp(0.0, 1.0).toDouble(),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: summary.monthlyTotal > summary.proratedBudget ? Colors.orangeAccent : Colors.greenAccent,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Prorated Budget',
+                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 8),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -191,6 +226,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const AnalyticsScreen(showTodayOnly: true)));
               },
+              trend: Row(
+                children: [
+                  if (todayTrendIcon != null) Icon(todayTrendIcon, size: 10, color: todayTrendColor),
+                  const SizedBox(width: 2),
+                  Text(
+                    todayTrendText,
+                    style: TextStyle(color: todayTrendColor, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -198,10 +243,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildSummaryCard(BuildContext context, String title, String amount, List<Color> colors, IconData icon, {VoidCallback? onTap}) {
+  Widget _buildSummaryCard(BuildContext context, String title, String amount, List<Color> colors, IconData icon, {VoidCallback? onTap, Widget? trend}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        height: 140, // Fixed height for consistency with trend
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
@@ -218,24 +264,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             // Background Icon
             Positioned(
-              right: -10,
-              bottom: -10,
-              child: Icon(icon, color: Colors.white.withOpacity(0.15), size: 80),
+              right: -5,
+              bottom: -5,
+              child: Icon(icon, color: Colors.white.withOpacity(0.1), size: 60),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, color: Colors.white.withOpacity(0.8), size: 20),
+                Icon(icon, color: Colors.white.withOpacity(0.8), size: 16),
                 const SizedBox(height: 12),
-                Text(title, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13)),
+                Text(title, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
                 const SizedBox(height: 4),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
                     amount,
-                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5),
                   ),
                 ),
+                if (trend != null) trend,
               ],
             ),
           ],
@@ -386,14 +434,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final theme = Theme.of(context);
     final isOver = budget.percentage > 100;
     final color = isOver ? AppTheme.danger : (budget.percentage > 80 ? AppTheme.warning : AppTheme.success);
+    final summary = DashboardService.of(context).data?.summary;
+    final prorated = summary?.proratedBudget ?? 0.0;
+    final isOverProrated = budget.spent > prorated && prorated > 0;
+    final healthLabel = isOverProrated ? 'Over Pace' : 'On Track';
+    final healthColor = isOverProrated ? AppTheme.danger : AppTheme.success;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          )
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -401,29 +461,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Family Budget', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text(
-                '${budget.percentage.toStringAsFixed(1)}%',
-                style: TextStyle(color: color, fontWeight: FontWeight.bold),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Family Budget', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Monthly Limit: ${format(budget.limit)}',
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: healthColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  healthLabel,
+                  style: TextStyle(color: healthColor, fontWeight: FontWeight.bold, fontSize: 11),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: (budget.percentage / 100).clamp(0, 1),
-              backgroundColor: theme.dividerColor,
-              color: color,
-              minHeight: 10,
-            ),
+          const SizedBox(height: 24),
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: LinearProgressIndicator(
+                  value: (budget.percentage / 100).clamp(0, 1),
+                  backgroundColor: theme.dividerColor.withOpacity(0.1),
+                  color: color.withOpacity(0.3),
+                  minHeight: 12,
+                ),
+              ),
+              if (prorated > 0 && budget.limit > 0)
+                Positioned(
+                  left: (MediaQuery.of(context).size.width - 88) * (prorated / budget.limit),
+                  child: Container(
+                    width: 2,
+                    height: 12,
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Spent: ${format(budget.spent)}', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
-              Text('Limit: ${format(budget.limit)}', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
+              Row(
+                children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                  const SizedBox(width: 6),
+                  Text('Spent: ${format(budget.spent)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ),
+              Text(
+                'Pace: ${format(prorated)}',
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11, fontStyle: FontStyle.italic),
+              ),
             ],
           ),
         ],

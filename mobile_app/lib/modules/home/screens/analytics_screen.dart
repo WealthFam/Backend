@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
@@ -27,14 +28,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   bool _hasMore = true;
   int _page = 1;
   final ScrollController _scrollController = ScrollController();
+  DashboardService? _dashboard;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final dashboard = context.read<DashboardService>();
-      dashboard.refresh();
-      _fetchTransactions(reset: true);
+      _dashboard = context.read<DashboardService>();
+      _dashboard?.addListener(_onFiltersChanged);
+      
+      // Load cache and trigger refresh
+      _loadTransactionCache();
+      _dashboard?.refresh();
       context.read<CategoriesService>().fetchCategories();
     });
 
@@ -45,17 +50,66 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _dashboard?.removeListener(_onFiltersChanged);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onFiltersChanged() {
+    if (!mounted) return;
+    
+    // Always clear the view and start fresh when filters change
+    // This prevents "stale month" impression even if a previous load was in-flight
+    _loadTransactionCache(); // This will clear the list and load cache for the NEW month
+    _fetchTransactions(reset: true);
+  }
+
+  String get _cacheKey {
+    final d = _dashboard;
+    if (d == null) return 'txn_cache_default';
+    return 'txn_cache_${d.selectedYear}_${d.selectedMonth}_${d.selectedMemberId ?? "all"}';
+  }
+
+  Future<void> _loadTransactionCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(_cacheKey);
+      if (cached != null && mounted) {
+        setState(() {
+          _transactions.clear();
+          _transactions.addAll(jsonDecode(cached));
+          _hasMore = true; // Assume there's more until we fetch
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading txn cache: $e");
+    }
+  }
+
+  Future<void> _saveTransactionCache() async {
+    try {
+      if (_transactions.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        // Only cache the first page (20 txns) for fast loading
+        final toCache = _transactions.take(20).toList();
+        await prefs.setString(_cacheKey, jsonEncode(toCache));
+      }
+    } catch (e) {
+      debugPrint("Error saving txn cache: $e");
+    }
+  }
+
   Future<void> _fetchTransactions({bool reset = false}) async {
     if (_isTxnLoading || (!reset && !_hasMore)) return;
-
-    setState(() {
-      if (reset) {
+    if (reset) {
+      setState(() {
         _page = 1;
-        _transactions.clear();
         _hasMore = true;
-      }
-      _isTxnLoading = true;
-    });
+      });
+    }
+    setState(() => _isTxnLoading = true);
 
     final config = context.read<AppConfig>();
     final auth = context.read<AuthService>();
@@ -83,10 +137,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
         if (mounted) {
           setState(() {
+            if (reset) _transactions.clear();
             _transactions.addAll(items.where((i) => i['is_hidden'] != true));
             _hasMore = nextPage != null;
             _page++;
           });
+          _saveTransactionCache();
         }
       }
     } catch (e) {
@@ -113,73 +169,206 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       drawer: const AppDrawer(),
       appBar: AppBar(
         leading: const DrawerMenuButton(),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
         title: const Text('Insights', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           if (dashboard.members.isNotEmpty)
             PopupMenuButton<String>(
               icon: const Icon(Icons.people_outline),
+              tooltip: 'Filter by member',
               initialValue: dashboard.selectedMemberId,
-              onSelected: (val) => dashboard.setMember(val == 'all' ? null : val),
+              onSelected: (val) {
+                dashboard.setMember(val == 'all' ? null : val);
+              },
               itemBuilder: (context) => <PopupMenuEntry<String>>[
-                const PopupMenuItem(value: 'all', child: Text('Full Family')),
+                const PopupMenuItem(value: 'all', child: Text('👩‍👩‍👧‍👦 Full Family')),
+                const PopupMenuDivider(),
                 ...dashboard.members.map((m) => PopupMenuItem(
                       value: m['id'].toString(),
-                      child: Text(m['name']),
+                      child: Text('${m['role'] == "CHILD" ? "👶" : "👤"} ${m['name']}'),
                     ))
               ],
             ),
           IconButton(
             icon: const Icon(Icons.calendar_month_outlined),
+            tooltip: 'Select Month',
             onPressed: () => _showMonthPicker(context),
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-           await dashboard.refresh();
-           await _fetchTransactions(reset: true);
-        },
-        child: SingleChildScrollView(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (dashboard.data != null) ...[
-                      _buildHeaderSummary(context, dashboard.data!, formatAmount),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle(context, 'Monthly Trend (6m)'),
-                      const SizedBox(height: 12),
-                      _buildMonthTrendChart(context, dashboard.data!.monthWiseTrend, dashboard.maskingFactor),
-                      const SizedBox(height: 32),
-                      _buildSectionTitle(context, 'Daily Spending (${DateFormat('MMMM').format(DateTime(dashboard.selectedYear ?? 2024, dashboard.selectedMonth ?? 1))})'),
-                      const SizedBox(height: 12),
-                      _buildDailyTrendChart(context, dashboard.data!.spendingTrend, dashboard.maskingFactor),
-                      const SizedBox(height: 32),
-                      _buildCategoryPieChart(context, dashboard.data!.categoryDistribution, formatAmount),
-                      const SizedBox(height: 32),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildSectionTitle(context, 'Transactions'),
-                          Text(
-                            'Month Total: ${formatAmount(dashboard.data!.summary.monthlyTotal)}',
-                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+      body: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: () async {
+               await dashboard.refresh();
+               await _fetchTransactions(reset: true);
+            },
+            child: CustomScrollView(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: _buildFilterSummary(context, dashboard),
+                        ),
+                      ),
+                      if (dashboard.data != null) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildPremiumHeader(context, dashboard, formatAmount),
+                                const SizedBox(height: 12),
+                                _buildSmartInsight(context, dashboard.data!),
+                                const SizedBox(height: 24),
+                                _buildSectionTitle(context, 'Spending Trend'),
+                                const SizedBox(height: 12),
+                                TweenAnimationBuilder<double>(
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  duration: const Duration(milliseconds: 600),
+                                  curve: Curves.easeOutCubic,
+                                  builder: (context, value, child) {
+                                    return Opacity(
+                                      opacity: value,
+                                      child: Transform.translate(
+                                        offset: Offset(0, 20 * (1 - value)),
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: _buildMonthTrendChart(context, dashboard.data!.monthWiseTrend, dashboard.maskingFactor),
+                                ),
+                                const SizedBox(height: 32),
+                                _buildSectionTitle(context, 'Daily Activity (This Month)'),
+                                const SizedBox(height: 12),
+                                _buildDailyTrendChart(context, dashboard.data!.spendingTrend, dashboard.maskingFactor),
+                                const SizedBox(height: 32),
+                                _buildSectionTitle(context, 'Category Breakdown'),
+                                const SizedBox(height: 12),
+                                _buildCategoryPieChart(context, dashboard.data!.categoryDistribution, formatAmount),
+                                const SizedBox(height: 32),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    _buildSectionTitle(context, 'Detailed Ledger'),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        'Total: ${formatAmount(dashboard.data!.summary.monthlyTotal)}',
+                                        style: TextStyle(
+                                          fontSize: 11, 
+                                          fontWeight: FontWeight.bold,
+                                          color: theme.colorScheme.primary
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                            ),
                           ),
+                        ),
+                        if (_transactions.isNotEmpty) 
+                          _buildTransactionSliverList(context)
+                        else if (!(_isTxnLoading && _transactions.isEmpty))
+                           const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 40),
+                              child: Center(
+                                child: Text(
+                                  "No transactions found for this period",
+                                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ] else if (dashboard.isLoading || (_isTxnLoading && _transactions.isEmpty)) ...[
+                        const SliverFillRemaining(
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                      ] else ...[
+                         const SliverFillRemaining(
+                          child: Center(child: Text("No transactions found for this period")),
+                        ),
+                      ],
+                      if (_isTxnLoading && _transactions.isNotEmpty) 
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                          ),
+                        ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 48)),
+                    ],
+                  ),
+          ),
+          if ((dashboard.isLoading || _isTxnLoading) && _transactions.isEmpty)
+            Positioned.fill(
+              child: Container(
+                color: theme.scaffoldBackgroundColor.withOpacity(0.3),
+                child: const Center(
+                  child: Card(
+                    elevation: 4,
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 12),
+                          Text("Fetching latest data...", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      _buildTransactionList(context),
-                      const SizedBox(height: 48),
-                    ] else if (dashboard.error != null) ...[
-                      Center(child: Text(dashboard.error!, style: const TextStyle(color: AppTheme.danger))),
-                    ] else ...[
-                      const Center(child: Text('No data for selected filters')),
-                    ],
-                  ],
+                    ),
+                  ),
                 ),
               ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterSummary(BuildContext context, DashboardService dashboard) {
+    final theme = Theme.of(context);
+    String memberName = 'Full Family';
+    if (dashboard.selectedMemberId != null) {
+      final member = dashboard.members.firstWhere(
+        (m) => m['id'].toString() == dashboard.selectedMemberId,
+        orElse: () => null,
+      );
+      if (member != null) memberName = member['name'];
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Wrap(
+        spacing: 8,
+        children: [
+          Chip(
+            label: Text(DateFormat('MMMM yyyy').format(DateTime(dashboard.selectedYear ?? 2024, dashboard.selectedMonth ?? 1))),
+            labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+            backgroundColor: theme.primaryColor.withOpacity(0.1),
+            side: BorderSide.none,
+            avatar: Icon(Icons.calendar_today, size: 12, color: theme.primaryColor),
+          ),
+          Chip(
+            label: Text(memberName),
+            labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+            backgroundColor: theme.primaryColor.withOpacity(0.1),
+            side: BorderSide.none,
+            avatar: Icon(Icons.person_outline, size: 12, color: theme.primaryColor),
+          ),
+        ],
       ),
     );
   }
@@ -187,43 +376,271 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget _buildSectionTitle(BuildContext context, String title) {
     return Text(
       title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+        fontWeight: FontWeight.bold,
+        letterSpacing: 0.5,
+        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+      ),
     );
   }
 
-  Widget _buildHeaderSummary(BuildContext context, DashboardData data, Function(double) format) {
+  Widget _buildPremiumHeader(BuildContext context, DashboardService dashboard, Function(double) format) {
+    if (dashboard.data == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final data = dashboard.data!;
+    final summary = data.summary;
+    
+    // Calculate Today vs Yesterday Trend
+    final dailyTrend = summary.yesterdayTotal > 0 
+        ? ((summary.todayTotal - summary.yesterdayTotal) / summary.yesterdayTotal * 100)
+        : 0.0;
+    
+    // Status color for today vs daily budget
+    final dailyHealthColor = summary.todayTotal > summary.dailyBudgetLimit 
+        ? AppTheme.danger 
+        : (summary.todayTotal > summary.dailyBudgetLimit * 0.8 ? AppTheme.warning : AppTheme.success);
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _buildGlassCard(
+                context,
+                'Monthly Spend',
+                format(summary.monthlyTotal),
+                Icons.account_balance_wallet_rounded,
+                theme.colorScheme.primary,
+                subtitle: 'vs ${format(data.budget.limit)} limit',
+                progress: data.budget.limit > 0 ? (summary.monthlyTotal / data.budget.limit) : 0.0,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildGlassCard(
+                context,
+                'Budget Used',
+                '${data.budget.percentage.toStringAsFixed(1)}%',
+                Icons.speed_rounded,
+                data.budget.percentage > 100 ? AppTheme.danger : (data.budget.percentage > 90 ? AppTheme.warning : AppTheme.success),
+                subtitle: data.budget.percentage > 100 ? 'Over Limit!' : 'On Track',
+                progress: data.budget.percentage / 100.0,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (summary.todayTotal > 0 || summary.dailyBudgetLimit > 0)
+          _buildDailyHealthCard(context, summary, dashboard.maskingFactor),
+      ],
+    );
+  }
+
+  Widget _buildDailyHealthCard(BuildContext context, DashboardSummary summary, double maskingFactor) {
+    final theme = Theme.of(context);
+    final isOverDaily = summary.todayTotal > summary.dailyBudgetLimit;
+    final healthColor = isOverDaily ? AppTheme.danger : AppTheme.success;
+    
+    final yesterdayDiff = summary.todayTotal - summary.yesterdayTotal;
+    final lastMonthDiff = summary.todayTotal - summary.lastMonthSameDayTotal;
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.1)),
+        color: healthColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: healthColor.withOpacity(0.2)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Total Spent', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 4),
-              Text(format(data.summary.monthlyTotal), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              const Text('Budget Utilization', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 4),
-              Text('${data.budget.percentage.toStringAsFixed(1)}%', 
-                style: TextStyle(
-                  fontSize: 20, 
-                  fontWeight: FontWeight.bold,
-                  color: data.budget.percentage > 100 ? AppTheme.danger : AppTheme.success,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   Row(
+                     children: [
+                       Icon(Icons.today, size: 14, color: healthColor),
+                       const SizedBox(width: 6),
+                       const Text('Today\'s Consumption', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                     ],
+                   ),
+                   const SizedBox(height: 4),
+                   Text(
+                     '₹${NumberFormat.decimalPattern().format(summary.todayTotal / maskingFactor)}',
+                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface),
+                   ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text('Daily Limit', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                  Text(
+                    '₹${NumberFormat.compact().format(summary.dailyBudgetLimit / maskingFactor)}',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: healthColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      isOverDaily ? 'LIMIT EXCEEDED' : 'WITHIN BUDGET',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: healthColor),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1),
+          ),
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildTrendItem(
+                    context, 
+                    'vs Yesterday', 
+                    yesterdayDiff, 
+                    maskingFactor,
+                    isPositiveBad: true,
+                  ),
+                ),
+                VerticalDivider(width: 32, thickness: 1, color: theme.dividerColor.withOpacity(0.3)),
+                Expanded(
+                  child: _buildTrendItem(
+                    context, 
+                    'vs Last Month Same Day', 
+                    lastMonthDiff, 
+                    maskingFactor,
+                    isPositiveBad: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrendItem(BuildContext context, String label, double diff, double maskingFactor, {bool isPositiveBad = true}) {
+    final isNegative = diff < 0;
+    final color = isNegative ? AppTheme.success : (diff == 0 ? Colors.grey : AppTheme.danger);
+    final icon = isNegative ? Icons.trending_down : (diff == 0 ? Icons.trending_flat : Icons.trending_up);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+            Text(
+              '${diff > 0 ? "+" : ""}${NumberFormat.compact().format(diff / maskingFactor)}',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: color),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGlassCard(BuildContext context, String title, String value, IconData icon, Color color, {String? subtitle, double? progress}) {
+     final theme = Theme.of(context);
+     return Container(
+       height: 110,
+       padding: const EdgeInsets.all(14),
+       decoration: BoxDecoration(
+         gradient: LinearGradient(
+           begin: Alignment.topLeft,
+           end: Alignment.bottomRight,
+           colors: [
+             color.withOpacity(0.08),
+             color.withOpacity(0.02),
+           ],
+         ),
+         borderRadius: BorderRadius.circular(24),
+         border: Border.all(color: color.withOpacity(0.15)),
+       ),
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.start,
+         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+         children: [
+           Row(
+             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+             children: [
+               Container(
+                 padding: const EdgeInsets.all(6),
+                 decoration: BoxDecoration(
+                   color: color.withOpacity(0.1),
+                   shape: BoxShape.circle,
+                 ),
+                 child: Icon(icon, size: 16, color: color),
+               ),
+               if (subtitle != null)
+                 Text(subtitle, style: TextStyle(fontSize: 9, color: theme.colorScheme.onSurface.withOpacity(0.5))),
+             ],
+           ),
+           Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             children: [
+               Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+               Text(title, style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+             ],
+           ),
+           if (progress != null)
+             ClipRRect(
+               borderRadius: BorderRadius.circular(2),
+               child: LinearProgressIndicator(
+                 value: progress.clamp(0.0, 1.0),
+                 backgroundColor: color.withOpacity(0.1),
+                 color: color,
+                 minHeight: 3,
+               ),
+             ),
+         ],
+       ),
+     );
+  }
+
+  Widget _buildSmartInsight(BuildContext context, DashboardData data) {
+    // Generate a simple insight based on data
+    String insightText = "Your budget is looking healthy!";
+    IconData icon = Icons.auto_awesome;
+    Color color = AppTheme.success;
+
+    if (data.budget.percentage > 100) {
+      insightText = "Budget exceeded! Check spending.";
+      icon = Icons.warning_amber_rounded;
+      color = AppTheme.danger;
+    } else if (data.budget.percentage > 80) {
+      insightText = "Running close to budget. Slow down!";
+      icon = Icons.info_outline;
+      color = AppTheme.warning;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(child: Text(insightText, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color))),
         ],
       ),
     );
@@ -243,24 +660,36 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     return Container(
       height: 200,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
       ),
       child: BarChart(
         BarChartData(
           maxY: maxY,
           barGroups: trend.asMap().entries.map((e) {
+            final isSelected = e.value.isSelected;
+            final isOverBudget = e.value.spent > e.value.budget && e.value.budget > 0;
+            
             return BarChartGroupData(
               x: e.key,
               barRods: [
                 BarChartRodData(
                   toY: e.value.spent,
-                  color: e.value.spent > e.value.budget && e.value.budget > 0 ? AppTheme.danger : AppTheme.primary,
-                  width: 12,
-                  borderRadius: BorderRadius.circular(4),
+                  color: isSelected 
+                    ? (isOverBudget ? AppTheme.danger : Theme.of(context).colorScheme.secondary)
+                    : (isOverBudget ? AppTheme.danger.withOpacity(0.4) : AppTheme.primary.withOpacity(0.4)),
+                  width: isSelected ? 18 : 14,
+                  borderRadius: BorderRadius.circular(6),
+                  backDrawRodData: BackgroundBarChartRodData(
+                    show: true,
+                    toY: e.value.budget > 0 ? e.value.budget : maxY * 0.8,
+                    color: isSelected 
+                      ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+                      : Theme.of(context).dividerColor.withOpacity(0.05),
+                  ),
                 ),
               ],
             );
@@ -269,10 +698,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 40,
+                reservedSize: 45,
                 getTitlesWidget: (val, meta) => Text(
                   NumberFormat.compact().format(val / maskingFactor),
-                  style: const TextStyle(fontSize: 8, color: Colors.grey),
+                  style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -284,7 +713,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   if (idx >= 0 && idx < trend.length) {
                     return Padding(
                       padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(trend[idx].month.split(' ')[0], style: const TextStyle(fontSize: 8, color: Colors.grey)),
+                      child: Text(
+                        trend[idx].month.split(' ')[0], 
+                        style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold)
+                      ),
                     );
                   }
                   return const SizedBox.shrink();
@@ -296,6 +728,46 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
           gridData: const FlGridData(show: false),
           borderData: FlBorderData(show: false),
+          barTouchData: BarTouchData(
+            touchCallback: (FlTouchEvent event, barTouchResponse) {
+              if (!event.isInterestedForInteractions ||
+                  barTouchResponse == null ||
+                  barTouchResponse.spot == null) {
+                return;
+              }
+              final index = barTouchResponse.spot!.touchedBarGroupIndex;
+              if (index >= 0 && index < trend.length) {
+                final item = trend[index];
+                if (event is FlTapUpEvent) {
+                  try {
+                    // "MMM yyyy" format from backend: "Mar 2026"
+                    final date = DateFormat("MMM yyyy").parse(item.month);
+                    final dashboard = context.read<DashboardService>();
+                    dashboard.setMonth(date.month, date.year);
+                  } catch (e) {
+                    debugPrint("Error parsing month for tap: $e");
+                  }
+                }
+              }
+            },
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipColor: (group) => Theme.of(context).colorScheme.surface,
+              tooltipBorder: BorderSide(color: Theme.of(context).dividerColor),
+              tooltipPadding: const EdgeInsets.all(8),
+              getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                return BarTooltipItem(
+                  '${trend[groupIndex].month}\n',
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  children: [
+                    TextSpan(
+                      text: NumberFormat.compact().format(rod.toY / maskingFactor),
+                      style: TextStyle(color: rod.color, fontSize: 10),
+                    )
+                  ],
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -309,31 +781,52 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     double maxY = 0;
     for (var item in trend) {
       if (item.amount > maxY) maxY = item.amount;
-      if (item.dailyLimit > maxY) maxY = item.dailyLimit;
     }
     maxY = maxY * 1.2;
 
     return Container(
-      height: 200,
+      height: 220,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
       ),
       child: LineChart(
         LineChartData(
           maxY: maxY,
           minY: 0,
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (spot) => Theme.of(context).colorScheme.surface,
+              tooltipBorder: BorderSide(color: Theme.of(context).dividerColor),
+              getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                return touchedSpots.map((LineBarSpot touchedSpot) {
+                  final item = trend[touchedSpot.x.toInt()];
+                  final date = DateTime.parse(item.date);
+                  return LineTooltipItem(
+                    '${DateFormat('MMM d').format(date)}\n',
+                    TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 10, fontWeight: FontWeight.bold),
+                    children: [
+                      TextSpan(
+                        text: '₹${NumberFormat.compact().format(item.amount / maskingFactor)}',
+                        style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  );
+                }).toList();
+              },
+            ),
+          ),
           titlesData: FlTitlesData(
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 40,
+                reservedSize: 45,
                 getTitlesWidget: (value, meta) {
                   return Text(
                     NumberFormat.compact().format(value / maskingFactor),
-                    style: const TextStyle(fontSize: 8, color: Colors.grey),
+                    style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold),
                   );
                 },
               ),
@@ -344,12 +837,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 getTitlesWidget: (value, meta) {
                   int idx = value.toInt();
                   if (idx >= 0 && idx < trend.length) {
-                    if (idx % 5 != 0) return const SizedBox.shrink();
+                    // Show labels for 1st, 10th, 20th and last day to avoid crowding
                     DateTime date = DateTime.parse(trend[idx].date);
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(DateFormat('d').format(date), style: const TextStyle(fontSize: 8, color: Colors.grey)),
-                    );
+                    if (date.day == 1 || date.day == 10 || date.day == 20 || idx == trend.length - 1) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          DateFormat('MMM d').format(date), 
+                          style: const TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.bold)
+                        ),
+                      );
+                    }
                   }
                   return const SizedBox.shrink();
                 },
@@ -358,19 +856,27 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
-          gridData: const FlGridData(show: true, drawVerticalLine: false),
+          gridData: FlGridData(
+            show: true, 
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (value) => FlLine(
+              color: Theme.of(context).dividerColor.withOpacity(0.1),
+              strokeWidth: 1,
+            ),
+          ),
           borderData: FlBorderData(show: false),
           lineBarsData: [
             LineChartBarData(
               spots: trend.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.amount)).toList(),
               isCurved: true,
               color: AppTheme.primary,
-              barWidth: 3,
+              barWidth: 4,
+              isStrokeCapRound: true,
               dotData: const FlDotData(show: false),
               belowBarData: BarAreaData(
                 show: true,
                 gradient: LinearGradient(
-                  colors: [AppTheme.primary.withOpacity(0.2), AppTheme.primary.withOpacity(0.0)],
+                  colors: [AppTheme.primary.withOpacity(0.3), AppTheme.primary.withOpacity(0.0)],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -388,65 +894,64 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final List<Color> colors = [
       const Color(0xFF4F46E5), const Color(0xFF10B981), const Color(0xFFF59E0B),
       const Color(0xFFEF4444), const Color(0xFF8B5CF6), const Color(0xFFEC4899),
+      const Color(0xFF0EA5E9), const Color(0xFFF43F5E),
     ];
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            flex: 1,
-            child: SizedBox(
-              height: 150,
-              child: PieChart(
-                PieChartData(
-                  sectionsSpace: 2,
-                  centerSpaceRadius: 30,
-                  sections: distribution.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final item = entry.value;
-                    return PieChartSectionData(
-                      color: colors[index % colors.length],
-                      value: item.value,
-                      title: '',
-                      radius: 40,
-                    );
-                  }).toList(),
-                ),
+          SizedBox(
+            height: 180,
+            child: PieChart(
+              PieChartData(
+                sectionsSpace: 4,
+                centerSpaceRadius: 50,
+                sections: distribution.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final item = entry.value;
+                  return PieChartSectionData(
+                    color: colors[index % colors.length],
+                    value: item.value,
+                    title: '${(item.value / distribution.fold(0.0, (sum, i) => sum + i.value) * 100).toStringAsFixed(0)}%',
+                    titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                    radius: 50,
+                  );
+                }).toList(),
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            flex: 1,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: distribution.take(5).toList().asMap().entries.map((e) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      Container(width: 8, height: 8, color: colors[e.key % colors.length]),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          e.value.name,
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Text(format(e.value.value), style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                    ],
+          const SizedBox(height: 24),
+          ...distribution.take(5).toList().asMap().entries.map((e) {
+            final percentage = (e.value.value / distribution.fold(0.0, (sum, i) => sum + i.value) * 100);
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Container(
+                    width: 12, 
+                    height: 12, 
+                    decoration: BoxDecoration(color: colors[e.key % colors.length], shape: BoxShape.circle)
                   ),
-                );
-              }).toList(),
-            ),
-          ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      e.value.name,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Text(format(e.value.value), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                  const SizedBox(width: 8),
+                  Text('${percentage.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -455,27 +960,47 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   void _showMonthPicker(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
-        return SizedBox(
-          height: 350,
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          height: 400,
           child: Column(
             children: [
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
               const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text('Select Month', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                padding: EdgeInsets.all(24.0),
+                child: Text('Analyse Period', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
               ),
               Expanded(
                 child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: 12,
                   itemBuilder: (context, index) {
                     final monthDate = DateTime(DateTime.now().year, DateTime.now().month - index, 1);
-                    return ListTile(
-                      title: Text(DateFormat('MMMM yyyy').format(monthDate), textAlign: TextAlign.center),
-                      onTap: () {
-                      context.read<DashboardService>().setMonth(monthDate.month, monthDate.year);
-                        _fetchTransactions(reset: true);
-                        Navigator.pop(context);
-                      },
+                    final isSelected = _dashboard?.selectedMonth == monthDate.month && _dashboard?.selectedYear == monthDate.year;
+                    
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: ListTile(
+                        leading: Icon(Icons.circle, size: 12, color: isSelected ? Theme.of(context).primaryColor : Colors.grey[300]),
+                        title: Text(
+                          DateFormat('MMMM yyyy').format(monthDate), 
+                          style: TextStyle(
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected ? Theme.of(context).primaryColor : null,
+                          )
+                        ),
+                        trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).primaryColor) : null,
+                        onTap: () {
+                          _dashboard?.setMonth(monthDate.month, monthDate.year);
+                          Navigator.pop(context);
+                        },
+                      ),
                     );
                   },
                 ),
@@ -487,51 +1012,62 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildTransactionList(BuildContext context) {
-    if (_transactions.isEmpty && _isTxnLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    
-    if (_transactions.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: const Column(
-          children: [
-            Icon(Icons.receipt_long_outlined, size: 48, color: Colors.grey),
-            SizedBox(height: 16),
-            Text('No transactions found for this period', style: TextStyle(color: Colors.grey)),
-          ],
+  Widget _buildTransactionSliverList(BuildContext context) {
+    if (_transactions.isEmpty && !_isTxnLoading) {
+      return SliverToBoxAdapter(
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(48),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
+          ),
+          child: const Column(
+            children: [
+              Icon(Icons.layers_clear_outlined, size: 48, color: Colors.grey),
+              SizedBox(height: 16),
+              Text('Clear ledger for this period', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            ],
+          ),
         ),
       );
     }
 
-    return Column(
-      children: [
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _transactions.length,
-          itemBuilder: (context, index) {
-            final txn = _transactions[index];
-            return _buildTransactionItem(context, txn);
-          },
-        ),
-        if (_hasMore)
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: _isTxnLoading 
-              ? const CircularProgressIndicator()
-              : TextButton(
-                  onPressed: () => _fetchTransactions(),
-                  child: const Text('Load More'),
+    // Grouping by date
+    final Map<String, List<dynamic>> grouped = {};
+    for (var txn in _transactions) {
+      final date = DateTime.parse(txn['date']);
+      final key = DateFormat('yyyy-MM-dd').format(date);
+      grouped.putIfAbsent(key, () => []).add(txn);
+    }
+
+    final keys = grouped.keys.toList();
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final dateKey = keys[index];
+          final dateTxns = grouped[dateKey]!;
+          final displayDate = DateFormat('EEEE, MMM d').format(DateTime.parse(dateKey));
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+                child: Text(
+                  displayDate.toUpperCase(),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Theme.of(context).disabledColor, letterSpacing: 1),
                 ),
-          ),
-      ],
+              ),
+              ...dateTxns.map((txn) => _buildTransactionItem(context, txn)),
+            ],
+          );
+        },
+        childCount: keys.length,
+      ),
     );
   }
 
@@ -542,13 +1078,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final date = DateTime.parse(txn['date']);
     
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
       ),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         onTap: () => _showEditCategoryDialog(context, txn),
         leading: Consumer<CategoriesService>(
           builder: (context, catService, _) {
@@ -560,18 +1097,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   orElse: () => null,
                 );
             
-            if (matched?.icon != null) {
-              return CircleAvatar(
-                backgroundColor: theme.primaryColor.withOpacity(0.1),
-                child: Text(matched!.icon!, style: const TextStyle(fontSize: 20)),
-              );
-            }
-            
-            return CircleAvatar(
-              backgroundColor: theme.primaryColor.withOpacity(0.1),
+            return Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: theme.primaryColor.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
               child: Text(
-                catName.isNotEmpty ? catName[0].toUpperCase() : '?',
-                style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold),
+                matched?.icon ?? (catName.isNotEmpty ? catName[0].toUpperCase() : '?'),
+                style: TextStyle(
+                  fontSize: 20, 
+                  color: theme.primaryColor,
+                  fontWeight: FontWeight.bold
+                )
               ),
             );
           },
@@ -580,18 +1120,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           txn['description'],
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
         ),
         subtitle: Text(
-          '${DateFormat('MMM d, h:mm a').format(date)} • ${txn['account_name'] ?? 'Account'}',
-          style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
+          '${DateFormat('h:mm a').format(date)} • ${txn['account_name'] ?? 'Account'}',
+          style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6), fontWeight: FontWeight.w500),
         ),
         trailing: Text(
           NumberFormat.simpleCurrency(name: 'INR').format(amount / dashboard.maskingFactor),
           style: TextStyle(
             color: amount < 0 ? AppTheme.danger : AppTheme.success,
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w900,
             fontSize: 14,
+            letterSpacing: -0.5
           ),
         ),
       ),
@@ -599,11 +1140,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   void _showEditCategoryDialog(BuildContext context, dynamic txn) {
-    // Re-use logic or just keep it Simple for now
-    // Actually we should probably have this shared, but for now I'll just skip detailed edit
-    // to focus on the main UI restructuring.
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Transaction details coming soon'), behavior: SnackBarBehavior.floating),
+      const SnackBar(
+        content: Text('Transaction analysis details available soon'), 
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.all(20),
+      ),
     );
   }
 }
