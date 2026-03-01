@@ -2,11 +2,6 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
-class DeviceRegister(BaseModel):
-    device_id: str
-    device_name: str
-    fcm_token: Optional[str] = None
-
 class DeviceBase(BaseModel):
     device_id: str
     device_name: str
@@ -23,10 +18,15 @@ class DeviceResponse(DeviceBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+class DeviceRegister(BaseModel):
+    device_id: str
+    device_name: str
+    fcm_token: Optional[str] = None
+
 class MobileLoginRequest(BaseModel):
     username: str
     password: str
-    device_id: str  # Mandatory for mobile login
+    device_id: str
     device_name: str
 
 class MobileLoginResponse(BaseModel):
@@ -34,7 +34,7 @@ class MobileLoginResponse(BaseModel):
     token_type: str
     expires_in: int
     device_status: DeviceResponse
-    user_role: Optional[str] = "ADULT" # Default to ADULT for safety/compat, but should be explicit
+    user_role: Optional[str] = "ADULT"
 
 class ToggleApprovalRequest(BaseModel):
     is_approved: bool
@@ -114,7 +114,7 @@ class FundHolding(BaseModel):
     day_change_percentage: Optional[float] = 0.0
     last_updated: str
     xirr: Optional[float] = None
-    allocation_percentage: Optional[float] = None # Calculated on fly
+    allocation_percentage: Optional[float] = None
 
 class MobileFundsResponse(BaseModel):
     total_invested: float

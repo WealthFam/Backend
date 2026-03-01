@@ -56,34 +56,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     icon: const Icon(Icons.menu),
                     onPressed: widget.onMenuPressed,
                   ) : null,
-                  title: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Overview',
-                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      if (dashboard.maskingFactor > 1.0) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppTheme.warning.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: AppTheme.warning.withOpacity(0.5)),
-                          ),
-                          child: const Text(
-                            'PRIVACY',
-                            style: TextStyle(
-                              color: AppTheme.warning,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
+                  title: GestureDetector(
+                    onDoubleTap: () {
+                       dashboard.toggleMasking();
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         SnackBar(
+                           content: Text(dashboard.maskingFactor > 1.0 ? 'Privacy Masking ON (Panic Mode)' : 'Privacy Masking OFF'),
+                           duration: const Duration(seconds: 1),
+                         )
+                       );
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Overview',
+                          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        if (dashboard.maskingFactor > 1.0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.warning.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppTheme.warning.withOpacity(0.5)),
+                            ),
+                            child: const Text(
+                              'PRIVACY',
+                              style: TextStyle(
+                                color: AppTheme.warning,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                   bottom: dashboard.data != null 
                     ? PreferredSize(

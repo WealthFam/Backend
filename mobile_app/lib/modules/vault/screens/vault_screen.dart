@@ -4,6 +4,7 @@ import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/vault/services/vault_service.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart';
 
 class VaultScreen extends StatefulWidget {
   const VaultScreen({super.key});
@@ -81,10 +82,102 @@ class _VaultScreenState extends State<VaultScreen> {
                 ),
               ],
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _pickAndUpload(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Document'),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddMenu(context),
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  void _showAddMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.upload_file),
+              title: const Text('Upload File'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndUpload(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.create_new_folder),
+              title: const Text('New Folder'),
+              onTap: () {
+                Navigator.pop(context);
+                _showCreateFolderDialog(context);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCreateFolderDialog(BuildContext context) async {
+    final controller = TextEditingController();
+    final service = context.read<VaultService>();
+    
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New Folder'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Folder Name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              if (controller.text.isNotEmpty) {
+                final success = await service.createFolder(controller.text);
+                if (success && mounted) {
+                  Navigator.pop(context);
+                }
+              }
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showRenameDialog(BuildContext context, VaultDocument doc) async {
+    final controller = TextEditingController(text: doc.filename);
+    final service = context.read<VaultService>();
+
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'New Name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              if (controller.text.isNotEmpty && controller.text != doc.filename) {
+                final success = await service.renameDocument(doc.id, controller.text);
+                if (success && mounted) {
+                  Navigator.pop(context);
+                }
+              }
+            },
+            child: const Text('Rename'),
+          ),
+        ],
       ),
     );
   }
@@ -338,6 +431,8 @@ class _VaultScreenState extends State<VaultScreen> {
   }
 
   void _handleTap(VaultDocument doc, VaultService service) {
+    if (doc.isFolder) {
+      service.navigateToFolder(doc.id);
     } else {
       _showActionSheet(doc, service);
     }
@@ -365,6 +460,7 @@ class _VaultScreenState extends State<VaultScreen> {
                 title: const Text('View Document'),
                 onTap: () {
                   Navigator.pop(context);
+                  _openDocument(doc, service);
                 },
               ),
               ListTile(
@@ -390,6 +486,14 @@ class _VaultScreenState extends State<VaultScreen> {
               leading: const Icon(Icons.info_outline),
               title: const Text('Details'),
               onTap: () => Navigator.pop(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Rename'),
+              onTap: () {
+                Navigator.pop(context);
+                _showRenameDialog(context, doc);
+              },
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: AppTheme.danger),
@@ -419,5 +523,20 @@ class _VaultScreenState extends State<VaultScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openDocument(VaultDocument doc, VaultService service) async {
+    try {
+      final path = await service.saveDocument(doc);
+      if (path != null) {
+        await OpenFilex.open(path);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open file: $e'), backgroundColor: AppTheme.danger),
+        );
+      }
+    }
   }
 }

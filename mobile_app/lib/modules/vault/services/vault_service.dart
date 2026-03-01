@@ -197,6 +197,59 @@ class VaultService extends ChangeNotifier {
     return false;
   }
 
+  Future<bool> createFolder(String name) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final url = Uri.parse('${_config.backendUrl}/api/v1/finance/vault/folders');
+      final request = http.MultipartRequest('POST', url)
+        ..headers.addAll(authHeaders)
+        ..fields['name'] = name
+        ..fields['parent_id'] = currentParentId == "ROOT" ? "" : currentParentId;
+      
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        await fetchDocuments();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Create Folder Error: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+    return false;
+  }
+
+  Future<bool> renameDocument(String docId, String newName) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final url = Uri.parse('${_config.backendUrl}/api/v1/finance/vault/$docId');
+      final request = http.MultipartRequest('PUT', url)
+        ..headers.addAll(authHeaders)
+        ..fields['filename'] = newName;
+      
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        await fetchDocuments();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Rename Error: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+    return false;
+  }
+
   Future<String?> saveDocument(VaultDocument doc) async {
     try {
       final response = await http.get(
@@ -205,7 +258,7 @@ class VaultService extends ChangeNotifier {
       );
 
       if (response.statusCode == 200) {
-        final directory = await kIsWeb 
+        final directory = kIsWeb 
           ? null // Web handles downloads differently
           : (await getApplicationDocumentsDirectory()).path;
         

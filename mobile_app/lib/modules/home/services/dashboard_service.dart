@@ -59,6 +59,14 @@ class DashboardService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> toggleMasking() async {
+    if (_maskingFactor > 1.0) {
+      await setMaskingFactor(1.0);
+    } else {
+      await setMaskingFactor(100000.0);
+    }
+  }
+
   Future<void> _syncMaskingToForeground(double value) async {
     try {
       await FlutterForegroundTask.saveData(key: 'masking_factor', value: value);

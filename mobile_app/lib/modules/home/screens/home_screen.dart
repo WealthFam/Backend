@@ -165,10 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ListTile(
             leading: const Icon(Icons.logout, color: AppTheme.danger),
             title: const Text('Sign Out', style: TextStyle(color: AppTheme.danger)),
-            onTap: () {
-              Navigator.pop(context);
-              auth.logout();
-            },
+            onTap: () => _confirmSignOut(context),
           ),
           const SizedBox(height: 20),
         ],
@@ -176,5 +173,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-
+  void _confirmSignOut(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign Out'),
+        content: const Text('Are you sure you want to sign out from WealthFam?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              Navigator.pop(context); // Close drawer
+              context.read<AuthService>().logout();
+            },
+            child: const Text('Sign Out', style: TextStyle(color: AppTheme.danger)),
+          ),
+        ],
+      ),
+    );
+  }
 }

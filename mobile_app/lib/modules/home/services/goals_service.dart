@@ -55,7 +55,7 @@ class GoalsService extends ChangeNotifier {
 
     try {
       final response = await http.get(
-        Uri.parse('${_config.backendUrl}/api/v1/finance/expense-groups/'),
+        Uri.parse('${_config.backendUrl}/api/v1/finance/expense-groups'),
         headers: {'Authorization': 'Bearer ${_auth.accessToken}'},
       );
       if (response.statusCode == 200) {
@@ -67,5 +67,77 @@ class GoalsService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<bool> createGoal(Map<String, dynamic> data) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${_config.backendUrl}/api/v1/finance/investment-goals'),
+        headers: {
+          'Authorization': 'Bearer ${_auth.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(data),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        await fetchGoals();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Create Goal Error: $e');
+    }
+    return false;
+  }
+
+  Future<bool> deleteGoal(String id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('${_config.backendUrl}/api/v1/finance/investment-goals/$id'),
+        headers: {'Authorization': 'Bearer ${_auth.accessToken}'},
+      );
+      if (response.statusCode == 200) {
+        await fetchGoals();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Delete Goal Error: $e');
+    }
+    return false;
+  }
+
+  Future<bool> createExpenseGroup(Map<String, dynamic> data) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${_config.backendUrl}/api/v1/finance/expense-groups'),
+        headers: {
+          'Authorization': 'Bearer ${_auth.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(data),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        await fetchExpenseGroups();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Create Expense Group Error: $e');
+    }
+    return false;
+  }
+
+  Future<bool> deleteExpenseGroup(String id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('${_config.backendUrl}/api/v1/finance/expense-groups/$id'),
+        headers: {'Authorization': 'Bearer ${_auth.accessToken}'},
+      );
+      if (response.statusCode == 200) {
+        await fetchExpenseGroups();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Delete Expense Group Error: $e');
+    }
+    return false;
   }
 }

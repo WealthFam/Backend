@@ -18,7 +18,7 @@ from backend.app.modules.auth.router import router as auth_router
 from backend.app.modules.finance.routers import router as finance_router
 from backend.app.modules.ingestion.router import router as ingestion_router
 from backend.app.modules.ingestion.ai_router import router as ai_router
-from backend.app.modules.mobile.router import router as mobile_router
+from backend.app.api.v1.router import api_router as api_v1_router
 from backend.app.modules.vault.router import router as vault_router
 
 # Background Tasks
@@ -50,11 +50,10 @@ def create_application() -> FastAPI:
     application.include_router(finance_router, prefix=f"{settings.API_V1_STR}/finance", tags=["finance"])
     application.include_router(ingestion_router, prefix=f"{settings.API_V1_STR}/ingestion", tags=["ingestion"])
     application.include_router(ai_router, prefix=f"{settings.API_V1_STR}/ingestion", tags=["ai"])
-    application.include_router(mobile_router, prefix=f"{settings.API_V1_STR}/mobile", tags=["mobile"])
     application.include_router(vault_router, prefix=f"{settings.API_V1_STR}/finance/vault", tags=["Vault"])
     
-    
-
+    # Standardized API V1 Router (currently includes mobile)
+    application.include_router(api_v1_router, prefix=settings.API_V1_STR)
 
     @application.on_event("startup")
     async def startup_event():

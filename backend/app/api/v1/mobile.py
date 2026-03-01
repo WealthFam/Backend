@@ -866,3 +866,17 @@ def test_device_notification(
     )
     
     return {"status": "sent", "message": "Test alert created"}
+
+@router.get("/mobile-summary")
+def get_mobile_summary(
+    user_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Standardized lightweight endpoint for mobile background tasks/notifications"""
+    from backend.app.modules.finance.services.mobile_service import MobileService
+    return MobileService.get_mobile_summary(
+        db,
+        str(current_user.tenant_id),
+        user_id=user_id
+    )

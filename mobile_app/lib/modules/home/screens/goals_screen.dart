@@ -42,16 +42,55 @@ class _GoalsScreenState extends State<GoalsScreen> {
                   padding: const EdgeInsets.all(32),
                   child: Text(goalsService.error!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
                 ))
-              : _buildInvestmentGoalsList(goalsService.goals),
+              : _buildInvestmentGoalsList(goalsService, goalsService.goals),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-        },
+        onPressed: () => _showAddGoalDialog(context),
         child: const Icon(Icons.add),
       ),
     );
   }
 
-  Widget _buildInvestmentGoalsList(List<dynamic> goals) {
+  void _showAddGoalDialog(BuildContext context) {
+    final nameController = TextEditingController();
+    final targetController = TextEditingController();
+    final descriptionController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New Investment Goal'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Goal Name')),
+            TextField(
+              controller: targetController, 
+              decoration: const InputDecoration(labelText: 'Target Amount'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(controller: descriptionController, decoration: const InputDecoration(labelText: 'Description')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              final service = context.read<GoalsService>();
+              final success = await service.createGoal({
+                'name': nameController.text,
+                'target_amount': double.tryParse(targetController.text) ?? 0,
+                'description': descriptionController.text,
+              });
+              if (success && mounted) Navigator.pop(context);
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvestmentGoalsList(GoalsService service, List<dynamic> goals) {
     if (goals.isEmpty) {
       return Center(
         child: Column(
@@ -77,6 +116,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
         
         return Card(
           child: ListTile(
+            onLongPress: () => _showDeleteConfirm(context, goal, service),
             title: Text(goal['name'] ?? 'Unnamed Goal', style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,6 +131,26 @@ class _GoalsScreenState extends State<GoalsScreen> {
           ),
         );
       },
+    );
+  }
+
+  void _showDeleteConfirm(BuildContext context, dynamic goal, GoalsService service) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Goal?'),
+        content: Text('Are you sure you want to delete "${goal['name']}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              final success = await service.deleteGoal(goal['id'].toString());
+              if (success && mounted) Navigator.pop(context);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
     );
   }
 }
