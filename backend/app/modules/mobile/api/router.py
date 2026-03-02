@@ -10,14 +10,18 @@ from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth import security, services as auth_services
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.ingestion import models as ingestion_models
+from backend.app.modules.finance import models as finance_models
 from backend.app.core import timezone
 from backend.app.modules.ingestion.services import IngestionService
 from backend.app.modules.mobile import schemas
 from backend.app.modules.finance.services.analytics_service import AnalyticsService
+from backend.app.modules.finance.services.mutual_funds import MutualFundService
+from backend.app.modules.finance.services.transaction_service import TransactionService
+from sqlalchemy import func, or_
 
 router = APIRouter(tags=["Mobile"])
 
-# --- Mobile App Endpoints (API/V1/MOBILE) ---
+
 
 @router.post("/login", response_model=schemas.MobileLoginResponse)
 def mobile_login(
@@ -70,20 +74,37 @@ def mobile_login(
         device_id=payload.device_id
     )
     
-    # 3. Issue Long-Lived Token
-    # Using 30 days for mobile convenience
+    # Issue Long-Lived Token
     access_token_expires = timedelta(days=30) 
     access_token = security.create_access_token(
         data={"sub": user.email, "tenant_id": str(user.tenant_id), "device_id": device.device_id},
         expires_delta=access_token_expires
     )
     
+    # Construct DeviceResponse dict explicitly
+    device_status = {
+        "id": str(device.id),
+        "tenant_id": str(device.tenant_id),
+        "device_id": device.device_id,
+        "device_name": device.device_name,
+        "is_approved": device.is_approved,
+        "is_enabled": device.is_enabled,
+        "is_ignored": getattr(device, 'is_ignored', False),
+        "last_seen_at": device.last_seen_at or timezone.utcnow(),
+        "created_at": device.created_at or timezone.utcnow(),
+        "user_id": device.user_id,
+        "user_name": user.full_name,
+        "user_avatar": user.avatar
+    }
+    
     return {
         "access_token": access_token, 
         "token_type": "bearer",
         "expires_in": int(access_token_expires.total_seconds()),
-        "device_status": device,
-        "user_role": user.role
+        "device_status": device_status,
+        "user_role": user.role,
+        "user_name": user.full_name,
+        "user_avatar": user.avatar
     }
 
 @router.post("/register-device", response_model=schemas.DeviceResponse)
@@ -118,7 +139,7 @@ def register_device_manually(
         
     db.commit()
     db.refresh(device)
-    return device
+    return {"id": str(device.id), "tenant_id": str(device.tenant_id), "device_id": device.device_id, "device_name": device.device_name, "is_approved": device.is_approved, "is_enabled": device.is_enabled, "is_ignored": getattr(device, "is_ignored", False), "last_seen_at": device.last_seen_at or timezone.utcnow(), "created_at": device.created_at or timezone.utcnow(), "user_id": device.user_id, "user_name": current_user.full_name, "user_avatar": current_user.avatar}
 
 @router.get("/status", response_model=schemas.DeviceResponse)
 def check_device_status(
@@ -137,7 +158,29 @@ def check_device_status(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
         
-    return device
+    # Enrich with user info if linked
+    user_name = None
+    user_avatar = None
+    if device.user_id:
+        user = db.query(auth_models.User).filter(auth_models.User.id == device.user_id).first()
+        if user:
+            user_name = user.full_name
+            user_avatar = user.avatar
+
+    return {
+        "id": str(device.id),
+        "tenant_id": str(device.tenant_id),
+        "device_id": device.device_id,
+        "device_name": device.device_name,
+        "is_approved": device.is_approved,
+        "is_enabled": device.is_enabled,
+        "is_ignored": getattr(device, 'is_ignored', False),
+        "last_seen_at": device.last_seen_at or timezone.utcnow(),
+        "created_at": device.created_at or timezone.utcnow(),
+        "user_id": device.user_id,
+        "user_name": user_name,
+        "user_avatar": user_avatar
+    }
 
 @router.post("/heartbeat", response_model=schemas.DeviceResponse)
 def device_heartbeat(
@@ -169,7 +212,20 @@ def device_heartbeat(
         device_id=device.device_id
     )
     
-    return device
+    return {
+        "id": str(device.id),
+        "tenant_id": str(device.tenant_id),
+        "device_id": device.device_id,
+        "device_name": device.device_name,
+        "is_approved": device.is_approved,
+        "is_enabled": device.is_enabled,
+        "is_ignored": getattr(device, 'is_ignored', False),
+        "last_seen_at": device.last_seen_at or timezone.utcnow(),
+        "created_at": device.created_at or timezone.utcnow(),
+        "user_id": device.user_id,
+        "user_name": current_user.full_name,
+        "user_avatar": current_user.avatar
+    }
 
 # --- Web Dashboard Management Endpoints (also under /mobile namespace) ---
 
@@ -181,9 +237,34 @@ def list_devices(
     """
     List all registered devices for the tenant (for Web UI).
     """
-    return db.query(ingestion_models.MobileDevice).filter(
+    devices = db.query(ingestion_models.MobileDevice).filter(
         ingestion_models.MobileDevice.tenant_id == str(current_user.tenant_id)
     ).order_by(ingestion_models.MobileDevice.last_seen_at.desc()).all()
+    
+    enriched = []
+    for d in devices:
+        user_name = None
+        user_avatar = None
+        if d.user_id:
+            user = db.query(auth_models.User).filter(auth_models.User.id == d.user_id).first()
+            if user:
+                user_name = user.full_name
+                user_avatar = user.avatar
+        enriched.append({
+            "id": str(d.id),
+            "tenant_id": str(d.tenant_id),
+            "device_id": d.device_id,
+            "device_name": d.device_name,
+            "is_approved": d.is_approved,
+            "is_enabled": d.is_enabled,
+            "is_ignored": getattr(d, 'is_ignored', False),
+            "last_seen_at": d.last_seen_at,
+            "created_at": d.created_at,
+            "user_id": d.user_id,
+            "user_name": user_name,
+            "user_avatar": user_avatar
+        })
+    return enriched
 
 @router.patch("/devices/{device_id}/approve", response_model=schemas.DeviceResponse)
 def approve_device(
@@ -195,7 +276,6 @@ def approve_device(
     """
     Toggle device approval status (Web UI only).
     """
-    # Authorization check: Only parents can approve? For now, any adult user.
     if current_user.role == "CHILD":
         raise HTTPException(status_code=403, detail="Only adults can manage devices")
 
@@ -221,12 +301,6 @@ def delete_device(
     """
     Remove/Reject a device.
     """
-    if current_user.role == "CHILD":
-       # Optional: Allow user to delete their own device by device_id matching?
-       # For now, strict role check or ownership check
-       pass
-
-    # Find device by ID or Device_ID (Hybrid lookup for convenience)
     device = db.query(ingestion_models.MobileDevice).filter(
         (ingestion_models.MobileDevice.id == device_id) | (ingestion_models.MobileDevice.device_id == device_id),
         ingestion_models.MobileDevice.tenant_id == str(current_user.tenant_id)
@@ -291,9 +365,6 @@ def toggle_device_enabled(
     device.is_enabled = enabled
     db.commit()
     db.refresh(device)
-    device.is_enabled = enabled
-    db.commit()
-    db.refresh(device)
     return device
 
 @router.patch("/devices/{device_id}/ignore")
@@ -316,8 +387,7 @@ def toggle_device_ignored(
         
     device.is_ignored = ignored
     if ignored:
-        device.is_approved = False # Auto-revoke approval if ignored
-        
+        device.is_approved = False
 
     db.commit()
     db.refresh(device)
@@ -375,10 +445,124 @@ def list_family_members(
             "id": str(u.id),
             "name": u.full_name or u.email.split('@')[0],
             "role": u.role,
-            "avatar_url": None # Placeholder for now
+            "avatar_url": None
         }
         for u in users
     ]
+
+def get_target_user_id(current_user, member_id):
+    if current_user.role == "CHILD":
+        if member_id and member_id != str(current_user.id):
+             raise HTTPException(status_code=403, detail="Children can only view their own data")
+        return str(current_user.id)
+    return member_id
+
+@router.get("/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
+def get_dashboard_summary(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    member_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    target_user_id = get_target_user_id(current_user, member_id)
+    now = timezone.utcnow()
+    target_month = month or now.month
+    target_year = year or now.year
+    
+    metrics = AnalyticsService.get_mobile_summary_metrics(
+        db, str(current_user.tenant_id), user_role=current_user.role,
+        month=month, year=year, user_id=target_user_id
+    )
+    
+    # Account map for names
+    account_ids = list(set(txn['account_id'] for txn in metrics["recent_transactions"]))
+    accounts = db.query(finance_models.Account).filter(finance_models.Account.id.in_(account_ids)).all()
+    account_map = {a.id: a for a in accounts}
+
+    _, triage_count = TransactionService.get_pending_transactions(
+        db, str(current_user.tenant_id), limit=1, user_id=target_user_id
+    )
+    family_members_count = db.query(auth_models.User).filter(auth_models.User.tenant_id == str(current_user.tenant_id)).count()
+
+    return {
+        "summary": {
+            "today_total": metrics.get("today_total", 0.0),
+            "yesterday_total": metrics.get("yesterday_total", 0.0),
+            "last_month_same_day_total": metrics.get("last_month_same_day_total", 0.0),
+            "monthly_total": metrics.get("monthly_total", 0.0),
+            "currency": metrics.get("currency", "INR"),
+            "daily_budget_limit": metrics.get("daily_budget_limit", 0.0),
+            "prorated_budget": metrics.get("prorated_budget", 0.0)
+        },
+        "budget": metrics.get("budget_health", {"limit": 0, "spent": 0, "percentage": 0}),
+        "recent_transactions": [
+            {**txn, "account_name": account_map.get(txn['account_id']).name if account_map.get(txn['account_id']) else "Unknown"}
+            for txn in metrics["recent_transactions"]
+        ],
+        "pending_triage_count": triage_count,
+        "family_members_count": family_members_count
+    }
+
+@router.get("/dashboard/trends", response_model=schemas.DashboardTrendsResponse)
+def get_dashboard_trends(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    member_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    target_user_id = get_target_user_id(current_user, member_id)
+    now = timezone.utcnow()
+    target_month = month or now.month
+    target_year = year or now.year
+    
+    return AnalyticsService.get_mobile_dashboard_trends(
+        db, str(current_user.tenant_id), target_year, target_month, user_id=target_user_id
+    )
+
+@router.get("/dashboard/categories", response_model=schemas.DashboardCategoriesResponse)
+def get_dashboard_categories(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    member_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    target_user_id = get_target_user_id(current_user, member_id)
+    now = timezone.utcnow()
+    target_month = month or now.month
+    target_year = year or now.year
+    return AnalyticsService.get_mobile_dashboard_categories(
+        db, str(current_user.tenant_id), target_month, target_year, user_id=target_user_id
+    )
+
+@router.get("/dashboard/investments", response_model=schemas.DashboardInvestmentsResponse)
+def get_dashboard_investments(
+    member_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role == "CHILD":
+        return {"investment_summary": None}
+    
+    target_user_id = get_target_user_id(current_user, member_id)
+    inv_data = MutualFundService.get_portfolio_analytics(db, str(current_user.tenant_id), user_id=target_user_id)
+    
+    if inv_data["current_value"] <= 0 and inv_data["total_invested"] <= 0:
+        return {"investment_summary": None}
+
+    return {
+        "investment_summary": {
+            "total_invested": inv_data["total_invested"],
+            "current_value": inv_data["current_value"],
+            "profit_loss": inv_data.get("profit_loss", inv_data["current_value"] - inv_data["total_invested"]),
+            "xirr": inv_data["xirr"],
+            "sparkline": inv_data.get("sparkline", []),
+            "day_change": inv_data.get("day_change", 0.0),
+            "day_change_percent": inv_data.get("day_change_percent", 0.0)
+        }
+    }
 
 @router.get("/dashboard", response_model=schemas.MobileDashboardResponse)
 def get_mobile_dashboard(
@@ -389,131 +573,13 @@ def get_mobile_dashboard(
     db: Session = Depends(get_db)
 ):
     """
-    Returns a lightweight summary for the mobile dashboard with chart data.
+    Deprecated: Use granular endpoints. Aggregates all for legacy support.
     """
-    # Authorization logic for member_id
-    target_user_id = None # Default to None (All) for Adults
-    
-    if current_user.role == "CHILD":
-        # Child can only see their own data
-        target_user_id = str(current_user.id)
-        if member_id and member_id != target_user_id:
-             raise HTTPException(status_code=403, detail="Children can only view their own data")
-    elif member_id:
-        # Adults can view specific member
-        target_user_id = member_id
-        
-    now = timezone.utcnow()
-    target_month = month or now.month
-    target_year = year or now.year
-    
-    start_date = datetime(target_year, target_month, 1)
-    last_day = calendar.monthrange(target_year, target_month)[1]
-    end_date = datetime(target_year, target_month, last_day, 23, 59, 59)
-    
-    metrics = AnalyticsService.get_summary_metrics(
-        db, 
-        str(current_user.tenant_id), 
-        user_role=current_user.role,
-        user_id=target_user_id, # Can be None for All
-        start_date=start_date,
-        end_date=end_date,
-        exclude_hidden=True
+    dashboard = AnalyticsService.get_consolidated_dashboard(
+        db, str(current_user.tenant_id), current_user, 
+        month=month, year=year, user_id=get_target_user_id(current_user, member_id)
     )
-    
-    # --- 1. Category Distribution (Pie Chart) ---
-    from sqlalchemy import func, or_
-    from backend.app.modules.finance import models
-    
-    cat_query = db.query(
-        models.Transaction.category,
-        func.sum(models.Transaction.amount).label('total')
-    ).filter(
-        models.Transaction.tenant_id == str(current_user.tenant_id),
-        models.Transaction.amount < 0,
-        models.Transaction.is_transfer == False,
-        models.Transaction.exclude_from_reports == False,
-        models.Transaction.date >= start_date,
-        models.Transaction.date <= end_date
-    )
-    
-    if target_user_id:
-        cat_query = cat_query.join(
-            models.Account, models.Transaction.account_id == models.Account.id
-        ).filter(
-            or_(models.Account.owner_id == target_user_id, models.Account.owner_id == None)
-        )
-    
-    cat_results = cat_query.group_by(models.Transaction.category).order_by(func.sum(models.Transaction.amount).asc()).all()
-    
-    category_distribution = [
-        schemas.CategoryPieItem(name=cat[0], value=abs(float(cat[1])))
-        for cat in cat_results
-    ]
-    
-    # --- 2. Daily Spending Trend (Bar/Line Chart) ---
-    total_budget = metrics["budget_health"]["limit"]
-    daily_budget_limit = total_budget / last_day if total_budget > 0 else 0
-    
-    trend_query = db.query(
-        func.date(models.Transaction.date).label('day'),
-        func.sum(models.Transaction.amount).label('total')
-    ).filter(
-        models.Transaction.tenant_id == str(current_user.tenant_id),
-        models.Transaction.amount < 0,
-        models.Transaction.is_transfer == False,
-        models.Transaction.exclude_from_reports == False,
-        models.Transaction.date >= start_date,
-        models.Transaction.date <= end_date
-    )
-    
-    if target_user_id:
-        trend_query = trend_query.join(
-            models.Account, models.Transaction.account_id == models.Account.id
-        ).filter(
-            or_(models.Account.owner_id == target_user_id, models.Account.owner_id == None)
-        )
-    
-    trend_results = trend_query.group_by(func.date(models.Transaction.date)).all()
-    trend_map = {str(row.day): abs(float(row.total)) for row in trend_results}
-    
-    spending_trend = []
-    for day in range(1, last_day + 1):
-        d_date = date(target_year, target_month, day)
-        d_str = d_date.isoformat()
-        spending_trend.append(schemas.SpendingTrendItem(
-            date=d_str,
-            amount=trend_map.get(d_str, 0.0),
-            daily_limit=daily_budget_limit
-        ))
-        
-    # --- 3. Pending Triage Count ---
-    pending_count = db.query(ingestion_models.PendingTransaction).filter(
-        ingestion_models.PendingTransaction.tenant_id == str(current_user.tenant_id)
-    ).count()
-
-    # Filter recent transactions to match dashboard logic (Safe display)
-    # Filtered by service
-    filtered_recent = metrics["recent_transactions"]
-
-    return {
-        "summary": {
-            "today_total": metrics["today_total"],
-            "monthly_total": metrics["monthly_total"],
-            "currency": metrics["currency"]
-        },
-        "budget": metrics["budget_health"],
-        "spending_trend": spending_trend,
-        "category_distribution": category_distribution,
-        "recent_transactions": [
-            {
-                **txn,
-                "account_name": db.query(models.Account.name).filter(models.Account.id == txn['account_id']).scalar()
-            }
-            for txn in filtered_recent
-        ],
-        "pending_triage_count": pending_count
-    }
+    return dashboard
 
 @router.get("/triage", response_model=List[schemas.RecentTransaction])
 def list_mobile_triage(
@@ -523,17 +589,20 @@ def list_mobile_triage(
     """
     Get all pending transactions for the mobile app to review.
     """
-    from backend.app.modules.finance.services.transaction_service import TransactionService
     items, total = TransactionService.get_pending_transactions(
         db, str(current_user.tenant_id), limit=100, sort_order="desc"
     )
+    # Ensure owners are joined for faster access (already joined loaded in get_pending_transactions but just joinedload)
+    # Wait, get_pending_transactions has options(joinedload(PendingTransaction.account)).
+    # Let's ensure owners are pre-loaded to avoid N+1.
+    # We can perform a bulk lookup for owners.
+    owner_ids = list(set(txn.account.owner_id for txn in items if txn.account and txn.account.owner_id))
+    from backend.app.modules.auth.models import User
+    owners_map = {str(u.id): u.full_name or u.email.split('@')[0] for u in db.query(User).filter(User.id.in_(owner_ids)).all()}
     
     enriched = []
     for txn in items:
-        # Use relationship for owner info
-        owner_name = "Unknown"
-        if txn.account and txn.account.owner:
-            owner_name = txn.account.owner.full_name or "Unknown"
+        owner_name = owners_map.get(str(txn.account.owner_id), "Unknown") if txn.account and txn.account.owner_id else "Unknown"
 
         enriched.append({
             "id": txn.id,
@@ -552,6 +621,7 @@ def list_mobile_transactions(
     page_size: int = 20,
     month: Optional[int] = None,
     year: Optional[int] = None,
+    day: Optional[int] = None,
     member_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -559,9 +629,6 @@ def list_mobile_transactions(
     """
     Paginated transactions list for infinite scroll.
     """
-    from backend.app.modules.finance import models
-    from sqlalchemy import or_
-    
     # Authorization logic for member_id
     target_user_id = None # Default to None (All) for Adults
     
@@ -574,31 +641,35 @@ def list_mobile_transactions(
         # Adults can view specific member
         target_user_id = member_id
         
-    query = db.query(models.Transaction).options(
-        joinedload(models.Transaction.account)
+    query = db.query(finance_models.Transaction).options(
+        joinedload(finance_models.Transaction.account).joinedload(finance_models.Account.owner)
     ).filter(
-        models.Transaction.tenant_id == str(current_user.tenant_id),
-        models.Transaction.is_transfer == False,
-        models.Transaction.exclude_from_reports == False
+        finance_models.Transaction.tenant_id == str(current_user.tenant_id),
+        finance_models.Transaction.is_transfer == False,
+        finance_models.Transaction.exclude_from_reports == False
     )
     
     # Filter by user ownership if target_user_id is set
     if target_user_id:
         query = query.join(
-            models.Account, models.Transaction.account_id == models.Account.id
+            finance_models.Account, finance_models.Transaction.account_id == finance_models.Account.id
         ).filter(
-            or_(models.Account.owner_id == target_user_id, models.Account.owner_id == None)
+            or_(finance_models.Account.owner_id == target_user_id, finance_models.Account.owner_id == None)
         )
     
     if month and year:
-        start_date = datetime(year, month, 1)
-        last_day = calendar.monthrange(year, month)[1]
-        end_date = datetime(year, month, last_day, 23, 59, 59)
-        query = query.filter(models.Transaction.date >= start_date, models.Transaction.date <= end_date)
+        if day:
+            start_date = datetime(year, month, day)
+            end_date = datetime(year, month, day, 23, 59, 59)
+        else:
+            start_date = datetime(year, month, 1)
+            last_day = calendar.monthrange(year, month)[1]
+            end_date = datetime(year, month, last_day, 23, 59, 59)
+        query = query.filter(finance_models.Transaction.date >= start_date, finance_models.Transaction.date <= end_date)
         
     total_count = query.count()
     
-    transactions = query.order_by(models.Transaction.date.desc()) \
+    transactions = query.order_by(finance_models.Transaction.date.desc()) \
                         .offset((page - 1) * page_size) \
                         .limit(page_size) \
                         .all()
@@ -606,10 +677,8 @@ def list_mobile_transactions(
     # Enrich with owner info (simplified) or mapped
     enriched = []
     for txn in transactions:
-        # Use relationship for owner info
-        owner_name = None
-        if txn.account and txn.account.owner:
-            owner_name = txn.account.owner.full_name
+        # Use relationship for owner info (pre-loaded via joinedload)
+        owner_name = txn.account.owner.full_name or txn.account.owner.email.split('@')[0] if txn.account and txn.account.owner else "Unknown"
 
         enriched.append({
             "id": txn.id,
@@ -644,20 +713,19 @@ def create_mobile_transaction(
     """
     Create a new transaction (manual entry).
     """
-    from backend.app.modules.finance import models
     from datetime import datetime
     
     # Verify account ownership
-    account = db.query(models.Account).filter(
-         models.Account.id == payload.account_id,
-         or_(models.Account.owner_id == str(current_user.id), models.Account.owner_id == None),
-         models.Account.tenant_id == str(current_user.tenant_id)
+    account = db.query(finance_models.Account).filter(
+         finance_models.Account.id == payload.account_id,
+         or_(finance_models.Account.owner_id == str(current_user.id), finance_models.Account.owner_id == None),
+         finance_models.Account.tenant_id == str(current_user.tenant_id)
     ).first()
     
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or access denied")
         
-    txn = models.Transaction(
+    txn = finance_models.Transaction(
         id=str(uuid.uuid4()),
         tenant_id=str(current_user.tenant_id),
         account_id=payload.account_id,
@@ -773,14 +841,13 @@ def update_transaction_category(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from backend.app.modules.finance import models
     from backend.app.modules.finance.services.category_service import CategoryService
     from backend.app.modules.finance import schemas as finance_schemas
     
     # 1. Update Transaction
-    txn = db.query(models.Transaction).filter(
-        models.Transaction.id == transaction_id,
-        models.Transaction.tenant_id == str(current_user.tenant_id)
+    txn = db.query(finance_models.Transaction).filter(
+        finance_models.Transaction.id == transaction_id,
+        finance_models.Transaction.tenant_id == str(current_user.tenant_id)
     ).first()
     
     if not txn:
@@ -866,3 +933,16 @@ def test_device_notification(
     )
     
     return {"status": "sent", "message": "Test alert created"}
+
+@router.get("/mobile-summary")
+def get_mobile_summary(
+    user_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Standardized lightweight endpoint for mobile background tasks/notifications"""
+    return AnalyticsService.get_mobile_summary_lightweight(
+        db,
+        str(current_user.tenant_id),
+        user_id=user_id
+    )

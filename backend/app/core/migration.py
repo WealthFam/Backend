@@ -26,8 +26,10 @@ def run_auto_migrations(engine: Engine):
                         final_type = type_def.replace('TIMESTAMPTZ', 'TIMESTAMP')
                     
                     connection.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {final_type}"))
+                    logger.debug(f"Migration: ensured column {table}.{col}")
                 except Exception as e:
-                    pass
+                    # Log at WARNING — column likely already exists (IF NOT EXISTS should prevent this, but DuckDB may differ)
+                    logger.warning(f"Migration: could not add {table}.{col} ({type_def}): {e}")
 
             # 1. Add columns to existing tables since CREATE TABLE IF NOT EXISTS won't add them
             safe_add_column("pending_transactions", "latitude", "DECIMAL(10, 8)")

@@ -10,7 +10,6 @@ from backend.app.modules.finance.services.expense_group_service import ExpenseGr
 router = APIRouter()
 
 @router.get("/expense-groups", response_model=List[schemas.ExpenseGroupRead])
-@router.get("/expense-groups", response_model=List[schemas.ExpenseGroupRead])
 def get_expense_groups(
     user_id: str | None = None,
     current_user: auth_models.User = Depends(get_current_user),

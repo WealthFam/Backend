@@ -67,7 +67,7 @@ class SyncTaskHandler extends TaskHandler {
         }
 
         final response = await http.get(
-          Uri.parse('$url/api/v1/finance/mobile-summary'),
+          Uri.parse('$url/api/v1/mobile/mobile-summary'),
           headers: {'Authorization': 'Bearer $token'},
         ).timeout(const Duration(seconds: 15));
 

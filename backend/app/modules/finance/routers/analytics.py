@@ -84,19 +84,6 @@ def get_spending_trend(
         user_id=user_id
     )
 
-@router.get("/mobile-summary")
-def get_mobile_summary(
-    user_id: str = None,
-    current_user: auth_models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Lightweight endpoint for mobile app notifications"""
-    from backend.app.modules.finance.services.mobile_service import MobileService
-    return MobileService.get_mobile_summary(
-        db,
-        str(current_user.tenant_id),
-        user_id=user_id
-    )
 @router.get("/heatmap")
 def get_heatmap(
     start_date: Optional[str] = None,

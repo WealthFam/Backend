@@ -17,14 +17,18 @@ class AuthService extends ChangeNotifier {
   String? _tenantId;
   String? _deviceId;
   String? _deviceName;
-  String? _userRole; // Add this
+  String? _userRole;
+  String? _userName;
+  String? _userAvatar;
   bool _isApproved = false;
 
   bool get isAuthenticated => _isAuthenticated;
   bool get isApproved => _isApproved;
   String? get accessToken => _accessToken;
   String? get deviceId => _deviceId;
-  String? get userRole => _userRole; // Add getter
+  String? get userRole => _userRole;
+  String? get userName => _userName;
+  String? get userAvatar => _userAvatar;
 
   AuthService(this._config);
 
@@ -33,24 +37,20 @@ class AuthService extends ChangeNotifier {
     _tenantId = await _storage.read(key: 'tenant_id');
     _deviceId = await _storage.read(key: 'device_id');
     _deviceName = await _storage.read(key: 'device_name');
-    _userRole = await _storage.read(key: 'user_role'); // Read role
+    _userRole = await _storage.read(key: 'user_role');
+    _userName = await _storage.read(key: 'user_name');
+    _userAvatar = await _storage.read(key: 'user_avatar');
     
     if (_deviceId == null || _deviceName == null) {
       await _initDeviceInfo();
     }
 
     if (_accessToken != null) {
-      // Validate token or just assume logged in for offline startup
-      // Better: Check /mobile/status to verify approval if we have a token
       _isAuthenticated = true;
       try {
         await checkStatus();
         _startHeartbeat();
       } catch (e) {
-        // If status check fails (offline), we assume okay if we valid token?
-        // Or we might need to be careful. For now, let's allow offline entry but restricted.
-        // But for V1, let's just mark authenticated. 
-        // Real validation happens on API calls.
         debugPrint('Offline or Check Status Failed: $e');
       }
     }
@@ -120,7 +120,15 @@ class AuthService extends ChangeNotifier {
         await _storage.write(key: 'access_token', value: _accessToken);
         await _storage.write(key: 'tenant_id', value: _tenantId);
         if (_userRole != null) {
-           await _storage.write(key: 'user_role', value: _userRole);
+          await _storage.write(key: 'user_role', value: _userRole);
+        }
+        _userName = data['user_name'];
+        _userAvatar = data['user_avatar'];
+        if (_userName != null) {
+          await _storage.write(key: 'user_name', value: _userName);
+        }
+        if (_userAvatar != null) {
+          await _storage.write(key: 'user_avatar', value: _userAvatar);
         }
         
         _isAuthenticated = true;
@@ -140,6 +148,10 @@ class AuthService extends ChangeNotifier {
     _accessToken = null;
     await _storage.delete(key: 'access_token');
     await _storage.delete(key: 'tenant_id');
+    await _storage.delete(key: 'user_name');
+    await _storage.delete(key: 'user_avatar');
+    _userName = null;
+    _userAvatar = null;
     notifyListeners();
   }
 
@@ -158,13 +170,15 @@ class AuthService extends ChangeNotifier {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _isApproved = data['is_approved'];
+        _userName = data['user_name'];
+        _userAvatar = data['user_avatar'];
+        if (_userName != null) await _storage.write(key: 'user_name', value: _userName);
+        if (_userAvatar != null) await _storage.write(key: 'user_avatar', value: _userAvatar);
         notifyListeners();
       } else if (response.statusCode == 401) {
-        // Token expired
         await logout();
       }
     } catch (e) {
-      // Ignore network errors for heartbeat
       debugPrint('Status check failed: $e');
     }
   }
@@ -201,8 +215,6 @@ class AuthService extends ChangeNotifier {
       );
 
       if (response.statusCode == 200) {
-        // debugPrint('Heartbeat sent');
-        // Update approval status while we are at it?
         final data = jsonDecode(response.body);
         if (_isApproved != data['is_approved']) {
            _isApproved = data['is_approved'];

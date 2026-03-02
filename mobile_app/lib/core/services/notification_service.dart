@@ -24,7 +24,7 @@ void callbackDispatcher() {
       }
 
       final response = await http.get(
-        Uri.parse('$url/api/v1/finance/mobile-summary'),
+        Uri.parse('$url/api/v1/mobile/mobile-summary'),
         headers: {'Authorization': 'Bearer $token'},
       ).timeout(const Duration(seconds: 10));
 
@@ -203,7 +203,7 @@ class NotificationService {
     debugPrint("NotificationService: updateNow called with url=$url");
     try {
       final response = await http.get(
-        Uri.parse('$url/api/v1/finance/mobile-summary'),
+        Uri.parse('$url/api/v1/mobile/mobile-summary'),
         headers: {'Authorization': 'Bearer $token'},
       ).timeout(const Duration(seconds: 10));
 

@@ -4,6 +4,7 @@ import 'package:telephony/telephony.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/ingestion/services/sms_service.dart';
 import 'package:mobile_app/modules/ingestion/screens/sms_debug_logs_screen.dart';
+import 'package:mobile_app/core/widgets/app_shell.dart';
 import 'package:intl/intl.dart';
 
 class SmsManagementScreen extends StatefulWidget {
@@ -215,7 +216,9 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      drawer: const AppDrawer(),
       appBar: AppBar(
+        leading: const DrawerMenuButton(),
         title: const Text('SMS Management'),
         actions: [
           IconButton(

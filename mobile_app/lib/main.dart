@@ -117,6 +117,7 @@ class MyApp extends StatelessWidget {
       child: Consumer<AuthService>(
         builder: (context, auth, _) {
           return MaterialApp(
+            key: ValueKey(auth.isAuthenticated),
             title: 'WealthFam',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,

@@ -17,6 +17,10 @@ class FundsService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  // Sync State
+  Map<String, dynamic>? _syncStatus;
+  Map<String, dynamic>? get syncStatus => _syncStatus;
+
   // Filter State
   String? _selectedMemberId;
   String? get selectedMemberId => _selectedMemberId;
@@ -62,8 +66,36 @@ class FundsService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
-    // Fetch chart data in background after main data
+    // Fetch chart data and sync status in background after main data
     fetchPerformance();
+    fetchSyncStatus();
+  }
+
+  Future<void> fetchSyncStatus() async {
+    if (_auth.accessToken == null) return;
+    try {
+      final url = Uri.parse('${_config.backendUrl}/api/v1/finance/mutual-funds/sync/status');
+      final response = await http.get(url, headers: {'Authorization': 'Bearer ${_auth.accessToken}'});
+      if (response.statusCode == 200) {
+        _syncStatus = jsonDecode(response.body);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Sync Status Error: $e');
+    }
+  }
+
+  Future<void> triggerSync() async {
+    if (_auth.accessToken == null) return;
+    try {
+      final url = Uri.parse('${_config.backendUrl}/api/v1/finance/mutual-funds/sync/refresh');
+      final response = await http.post(url, headers: {'Authorization': 'Bearer ${_auth.accessToken}'});
+      if (response.statusCode == 200) {
+        await fetchSyncStatus();
+      }
+    } catch (e) {
+      debugPrint('Trigger Sync Error: $e');
+    }
   }
 
   // --- Performance Chart Data ---
