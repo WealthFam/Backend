@@ -123,8 +123,8 @@ def start_scheduler():
     
     scheduler.add_job(daily_recurrence_check, trigger, id="daily_recurrence_check", replace_existing=True)
     
-    # Run email sync every 15 minutes
-    scheduler.add_job(auto_sync_job, 'interval', minutes=15, id="auto_sync_job", replace_existing=True)
+    # Run email sync every 3 hours
+    scheduler.add_job(auto_sync_job, 'interval', hours=3, id="auto_sync_job", replace_existing=True)
     
     # Run mutual fund sync every 12 hours
     scheduler.add_job(mutual_fund_sync_job, 'interval', hours=12, id="mutual_fund_sync_job", replace_existing=True)
