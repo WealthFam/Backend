@@ -166,7 +166,7 @@ class Budget(Base):
     category = Column(String, nullable=False, index=True) # e.g. "Food"
     amount_limit = Column(Numeric(15, 2), nullable=False) # Monthly Limit
     period = Column(String, default="MONTHLY") # For future extensibility
-    updated_at = Column(UTCDateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
 
 class ExpenseGroup(Base):
     __tablename__ = "expense_groups"
@@ -255,7 +255,7 @@ class MutualFundsMeta(Base):
     isin_reinvest = Column(String, nullable=True)
     fund_house = Column(String, nullable=True)
     category = Column(String, nullable=True)
-    updated_at = Column(UTCDateTime, default=datetime.utcnow)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
 
 class SelectionType(enum.Enum):
     MANUAL = "MANUAL"
@@ -335,7 +335,7 @@ class MutualFundHolding(Base):
     last_nav = Column(Numeric(15, 4), nullable=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
     goal_id = Column(String, ForeignKey("investment_goals.id"), nullable=True)
-    last_updated_at = Column(UTCDateTime, default=datetime.utcnow)
+    last_updated_at = Column(UTCDateTime, default=timezone.utcnow)
 
     goal = relationship("InvestmentGoal", back_populates="holdings")
     meta = relationship("MutualFundsMeta", foreign_keys=[scheme_code], primaryjoin="MutualFundHolding.scheme_code == MutualFundsMeta.scheme_code")
@@ -391,7 +391,7 @@ class MutualFundSyncLog(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
-    started_at = Column(UTCDateTime, default=datetime.utcnow)
+    started_at = Column(UTCDateTime, default=timezone.utcnow)
     completed_at = Column(UTCDateTime, nullable=True)
     status = Column(String, default="running") # running, completed, error
     num_funds_updated = Column(Numeric(10, 0), default=0)
