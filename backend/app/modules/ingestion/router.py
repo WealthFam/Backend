@@ -172,11 +172,11 @@ def ingest_sms(
         txn_date = t.get("date")
         if isinstance(txn_date, str):
             try:
-                txn_date = datetime.fromisoformat(txn_date.replace("Z", "+00:00"))
+                txn_date = timezone.ensure_utc(datetime.fromisoformat(txn_date.replace("Z", "+00:00")))
             except:
-                txn_date = timezone.utcnow()
+                txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
         else:
-            txn_date = timezone.utcnow()
+            txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
 
         # Map to ParsedTransaction
         parsed = ParsedTransaction(
@@ -260,11 +260,11 @@ def ingest_email(
         txn_date = t.get("date")
         if isinstance(txn_date, str):
             try:
-                txn_date = datetime.fromisoformat(txn_date.replace("Z", "+00:00"))
+                txn_date = timezone.ensure_utc(datetime.fromisoformat(txn_date.replace("Z", "+00:00")))
             except:
-                txn_date = timezone.utcnow()
+                txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
         else:
-            txn_date = timezone.utcnow()
+            txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
 
         # Map to ParsedTransaction
         parsed = ParsedTransaction(
