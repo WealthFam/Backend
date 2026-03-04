@@ -417,6 +417,28 @@ def run_auto_migrations(engine: Engine):
             );
             """))
 
+            # 25. Ignored Recurring Patterns (Subscription Detection)
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS ignored_recurring_patterns (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                pattern VARCHAR NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+            );
+            """))
+
+            # 26. Ignored Category Suggestions
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS ignored_suggestions (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                pattern VARCHAR NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+            );
+            """))
+
             # Explicitly commit the transaction!
             connection.commit()
             logger.info("Auto-migration complete.")

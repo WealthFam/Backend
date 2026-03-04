@@ -154,6 +154,7 @@ export const financeApi = {
         apiClient.get('/finance/analytics/merchant-breakdown', { params: { category, start_date: startDate, end_date: endDate, user_id: userId } }),
     getFamilyWealth: () => apiClient.get('/finance/analytics/family-wealth'),
     getRecurringSuggestions: () => apiClient.get('/finance/recurring/suggestions'),
+    ignoreRecurringSuggestion: (pattern: string) => apiClient.post('/finance/recurring/suggestions/ignore', { pattern }),
 
     // Document Vault
     uploadDocument: (formData: FormData) => apiClient.post('/finance/vault/upload', formData, {

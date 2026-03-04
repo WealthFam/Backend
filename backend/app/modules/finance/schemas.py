@@ -171,6 +171,9 @@ class RuleSuggestion(BaseModel):
     confidence_level: str = "Medium" # Low, Medium, High
     reason: Optional[str] = None
 
+class IgnoredRecurringPatternCreate(BaseModel):
+    pattern: str
+
 class IgnoredSuggestionCreate(BaseModel):
     pattern: str
 
@@ -350,12 +353,14 @@ class RecurringTransactionRead(RecurringTransactionBase):
 class RecurringSuggestion(BaseModel):
     name: str
     amount: Decimal
-    frequency: str  # MONTHLY, WEEKLY
+    frequency: str  # MONTHLY, WEEKLY, QUARTERLY, etc.
     category: Optional[str] = None
     account_id: str
     confidence: float
     reason: str
     last_date: datetime
+    pattern: Optional[str] = None # The exact merchant/keyword detected
+    detected_count: int = 0
         
 # --- Loan Schemas ---
 

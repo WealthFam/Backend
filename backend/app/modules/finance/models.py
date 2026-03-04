@@ -132,6 +132,14 @@ class CategoryRule(Base):
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
 
+class IgnoredRecurringPattern(Base):
+    __tablename__ = "ignored_recurring_patterns"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    pattern = Column(String, nullable=False) # The description/keyword to ignore
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+
 class IgnoredSuggestion(Base):
     __tablename__ = "ignored_suggestions"
 
@@ -188,7 +196,9 @@ class ExpenseGroup(Base):
 class Frequency(str, enum.Enum):
     DAILY = "DAILY"
     WEEKLY = "WEEKLY"
+    BI_WEEKLY = "BI-WEEKLY"
     MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
     YEARLY = "YEARLY"
 
 class LoanType(str, enum.Enum):

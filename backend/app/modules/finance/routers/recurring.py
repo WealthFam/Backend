@@ -60,3 +60,13 @@ def get_recurring_suggestions(
     db: Session = Depends(get_db)
 ):
     return RecurringService.get_recurring_suggestions(db, str(current_user.tenant_id))
+
+@router.post("/recurring/suggestions/ignore")
+def ignore_recurring_suggestion(
+    request: schemas.IgnoredRecurringPatternCreate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    success = RecurringService.ignore_suggestion(db, request.pattern, str(current_user.tenant_id))
+    if not success: raise HTTPException(status_code=500, detail="Failed to ignore suggestion")
+    return {"status": "success"}

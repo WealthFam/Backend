@@ -1,194 +1,278 @@
 <template>
-    <div class="recurring-content px-0 pb-6">
-        <div class="d-flex justify-end mb-6">
-            <v-btn color="primary" @click="showAddModal = true" rounded="pill" height="44"
-                class="text-none font-weight-black px-6" elevation="4">
+    <div class="recurring-content px-0 pb-12">
+        <!-- Dashboard Header -->
+        <div class="d-flex align-center justify-space-between mb-8 flex-wrap gap-4">
+            <div>
+                <h2 class="text-h4 font-weight-black mb-1">Subscriptions</h2>
+                <p class="text-subtitle-2 text-medium-emphasis">Track and manage your recurring bills and payments</p>
+            </div>
+            <v-btn color="primary" @click="showAddModal = true" rounded="xl" height="52"
+                class="text-none font-weight-black px-8 premium-btn" elevation="8">
                 <template v-slot:prepend>
-                    <Plus :size="18" stroke-width="3" />
+                    <Plus :size="20" stroke-width="3" />
                 </template>
-                Add Subscription
+                Add New Subscription
             </v-btn>
         </div>
 
-        <!-- Smart Suggestions Section -->
-        <div v-if="suggestions.length > 0" class="suggestions-section mb-10 mt-2">
-            <div class="d-flex align-center mb-4">
-                <div class="icon-orb mr-3"
-                    style="width: 32px; height: 32px; background: rgba(var(--v-theme-primary), 0.1)">
-                    <Sparkles :size="16" class="text-primary" />
+        <!-- Smart Suggestions Section (Redesigned) -->
+        <div v-if="suggestions.length > 0 || loadingSuggestions" class="suggestions-container mb-12">
+            <div class="d-flex align-center mb-6">
+                <div class="icon-orb mr-4">
+                    <Sparkles :size="20" class="text-primary" />
                 </div>
                 <div>
-                    <h3 class="text-subtitle-1 font-weight-black">Smart Suggestions</h3>
-                    <p class="text-caption font-weight-bold opacity-60">Detected recurring patterns from your history
+                    <h3 class="text-h6 font-weight-black">Smart Discoveries</h3>
+                    <p class="text-caption font-weight-bold opacity-60">We found potential subscriptions in your history
                     </p>
                 </div>
+                <v-spacer />
+                <v-btn variant="text" size="small" rounded="lg" @click="fetchSuggestions" :loading="loadingSuggestions"
+                    class="text-none font-weight-bold">
+                    <RefreshCw :size="14" class="mr-2" /> Refresh
+                </v-btn>
             </div>
 
-            <div class="suggestions-slider d-flex gap-4 overflow-x-auto pb-4 px-1" style="scrollbar-width: none;">
-                <v-card v-for="(suggestion, idx) in suggestions" :key="idx" rounded="xl"
-                    class="suggestion-card pa-4 border-premium flex-shrink-0" width="300" elevation="0">
-                    <div class="d-flex justify-space-between align-start mb-3">
-                        <v-avatar color="primary" variant="tonal" size="40" rounded="lg">
-                            <component :is="getCategoryLucideIcon(suggestion.category)" :size="20" />
+            <div class="suggestions-grid">
+                <v-card v-for="(suggestion, idx) in suggestions" :key="idx"
+                    class="suggestion-premium-card pa-5 border-premium group" elevation="0">
+                    <div class="d-flex justify-space-between align-start mb-4">
+                        <v-avatar color="primary" variant="tonal" size="48" rounded="xl" class="suggestion-icon">
+                            <component :is="getCategoryLucideIcon(suggestion.category)" :size="24" />
                         </v-avatar>
-                        <v-chip size="x-small" color="success" class="font-weight-black" variant="tonal">
-                            {{ (suggestion.confidence * 100).toFixed(0) }}% Match
-                        </v-chip>
                     </div>
 
-                    <div class="text-subtitle-2 font-weight-black mb-1 text-truncate">{{ suggestion.name }}</div>
-                    <div class="text-h6 font-weight-black mb-3">{{ formatAmount(suggestion.amount) }}<span
-                            class="text-caption opacity-60 ml-1">/ {{ suggestion.frequency.toLowerCase() }}</span></div>
+                    <div class="suggestion-info mb-4">
+                        <div class="text-subtitle-1 font-weight-black text-truncate">{{ suggestion.name }}</div>
+                        <div class="d-flex align-center mt-1">
+                            <span class="text-h5 font-weight-black color-primary">{{ formatAmount(suggestion.amount)
+                                }}</span>
+                            <v-chip size="x-small" color="primary" variant="tonal"
+                                class="ml-auto font-weight-bold px-3">
+                                {{ suggestion.frequency }}
+                            </v-chip>
+                        </div>
+                    </div>
 
-                    <p class="text-caption opacity-70 mb-4 line-clamp-2" style="height: 32px;">{{ suggestion.reason }}
-                    </p>
+                    <div class="suggestion-meta mb-5 pa-3 rounded-lg bg-surface-variant-alpha">
+                        <div class="d-flex align-center mb-1">
+                            <div class="confidence-bar flex-grow-1 mr-3">
+                                <div class="confidence-fill" :style="{ width: `${suggestion.confidence * 100}%` }">
+                                </div>
+                            </div>
+                            <span class="text-caption font-weight-bold">{{ (suggestion.confidence * 100).toFixed(0)
+                                }}%</span>
+                        </div>
+                        <div class="text-caption opacity-70 font-weight-medium line-clamp-2">{{ suggestion.reason }}
+                        </div>
+                    </div>
 
-                    <v-btn block color="primary" variant="flat" size="small" rounded="lg"
-                        class="text-none font-weight-black" @click="approveSuggestion(suggestion)">
-                        Add Subscription
-                    </v-btn>
+                    <div class="d-flex gap-3">
+                        <v-btn flex-grow-1 color="primary" variant="elevated" size="large" rounded="xl"
+                            class="text-none font-weight-black action-btn px-6" @click="approveSuggestion(suggestion)">
+                            Confirm
+                        </v-btn>
+                        <v-btn variant="tonal" color="error" size="large" rounded="xl"
+                            class="text-none font-weight-black px-6" @click="ignoreSuggestion(suggestion)">
+                            Reject
+                        </v-btn>
+                    </div>
                 </v-card>
             </div>
         </div>
-        <v-row v-if="store.recurringTransactions.length > 0">
-            <v-col v-for="rec in store.recurringTransactions" :key="rec.id" cols="12" md="6" lg="4">
-                <v-card rounded="xl" class="recurring-glass-card hover-elevate group">
-                    <div class="pa-5 d-flex align-center justify-space-between">
-                        <div class="d-flex align-center">
-                            <v-avatar color="surface-variant" size="56" rounded="lg" class="mr-4 elevation-2">
-                                <component :is="getCategoryLucideIcon(rec.category)" :size="24" class="text-primary" />
-                            </v-avatar>
-                            <div>
-                                <h3 class="text-subtitle-1 font-weight-black mb-0">{{ rec.name }}</h3>
-                                <p class="text-caption text-medium-emphasis font-weight-bold">
-                                    {{ rec.frequency }} • Next: {{ new Date(rec.next_run_date).toLocaleDateString() }}
-                                </p>
-                                <v-chip v-if="rec.exclude_from_reports" color="error" size="x-small" label
-                                    class="mt-1 font-weight-bold">
-                                    EXCLUDED
-                                </v-chip>
+
+        <!-- Active Subscriptions List -->
+        <div v-if="store.recurringTransactions.length > 0">
+            <h3 class="text-h6 font-weight-black mb-6 d-flex align-center">
+                Active Tracking
+                <v-chip class="ml-3 font-weight-black" color="primary" size="small">{{
+                    store.recurringTransactions.length
+                    }}</v-chip>
+            </h3>
+            <v-row>
+                <v-col v-for="rec in store.recurringTransactions" :key="rec.id" cols="12" md="6" lg="4">
+                    <v-card rounded="2xl" class="active-subscription-card hover-elevate group" elevation="0">
+                        <div class="pa-5">
+                            <div class="d-flex align-center justify-space-between mb-4">
+                                <div class="d-flex align-center">
+                                    <v-avatar :color="rec.amount < 0 ? 'success' : 'primary'" variant="tonal" size="52"
+                                        rounded="xl" class="mr-4">
+                                        <component :is="getCategoryLucideIcon(rec.category)" :size="24" />
+                                    </v-avatar>
+                                    <div>
+                                        <h3 class="text-subtitle-1 font-weight-black mb-0">{{ rec.name }}</h3>
+                                        <div class="d-flex align-center mt-1">
+                                            <v-chip size="x-small" variant="flat" color="surface-variant"
+                                                class="font-weight-bold px-2 mr-2">
+                                                {{ rec.frequency }}
+                                            </v-chip>
+                                            <span class="text-caption opacity-60 font-weight-bold">Next: {{ new
+                                                Date(rec.next_run_date).toLocaleDateString(undefined, {
+                                                    month: 'short',
+                                                    day:
+                                                        'numeric'
+                                                }) }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-h6 font-weight-black">{{ formatAmount(rec.amount) }}</div>
+                                    <v-chip v-if="rec.exclude_from_reports" color="error" variant="tonal" size="x-small"
+                                        label class="mt-1 font-weight-black">HIDDEN</v-chip>
+                                </div>
+                            </div>
+
+                            <div class="d-flex align-center pt-3 border-top-dashed">
+                                <div class="text-caption text-medium-emphasis font-weight-medium">
+                                    <Calendar :size="14" class="mr-1 mb-1" /> Started {{ new
+                                        Date(rec.start_date).toLocaleDateString() }}
+                                </div>
+                                <v-spacer />
+                                <div class="actions d-flex gap-2">
+                                    <v-btn variant="tonal" size="x-small" icon color="primary" class="rounded-lg">
+                                        <Edit2 :size="14" />
+                                    </v-btn>
+                                    <v-btn variant="tonal" size="x-small" icon color="error" class="rounded-lg"
+                                        @click="deleteRecurrence(rec.id)">
+                                        <Trash2 :size="14" />
+                                    </v-btn>
+                                </div>
                             </div>
                         </div>
-                        <div class="text-right">
-                            <div class="text-h6 font-weight-black">{{ formatAmount(rec.amount) }}</div>
-                            <v-btn variant="text" size="small" color="error" icon
-                                class="opacity-0 group-hover-opacity-100 transition-all"
-                                @click="deleteRecurrence(rec.id)">
-                                <Trash2 :size="18" />
-                            </v-btn>
-                        </div>
-                    </div>
-                </v-card>
-            </v-col>
-        </v-row>
-        <div v-else class="text-center py-16 empty-glass container">
-            <CalendarClock :size="80" class="text-medium-emphasis mb-4 mx-auto" stroke-width="1.5" />
-            <h3 class="text-h5 font-weight-black">No Active Subscriptions</h3>
-            <p class="text-medium-emphasis mt-2">Manage your recurring bills and subscriptions here for better
-                forecasting.</p>
-            <v-btn color="primary" class="mt-6 text-none px-8" rounded="pill" height="48" @click="showAddModal = true">
+                    </v-card>
+                </v-col>
+            </v-row>
+        </div>
+
+        <!-- Empty State -->
+        <div v-else-if="!loadingSuggestions" class="text-center py-16 empty-container rounded-pill-extra mt-8">
+            <div class="empty-icon-wrapper mb-6">
+                <CalendarClock :size="64" class="text-primary opacity-40" stroke-width="1.5" />
+            </div>
+            <h3 class="text-h5 font-weight-black mb-2">Clear Your Financial Horizon</h3>
+            <p class="text-medium-emphasis mx-auto mb-8" style="max-width: 400px;">
+                You don't have any active subscriptions yet. Add your fixed expenses like rent, Netflix, or EMI for
+                precise
+                forecasting.
+            </p>
+            <v-btn color="primary" class="px-12 premium-btn" rounded="xl" height="56" elevation="12"
+                @click="showAddModal = true">
                 <template v-slot:prepend>
-                    <Plus :size="18" stroke-width="3" />
+                    <Plus :size="20" stroke-width="3" />
                 </template>
-                Set Up First Subscription
+                Add Your First Subscription
             </v-btn>
         </div>
 
-        <!-- Add Recurrence Modal (Integrated) -->
+        <!-- Add Recurrence Modal -->
         <v-dialog v-model="showAddModal" max-width="500" persistent transition="dialog-bottom-transition">
-            <v-card rounded="xl" class="glass-modal-card">
+            <v-card rounded="xl" class="glass-modal-card overflow-hidden">
+                <div class="modal-gradient-bg"></div>
                 <v-toolbar color="transparent" class="px-4">
-                    <v-toolbar-title class="font-weight-black">New Subscription</v-toolbar-title>
+                    <v-toolbar-title class="font-weight-black">Subscription Details</v-toolbar-title>
                     <v-spacer />
-                    <v-btn variant="text" @click="showAddModal = false" icon>
+                    <v-btn variant="tonal" size="small" @click="showAddModal = false" icon class="rounded-lg">
                         <X :size="20" />
                     </v-btn>
                 </v-toolbar>
 
-                <v-divider />
-
-                <v-card-text class="pa-6">
+                <v-card-text class="pa-8">
                     <v-row dense>
-                        <v-col cols="12">
-                            <label class="text-caption font-weight-bold text-uppercase ml-1">Subscription Name</label>
+                        <v-col cols="12" class="mb-4">
+                            <label
+                                class="text-caption font-weight-black text-uppercase tracking-wider mb-2 d-block opacity-70">Provider
+                                / Bill Name</label>
                             <v-text-field v-model="newRecurrence.name" placeholder="Netflix, Rent, Salary..."
-                                variant="outlined" density="comfortable" flat rounded="lg">
+                                variant="outlined" density="comfortable" flat rounded="xl" hide-details
+                                class="custom-input">
                                 <template v-slot:prepend-inner>
                                     <CreditCard :size="18" class="text-primary mr-2" />
                                 </template>
                             </v-text-field>
                         </v-col>
 
-                        <v-col cols="6">
-                            <label class="text-caption font-weight-bold text-uppercase ml-1">Amount</label>
+                        <v-col cols="6" class="mb-4 pr-2">
+                            <label
+                                class="text-caption font-weight-black text-uppercase tracking-wider mb-2 d-block opacity-70">Amount</label>
                             <v-text-field v-model="newRecurrence.amount" type="number" prefix="₹" variant="outlined"
-                                density="comfortable" flat rounded="lg" />
+                                density="comfortable" flat rounded="xl" hide-details class="custom-input" />
                         </v-col>
 
-                        <v-col cols="6">
-                            <label class="text-caption font-weight-bold text-uppercase ml-1">Frequency</label>
+                        <v-col cols="6" class="mb-4 pl-2">
+                            <label
+                                class="text-caption font-weight-black text-uppercase tracking-wider mb-2 d-block opacity-70">Billing
+                                Cycle</label>
                             <v-select v-model="newRecurrence.frequency" :items="frequencyOptions" variant="outlined"
-                                density="comfortable" flat rounded="lg" menu-icon="">
+                                density="comfortable" flat rounded="xl" hide-details menu-icon="" class="custom-input">
                                 <template v-slot:append-inner>
-                                    <ChevronDown :size="16" class="text-primary opacity-70" />
+                                    <ChevronDown :size="16" class="text-primary" />
                                 </template>
                             </v-select>
                         </v-col>
 
-                        <v-col cols="6">
-                            <label class="text-caption font-weight-bold text-uppercase ml-1">First Payment</label>
+                        <v-col cols="6" class="mb-4 pr-2">
+                            <label
+                                class="text-caption font-weight-black text-uppercase tracking-wider mb-2 d-block opacity-70">First/Next
+                                Payment</label>
                             <v-text-field v-model="newRecurrence.start_date" type="date" variant="outlined"
-                                density="comfortable" flat rounded="lg" />
+                                density="comfortable" flat rounded="xl" hide-details class="custom-input" />
                         </v-col>
 
-                        <v-col cols="6">
-                            <label class="text-caption font-weight-bold text-uppercase ml-1">Source Account</label>
+                        <v-col cols="6" class="mb-4 pl-2">
+                            <label
+                                class="text-caption font-weight-black text-uppercase tracking-wider mb-2 d-block opacity-70">Source
+                                Account</label>
                             <v-select v-model="newRecurrence.account_id"
                                 :items="store.accounts.map(a => ({ title: a.name, value: a.id }))" variant="outlined"
-                                density="comfortable" hide-details flat rounded="lg" class="premium-modal-select"
-                                menu-icon="" style="background: rgba(var(--v-theme-surface), 0.7);">
+                                density="comfortable" hide-details flat rounded="xl" class="custom-input" menu-icon="">
                                 <template v-slot:prepend-inner>
                                     <Wallet :size="18" class="text-primary mr-2" />
                                 </template>
                                 <template v-slot:append-inner>
-                                    <ChevronDown :size="16" class="text-primary opacity-70" />
+                                    <ChevronDown :size="16" class="text-primary" />
                                 </template>
                             </v-select>
                         </v-col>
 
-                        <v-col cols="12">
-                            <label class="text-caption font-weight-bold text-uppercase ml-1">Category</label>
+                        <v-col cols="12" class="mb-6">
+                            <label
+                                class="text-caption font-weight-black text-uppercase tracking-wider mb-2 d-block opacity-70">Category</label>
                             <v-select v-model="newRecurrence.category"
                                 :items="store.categories.map(c => ({ title: c.name, value: c.name }))"
-                                variant="outlined" density="comfortable" hide-details flat rounded="lg"
-                                class="premium-modal-select" menu-icon=""
-                                style="background: rgba(var(--v-theme-surface), 0.7);">
+                                variant="outlined" density="comfortable" hide-details flat rounded="xl"
+                                class="custom-input" menu-icon="">
                                 <template v-slot:prepend-inner>
                                     <component :is="getCategoryLucideIcon(newRecurrence.category)" :size="18"
                                         class="text-primary mr-2" />
                                 </template>
                                 <template v-slot:append-inner>
-                                    <ChevronDown :size="16" class="text-primary opacity-70" />
+                                    <ChevronDown :size="16" class="text-primary" />
                                 </template>
                             </v-select>
                         </v-col>
 
-                        <v-col cols="12">
-                            <v-switch v-model="newRecurrence.exclude_from_reports" label="Protect from reports"
-                                color="error" inset hide-details class="mt-2" />
+                        <v-col cols="12" class="d-flex align-center bg-surface-variant-alpha pa-4 rounded-xl">
+                            <div class="mr-4">
+                                <ShieldCheck :size="24" class="text-error" />
+                            </div>
+                            <div>
+                                <div class="text-subtitle-2 font-weight-black">Private Expense</div>
+                                <div class="text-caption opacity-70">Hide this from shared family reports and summaries.
+                                </div>
+                            </div>
+                            <v-spacer />
+                            <v-switch v-model="newRecurrence.exclude_from_reports" color="error" inset hide-details />
                         </v-col>
                     </v-row>
                 </v-card-text>
 
-                <v-divider />
-
-                <v-card-actions class="pa-6">
-                    <v-spacer />
-                    <v-btn variant="text" rounded="lg" class="px-6 text-none font-weight-bold"
-                        @click="showAddModal = false">Cancel</v-btn>
-                    <v-btn color="primary" variant="flat" rounded="lg" class="px-8 text-none font-weight-bold"
-                        @click="saveRecurrence">Start Subscription</v-btn>
-                </v-card-actions>
+                <div class="pa-8 d-flex gap-4">
+                    <v-btn block variant="tonal" rounded="xl" height="52"
+                        class="text-none font-weight-black flex-grow-1" @click="showAddModal = false">Cancel</v-btn>
+                    <v-btn block color="primary" variant="elevated" rounded="xl" height="52"
+                        class="text-none font-weight-black flex-grow-1 premium-btn" @click="saveRecurrence">Start
+                        Tracking</v-btn>
+                </div>
             </v-card>
         </v-dialog>
     </div>
@@ -202,7 +286,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
 import { financeApi } from '@/api/client'
 import { useConfirmStore } from '@/stores/confirm'
-import { Plus, X, ChevronDown, CalendarClock, Trash2, Wallet, CreditCard, Sparkles } from 'lucide-vue-next'
+import {
+    Plus, X, ChevronDown, CalendarClock, Trash2, Wallet,
+    CreditCard, Sparkles, RefreshCw, Calendar, Edit2, ShieldCheck
+} from 'lucide-vue-next'
 import { getCategoryLucideIcon } from '@/utils/iconMapping'
 
 const store = useFinanceStore()
@@ -230,28 +317,29 @@ async function fetchSuggestions() {
     }
 }
 
-async function approveSuggestion(suggestion: any) {
+async function ignoreSuggestion(suggestion: any) {
     try {
-        await financeApi.createRecurringTransaction({
-            name: suggestion.name,
-            amount: suggestion.amount,
-            category: suggestion.category,
-            account_id: suggestion.account_id,
-            frequency: suggestion.frequency,
-            start_date: suggestion.last_date,
-            next_run_date: new Date().toISOString(), // Default to today or next expected
-            type: 'DEBIT',
-            is_active: true,
-            exclude_from_reports: false
-        })
-        // Refresh everything
-        await store.fetchRecurring(authStore.selectedMemberId || undefined)
+        await financeApi.ignoreRecurringSuggestion(suggestion.pattern)
         await fetchSuggestions()
     } catch (e) {
-        console.error("Failed to approve suggestion", e)
+        console.error("Failed to ignore suggestion", e)
     }
 }
 
+async function approveSuggestion(suggestion: any) {
+    // Fill the modal with suggestion data for user review
+    newRecurrence.value = {
+        name: suggestion.name,
+        amount: suggestion.amount,
+        category: suggestion.category || '',
+        account_id: suggestion.account_id,
+        frequency: suggestion.frequency,
+        start_date: suggestion.last_date ? suggestion.last_date.split('T')[0] : todayLocalString(),
+        type: 'DEBIT',
+        exclude_from_reports: false
+    }
+    showAddModal.value = true
+}
 
 const newRecurrence = ref({
     name: '',
@@ -283,24 +371,165 @@ async function deleteRecurrence(id: string) {
     financeApi.deleteRecurring(id).then(() => store.fetchRecurring(authStore.selectedMemberId || undefined))
 }
 
-const frequencyOptions = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']
+const frequencyOptions = ['DAILY', 'WEEKLY', 'BI-WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY']
 
 // Expose modal control to parent
 defineExpose({
-    openAddModal: () => { showAddModal.value = true }
+    openAddModal: () => {
+        newRecurrence.value = {
+            name: '',
+            amount: 0,
+            category: '',
+            account_id: '',
+            frequency: 'MONTHLY',
+            start_date: todayLocalString(),
+            type: 'DEBIT',
+            exclude_from_reports: false
+        }
+        showAddModal.value = true
+    }
 })
 </script>
 
 <style scoped>
-.recurring-glass-card {
-    background: rgba(var(--v-theme-surface), 0.6);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(var(--v-border-color), 0.1);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.suggestions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
 }
 
-.recurring-glass-card:hover {
+.suggestion-premium-card {
+    background: rgba(var(--v-theme-surface), 0.4);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+    border-radius: 24px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: relative;
+    overflow: hidden;
+}
+
+.suggestion-premium-card:hover {
+    background: rgba(var(--v-theme-surface), 0.7);
+    transform: translateY(-8px);
+    border-color: rgba(var(--v-theme-primary), 0.3);
+}
+
+.suggestion-premium-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 150px;
+    height: 150px;
+    background: radial-gradient(circle at top right, rgba(var(--v-theme-primary), 0.05), transparent 70%);
+}
+
+.icon-orb {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.1), rgba(var(--v-theme-primary), 0.2));
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.1);
+}
+
+.suggestion-icon {
+    box-shadow: 0 8px 20px rgba(var(--v-theme-primary), 0.1);
+}
+
+.color-primary {
+    color: rgb(var(--v-theme-primary));
+}
+
+.bg-surface-variant-alpha {
+    background: rgba(var(--v-theme-surface-variant), 0.3);
+}
+
+.confidence-bar {
+    height: 6px;
+    background: rgba(var(--v-theme-surface-variant), 0.5);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.confidence-fill {
+    height: 100%;
+    background: linear-gradient(90deg, rgb(var(--v-theme-primary)), #10B981);
+    border-radius: 3px;
+}
+
+.active-subscription-card {
+    background: rgba(var(--v-theme-surface), 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+    transition: all 0.3s ease;
+}
+
+.active-subscription-card:hover {
     background: rgba(var(--v-theme-surface), 0.9);
+    border-color: rgba(var(--v-theme-primary), 0.2);
+    transform: scale(1.02);
+}
+
+.border-top-dashed {
+    border-top: 1px dashed rgba(var(--v-border-color), 0.2);
+}
+
+.premium-btn {
+    box-shadow: 0 8px 16px rgba(var(--v-theme-primary), 0.2) !important;
+    transition: all 0.3s ease;
+}
+
+.premium-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgba(var(--v-theme-primary), 0.3) !important;
+}
+
+.empty-container {
+    background: rgba(var(--v-theme-surface-variant), 0.1);
+    border: 2px dashed rgba(var(--v-border-color), 0.1);
+}
+
+.empty-icon-wrapper {
+    width: 120px;
+    height: 120px;
+    background: rgba(var(--v-theme-primary), 0.05);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+}
+
+.glass-modal-card {
+    background: rgba(var(--v-theme-surface), 0.9);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(var(--v-border-color), 0.1);
+}
+
+.modal-gradient-bg {
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 75% 25%, rgba(var(--v-theme-primary), 0.05), transparent);
+    pointer-events: none;
+}
+
+.custom-input :deep(.v-field) {
+    background: rgba(var(--v-theme-surface-variant), 0.2);
+    border-radius: 16px !important;
+}
+
+.custom-input :deep(.v-field__outline) {
+    display: none;
+}
+
+.dismiss-btn {
+    z-index: 10;
 }
 
 .opacity-0 {
@@ -311,37 +540,6 @@ defineExpose({
     opacity: 1;
 }
 
-.glass-modal-card {
-    background: rgba(var(--v-theme-surface), 0.9);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(var(--v-border-color), 0.1);
-}
-
-.premium-modal-select :deep(.v-field__outline) {
-    --v-field-border-opacity: 0.1;
-}
-
-.premium-modal-select:hover :deep(.v-field__outline) {
-    --v-field-border-opacity: 0.4;
-    border-color: rgb(var(--v-theme-primary)) !important;
-}
-
-.suggestion-card {
-    background: rgba(var(--v-theme-primary), 0.03) !important;
-    border: 1px solid rgba(var(--v-theme-primary), 0.1) !important;
-    transition: all 0.3s ease;
-}
-
-.suggestion-card:hover {
-    background: rgba(var(--v-theme-primary), 0.06) !important;
-    transform: translateY(-4px);
-    border-color: rgba(var(--v-theme-primary), 0.3) !important;
-}
-
-.suggestions-slider::-webkit-scrollbar {
-    display: none;
-}
-
 .line-clamp-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -349,14 +547,11 @@ defineExpose({
     overflow: hidden;
 }
 
-.border-premium {
-    border: 1px solid rgba(var(--v-border-color), 0.1) !important;
+.rounded-pill-extra {
+    border-radius: 40px;
 }
 
-.icon-orb {
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.tracking-wider {
+    letter-spacing: 0.05em;
 }
 </style>
