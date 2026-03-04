@@ -273,7 +273,7 @@ class RecentTransaction {
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'date': date.toIso8601String(),
+    'date': date.toUtc().toIso8601String(),
     'description': description,
     'amount': amount,
     'category': category,

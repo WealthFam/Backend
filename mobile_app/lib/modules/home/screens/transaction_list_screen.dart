@@ -371,7 +371,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           'amount': finalAmount,
           'description': _descCtrl.text,
           'category': _category,
-          'date': DateTime.now().toIso8601String(),
+          'date': DateTime.now().toUtc().toIso8601String(),
         }),
       );
 
