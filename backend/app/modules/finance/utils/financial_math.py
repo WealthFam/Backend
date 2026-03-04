@@ -107,7 +107,9 @@ def calculate_start_date(period: str, first_transaction_date) -> datetime:
     from datetime import date
     from dateutil.relativedelta import relativedelta
     
-    today = date.today()
+    from backend.app.core.timezone import utcnow
+    
+    today = utcnow().date()
     
     # Convert to date if datetime
     if hasattr(first_transaction_date, 'date'):

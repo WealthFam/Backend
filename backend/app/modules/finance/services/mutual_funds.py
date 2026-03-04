@@ -923,7 +923,7 @@ class MutualFundService:
                 cash_flows.append((order_date, amount))
         
         if float(holding.current_value or 0) > 0:
-            cash_flows.append((date.today(), float(holding.current_value)))
+            cash_flows.append((timezone.utcnow().date(), float(holding.current_value)))
             
         xirr_value = None
         try:
@@ -1077,7 +1077,7 @@ class MutualFundService:
                 cash_flows.append((order_date, amount))
         
         if total_current_value > 0:
-            cash_flows.append((date.today(), total_current_value))
+            cash_flows.append((timezone.utcnow().date(), total_current_value))
             
         xirr_value = None
         try:
@@ -1416,7 +1416,7 @@ class MutualFundService:
         try:
             from ..models import PortfolioTimelineCache
             from datetime import date, timedelta
-            cutoff = date.today() - timedelta(days=30)
+            cutoff = timezone.utcnow().date() - timedelta(days=30)
             cached_points = (
                 db.query(PortfolioTimelineCache)
                 .filter(
@@ -1521,7 +1521,7 @@ class MutualFundService:
             
             # Add current value as final inflow at today's date
             if total_value > 0:
-                cash_flows.append((date.today(), total_value))
+                cash_flows.append((timezone.utcnow().date(), total_value))
             
             
             try:
@@ -1615,7 +1615,7 @@ class MutualFundService:
         
         # Variables for hash calculation and state tracking
         unique_schemes = list(set(str(o.scheme_code) for o in orders))
-        latest_txn_update = max(o.created_at for o in orders) if orders else date.today()
+        latest_txn_update = max(o.created_at for o in orders) if orders else timezone.utcnow().date()
         
         hash_input = ",".join(unique_schemes)
         # Portfolio hash with version suffix (v9) for robust classification fix
@@ -1631,7 +1631,7 @@ class MutualFundService:
         portfolio_hash = hashlib.md5(hash_input.encode()).hexdigest()
         
         # Determine date range and granularity
-        end_date = date.today() - timedelta(days=1)
+        end_date = timezone.utcnow().date() - timedelta(days=1)
         start_date = calculate_start_date(period, orders[0].order_date)
         
         # Ensure at least 2 points for sparklines/trends even for brand new portfolios
