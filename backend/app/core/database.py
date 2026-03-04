@@ -9,9 +9,11 @@ from backend.app.core.config import settings
 
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args={"read_only": False}, 
-    # DuckDB specific: allow multithreaded access if needed, 
-    # though usually single-process is safer for writes.
+    connect_args={
+        "config": {
+            "checkpoint_threshold": "10MB"
+        }
+    },
     pool_pre_ping=True
 )
 
