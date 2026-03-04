@@ -428,6 +428,7 @@
 </template>
 
 <script setup lang="ts">
+import { localDateString } from '@/utils/time'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -565,18 +566,18 @@ function handleTimeRangeChange(val: string) {
     if (val === 'today') {
         start.setHours(0, 0, 0, 0)
         end.setHours(23, 59, 59, 999)
-        startDate.value = start.toISOString().split('T')[0]
-        endDate.value = end.toISOString().split('T')[0]
+        startDate.value = localDateString(start.getFullYear(), start.getMonth(), start.getDate())
+        endDate.value = localDateString(end.getFullYear(), end.getMonth(), end.getDate())
     } else if (val === 'this-week') {
         const day = now.getDay()
         const diff = now.getDate() - day + (day === 0 ? -6 : 1)
         start.setDate(diff)
         start.setHours(0, 0, 0, 0)
-        startDate.value = start.toISOString().split('T')[0]
+        startDate.value = localDateString(start.getFullYear(), start.getMonth(), start.getDate())
     } else if (val === 'this-month') {
         start.setDate(1)
         start.setHours(0, 0, 0, 0)
-        startDate.value = start.toISOString().split('T')[0]
+        startDate.value = localDateString(start.getFullYear(), start.getMonth(), start.getDate())
     } else if (val === 'last-month') {
         start.setMonth(start.getMonth() - 1)
         start.setDate(1)
@@ -584,8 +585,8 @@ function handleTimeRangeChange(val: string) {
         end.setMonth(end.getMonth())
         end.setDate(0)
         end.setHours(23, 59, 59, 999)
-        startDate.value = start.toISOString().split('T')[0]
-        endDate.value = end.toISOString().split('T')[0]
+        startDate.value = localDateString(start.getFullYear(), start.getMonth(), start.getDate())
+        endDate.value = localDateString(end.getFullYear(), end.getMonth(), end.getDate())
     }
 
     fetchAnalyticsData()

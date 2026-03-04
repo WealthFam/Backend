@@ -4,6 +4,7 @@ from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SqlEnum
 from sqlalchemy.orm import relationship
 from backend.app.core.database import Base
 from backend.app.core.timezone import UTCDateTime
+from backend.app.core import timezone
 import enum
 
 class UserRole(str, enum.Enum):
@@ -17,7 +18,7 @@ class Tenant(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
-    created_at = Column(UTCDateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
     users = relationship("User", back_populates="tenant")
 
@@ -46,4 +47,4 @@ class TenantSetting(Base):
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     key = Column(String, nullable=False, index=True) # e.g. "parser_service_url"
     value = Column(String, nullable=True) # e.g. "http://localhost:8001/v1"
-    updated_at = Column(UTCDateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)

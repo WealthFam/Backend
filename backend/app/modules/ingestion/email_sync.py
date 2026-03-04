@@ -179,10 +179,17 @@ class EmailSyncService:
                                     t = item.get("transaction")
                                     if not t: continue
                                     
+                                    # Robust Date Parsing
+                                    raw_date = t.get("date") or ""
+                                    try:
+                                        parsed_date = timezone.ensure_utc(datetime.fromisoformat(raw_date.replace("Z", "+00:00")))
+                                    except:
+                                        parsed_date = timezone.ensure_utc(email_date) if email_date else timezone.utcnow()
+
                                     # Map to ParsedTransaction
                                     parsed = ParsedTransaction(
                                         amount=t.get("amount"),
-                                        date=datetime.fromisoformat(t.get("date").replace("Z", "+00:00")),
+                                        date=parsed_date,
                                         description=t.get("description") or subject,
                                         type=t.get("type"),
                                         account_mask=t.get("account", {}).get("mask"),

@@ -195,6 +195,7 @@
 </template>
 
 <script setup lang="ts">
+import { todayLocalString } from '@/utils/time'
 import { ref, defineExpose, onMounted } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -258,7 +259,7 @@ const newRecurrence = ref({
     category: '',
     account_id: '',
     frequency: 'MONTHLY',
-    start_date: new Date().toISOString().slice(0, 10),
+    start_date: todayLocalString(),
     type: 'DEBIT',
     exclude_from_reports: false
 })

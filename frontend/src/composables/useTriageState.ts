@@ -1,4 +1,5 @@
 import { ref, watch, type Ref } from 'vue'
+import { localISOString } from '@/utils/time'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'
@@ -48,7 +49,7 @@ export function useTriageState(
         amount: 0,
         balance: null as number | null,
         credit_limit: null as number | null,
-        date: new Date().toISOString().slice(0, 16),
+        date: localISOString(),
         account_mask: '',
         recipient: '',
         ref_id: '',
@@ -232,7 +233,7 @@ export function useTriageState(
         const isCredit = /credit|received|deposit|incoming|refund/i.test(content)
         const suggestedType = isCredit ? 'CREDIT' : 'DEBIT'
 
-        const dateStr = msg.created_at ? new Date(msg.created_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16)
+        const dateStr = msg.created_at ? localISOString(new Date(msg.created_at)) : localISOString()
 
         labelForm.value = {
             amount: suggestedAmt,

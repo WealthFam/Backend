@@ -803,7 +803,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               getTooltipItems: (List<LineBarSpot> touchedSpots) {
                 return touchedSpots.map((LineBarSpot touchedSpot) {
                   final item = trend[touchedSpot.x.toInt()];
-                  final date = DateTime.parse(item.date);
+                  final date = DateTime.parse(item.date).toLocal();
                   return LineTooltipItem(
                     '${DateFormat('MMM d').format(date)}\n',
                     TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 10, fontWeight: FontWeight.bold),
@@ -838,7 +838,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   int idx = value.toInt();
                   if (idx >= 0 && idx < trend.length) {
                     // Show labels for 1st, 10th, 20th and last day to avoid crowding
-                    DateTime date = DateTime.parse(trend[idx].date);
+                    DateTime date = DateTime.parse(trend[idx].date).toLocal();
                     if (date.day == 1 || date.day == 10 || date.day == 20 || idx == trend.length - 1) {
                       return Padding(
                         padding: const EdgeInsets.only(top: 8.0),
@@ -1038,7 +1038,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     // Grouping by date
     final Map<String, List<dynamic>> grouped = {};
     for (var txn in _transactions) {
-      final date = DateTime.parse(txn['date']);
+      final date = DateTime.parse(txn['date']).toLocal();
       final key = DateFormat('yyyy-MM-dd').format(date);
       grouped.putIfAbsent(key, () => []).add(txn);
     }
@@ -1075,7 +1075,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final theme = Theme.of(context);
     final dashboard = context.read<DashboardService>();
     final amount = (txn['amount'] as num).toDouble();
-    final date = DateTime.parse(txn['date']);
+    final date = DateTime.parse(txn['date']).toLocal();
     
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),

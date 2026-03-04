@@ -5,7 +5,14 @@ from sqlalchemy.orm import sessionmaker
 import os
 from parser.config import settings
 
-engine = create_engine(settings.DATABASE_URL)
+engine = create_engine(
+    settings.DATABASE_URL,
+    connect_args={
+        "config": {
+            "checkpoint_threshold": "10MB"
+        }
+    }
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

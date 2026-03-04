@@ -1,5 +1,6 @@
 import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 import { financeApi } from '@/api/client'
+import { localDateString, todayLocalString } from '@/utils/time'
 import { useNotificationStore } from '@/stores/notification'
 import { useTransactionStore } from '@/stores/finance/transactions'
 import { useFinanceStore } from '@/stores/finance'
@@ -34,8 +35,8 @@ export function useTransactionState(
     const searchQuery = ref('')
     const categoryFilter = ref('')
     const today = new Date()
-    const startDate = ref<string>(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0])
-    const endDate = ref<string>(today.toISOString().split('T')[0])
+    const startDate = ref<string>(localDateString(today.getFullYear(), today.getMonth(), 1))
+    const endDate = ref<string>(todayLocalString())
     const selectedTimeRange = ref<string>('this-month')
 
     const timeRangeOptions = [
@@ -134,25 +135,25 @@ export function useTransactionState(
 
         switch (value) {
             case 'today':
-                start = today.toISOString().split('T')[0]
-                end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString().split('T')[0]
+                start = todayLocalString()
+                end = localDateString(today.getFullYear(), today.getMonth(), today.getDate() + 1)
                 break
             case 'this-week': {
                 const weekStart = new Date(today)
                 weekStart.setDate(today.getDate() - today.getDay())
-                start = weekStart.toISOString().split('T')[0]
-                end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString().split('T')[0]
+                start = localDateString(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate())
+                end = localDateString(today.getFullYear(), today.getMonth(), today.getDate() + 1)
                 break
             }
             case 'this-month':
-                start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
-                end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString().split('T')[0]
+                start = localDateString(today.getFullYear(), today.getMonth(), 1)
+                end = localDateString(today.getFullYear(), today.getMonth(), today.getDate() + 1)
                 break
             case 'last-month': {
                 const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
                 const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
-                start = lastMonthStart.toISOString().split('T')[0]
-                end = lastMonthEnd.toISOString().split('T')[0]
+                start = localDateString(lastMonthStart.getFullYear(), lastMonthStart.getMonth(), lastMonthStart.getDate())
+                end = localDateString(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), lastMonthEnd.getDate())
                 break
             }
             case 'all':

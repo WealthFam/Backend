@@ -6,6 +6,7 @@ from sqlalchemy.orm import relationship, backref
 import enum
 from backend.app.core.database import Base
 from backend.app.core.timezone import UTCDateTime
+from backend.app.core import timezone
 
 class DocumentType(str, enum.Enum):
     INVOICE = "INVOICE"
@@ -39,8 +40,8 @@ class DocumentVault(Base):
     last_synced_at = Column(UTCDateTime, nullable=True)
     current_version = Column(Numeric(5, 0), default=1)
     
-    created_at = Column(UTCDateTime, default=datetime.utcnow)
-    updated_at = Column(UTCDateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
 
     # Relationships are handled here or via backrefs from other modules
     # In FastAPI/SQLAlchemy, its often easier to import from finance if needed
@@ -79,7 +80,7 @@ class DocumentVersion(Base):
     filename = Column(String, nullable=False)
     thumbnail_path = Column(String, nullable=True)
     
-    created_at = Column(UTCDateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
     
     document = relationship(
         "DocumentVault", 
@@ -97,6 +98,6 @@ class VaultSyncHistory(Base):
     items_processed = Column(Numeric(10, 0), default=0)
     error_details = Column(String, nullable=True)
     
-    started_at = Column(UTCDateTime, default=datetime.utcnow)
+    started_at = Column(UTCDateTime, default=timezone.utcnow)
     completed_at = Column(UTCDateTime, nullable=True)
 

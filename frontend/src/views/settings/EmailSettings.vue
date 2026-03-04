@@ -91,7 +91,7 @@
                                 <div v-if="config.last_sync_at" class="text-caption font-weight-medium">
                                     {{ formatDate(config.last_sync_at).meta }}
                                     <span class="text-medium-emphasis">({{ formatDate(config.last_sync_at).day
-                                    }})</span>
+                                        }})</span>
                                 </div>
                                 <div v-else class="text-caption text-warning font-weight-bold">Never</div>
                             </div>
@@ -385,6 +385,7 @@ import { ref, computed, onMounted } from 'vue'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 import { useConfirmStore } from '@/stores/confirm'
+import { localISOString } from '@/utils/time'
 import { Settings, RefreshCw, Clock, Plus, Mail, Server, UserCheck, Search, Lock, X, CheckCircle2, XCircle, MailOpen, Loader2 } from 'lucide-vue-next'
 
 const emailConfigs = ref<any[]>([])
@@ -494,7 +495,7 @@ function openEditEmailModal(config: any) {
         folder: config.folder,
         auto_sync: config.auto_sync_enabled || false,
         user_id: config.user_id || null,
-        last_sync_at: config.last_sync_at ? new Date(config.last_sync_at).toISOString().slice(0, 16) : ''
+        last_sync_at: config.last_sync_at ? localISOString(new Date(config.last_sync_at)) : ''
     }
     editingEmailConfig.value = config.id
     showEmailModal.value = true

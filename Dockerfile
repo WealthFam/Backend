@@ -27,14 +27,16 @@ RUN pip install --no-cache-dir -r backend-reqs.txt && \
 # 3. Static Infrastructure Configs (Change infrequently)
 COPY frontend/nginx.conf /etc/nginx/sites-available/default
 # Create entrypoint.sh inline to avoid CRLF/BOM issues
-RUN printf "#!/bin/bash\nnginx\npython run_backend.py\n" > entrypoint.sh && chmod +x entrypoint.sh
-
 # 4. Application Code (Changes frequently)
 COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
 COPY backend/ ./backend/
 COPY parser/ ./parser/
+COPY scripts/ ./scripts/
 COPY run_backend.py ./
 COPY version.json ./
+
+# Create entrypoint.sh with vacuum step
+RUN printf "#!/bin/bash\npython scripts/vacuum_db.py\nnginx\npython run_backend.py\n" > entrypoint.sh && chmod +x entrypoint.sh
 
 # Environment variables
 ENV APP_DATABASE_URL="duckdb:////data/family_finance_v3.duckdb"

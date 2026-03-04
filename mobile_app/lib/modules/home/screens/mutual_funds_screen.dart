@@ -385,7 +385,7 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
     // Parse Data
     final points = fundsService.timeline.map((e) {
        try {
-         final date = DateTime.parse(e['date']);
+         final date = DateTime.parse(e['date']).toLocal();
          final value = (e['value'] as num).toDouble() / dashboardService.maskingFactor;
          return FlSpot(date.millisecondsSinceEpoch.toDouble(), value);
        } catch (e) { return null; }

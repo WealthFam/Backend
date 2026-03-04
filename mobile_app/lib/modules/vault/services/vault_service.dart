@@ -37,7 +37,7 @@ class VaultDocument {
       filename: json['filename'] ?? json['name'] ?? 'Untitled',
       fileType: json['file_type'] ?? 'OTHER',
       description: json['description'],
-      createdAt: DateTime.parse(json['created_at'] ?? DateTime.now().toIso8601String()),
+      createdAt: DateTime.parse(json['created_at'] ?? DateTime.now().toUtc().toIso8601String()).toLocal(),
       isFolder: json['is_folder'] ?? false,
       thumbnailPath: json['thumbnail_path'],
       mimeType: json['mime_type'],
