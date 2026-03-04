@@ -317,6 +317,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import { todayLocalString } from '@/utils/time'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi as api } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
@@ -344,7 +345,7 @@ const form = reactive({
     principal_amount: 0,
     interest_rate: 0,
     tenure_months: 12,
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: todayLocalString(),
     emi_date: 5,
     emi_amount: 0,
     loan_type: 'HOME_LOAN'
@@ -417,7 +418,7 @@ const openAddModal = () => {
     form.principal_amount = 0
     form.interest_rate = 0
     form.tenure_months = 12
-    form.start_date = new Date().toISOString().split('T')[0]
+    form.start_date = todayLocalString()
     form.emi_date = 5
     form.emi_amount = 0
     form.loan_type = 'HOME_LOAN'

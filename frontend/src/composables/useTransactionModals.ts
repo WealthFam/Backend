@@ -1,4 +1,5 @@
 import { ref, watch, computed, type Ref } from 'vue'
+import { localISOString } from '@/utils/time'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 
@@ -64,7 +65,7 @@ export function useTransactionModals(
         recipient: '',
         category: '',
         amount: null,
-        date: new Date().toISOString().slice(0, 16),
+        date: localISOString(),
         account_id: '',
         is_transfer: false,
         to_account_id: '',
@@ -103,7 +104,7 @@ export function useTransactionModals(
             ...defaultForm,
             type: 'DEBIT',
             account_id: selectedAccount.value || (accounts.value[0]?.id || ''),
-            date: new Date().toISOString().slice(0, 16),
+            date: localISOString(),
             is_transfer: false,
             to_account_id: '',
             linked_transaction_id: '',
@@ -137,7 +138,7 @@ export function useTransactionModals(
             recipient: txn.recipient || '',
             category: txn.category,
             amount: Math.abs(txn.amount),
-            date: txn.date ? txn.date.slice(0, 16) : new Date().toISOString().slice(0, 16),
+            date: txn.date ? txn.date.slice(0, 16) : localISOString(),
             account_id: txn.account_id,
             is_transfer: txn.is_transfer || false,
             to_account_id: txn.transfer_account_id || '',

@@ -95,7 +95,7 @@
                                         Amount</div>
                                 </div>
                                 <div class="text-h5 font-weight-black text-content">{{ formatCurrency(loan.emi_amount)
-                                    }}</div>
+                                }}</div>
                             </v-card>
                         </v-col>
                         <v-col cols="6" md="3">
@@ -110,7 +110,7 @@
                                         Next Due Date</div>
                                 </div>
                                 <div class="text-h5 font-weight-black text-content">{{ formatDate(loan.next_emi_date)
-                                    }}</div>
+                                }}</div>
                             </v-card>
                         </v-col>
                         <v-col cols="6" md="3">
@@ -247,7 +247,7 @@
                                                 <td class="font-weight-bold text-caption opacity-70">{{
                                                     item.installment_no }}</td>
                                                 <td class="font-weight-bold text-caption">{{ formatDate(item.due_date)
-                                                }}</td>
+                                                    }}</td>
                                                 <td class="text-right font-weight-black text-body-2"
                                                     style="font-feature-settings: 'tnum';">{{ formatCurrency(item.emi)
                                                     }}</td>
@@ -292,7 +292,7 @@
                                 <div class="text-overline font-weight-black text-primary mb-1 letter-spacing-2">RECORD
                                     PAYMENT</div>
                                 <h2 class="text-h5 font-weight-black text-content">EMI #{{ repaymentForm.installment_no
-                                    }}</h2>
+                                }}</h2>
                             </div>
                             <v-btn icon variant="text" @click="showRepaymentModal = false" density="comfortable"
                                 class="bg-surface-variant bg-opacity-10 opacity-70 hover:opacity-100">
@@ -349,6 +349,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { todayLocalString } from '@/utils/time'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { financeApi as api } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
@@ -375,7 +376,7 @@ const isSubmitting = ref(false)
 const showRepaymentModal = ref(false)
 const repaymentForm = ref({
     amount: 0,
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalString(),
     bank_account_id: '',
     installment_no: null as number | null,
     description: ''

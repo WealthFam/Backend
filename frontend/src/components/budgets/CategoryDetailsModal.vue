@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { localDateString } from '@/utils/time'
 import { ref, computed, watch } from 'vue'
 import { financeApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
@@ -46,8 +47,8 @@ const fetchData = async () => {
     if (!props.category) return
     loading.value = true
     try {
-        const startDate = new Date(props.year, props.month - 1, 1).toISOString()
-        const endDate = new Date(props.year, props.month, 0, 23, 59, 59).toISOString()
+        const startDate = localDateString(props.year, props.month - 1, 1) + 'T00:00:00'
+        const endDate = localDateString(props.year, props.month, 0) + 'T23:59:59'
 
         // Fetch Transactions
         const res = await financeApi.getTransactions(
