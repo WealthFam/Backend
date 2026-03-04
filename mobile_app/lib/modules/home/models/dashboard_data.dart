@@ -105,7 +105,7 @@ class SpendingTrendItem {
     'daily_limit': dailyLimit,
   };
   
-  DateTime get dateTime => DateTime.parse(date);
+  DateTime get dateTime => DateTime.parse(date).toLocal();
 }
 
 class CategoryPieItem {
@@ -261,7 +261,7 @@ class RecentTransaction {
   factory RecentTransaction.fromJson(Map<String, dynamic> json) {
     return RecentTransaction(
       id: json['id'],
-      date: DateTime.parse(json['date']),
+      date: DateTime.parse(json['date']).toLocal(),
       description: json['description'],
       amount: (json['amount'] as num).toDouble(),
       category: json['category'],

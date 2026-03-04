@@ -102,7 +102,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
            
            final txn = _transactions[index];
            final amount = (txn['amount'] as num).toDouble();
-           final date = DateTime.parse(txn['date']);
+           final date = DateTime.parse(txn['date']).toLocal();
            final category = txn['category'];
            
            return Container(
