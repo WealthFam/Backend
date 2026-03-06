@@ -38,7 +38,19 @@
                                     <div class="d-flex gap-2 align-center">
                                         <v-select v-model="aiStore.aiForm.model_name" label="Model Selection"
                                             :items="aiStore.aiModels" item-title="label" item-value="value"
-                                            variant="outlined" class="flex-grow-1" hide-details></v-select>
+                                            variant="outlined" class="flex-grow-1" hide-details>
+                                            <template v-slot:item="{ props, item }">
+                                                <v-list-item v-bind="props" :subtitle="item.raw.detail">
+                                                    <template v-slot:append>
+                                                        <v-chip size="x-small"
+                                                            :color="item.raw.speed === 'Fast' ? 'success' : 'primary'"
+                                                            variant="tonal">
+                                                            {{ item.raw.speed }}
+                                                        </v-chip>
+                                                    </template>
+                                                </v-list-item>
+                                            </template>
+                                        </v-select>
                                         <v-btn icon variant="tonal" density="comfortable" @click="aiStore.fetchAiModels"
                                             title="Refresh Models">
                                             <RefreshCw :size="18" />
@@ -47,18 +59,21 @@
                                 </v-col>
                             </v-row>
 
-                            <v-text-field v-model="aiStore.aiForm.api_key" label="Secure API Key"
-                                :type="showApiKey ? 'text' : 'password'"
-                                :placeholder="aiStore.aiForm.has_api_key ? '********' : 'Paste API key...'"
-                                variant="outlined" class="mt-4" persistent-hint
-                                hint="Keys are encrypted at rest. Get your key from Google AI Studio.">
-                                <template v-slot:append-inner>
-                                    <v-btn icon variant="text" density="compact" @click="showApiKey = !showApiKey">
-                                        <component :is="showApiKey ? EyeOff : Eye" :size="16"
-                                            class="text-medium-emphasis" />
-                                    </v-btn>
-                                </template>
-                            </v-text-field>
+                            <div class="mt-4">
+                                <v-text-field v-model="aiStore.aiForm.api_key" label="Secure API Key"
+                                    :type="showApiKey ? 'text' : 'password'"
+                                    :placeholder="aiStore.aiForm.has_api_key ? 'Using stored key...' : 'Paste API key...'"
+                                    variant="outlined" persistent-hint
+                                    hint="Keys are encrypted at rest. Visibility toggled via eye icon."
+                                    hide-details="auto">
+                                    <template v-slot:append-inner>
+                                        <v-btn icon variant="text" density="compact" @click="showApiKey = !showApiKey">
+                                            <component :is="showApiKey ? EyeOff : Eye" :size="16"
+                                                class="text-medium-emphasis" />
+                                        </v-btn>
+                                    </template>
+                                </v-text-field>
+                            </div>
 
                             <div class="mt-6">
                                 <div class="d-flex justify-space-between align-center mb-2">

@@ -28,7 +28,7 @@ export const useAiStore = defineStore('ai', () => {
             aiForm.value = {
                 ...aiForm.value,
                 ...data,
-                api_key: '', // Don't show existing key
+                api_key: data.api_key || '',
                 prompts: data.prompts || aiForm.value.prompts
             }
             fetchAiModels()
@@ -44,8 +44,9 @@ export const useAiStore = defineStore('ai', () => {
                 aiModels.value = res.data
             } else {
                 aiModels.value = [
-                    { label: 'Gemini 1.5 Flash (Fast)', value: 'models/gemini-1.5-flash' },
-                    { label: 'Gemini 1.5 Pro (Best)', value: 'models/gemini-1.5-pro' }
+                    { label: 'Gemini 1.5 Flash', value: 'models/gemini-1.5-flash', detail: 'Speed: Ultra Fast / Best for extraction', speed: 'Fast' },
+                    { label: 'Gemini 1.5 Pro', value: 'models/gemini-1.5-pro', detail: 'Speed: Balanced / High reasoning', speed: 'Smart' },
+                    { label: 'Gemini 2.0 Flash', value: 'models/gemini-2.0-flash', detail: 'Speed: Next-gen / Best all-rounder', speed: 'V2' }
                 ]
             }
         } catch (e) {
