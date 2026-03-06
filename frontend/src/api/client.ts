@@ -127,6 +127,7 @@ export const financeApi = {
     createExpenseGroup: (data: any) => apiClient.post('/finance/expense-groups', data),
     updateExpenseGroup: (id: string, data: any) => apiClient.put(`/finance/expense-groups/${id}`, data),
     deleteExpenseGroup: (id: string) => apiClient.delete(`/finance/expense-groups/${id}`),
+    linkExpenseGroupTransactions: (groupId: string, transactionIds: string[]) => apiClient.post(`/finance/expense-groups/${groupId}/transactions`, { transaction_ids: transactionIds }),
 
     getBudgets: (year?: number, month?: number, userId?: string) => apiClient.get('/finance/budgets', { params: { year, month, user_id: userId } }),
     getBudgetOverview: (year?: number, month?: number, userId?: string) => apiClient.get('/finance/budgets/overview', { params: { year, month, user_id: userId } }),

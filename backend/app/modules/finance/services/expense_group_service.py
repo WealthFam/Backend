@@ -88,3 +88,22 @@ class ExpenseGroupService:
         db.delete(db_group)
         db.commit()
         return True
+
+    @staticmethod
+    def link_transactions(db: Session, group_id: str, transaction_ids: List[str], tenant_id: str) -> int:
+        # Verify group exists
+        db_group = db.query(models.ExpenseGroup).filter(
+            models.ExpenseGroup.id == group_id,
+            models.ExpenseGroup.tenant_id == tenant_id
+        ).first()
+        if not db_group:
+            return 0
+            
+        # Update transactions in bulk
+        count = db.query(models.Transaction).filter(
+            models.Transaction.id.in_(transaction_ids),
+            models.Transaction.tenant_id == tenant_id
+        ).update({models.Transaction.expense_group_id: group_id}, synchronize_session=False)
+        
+        db.commit()
+        return count

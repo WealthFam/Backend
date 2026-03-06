@@ -10,34 +10,51 @@
             </div>
 
             <div class="relative-pos z-10">
-                <!-- Header -->
-                <v-row class="mb-10 align-center">
-                    <v-col cols="12" md="6">
-                        <h1 class="text-h6 font-weight-black mb-1">Expense Groups</h1>
-                        <p class="text-subtitle-2 text-on-surface opacity-70 font-weight-bold d-flex align-center">
-                            Organize and track your spending buckets
+                <!-- Premium Header -->
+                <v-row class="mb-6 align-center">
+                    <v-col cols="12" md="4">
+                        <div class="d-flex align-center">
+                            <h1 class="text-h6 font-weight-black text-content">Expense Groups</h1>
+                        </div>
+                        <p class="text-subtitle-2 text-medium-emphasis font-weight-bold mt-1 opacity-70">
+                            Organize and track your family's spending buckets
                         </p>
                     </v-col>
 
-                    <v-col cols="12" md="6" class="d-flex justify-md-end align-center gap-3">
-                        <div class="glass-toggle-pill mr-4">
-                            <span class="toggle-option" :class="{ active: !showArchived }"
-                                @click="showArchived = false">Active</span>
-                            <span class="toggle-option" :class="{ active: showArchived }"
-                                @click="showArchived = true">Archived</span>
+                    <v-col cols="12" md="8" class="d-flex flex-column flex-md-row align-md-center justify-end ga-3">
+                        <!-- Navigation Tabs (Pill style) -->
+                        <div class="premium-pill-tabs flex-grow-1 flex-md-grow-0 d-flex overflow-x-auto">
+                            <v-tabs v-model="showArchived" color="primary" density="comfortable" hide-slider show-arrows
+                                class="rounded-xl">
+                                <v-tab :value="false" class="premium-tab" rounded="xl">
+                                    <div class="d-flex align-center ga-2">
+                                        <Activity :size="16" />
+                                        <span>Active</span>
+                                        <v-chip v-if="!showArchived" size="x-small" color="primary"
+                                            class="ml-1 font-weight-black">
+                                            {{ filteredGroups.length }}
+                                        </v-chip>
+                                    </div>
+                                </v-tab>
+                                <v-tab :value="true" class="premium-tab" rounded="xl">
+                                    <div class="d-flex align-center ga-2">
+                                        <Archive :size="16" />
+                                        <span>Archived</span>
+                                        <v-chip v-if="showArchived" size="x-small" color="primary"
+                                            class="ml-1 font-weight-black">
+                                            {{ filteredGroups.length }}
+                                        </v-chip>
+                                    </div>
+                                </v-tab>
+                            </v-tabs>
                         </div>
-                        <v-chip color="primary" variant="tonal" size="small" rounded="pill"
-                            class="font-weight-black px-4 bg-surface elevation-0 border">
-                            {{ filteredGroups.length }} Groups
-                        </v-chip>
                     </v-col>
                 </v-row>
 
                 <!-- Filter Bar -->
-                <div class="d-flex flex-column flex-sm-row gap-4 mb-8">
+                <div class="d-flex flex-column flex-sm-row ga-4 mb-8">
                     <v-text-field v-model="searchQuery" placeholder="Search groups..." variant="outlined"
-                        density="comfortable" hide-details class="premium-search-field flex-grow-1" bg-color="surface"
-                        rounded="lg">
+                        density="comfortable" hide-details class="flex-grow-1" bg-color="surface" rounded="lg">
                         <template v-slot:prepend-inner>
                             <Search :size="18" class="text-primary mr-2" />
                         </template>
@@ -45,11 +62,7 @@
 
                     <div style="width: 160px">
                         <v-select v-model="selectedYear" :items="yearOptions" item-title="label" item-value="value"
-                            variant="outlined" density="comfortable" hide-details rounded="lg" bg-color="surface"
-                            class="premium-select">
-                            <template v-slot:append-inner>
-                                <ChevronDown :size="16" class="text-primary opacity-70" />
-                            </template>
+                            variant="outlined" density="comfortable" hide-details rounded="lg" bg-color="surface">
                         </v-select>
                     </div>
                 </div>
@@ -61,94 +74,137 @@
 
                 <!-- Empty State -->
                 <div v-else-if="filteredGroups.length === 0"
-                    class="premium-glass-card d-flex flex-column align-center justify-center py-16 px-10 text-center mx-auto"
-                    style="max-width: 600px; margin-top: 50px;">
+                    class="elevation-2 d-flex flex-column align-center justify-center py-16 px-10 text-center mx-auto rounded-xl border-dashed"
+                    style="max-width: 600px; margin-top: 50px; background: rgba(var(--v-theme-primary), 0.03); border: 2px dashed rgba(var(--v-theme-primary), 0.2) !important;">
                     <v-avatar color="primary" variant="tonal" size="100" class="mb-8">
                         <Wallet :size="50" class="text-primary" />
                     </v-avatar>
-                    <h3 class="text-h4 font-weight-black mb-1">No Groups Found</h3>
-                    <p class="text-subtitle-1 text-on-surface opacity-70 font-weight-bold mb-8">
-                        Create a group to start tracking your expenses.
+                    <h3 class="text-h4 font-weight-black mb-1 text-primary">No Groups Found</h3>
+                    <p class="text-subtitle-1 text-medium-emphasis font-weight-bold mb-8 opacity-70">
+                        Organize your finances by creating spending buckets for trips, projects, or categories.
                     </p>
                     <v-btn color="primary" variant="flat" rounded="pill" height="52"
-                        class="px-10 font-weight-black elevation-2" @click="openAddModal">
-                        Create Expense Group
+                        class="px-10 font-weight-black elevation-8 group-on-hover-scale" @click="openAddModal">
+                        <Plus :size="20" class="mr-2" />
+                        Create Your First Group
                     </v-btn>
                 </div>
 
                 <!-- Groups Grid -->
                 <v-row v-else class="pb-16">
                     <!-- Add New Group Card -->
-                    <v-col cols="12" sm="6" md="4" lg="4">
+                    <v-col v-if="!showArchived" cols="12" sm="6" md="4" lg="4">
                         <v-card @click="openAddModal"
-                            class="premium-glass-card d-flex flex-column align-center justify-center h-100 cursor-pointer border-dashed border-primary group"
-                            style="border-width: 2px !important; min-height: 280px; background: rgba(var(--v-theme-primary), 0.05)"
-                            rounded="xl">
+                            class="elevation-0 d-flex flex-column align-center justify-center h-100 cursor-pointer border-dashed border-primary group premium-add-card"
+                            style="border-width: 2px !important; min-height: 280px;" rounded="xl">
                             <v-avatar color="primary" size="64" class="mb-4 elevation-8 group-on-hover-scale"
                                 style="box-shadow: 0 0 20px rgba(var(--v-theme-primary), 0.3)">
                                 <Plus :size="36" color="white" stroke-width="3" />
                             </v-avatar>
                             <span class="text-h6 font-weight-black text-primary">New Group</span>
-                            <span class="text-caption font-weight-bold opacity-60 text-slate-500">Add expense
+                            <span class="text-caption font-weight-bold opacity-60 text-medium-emphasis">Add expense
                                 bucket</span>
                         </v-card>
                     </v-col>
 
                     <!-- Existing Groups -->
                     <v-col v-for="group in filteredGroups" :key="group.id" cols="12" sm="6" md="4" lg="4">
-                        <v-card rounded="xl" class="premium-glass-card group h-100 d-flex flex-column overflow-hidden"
-                            elevation="0" @click="openEditModal(group)">
-                            <div class="pa-5 d-flex justify-space-between align-center">
-                                <v-avatar :style="{ background: generateColor(group.name).bg }" rounded="lg" size="48"
-                                    class="elevation-0 border">
-                                    <span class="text-h6" :style="{ color: generateColor(group.name).text }">
+                        <v-card rounded="xl" class="elevation-2 group h-100 d-flex flex-column overflow-hidden"
+                            @click="openEditModal(group)">
+                            <div class="pa-5 d-flex justify-space-between align-start">
+                                <v-avatar :style="{ background: generateColor(group.name).bg }" rounded="lg" size="52"
+                                    class="elevation-2 border-thin">
+                                    <span class="text-h5" :style="{ color: generateColor(group.name).text }">
                                         {{ group.icon || group.name.charAt(0).toUpperCase() }}
                                     </span>
                                 </v-avatar>
 
-                                <div class="d-flex gap-1">
+                                <div class="d-flex ga-1">
                                     <v-btn icon variant="text" size="x-small" color="medium-emphasis"
-                                        @click.stop="openEditModal(group)">
+                                        class="bg-surface-lighten-1 elevation-1" @click.stop="openEditModal(group)">
                                         <Pencil :size="14" />
                                     </v-btn>
                                     <v-btn icon variant="text" size="x-small" color="error"
-                                        @click.stop="confirmDelete(group)">
+                                        class="bg-error-lighten-5 elevation-1" @click.stop="confirmDelete(group)">
                                         <Trash2 :size="14" />
                                     </v-btn>
                                 </div>
                             </div>
 
-                            <div class="px-5 pb-5 flex-grow-1">
-                                <h3 class="text-subtitle-1 font-weight-black text-truncate mb-0">{{ group.name }}</h3>
-                                <div class="d-flex align-center text-tiny font-weight-bold text-medium-emphasis mb-2">
-                                    <Calendar :size="12" class="mr-1" />
-                                    {{ group.start_date ? formatDate(group.start_date) : 'No Date' }}
-                                </div>
-                                <div class="text-caption text-medium-emphasis line-clamp-2" style="min-height: 2.6em">
-                                    {{ group.description || 'No description' }}
+                            <div class="px-5 pb-5 flex-grow-1 d-flex flex-column">
+                                <div class="d-flex justify-space-between align-center mb-1">
+                                    <h3 class="text-h6 font-weight-black text-truncate pr-2">{{ group.name }}</h3>
+                                    <v-chip size="x-small" variant="tonal" color="primary" class="font-weight-black">
+                                        {{ group.start_date ? formatDateShort(group.start_date) : '?' }} - {{
+                                            group.end_date ?
+                                        formatDateShort(group.end_date) : '?' }}
+                                    </v-chip>
                                 </div>
 
+                                <div class="text-caption text-medium-emphasis line-clamp-2 mb-4 opacity-70"
+                                    style="min-height: 2.6em">
+                                    {{ group.description || 'No description provided' }}
+                                </div>
+
+                                <v-spacer />
+
+                                <!-- Financial Section -->
                                 <div v-if="Number(group.budget) > 0" class="mt-4">
-                                    <div class="d-flex justify-space-between align-end mb-1">
+                                    <div class="d-flex justify-space-between align-end mb-2">
                                         <div>
-                                            <span class="text-h6 font-weight-black">{{
-                                                formatAmount(group.total_spend || 0) }}</span>
-                                            <span class="text-tiny font-weight-bold text-medium-emphasis ml-1">of {{
-                                                formatAmount(group.budget) }}</span>
+                                            <div
+                                                class="text-tiny font-weight-black opacity-50 text-uppercase letter-spacing-1 mb-1">
+                                                Total Spent</div>
+                                            <span class="text-h5 font-weight-black">{{ formatAmount(group.total_spend ||
+                                                0) }}</span>
                                         </div>
-                                        <span class="text-caption font-weight-black" :class="getBudgetColor(group)">
-                                            {{ getBudgetPercentage(group).toFixed(0) }}%
-                                        </span>
+                                        <div class="text-right">
+                                            <div
+                                                class="text-tiny font-weight-black opacity-50 text-uppercase letter-spacing-1 mb-1">
+                                                Consumed</div>
+                                            <span class="text-subtitle-1 font-weight-black"
+                                                :class="getBudgetColor(group)">
+                                                {{ getBudgetPercentage(group).toFixed(0) }}%
+                                            </span>
+                                        </div>
                                     </div>
+
                                     <v-progress-linear :model-value="getBudgetPercentage(group)"
-                                        :color="getBudgetColorCode(group)" height="8" rounded="pill"
-                                        class="elevation-1 opacity-90" />
+                                        :color="getBudgetColorCode(group)" height="10" rounded="pill"
+                                        class="elevation-0 bg-grey-lighten-4 mb-3" />
+
+                                    <div class="d-flex justify-space-between text-tiny font-weight-bold">
+                                        <div class="d-flex flex-column">
+                                            <span class="opacity-50 text-uppercase"
+                                                style="font-size: 0.65rem">Balance</span>
+                                            <span
+                                                :class="parseFloat(group.budget) - (group.total_spend || 0) < 0 ? 'text-error' : 'text-success'">
+                                                {{ formatAmount(Math.max(0, parseFloat(group.budget) -
+                                                (group.total_spend || 0))) }}
+                                            </span>
+                                        </div>
+                                        <div class="d-flex flex-column align-end">
+                                            <span class="opacity-50 text-uppercase"
+                                                style="font-size: 0.65rem">Target</span>
+                                            <span class="text-high-emphasis">{{ formatAmount(group.budget) }}</span>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div v-else
-                                    class="mt-4 py-2 bg-surface-variant bg-opacity-10 rounded-lg text-center border border-dashed border-opacity-20">
-                                    <span class="text-caption font-weight-bold text-medium-emphasis">No Budget
-                                        Set</span>
+                                <div v-else class="mt-4 pt-4 border-t-dashed">
+                                    <div class="d-flex justify-space-between align-center">
+                                        <div>
+                                            <div
+                                                class="text-tiny font-weight-black opacity-50 text-uppercase letter-spacing-1 mb-1">
+                                                Total Spent</div>
+                                            <span class="text-h5 font-weight-black">{{ formatAmount(group.total_spend ||
+                                                0) }}</span>
+                                        </div>
+                                        <v-chip size="small" variant="tonal" color="medium-emphasis"
+                                            class="font-weight-black">
+                                            No Budget Set
+                                        </v-chip>
+                                    </div>
                                 </div>
                             </div>
                         </v-card>
@@ -156,111 +212,15 @@
                 </v-row>
             </div>
 
-            <!-- Create/Edit Modal -->
-            <v-dialog v-model="showModal" max-width="500" transition="dialog-bottom-transition">
-                <v-card rounded="xl" class="premium-glass-modal elevation-24">
-                    <div class="px-6 pt-6 pb-2 d-flex justify-space-between align-center">
-                        <div>
-                            <div class="text-overline font-weight-black text-primary mb-1 letter-spacing-2">
-                                {{ isEditing ? 'Edit Group' : 'New Group' }}
-                            </div>
-                            <h2 class="text-h5 font-weight-black text-content">
-                                {{ isEditing ? 'Refine Details' : 'Create Bucket' }}
-                            </h2>
-                        </div>
-                        <v-btn icon variant="text" @click="showModal = false" density="comfortable"
-                            class="bg-surface-variant bg-opacity-10 opacity-70 hover:opacity-100">
-                            <X :size="20" />
-                        </v-btn>
-                    </div>
-
-                    <v-card-text class="px-6 py-4">
-                        <v-form @submit.prevent="handleSubmit">
-                            <!-- Icon Picker -->
-                            <div class="mb-6 text-center">
-                                <v-avatar size="64" :color="generateColor(form.name).bg" variant="flat" class="mb-4">
-                                    <span class="text-h3">{{ form.icon || '?' }}</span>
-                                </v-avatar>
-                                <div class="d-flex justify-center gap-2 flex-wrap">
-                                    <v-btn
-                                        v-for="emoji in ['✈️', '🏠', '🍔', '🛒', '💊', '🎓', '🎮', '🎁', '💸', '💼', '🚗', '👶']"
-                                        :key="emoji" icon variant="text" density="comfortable"
-                                        :color="form.icon === emoji ? 'primary' : 'medium-emphasis'" class="emoji-btn"
-                                        :class="{ 'selected-emoji': form.icon === emoji }" @click="form.icon = emoji">
-                                        <span class="text-h6">{{ emoji }}</span>
-                                    </v-btn>
-                                </div>
-                            </div>
-
-                            <v-text-field v-model="form.name" label="Group Name" placeholder="e.g. Thailand Trip"
-                                variant="outlined" density="comfortable" hide-details rounded="lg" bg-color="surface"
-                                class="mb-4 font-weight-bold text-body-1" autofocus>
-                                <template v-slot:prepend-inner>
-                                    <Type :size="18" class="text-medium-emphasis" />
-                                </template>
-                            </v-text-field>
-
-                            <v-textarea v-model="form.description" label="Description" rows="2" variant="outlined"
-                                density="comfortable" hide-details rounded="lg" bg-color="surface"
-                                class="mb-4 text-body-2" />
-
-                            <v-row dense>
-                                <v-col cols="12" sm="6">
-                                    <v-text-field v-model.number="form.budget" label="Total Budget" type="number"
-                                        prefix="₹" variant="outlined" density="comfortable" hide-details rounded="lg"
-                                        bg-color="surface" class="font-weight-black">
-                                    </v-text-field>
-                                </v-col>
-                                <v-col cols="12" sm="6">
-                                    <div class="d-flex align-center h-100 px-2">
-                                        <v-switch v-model="form.is_active" color="success" hide-details
-                                            density="compact" inset>
-                                            <template v-slot:label>
-                                                <span class="text-caption font-weight-bold ml-2">
-                                                    {{ form.is_active ? 'ACTIVE' : 'ARCHIVED' }}
-                                                </span>
-                                            </template>
-                                        </v-switch>
-                                    </div>
-                                </v-col>
-                            </v-row>
-
-                            <div class="mt-4">
-                                <label class="text-caption font-weight-bold text-medium-emphasis mb-2 d-block">DURATION
-                                    (OPTIONAL)</label>
-                                <v-row dense>
-                                    <v-col cols="6">
-                                        <v-text-field v-model="form.start_date" type="date" variant="outlined"
-                                            density="comfortable" hide-details rounded="lg" bg-color="surface" />
-                                    </v-col>
-                                    <v-col cols="6">
-                                        <v-text-field v-model="form.end_date" type="date" variant="outlined"
-                                            density="comfortable" hide-details rounded="lg" bg-color="surface" />
-                                    </v-col>
-                                </v-row>
-                            </div>
-                        </v-form>
-                    </v-card-text>
-
-                    <v-card-actions class="px-6 pb-6 pt-2">
-                        <v-btn variant="text" @click="showModal = false" height="48" rounded="lg"
-                            class="px-6 font-weight-bold text-none text-medium-emphasis">
-                            Cancel
-                        </v-btn>
-                        <v-spacer />
-                        <v-btn color="primary" variant="flat" rounded="lg" height="48"
-                            class="px-8 font-weight-black text-none elevation-4" @click="handleSubmit">
-                            {{ isEditing ? 'Save Changes' : 'Create Group' }}
-                        </v-btn>
-                    </v-card-actions>
-                </v-card>
-            </v-dialog>
+            <!-- Expense Group Modal Component -->
+            <ExpenseGroupModal v-model="showModal" :is-editing="isEditing" :group-data="selectedGroup"
+                @saved="fetchGroups" />
 
             <!-- Delete Confirmation -->
             <v-dialog v-model="showDeleteConfirm" max-width="400">
-                <v-card rounded="xl" class="pa-6 text-center premium-glass-modal elevation-24">
+                <v-card rounded="xl" class="pa-6 text-center bg-surface elevation-24">
                     <div class="d-flex justify-center mb-6">
-                        <div class="error-glow pa-4 rounded-circle">
+                        <div class="bg-error-lighten-5 border-error pa-4 rounded-circle">
                             <Trash2 :size="32" class="text-error" />
                         </div>
                     </div>
@@ -270,7 +230,7 @@
                             }}</strong>?
                         This action cannot be undone.
                     </p>
-                    <div class="d-flex gap-3 justify-center">
+                    <div class="d-flex ga-3 justify-center">
                         <v-btn variant="text" rounded="lg" height="48" class="px-6 font-weight-bold"
                             @click="showDeleteConfirm = false">Cancel</v-btn>
                         <v-btn color="error" variant="flat" rounded="lg" height="48" class="px-6 font-weight-bold"
@@ -284,8 +244,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Plus, Trash2, Calendar, Wallet, Type, X, Pencil, Search, ChevronDown } from 'lucide-vue-next'
+import { Plus, Trash2, Calendar, Wallet, Pencil, Search, Activity, Archive } from 'lucide-vue-next'
 import MainLayout from '@/layouts/MainLayout.vue'
+import ExpenseGroupModal from '@/components/groups/ExpenseGroupModal.vue'
 import { financeApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
 import { useNotificationStore } from '@/stores/notification'
@@ -297,22 +258,12 @@ const expenseGroups = ref<any[]>([])
 const searchQuery = ref('')
 const showArchived = ref(false)
 
-const showModal = ref(false)
-const isEditing = ref(false)
-const editingId = ref<string | null>(null)
-const form = ref({
-    name: '',
-    description: '',
-    is_active: true,
-    budget: 0,
-    start_date: '',
-    end_date: '',
-    icon: ''
-})
-
 const selectedYear = ref<string>('All')
 const showDeleteConfirm = ref(false)
 const groupToDelete = ref<any>(null)
+const selectedGroup = ref<any>(null)
+const showModal = ref(false)
+const isEditing = ref(false)
 
 const yearOptions = computed(() => {
     const currentYear = new Date().getFullYear()
@@ -361,45 +312,27 @@ const fetchGroups = async () => {
 
 const openAddModal = () => {
     isEditing.value = false
-    editingId.value = null
-    form.value = {
-        name: '',
-        description: '',
-        is_active: true,
-        budget: 0,
-        start_date: '',
-        end_date: '',
-        icon: ''
-    }
+    selectedGroup.value = null
     showModal.value = true
 }
 
 const openEditModal = (group: any) => {
     isEditing.value = true
-    editingId.value = group.id
-    form.value = {
-        name: group.name,
-        description: group.description || '',
-        is_active: group.is_active,
-        budget: group.budget || 0,
-        start_date: group.start_date ? group.start_date.split('T')[0] : '',
-        end_date: group.end_date ? group.end_date.split('T')[0] : '',
-        icon: group.icon || ''
-    }
+    selectedGroup.value = group
     showModal.value = true
+}
+
+const formatDateShort = (dateStr: string) => {
+    if (!dateStr) return '-'
+    return new Date(dateStr).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+    })
 }
 
 const getBudgetPercentage = (group: any) => {
     if (!group.budget || group.budget === 0) return 0
     return Math.min(100, ((group.total_spend || 0) / group.budget) * 100)
-}
-
-const getBudgetColor = (group: any) => {
-    if (!group.budget) return 'text-medium-emphasis'
-    const pct = getBudgetPercentage(group)
-    if (pct >= 100) return 'text-error'
-    if (pct >= 80) return 'text-warning'
-    return 'text-success'
 }
 
 const getBudgetColorCode = (group: any) => {
@@ -410,20 +343,12 @@ const getBudgetColorCode = (group: any) => {
     return '#10b981'
 }
 
-const handleSubmit = async () => {
-    try {
-        if (isEditing.value && editingId.value) {
-            await financeApi.updateExpenseGroup(editingId.value, form.value)
-            notify.success("Group updated successfully")
-        } else {
-            await financeApi.createExpenseGroup(form.value)
-            notify.success("Group created successfully")
-        }
-        showModal.value = false
-        fetchGroups()
-    } catch (e) {
-        notify.error("Failed to save group")
-    }
+const getBudgetColor = (group: any) => {
+    if (!group.budget) return 'text-medium-emphasis'
+    const pct = getBudgetPercentage(group)
+    if (pct >= 100) return 'text-error'
+    if (pct >= 80) return 'text-warning'
+    return 'text-success'
 }
 
 const confirmDelete = (group: any) => {
@@ -443,15 +368,6 @@ const doDelete = async () => {
         showDeleteConfirm.value = false
         groupToDelete.value = null
     }
-}
-
-const formatDate = (dateStr: string) => {
-    if (!dateStr) return '-'
-    return new Date(dateStr).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    })
 }
 
 const generateColor = (name: string) => {
@@ -476,13 +392,6 @@ onMounted(() => {
     min-height: calc(100vh - 64px);
 }
 
-.mesh-blob {
-    position: absolute;
-    filter: blur(80px);
-    opacity: 0.15;
-    border-radius: 50%;
-}
-
 .relative-pos {
     position: relative;
 }
@@ -491,75 +400,113 @@ onMounted(() => {
     z-index: 10;
 }
 
-.gap-3 {
-    gap: 12px;
+.elevation-1 {
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06) !important;
 }
 
-.premium-glass-card {
+.elevation-2 {
     background: rgba(var(--v-theme-surface), 0.7) !important;
     backdrop-filter: blur(20px) saturate(180%);
     border: 1px solid rgba(128, 128, 128, 0.15) !important;
     box-shadow: none !important;
 }
 
-.premium-glass-card:hover {
+.elevation-2:hover {
     border-color: rgba(var(--v-theme-primary), 0.3) !important;
     background: rgba(var(--v-theme-surface), 0.85) !important;
     box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1) !important;
 }
 
-.glass-toggle-pill {
-    background: rgba(var(--v-theme-surface-variant), 0.1);
+.text-tiny {
+    font-size: 0.75rem;
+    letter-spacing: 0.025em;
+}
+
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Mesh Background */
+.mesh-blob {
+    position: absolute;
+    filter: blur(80px);
+    opacity: 0.15;
+    z-index: 1;
+    border-radius: 50%;
+    animation: blob-float 20s infinite alternate;
+}
+
+.blob-1 {
+    background: rgb(var(--v-theme-primary));
+    width: 600px;
+    height: 600px;
+    top: -200px;
+    right: -100px;
+}
+
+.blob-2 {
+    background: rgb(var(--v-theme-secondary));
+    width: 400px;
+    height: 400px;
+    bottom: -100px;
+    left: -100px;
+    animation-delay: -5s;
+}
+
+@keyframes blob-float {
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    100% {
+        transform: translate(20px, -20px) scale(1.1);
+    }
+}
+
+/* Premium Tabs */
+.premium-pill-tabs {
+    background: rgba(var(--v-theme-surface), 0.6);
+    backdrop-filter: blur(10px);
+    padding: 6px;
+    border-radius: 24px;
     border: 1px solid rgba(var(--v-border-color), 0.1);
-    border-radius: 20px;
-    padding: 4px;
-    display: flex;
-    gap: 4px;
 }
 
-.toggle-option {
-    padding: 6px 16px;
-    border-radius: 16px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    color: rgba(var(--v-theme-on-surface), 0.6);
-    transition: all 0.2s ease;
+.premium-tab {
+    text-transform: none !important;
+    letter-spacing: 0;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: rgb(var(--v-theme-on-surface), 0.6);
+    transition: all 0.3s ease;
+    min-width: 120px;
 }
 
-.toggle-option.active {
-    background: rgb(var(--v-theme-surface));
-    color: rgb(var(--v-theme-primary));
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+.premium-tab.v-tab--selected {
+    background: rgb(var(--v-theme-primary));
+    color: white !important;
+    box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.3);
 }
 
-.premium-glass-modal {
-    background: rgba(var(--v-theme-surface), 0.9) !important;
-    backdrop-filter: blur(24px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+.group {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid rgba(var(--v-border-color), 0.05);
 }
 
-.emoji-btn {
-    opacity: 0.6;
-    transition: all 0.2s;
+.premium-add-card {
+    background: rgba(var(--v-theme-primary), 0.05) !important;
+    transition: all 0.3s ease;
 }
 
-.emoji-btn:hover,
-.emoji-btn.selected-emoji {
-    opacity: 1;
-    transform: scale(1.2);
+.premium-add-card:hover {
+    background: rgba(var(--v-theme-primary), 0.1) !important;
+    transform: translateY(-4px);
 }
 
-.group-on-hover-scale {
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.group:hover .group-on-hover-scale {
-    transform: scale(1.1);
-}
-
-.error-glow {
-    background: rgba(var(--v-theme-error), 0.05);
-    border: 1px solid rgba(var(--v-theme-error), 0.1);
+.text-primary {
+    color: rgb(var(--v-theme-primary)) !important;
 }
 </style>

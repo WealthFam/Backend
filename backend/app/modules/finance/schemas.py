@@ -208,8 +208,8 @@ class ExpenseGroupBase(BaseModel):
     name: str
     description: Optional[str] = None
     is_active: bool = True
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
+    start_date: datetime
+    end_date: datetime
     budget: Optional[float] = 0.0
     icon: Optional[str] = None
 
@@ -233,6 +233,9 @@ class ExpenseGroupRead(ExpenseGroupBase):
 
     class Config:
         from_attributes = True
+
+class BulkLinkTransactionsRequest(BaseModel):
+    transaction_ids: List[str]
 
 class BudgetBase(BaseModel):
     category: str
