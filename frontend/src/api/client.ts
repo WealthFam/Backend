@@ -1,5 +1,11 @@
-import axios, { type AxiosInstance } from 'axios'
+import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
 import { useNotificationStore } from '@/stores/notification'
+
+declare module 'axios' {
+    export interface AxiosRequestConfig {
+        skipNotification?: boolean;
+    }
+}
 
 // Create Axios instance
 const apiClient: AxiosInstance = axios.create({
@@ -44,7 +50,13 @@ apiClient.interceptors.response.use(
             window.location.href = '/login'
             notification.error('Session expired. Please login again.')
         } else if (error.response) {
-            // Generic error handling
+            // Check for skipNotification in the config
+            // Axios 1.x uses error.config, but we also check error.response.config for safety
+            const config = error.config || error.response.config
+            if (config?.skipNotification) {
+                return Promise.reject(error)
+            }
+
             const message = error.response.data?.detail || error.response.data?.message || 'Server error occurred'
             notification.error(message)
         } else {
@@ -357,7 +369,7 @@ export const aiApi = {
     updateSettings: (data: any) => apiClient.post('/ingestion/ai/settings', data),
     testConnection: (content: string) => apiClient.post('/ingestion/ai/test', { content }),
     listModels: (provider: string, apiKey?: string) => apiClient.get('/ingestion/ai/models', { params: { provider, api_key: apiKey } }),
-    generateSummaryInsights: (summary_data: any) => apiClient.post('/ingestion/ai/generate-insights', { summary_data }),
+    generateSummaryInsights: (summary_data: any) => apiClient.post('/ingestion/ai/generate-insights', { summary_data }, { skipNotification: true }),
     getAliases: () => apiClient.get('/ingestion/ai/aliases'),
     createAlias: (pattern: string, alias: string) => apiClient.post('/ingestion/ai/aliases', { pattern, alias }),
     deleteAlias: (id: string) => apiClient.delete(`/ingestion/ai/aliases/${id}`)
