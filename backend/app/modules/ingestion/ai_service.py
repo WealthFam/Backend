@@ -1,17 +1,25 @@
 import json
-from google import genai
-from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
-from backend.app.modules.ingestion import models as ingestion_models
-from google.api_core.exceptions import ResourceExhausted, InvalidArgument, Unauthenticated
-from google.genai.errors import ClientError
+import logging
+import re
 import traceback
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional
+
+from google import genai
+from google.api_core.exceptions import InvalidArgument, ResourceExhausted, Unauthenticated
+from google.genai.errors import ClientError
+from sqlalchemy.orm import Session
+
+from backend.app.modules.ingestion import models as ingestion_models
+
+logger = logging.getLogger(__name__)
+
 
 class AIProvider(ABC):
     @abstractmethod
     def list_models(self, api_key: str) -> List[Dict[str, str]]:
         pass
+
 
 class GeminiProvider:
     def list_models(self, api_key: str) -> List[Dict[str, str]]:
@@ -19,27 +27,26 @@ class GeminiProvider:
             client = genai.Client(api_key=api_key)
             models = []
             for m in client.models.list():
-                # Only include models that support content generation
                 if 'generateContent' in m.supported_actions:
-                    # m.name usually looks like 'models/gemini-1.5-flash'
-                    # We strip 'models/' for internal consistency if needed, 
-                    # but the error message showed it expecting it.
-                    # Let's keep the full name as returned by the API list.
                     models.append({
                         "label": m.display_name or m.name,
                         "value": m.name
                     })
             return models
         except Exception as e:
-            pass
+            logger.error(f"Gemini list_models error: {e}")
             return []
 
     def generate_analysis(self, config: ingestion_models.AIConfiguration, summary_data: str) -> Optional[str]:
         if not config.api_key:
+            logger.error("Gemini generate_analysis: API Key is MISSING in config")
             return None
         
+        logger.info(f"Gemini generate_analysis: API Key is present. Model name: {config.model_name}")
         client = genai.Client(api_key=config.api_key)
         model_id = config.model_name or "gemini-1.5-flash"
+        if not model_id.startswith("models/"):
+            model_id = f"models/{model_id}"
         
         prompt = (
             "You are a professional financial advisor. Analyze the following financial summary data for a household. "
@@ -49,21 +56,27 @@ class GeminiProvider:
         )
         
         try:
+            logger.info(f"Generating Gemini analysis with model: {model_id}")
             response = client.models.generate_content(
                 model=model_id,
                 contents=prompt
             )
             return response.text if response else None
         except Exception as e:
-            pass
-            return None
+            logger.error(f"Gemini generate_analysis error: {e}")
+            logger.error(traceback.format_exc())
+            raise e
 
     def generate_structured_insights(self, config: ingestion_models.AIConfiguration, summary_data: str) -> Optional[List[Dict[str, Any]]]:
         if not config.api_key:
+            logger.error("Gemini generate_structured_insights: API Key is MISSING in config")
             return None
             
+        logger.info(f"Gemini generate_structured_insights: API Key is present. Model name: {config.model_name}")
         client = genai.Client(api_key=config.api_key)
         model_id = config.model_name or "gemini-1.5-flash"
+        if not model_id.startswith("models/"):
+            model_id = f"models/{model_id}"
         
         prompt = (
             "You are a sophisticated personal finance analyst. Analyze the provided budget and spending data, which includes:"
@@ -99,6 +112,7 @@ class GeminiProvider:
                 return json.loads(text[start:end])
         except ClientError as e:
             if e.code == 429 or "RESOURCE_EXHAUSTED" in str(e):
+                logger.warning("Gemini structured insights: Quota exceeded")
                 return [{
                     "id": "ai_quota",
                     "type": "warning",
@@ -107,6 +121,7 @@ class GeminiProvider:
                     "icon": "hourglass_empty"
                 }]
             elif e.code in [400, 401, 403]:
+                logger.error(f"Gemini structured insights: Auth error {e.code}")
                 return [{
                     "id": "ai_auth_error",
                     "type": "danger",
@@ -115,9 +130,10 @@ class GeminiProvider:
                     "icon": "key_off",
                     "action": "settings"
                 }]
-            logger.error(f"AI ClientError: {e}")
-            pass
+            logger.error(f"AI ClientError in structured insights: {e}")
+            logger.error(traceback.format_exc())
         except ResourceExhausted:
+            logger.warning("Gemini structured insights: ResourceExhausted")
             return [{
                 "id": "ai_quota",
                 "type": "warning",
@@ -126,6 +142,7 @@ class GeminiProvider:
                 "icon": "hourglass_empty"
             }]
         except (InvalidArgument, Unauthenticated):
+            logger.error("Gemini structured insights: InvalidArgument or Unauthenticated")
             return [{
                 "id": "ai_auth_error",
                 "type": "danger",
@@ -135,9 +152,8 @@ class GeminiProvider:
                 "action": "settings"
             }]
         except Exception as e:
-            logger.error(f"AI Generation Error: {e}")
-            traceback.print_exc()
-            pass
+            logger.error(f"AI Generation Error in structured insights: {e}")
+            logger.error(traceback.format_exc())
         return None
 
     def generate_loan_advice(self, config: ingestion_models.AIConfiguration, loan_details: str) -> Optional[str]:
@@ -146,6 +162,8 @@ class GeminiProvider:
         
         client = genai.Client(api_key=config.api_key)
         model_id = config.model_name or "gemini-1.5-flash"
+        if not model_id.startswith("models/"):
+            model_id = f"models/{model_id}"
         
         prompt = (
             "You are a sophisticated financial planner. Analyze the following loan details provided by the user. "
@@ -159,13 +177,16 @@ class GeminiProvider:
         )
         
         try:
+            logger.info(f"Generating Gemini loan advice with model: {model_id}")
             response = client.models.generate_content(
                 model=model_id,
                 contents=prompt
             )
             return response.text if response else None
-        except Exception:
-            return None
+        except Exception as e:
+            logger.error(f"Gemini loan advice error: {e}")
+            logger.error(traceback.format_exc())
+            raise e
 
     def generate_loans_overview_advice(self, config: ingestion_models.AIConfiguration, loans_data: str) -> Optional[str]:
         if not config.api_key:
@@ -173,7 +194,9 @@ class GeminiProvider:
         
         client = genai.Client(api_key=config.api_key)
         model_id = config.model_name or "gemini-1.5-flash"
-        
+        if not model_id.startswith("models/"):
+            model_id = f"models/{model_id}"
+            
         prompt = (
             "You are a sophisticated financial planner. Analyze the following list of active loans for a household. "
             "Provide a high-level summary and strategic advice including:\n"
@@ -186,13 +209,16 @@ class GeminiProvider:
         )
         
         try:
+            logger.info(f"Generating Gemini loans overview with model: {model_id}")
             response = client.models.generate_content(
                 model=model_id,
                 contents=prompt
             )
             return response.text if response else None
-        except Exception:
-            return None
+        except Exception as e:
+            logger.error(f"Gemini loans overview advice error: {e}")
+            logger.error(traceback.format_exc())
+            raise e
 
     def batch_clean_merchant_names(self, config: ingestion_models.AIConfiguration, descriptions: List[str]) -> Optional[Dict[str, str]]:
         if not config.api_key or not descriptions:
@@ -200,6 +226,8 @@ class GeminiProvider:
         
         client = genai.Client(api_key=config.api_key)
         model_id = config.model_name or "gemini-1.5-flash"
+        if not model_id.startswith("models/"):
+            model_id = f"models/{model_id}"
         
         prompt = (
             "You are a transaction mapping expert. Given a list of noisy bank transaction descriptions, "
@@ -213,6 +241,7 @@ class GeminiProvider:
         )
         
         try:
+            logger.info(f"Gemini batch cleaning {len(descriptions)} merchants with model: {model_id}")
             response = client.models.generate_content(
                 model=model_id,
                 contents=f"{prompt}\n\nRESPONSE FORMAT: JSON Object."
@@ -225,8 +254,10 @@ class GeminiProvider:
             end = text.rfind('}') + 1
             if start != -1 and end != 0:
                 return json.loads(text[start:end])
-        except Exception:
-            return None
+        except Exception as e:
+            logger.error(f"Gemini batch_clean_merchant_names error: {e}")
+            logger.error(traceback.format_exc())
+            raise e
 
 class AIService:
     _providers = {
@@ -257,7 +288,6 @@ class AIService:
 
     @classmethod
     def list_available_models(cls, db: Session, tenant_id: str, provider_name: str, api_key_override: Optional[str] = None) -> List[Dict[str, str]]:
-        # 1. Get API Key (either from override or DB)
         api_key = api_key_override
         if not api_key:
             config = db.query(ingestion_models.AIConfiguration).filter(
@@ -269,7 +299,6 @@ class AIService:
         if not api_key:
             return []
 
-        # 2. Call Provider
         provider = cls._providers.get(provider_name.lower())
         if not provider:
             return []
@@ -278,7 +307,6 @@ class AIService:
 
     @classmethod
     def generate_summary_insights(cls, db: Session, tenant_id: str, summary_data: Dict[str, Any]) -> Optional[str]:
-        # 1. Get Config
         config = db.query(ingestion_models.AIConfiguration).filter(
             ingestion_models.AIConfiguration.tenant_id == tenant_id,
             ingestion_models.AIConfiguration.is_enabled == True
@@ -287,19 +315,18 @@ class AIService:
         if not config:
             return "AI Insights are currently disabled in settings."
 
-        # 2. Call Provider
         provider = cls._providers.get(config.provider.lower())
         if not provider or not hasattr(provider, 'generate_analysis'):
+            logger.error(f"AIService: Provider {config.provider} not found or invalid")
             return "AI Provider not configured correctly."
 
-        # Convert summary to string for the prompt
         summary_str = json.dumps(summary_data, indent=2, default=str)
         
+        logger.info(f"AIService: Generating AI analysis for tenant {tenant_id}")
         return provider.generate_analysis(config, summary_str)
 
     @classmethod
     def generate_structured_insights(cls, db: Session, tenant_id: str, summary_data: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
-        # 1. Get Config
         config = db.query(ingestion_models.AIConfiguration).filter(
             ingestion_models.AIConfiguration.tenant_id == tenant_id,
             ingestion_models.AIConfiguration.is_enabled == True
@@ -308,19 +335,16 @@ class AIService:
         if not config:
             return None
 
-        # 2. Call Provider
         provider = cls._providers.get(config.provider.lower())
         if not provider or not hasattr(provider, 'generate_structured_insights'):
             return None
 
-        # Convert summary to string for the prompt
         summary_str = json.dumps(summary_data, indent=2, default=str)
         
         return provider.generate_structured_insights(config, summary_str)
 
     @classmethod
     def generate_loan_insights(cls, db: Session, tenant_id: str, loan_data: Dict[str, Any]) -> Optional[str]:
-        # 1. Get Config
         config = db.query(ingestion_models.AIConfiguration).filter(
             ingestion_models.AIConfiguration.tenant_id == tenant_id,
             ingestion_models.AIConfiguration.is_enabled == True
@@ -329,19 +353,16 @@ class AIService:
         if not config:
             return "AI Insights are currently disabled in settings."
 
-        # 2. Call Provider
         provider = cls._providers.get(config.provider.lower())
         if not provider or not hasattr(provider, 'generate_loan_advice'):
             return "AI Provider not configured correctly."
 
-        # Convert summary to string for the prompt
         details_str = json.dumps(loan_data, indent=2, default=str)
         
         return provider.generate_loan_advice(config, details_str)
 
     @classmethod
     def generate_loans_overview_insights(cls, db: Session, tenant_id: str, loans_data: List[Dict[str, Any]]) -> Optional[str]:
-        # 1. Get Config
         config = db.query(ingestion_models.AIConfiguration).filter(
             ingestion_models.AIConfiguration.tenant_id == tenant_id,
             ingestion_models.AIConfiguration.is_enabled == True
@@ -350,12 +371,10 @@ class AIService:
         if not config:
             return "AI Insights are currently disabled in settings."
 
-        # 2. Call Provider
         provider = cls._providers.get(config.provider.lower())
         if not provider or not hasattr(provider, 'generate_loans_overview_advice'):
             return "AI Provider not configured correctly."
 
-        # Convert summary to string for the prompt
         data_str = json.dumps(loans_data, indent=2, default=str)
         
         return provider.generate_loans_overview_advice(config, data_str)
@@ -368,7 +387,6 @@ class AIService:
         """
         if not descriptions: return {}
 
-        # 1. Try AI
         config = db.query(ingestion_models.AIConfiguration).filter(
             ingestion_models.AIConfiguration.tenant_id == tenant_id,
             ingestion_models.AIConfiguration.is_enabled == True
@@ -380,7 +398,6 @@ class AIService:
                 cleaned = provider.batch_clean_merchant_names(config, descriptions)
                 if cleaned: return cleaned
 
-        # 2. Fallback to Heuristics
         results = {}
         for d in descriptions:
             results[d] = cls.heuristic_clean_merchant(d)
@@ -388,7 +405,6 @@ class AIService:
 
     @staticmethod
     def heuristic_clean_merchant(description: str) -> str:
-        import re
         if not description: return "Unknown"
         # Remove UPI/ prefixes
         clean = re.sub(r'^UPI/', '', description, flags=re.I)
