@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
+import axios, { type AxiosInstance } from 'axios'
 import { useNotificationStore } from '@/stores/notification'
 
 declare module 'axios' {
@@ -87,12 +87,18 @@ export interface AccountUpdate {
 
 export interface TransactionUpdate {
     description?: string;
+    recipient?: string;
     category?: string;
     amount?: number;
     date?: string;
+    account_id?: string;
     is_transfer?: boolean;
     to_account_id?: string;
+    linked_transaction_id?: string;
     exclude_from_reports?: boolean;
+    is_emi?: boolean;
+    loan_id?: string;
+    expense_group_id?: string;
 }
 
 export const financeApi = {
