@@ -68,7 +68,7 @@ if [ $? -eq 0 ]; then
         tar -xzf $ARCHIVE_NAME && \
         rm $ARCHIVE_NAME && \
         find . -name '*.sh' -exec sed -i 's/\r$//' {} + && \
-        printf '#!/bin/bash\nnginx\npython run_backend.py\n' > entrypoint.sh && \
+        printf '#!/bin/bash\npython scripts/recover_db.py\npython scripts/vacuum_db.py\nnginx\npython run_backend.py\n' > entrypoint.sh && \
         chmod +x *.sh"
         
         echo "✨ Deployment successful!"
