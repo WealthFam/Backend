@@ -209,7 +209,7 @@
                         <div class="bg-surface-lighten-1 rounded-lg pa-4 border-thin border-dashed">
                             <div class="d-flex flex-wrap ga-2">
                                 <v-chip v-for="(k, idx) in rule.keywords.slice(0, 6)" :key="idx" size="x-small"
-                                    variant="solo" class="font-mono font-weight-black bg-surface elevation-1 border">
+                                    variant="flat" class="font-mono font-weight-black bg-surface elevation-1 border">
                                     {{ k }}
                                 </v-chip>
                                 <v-chip v-if="rule.keywords.length > 6" size="x-small" variant="text"

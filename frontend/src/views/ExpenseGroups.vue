@@ -244,7 +244,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Plus, Trash, Wallet, Pencil, Search, Activity, Archive } from 'lucide-vue-next'
+import { Plus, Wallet, Pencil, Search, Activity, Archive } from 'lucide-vue-next'
 import MainLayout from '@/layouts/MainLayout.vue'
 import ExpenseGroupModal from '@/components/groups/ExpenseGroupModal.vue'
 import { financeApi } from '@/api/client'

@@ -124,10 +124,10 @@
                                                 style="font-size: 0.7rem !important;">
                                                 Financial Target</div>
                                         </div>
-                                        <v-chip v-if="parseFloat(form.budget) > 0" size="x-small"
-                                            :color="selectedTransactionsTotal > parseFloat(form.budget) ? 'error' : 'success'"
+                                        <v-chip v-if="form.budget > 0" size="x-small"
+                                            :color="selectedTransactionsTotal > form.budget ? 'error' : 'success'"
                                             variant="tonal" class="font-weight-black">
-                                            {{ Math.round((selectedTransactionsTotal / parseFloat(form.budget)) * 100)
+                                            {{ Math.round((selectedTransactionsTotal / form.budget) * 100)
                                             }}% Consumed
                                         </v-chip>
                                     </div>
@@ -138,14 +138,14 @@
                                         placeholder="0.00">
                                     </v-text-field>
 
-                                    <div v-if="parseFloat(form.budget) > 0" class="mt-3">
+                                    <div v-if="form.budget > 0" class="mt-3">
                                         <v-progress-linear
-                                            :model-value="(selectedTransactionsTotal / parseFloat(form.budget)) * 100"
-                                            :color="selectedTransactionsTotal > parseFloat(form.budget) ? 'error' : 'primary'"
+                                            :model-value="(selectedTransactionsTotal / form.budget) * 100"
+                                            :color="selectedTransactionsTotal > form.budget ? 'error' : 'primary'"
                                             height="8" rounded="pill" class="mb-1"></v-progress-linear>
                                         <div class="d-flex justify-space-between text-tiny font-weight-bold opacity-70">
                                             <span>{{ formatAmount(selectedTransactionsTotal) }} used</span>
-                                            <span>{{ formatAmount(Math.max(0, parseFloat(form.budget) -
+                                            <span>{{ formatAmount(Math.max(0, form.budget -
                                                 selectedTransactionsTotal)) }} left</span>
                                         </div>
                                     </div>

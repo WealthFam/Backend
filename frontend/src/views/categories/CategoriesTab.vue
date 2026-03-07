@@ -381,7 +381,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useCategoriesStore } from '@/stores/finance/categories'
 import {
     Search, Plus, Pencil, Trash2, Folder, Layers,
-    Download, Upload, AlertCircle, X, ChevronDown,
+    Download, Upload, AlertCircle, X,
     BarChart3, TrendingDown, TrendingUp, Repeat, Activity
 } from 'lucide-vue-next'
 

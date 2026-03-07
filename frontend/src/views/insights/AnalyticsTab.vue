@@ -297,7 +297,7 @@
                                         offset: 4,
                                         color: isDark ? '#ffffff' : '#0f172a',
                                         font: { weight: 'bold', size: 10 },
-                                        formatter: (value: number) => '₹' + Math.abs(value).toLocaleString()
+                                        formatter: (value: number) => formatAmount(value)
                                     }
                                 },
                                 layout: {
@@ -469,6 +469,7 @@ import { localDateString } from '@/utils/time'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 import { financeApi, aiApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
 import BaseChart from '@/components/BaseChart.vue'
@@ -490,6 +491,7 @@ const props = defineProps<Props>()
 
 const store = useFinanceStore()
 const authStore = useAuthStore()
+const settings = useSettingsStore()
 const theme = useTheme()
 const { formatAmount } = useCurrency()
 
@@ -764,7 +766,7 @@ const trendChartData = computed(() => {
         labels: filteredTrendData.value.map((d: any) => trendView.value === 'daily' ? d.label.slice(5) : d.label),
         datasets: [{
             label: selectedTrendCategory.value || 'All Spending',
-            data: filteredTrendData.value.map((d: any) => d.value),
+            data: filteredTrendData.value.map((d: any) => d.value / (settings.maskingFactor || 1)),
             borderColor: color,
             backgroundColor: bgColor,
             fill: true,
@@ -784,7 +786,7 @@ const merchantChartData = computed(() => ({
     labels: analyticsData.value.merchants?.map((m: any) => m.name) || [],
     datasets: [{
         label: 'Spending',
-        data: analyticsData.value.merchants?.map((m: any) => m.value) || [],
+        data: analyticsData.value.merchants?.map((m: any) => m.value / (settings.maskingFactor || 1)) || [],
         backgroundColor: analyticsData.value.merchants?.map((_: any, i: number) => chartPalette[i % chartPalette.length]) || [],
         borderRadius: 6,
         borderSkipped: false,
@@ -794,7 +796,7 @@ const merchantChartData = computed(() => ({
 const categoryChartData = computed(() => ({
     labels: analyticsData.value.categories?.map((c: any) => c.name) || [],
     datasets: [{
-        data: analyticsData.value.categories?.map((c: any) => c.value) || [],
+        data: analyticsData.value.categories?.map((c: any) => c.value / (settings.maskingFactor || 1)) || [],
         backgroundColor: analyticsData.value.categories?.map((_: any, i: number) => chartPalette[i % chartPalette.length]) || [],
         hoverOffset: 12,
         borderWidth: 0
@@ -805,7 +807,7 @@ const forecastChartData = computed(() => ({
     labels: forecastData.value.map((d: any) => d.date.split('T')[0].slice(5)),
     datasets: [{
         label: 'Projected Balance',
-        data: forecastData.value.map((d: any) => d.balance),
+        data: forecastData.value.map((d: any) => d.balance / (settings.maskingFactor || 1)),
         borderColor: 'rgb(var(--v-theme-success))',
         backgroundColor: 'rgba(var(--v-theme-success), 0.1)',
         fill: true,
