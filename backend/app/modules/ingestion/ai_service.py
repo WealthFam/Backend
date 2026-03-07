@@ -49,9 +49,17 @@ class GeminiProvider:
             model_id = f"models/{model_id}"
         
         prompt = (
-            "You are a professional financial advisor. Analyze the following financial summary data for a household. "
-            "Provide 3-4 concise, actionable insights or observations. Focus on spending patterns, budget health, and savings opportunities. "
-            "Keep it friendly and professional. Use bullet points. "
+            "You are a top-tier personal finance analyst. Analyze the following household financial data. "
+            "Provide exactly 3 highly compact, actionable insights without any fluff. "
+            "CRITICAL FORMAT RULES:\n"
+            "- Output ONLY 3 bullet points. Do not include any introductory text or concluding remarks.\n"
+            "- Each bullet point MUST be a maximum of 2 sentences.\n"
+            "- Start each bullet with a bolded 2-4 word micro-headline (e.g., **Category Spike:**).\n"
+            "CRITICAL CONTENT RULES:\n"
+            "- Focus on identifying anomalies, budget adherence trends, and specific savings strategies.\n"
+            "- The user is on a fixed salary. DO NOT mention low income, zero income, budget deficits, or spending exceeding income.\n"
+            "- Base all analysis STRICTLY on the numbers provided for the specific 'timeframe_filter'.\n"
+            "- When formatting currency, ALWAYS use the Indian Rupee symbol (₹) and INR formatting (e.g., ₹10,000).\n"
             f"\n\nFINANCIAL SUMMARY:\n{summary_data}"
         )
         
@@ -80,16 +88,20 @@ class GeminiProvider:
         
         prompt = (
             "You are a sophisticated personal finance analyst. Analyze the provided budget and spending data, which includes:"
-             "- Current Month Breakdown (Categories & Overview)"
-             "- Last Month Overview (Use for trend comparison)"
-             "- Year-to-Date (YTD) Totals (Use for long-term health check)"
+             "- Date Range & Filtering Context (timeframe_filter, account_filtered)"
+             "- Category Breakdown & Trends"
             
             "Identify the 5 most critical financial observations/patterns. Look for:"
-            "1. Month-over-Month Trends (e.g., 'Spending is down 15% vs last month')."
-            "2. Category Anomalies (e.g., 'Dining Out is 2x higher than usual')."
-            "3. Progress vs YTD (e.g., 'You have saved 20% of your income this year')."
-            "4. Budget Adherence (e.g., 'Excellent discipline in Groceries')."
-            "5. Forward-looking risks based on current pace."
+             "1. Pattern Anomalies (e.g., 'Dining Out is 2x higher than usual')."
+             "2. Budget Adherence (e.g., 'Excellent discipline in Groceries')."
+             "3. Spending velocity & pacing based on the timeframe."
+             "4. Forward-looking risks based entirely on the spending rate."
+             "5. Actionable savings opportunities."
+             
+             "CRITICAL RULES:"
+             "- The user is on a fixed salary. ABSOLUTELY DO NOT mention low income, zero income, budget deficits, or spending exceeding income."
+             "- Base all analysis STRICTLY on the numbers provided and respect the 'timeframe_filter' indicated. Do not assume the data is for a full month if the timeframe indicates otherwise."
+             "- ALWAYS format any currency values with the Indian Rupee symbol (₹) and standard INR numbering format (e.g., ₹10,000)."
             
             "Return a JSON list of exactly 5 insights. Each insight must be a JSON object with: "
             "'id' (unique string), 'type' (one of: danger, warning, success, info), 'title' (short, punchy headline), "

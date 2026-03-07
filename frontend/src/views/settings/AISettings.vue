@@ -40,12 +40,12 @@
                                             :items="aiStore.aiModels" item-title="label" item-value="value"
                                             variant="outlined" class="flex-grow-1" hide-details>
                                             <template v-slot:item="{ props, item }">
-                                                <v-list-item v-bind="props" :subtitle="item.raw.detail">
+                                                <v-list-item v-bind="props" :subtitle="(item.raw as any).detail">
                                                     <template v-slot:append>
                                                         <v-chip size="x-small"
-                                                            :color="item.raw.speed === 'Fast' ? 'success' : 'primary'"
+                                                            :color="(item.raw as any).speed === 'Fast' ? 'success' : 'primary'"
                                                             variant="tonal">
-                                                            {{ item.raw.speed }}
+                                                            {{ (item.raw as any).speed }}
                                                         </v-chip>
                                                     </template>
                                                 </v-list-item>

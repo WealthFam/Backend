@@ -17,7 +17,7 @@ export const useAiStore = defineStore('ai', () => {
         has_api_key: false
     })
 
-    const aiModels = ref<{ label: string, value: string }[]>([])
+    const aiModels = ref<{ label: string, value: string, detail?: string, speed?: string }[]>([])
     const isTestingAi = ref(false)
     const aiTestResult = ref<any>(null)
 
