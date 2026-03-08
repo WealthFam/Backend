@@ -14,19 +14,23 @@ class ForegroundServiceWrapper {
         channelId: 'wealthfam_fg_sync',
         channelName: 'WealthFam Guard',
         channelDescription: 'Live spending tracker and SMS sync',
-        channelImportance: NotificationChannelImportance.HIGH,
+        channelImportance: NotificationChannelImportance.HIGH, 
         priority: NotificationPriority.HIGH,
+        playSound: false,
+        onlyAlertOnce: true,
+        visibility: NotificationVisibility.VISIBILITY_PUBLIC,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(600000), // 10 minutes 
+        eventAction: ForegroundTaskEventAction.repeat(600000),
         autoRunOnBoot: true,
         autoRunOnMyPackageReplaced: true,
         allowWakeLock: true,
-        allowWifiLock: false,
+        allowWifiLock: true,
+        stopWithTask: false,
       ),
     );
     debugPrint("ForegroundService: Init complete");
@@ -57,11 +61,13 @@ class ForegroundServiceWrapper {
       if (isRunning) {
         debugPrint("ForegroundService: Restarting existing service");
         await FlutterForegroundTask.restartService();
+        _triggerManualUpdate();
         return true;
       }
 
       debugPrint("ForegroundService: Starting new service");
       final result = await FlutterForegroundTask.startService(
+        serviceTypes: [ForegroundServiceTypes.dataSync],
         notificationTitle: 'WealthFam Guard',
         notificationText: 'Initializing tracker...',
         notificationIcon: const NotificationIcon(
@@ -78,6 +84,7 @@ class ForegroundServiceWrapper {
         debugPrint("ForegroundService: Start failed: ${result.error}");
       } else {
         debugPrint("ForegroundService: Start success");
+        _triggerManualUpdate();
       }
       
       return true;

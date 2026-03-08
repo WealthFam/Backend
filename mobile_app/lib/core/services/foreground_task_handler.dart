@@ -51,6 +51,13 @@ class SyncTaskHandler extends TaskHandler {
 
   @override
   @pragma('vm:entry-point')
+  void onNotificationDismissed() {
+    debugPrint("ForegroundTask: Notification dismissed, re-posting...");
+    _updateNotificationAsync();
+  }
+
+  @override
+  @pragma('vm:entry-point')
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
     debugPrint("ForegroundTask: onDestroy (timeout: $isTimeout)");
   }
