@@ -1,30 +1,28 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.exceptions import HTTPException as StarletteHTTPException
-from sqlalchemy import text
-import asyncio
-import os
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
-from backend.app.core.config import settings
-from backend.app.core.exceptions import http_exception_handler, generic_exception_handler
-from backend.app.core.database import engine, Base, SessionLocal
-from backend.app.core.migration import run_auto_migrations
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-# Routers
+from backend.app.api.v1.router import api_router as api_v1_router
+from backend.app.core.config import settings
+from backend.app.core.database import SessionLocal, Base, engine
+from backend.app.core.exceptions import generic_exception_handler, http_exception_handler
+from backend.app.core.migration import run_auto_migrations
+from backend.app.core.scheduler import start_scheduler, stop_scheduler
+from backend.app.core.websockets import manager
+from backend.app.modules.auth.dependencies import get_current_user_from_token
 from backend.app.modules.auth.router import router as auth_router
 from backend.app.modules.finance.routers import router as finance_router
-from backend.app.modules.ingestion.router import router as ingestion_router
-from backend.app.modules.ingestion.ai_router import router as ai_router
-from backend.app.api.v1.router import api_router as api_v1_router
-from backend.app.modules.vault.router import router as vault_router
-
-# Background Tasks
-from backend.app.modules.ingestion.email_sync import EmailSyncService
 from backend.app.modules.ingestion import models as ingestion_models
-from backend.app.core.scheduler import start_scheduler, stop_scheduler
+from backend.app.modules.ingestion.ai_router import router as ai_router
+from backend.app.modules.ingestion.email_sync import EmailSyncService
+from backend.app.modules.ingestion.router import router as ingestion_router
+from backend.app.modules.vault.router import router as vault_router
 
 def create_application() -> FastAPI:
     application = FastAPI(
@@ -148,7 +146,35 @@ def create_application() -> FastAPI:
 
     return application
 
+
 app = create_application()
+
+@app.websocket("/ws/{tenant_id}")
+async def websocket_endpoint(websocket: WebSocket, tenant_id: str, token: str):
+    """
+    WebSocket endpoint for real-time notifications.
+    Token is passed as a query param for authentication.
+    """
+    try:
+        # Authenticate user from token
+        with SessionLocal() as db:
+            user = get_current_user_from_token(db, token)
+        
+        if not user or str(user.tenant_id) != tenant_id:
+            await websocket.close(code=4003) # Forbidden
+            return
+
+        await manager.connect(websocket, tenant_id)
+        
+        while True:
+            # Keep connection alive
+            await websocket.receive_text()
+            
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, tenant_id)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        manager.disconnect(websocket, tenant_id)
 
 @app.get("/")
 def root():
