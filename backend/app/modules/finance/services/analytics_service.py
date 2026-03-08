@@ -555,13 +555,13 @@ class AnalyticsService:
         from backend.app.modules.finance.services.budget_service import BudgetService
         today = date.today()
         budgets = BudgetService.get_budgets(db, tenant_id, today.year, today.month)
-        overall = next((b for b in budgets if b.category == "OVERALL"), None)
+        overall = next((b for b in budgets if b['category'] == "OVERALL"), None)
         budget_health = None
         if overall:
             budget_health = {
-                "percentage": float(overall.percentage),
-                "limit": float(overall.amount_limit),
-                "spent": float(overall.amount_spent)
+                "percentage": float(overall['percentage']),
+                "limit": float(overall['amount_limit']),
+                "spent": float(overall['spent'])
             }
         
         return {
@@ -788,6 +788,76 @@ class AnalyticsService:
             "month_wise_trend": month_wise_trend,
             "spending_trend": daily_trend
         }
+
+    @staticmethod
+    def get_mobile_dashboard_categories(db: Session, tenant_id: str, target_month: int, target_year: int, user_id: str = None):
+        """
+        Specialized category breakdown for mobile.
+        Groups spending by top-level categories for the selected period.
+        """
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+
+        month_start = timezone.ensure_utc(datetime(target_year, target_month, 1))
+        last_day = calendar.monthrange(target_year, target_month)[1]
+        month_end = timezone.ensure_utc(datetime(target_year, target_month, last_day, 23, 59, 59))
+
+        from backend.app.modules.finance.models import Transaction, Category, Account
+        
+        # 1. Fetch all expense transactions for the month
+        query = db.query(Transaction).filter(
+            Transaction.tenant_id == tenant_id,
+            Transaction.amount < 0,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False,
+            Transaction.date >= month_start,
+            Transaction.date <= month_end
+        )
+
+        if user_id:
+            query = query.join(Account, Transaction.account_id == Account.id)\
+                         .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+
+        txns = query.all()
+        
+        # 2. Get all categories for rollup
+        db_categories = db.query(Category).filter(Category.tenant_id == tenant_id).all()
+        cat_map = {c.name: c for c in db_categories}
+        
+        # 3. Aggregate totals
+        cat_totals = {}
+        for t in txns:
+            cat_name = t.category or "Uncategorized"
+            cat_totals[cat_name] = cat_totals.get(cat_name, 0) + abs(float(t.amount))
+            
+        # 4. Roll up to Top-Level Categories
+        rollup = {}
+        for name, amount in cat_totals.items():
+            cat = cat_map.get(name)
+            # Find root parent
+            root_name = name
+            curr = cat
+            while curr and curr.parent_id:
+                parent = next((c for c in db_categories if c.id == curr.parent_id), None)
+                if parent:
+                    root_name = parent.name
+                    curr = parent
+                else:
+                    break
+            
+            rollup[root_name] = rollup.get(root_name, 0) + amount
+
+        # 5. Format for response (Top 5 + Others)
+        distribution = [{"name": k, "value": round(v, 2)} for k, v in rollup.items()]
+        distribution.sort(key=lambda x: x["value"], reverse=True)
+        
+        if len(distribution) > 5:
+            top_5 = distribution[:5]
+            others_val = sum(d["value"] for d in distribution[5:])
+            top_5.append({"name": "Others", "value": round(others_val, 2)})
+            distribution = top_5
+
+        return {"category_distribution": distribution}
 
     @staticmethod
     def get_balance_forecast(db: Session, tenant_id: str, days: int = 30, account_id: str = None, user_id: str = None):
