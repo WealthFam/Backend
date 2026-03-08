@@ -14,20 +14,22 @@ from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth import security, services as auth_services
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.finance import models as finance_models
+from backend.app.modules.finance import schemas as finance_schemas
 from backend.app.modules.finance.services.analytics_service import AnalyticsService
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.finance.services.transaction_service import TransactionService
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.services import IngestionService
-from backend.app.modules.mobile import schemas
+from backend.app.modules.mobile import schemas as mobile_schemas
+from backend.app.modules.mobile.services.expense_group_service import MobileExpenseGroupService
 
 router = APIRouter(tags=["Mobile"])
 
 
 
-@router.post("/login", response_model=schemas.MobileLoginResponse)
+@router.post("/login", response_model=mobile_schemas.MobileLoginResponse)
 def mobile_login(
-    payload: schemas.MobileLoginRequest,
+    payload: mobile_schemas.MobileLoginRequest,
     db: Session = Depends(get_db)
 ):
     """
@@ -109,9 +111,9 @@ def mobile_login(
         "user_avatar": user.avatar
     }
 
-@router.post("/register-device", response_model=schemas.DeviceResponse)
-def register_device_manually(
-    payload: schemas.DeviceRegister,
+@router.post("/register-device", response_model=mobile_schemas.DeviceResponse)
+def register_device(
+    payload: mobile_schemas.DeviceRegister,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -143,7 +145,7 @@ def register_device_manually(
     db.refresh(device)
     return {"id": str(device.id), "tenant_id": str(device.tenant_id), "device_id": device.device_id, "device_name": device.device_name, "is_approved": device.is_approved, "is_enabled": device.is_enabled, "is_ignored": getattr(device, "is_ignored", False), "last_seen_at": device.last_seen_at or timezone.utcnow(), "created_at": device.created_at or timezone.utcnow(), "user_id": device.user_id, "user_name": current_user.full_name, "user_avatar": current_user.avatar}
 
-@router.get("/status", response_model=schemas.DeviceResponse)
+@router.get("/status", response_model=mobile_schemas.DeviceResponse)
 def check_device_status(
     device_id: str,
     current_user: auth_models.User = Depends(get_current_user),
@@ -184,7 +186,7 @@ def check_device_status(
         "user_avatar": user_avatar
     }
 
-@router.post("/heartbeat", response_model=schemas.DeviceResponse)
+@router.post("/heartbeat", response_model=mobile_schemas.DeviceResponse)
 def device_heartbeat(
     device_id: str,
     current_user: auth_models.User = Depends(get_current_user),
@@ -231,7 +233,7 @@ def device_heartbeat(
 
 # --- Web Dashboard Management Endpoints (also under /mobile namespace) ---
 
-@router.get("/devices", response_model=List[schemas.DeviceResponse])
+@router.get("/devices", response_model=List[mobile_schemas.DeviceResponse])
 def list_devices(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -268,10 +270,10 @@ def list_devices(
         })
     return enriched
 
-@router.patch("/devices/{device_id}/approve", response_model=schemas.DeviceResponse)
+@router.patch("/devices/{device_id}/approve", response_model=mobile_schemas.DeviceResponse)
 def approve_device(
     device_id: str,
-    payload: schemas.ToggleApprovalRequest,
+    payload: mobile_schemas.ToggleApprovalRequest,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -315,10 +317,10 @@ def delete_device(
     db.commit()
     return {"status": "deleted"}
 
-@router.patch("/devices/{device_id}", response_model=schemas.DeviceResponse)
+@router.patch("/devices/{device_id}", response_model=mobile_schemas.DeviceResponse)
 def update_device(
     device_id: str,
-    payload: schemas.DeviceUpdate,
+    payload: mobile_schemas.DeviceUpdate,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -346,7 +348,7 @@ def update_device(
     db.refresh(device)
     return device
 
-@router.patch("/devices/{device_id}/enable")
+@router.patch("/devices/{device_id}/enable", response_model=mobile_schemas.DeviceResponse)
 def toggle_device_enabled(
     device_id: str,
     enabled: bool,
@@ -369,7 +371,7 @@ def toggle_device_enabled(
     db.refresh(device)
     return device
 
-@router.patch("/devices/{device_id}/ignore")
+@router.patch("/devices/{device_id}/ignore", response_model=mobile_schemas.DeviceResponse)
 def toggle_device_ignored(
     device_id: str,
     ignored: bool,
@@ -395,10 +397,10 @@ def toggle_device_ignored(
     db.refresh(device)
     return device
 
-@router.patch("/devices/{device_id}/assign")
+@router.patch("/devices/{device_id}/assign", response_model=mobile_schemas.DeviceResponse)
 def assign_device_user(
     device_id: str,
-    payload: schemas.AssignUserRequest,
+    payload: mobile_schemas.AssignUserRequest,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -421,7 +423,7 @@ def assign_device_user(
     db.refresh(device)
     return device
 
-@router.get("/members", response_model=List[schemas.MemberResponse])
+@router.get("/members", response_model=List[mobile_schemas.MemberResponse])
 def list_family_members(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -459,7 +461,7 @@ def get_target_user_id(current_user, member_id):
         return str(current_user.id)
     return member_id
 
-@router.get("/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
+@router.get("/dashboard/summary", response_model=mobile_schemas.DashboardSummaryResponse)
 def get_dashboard_summary(
     month: Optional[int] = None,
     year: Optional[int] = None,
@@ -506,7 +508,7 @@ def get_dashboard_summary(
         "family_members_count": family_members_count
     }
 
-@router.get("/dashboard/trends", response_model=schemas.DashboardTrendsResponse)
+@router.get("/dashboard/trends", response_model=mobile_schemas.DashboardTrendsResponse)
 def get_dashboard_trends(
     month: Optional[int] = None,
     year: Optional[int] = None,
@@ -523,7 +525,7 @@ def get_dashboard_trends(
         db, str(current_user.tenant_id), target_year, target_month, user_id=target_user_id
     )
 
-@router.get("/dashboard/categories", response_model=schemas.DashboardCategoriesResponse)
+@router.get("/dashboard/categories", response_model=mobile_schemas.DashboardCategoriesResponse)
 def get_dashboard_categories(
     month: Optional[int] = None,
     year: Optional[int] = None,
@@ -539,7 +541,7 @@ def get_dashboard_categories(
         db, str(current_user.tenant_id), target_month, target_year, user_id=target_user_id
     )
 
-@router.get("/dashboard/investments", response_model=schemas.DashboardInvestmentsResponse)
+@router.get("/dashboard/investments", response_model=mobile_schemas.DashboardInvestmentsResponse)
 def get_dashboard_investments(
     member_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
@@ -566,7 +568,7 @@ def get_dashboard_investments(
         }
     }
 
-@router.get("/dashboard", response_model=schemas.MobileDashboardResponse)
+@router.get("/dashboard", response_model=mobile_schemas.MobileDashboardResponse)
 def get_mobile_dashboard(
     month: Optional[int] = None,
     year: Optional[int] = None,
@@ -583,7 +585,7 @@ def get_mobile_dashboard(
     )
     return dashboard
 
-@router.get("/triage", response_model=List[schemas.RecentTransaction])
+@router.get("/triage", response_model=List[mobile_schemas.RecentTransaction])
 def list_mobile_triage(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -617,14 +619,17 @@ def list_mobile_triage(
         })
     return enriched
 
-@router.get("/transactions", response_model=schemas.TransactionResponse)
+@router.get("/transactions", response_model=mobile_schemas.TransactionResponse)
 def list_mobile_transactions(
     page: int = 1,
     page_size: int = 20,
     month: Optional[int] = None,
     year: Optional[int] = None,
     day: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     member_id: Optional[str] = None,
+    expense_group_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -658,16 +663,28 @@ def list_mobile_transactions(
         ).filter(
             or_(finance_models.Account.owner_id == target_user_id, finance_models.Account.owner_id == None)
         )
+
+    if expense_group_id:
+        query = query.filter(finance_models.Transaction.expense_group_id == expense_group_id)
     
     if month and year:
         if day:
-            start_date = datetime(year, month, day)
-            end_date = datetime(year, month, day, 23, 59, 59)
+            s_date = datetime(year, month, day)
+            e_date = datetime(year, month, day, 23, 59, 59)
         else:
-            start_date = datetime(year, month, 1)
+            s_date = datetime(year, month, 1)
             last_day = calendar.monthrange(year, month)[1]
-            end_date = datetime(year, month, last_day, 23, 59, 59)
-        query = query.filter(finance_models.Transaction.date >= start_date, finance_models.Transaction.date <= end_date)
+            e_date = datetime(year, month, last_day, 23, 59, 59)
+        query = query.filter(finance_models.Transaction.date >= s_date, finance_models.Transaction.date <= e_date)
+    elif start_date:
+        try:
+            s_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            query = query.filter(finance_models.Transaction.date >= s_date)
+            if end_date:
+                e_date = datetime.fromisoformat(end_date.replace('Z', '+00:00')).replace(hour=23, minute=59, second=59)
+                query = query.filter(finance_models.Transaction.date <= e_date)
+        except Exception as e:
+            logger.error(f"Error parsing dates: {e}")
         
     total_count = query.count()
     
@@ -689,7 +706,8 @@ def list_mobile_transactions(
             "amount": float(txn.amount),
             "category": txn.category,
             "account_name": txn.account.name if txn.account else "Unknown",
-            "account_owner_name": owner_name
+            "account_owner_name": owner_name,
+            "expense_group_id": txn.expense_group_id
         })
         
     has_next = (page * page_size) < total_count
@@ -706,7 +724,7 @@ class CreateTransactionRequest(BaseModel):
     category: str
     date: str
 
-@router.post("/transactions", response_model=schemas.RecentTransaction)
+@router.post("/transactions", response_model=mobile_schemas.RecentTransaction)
 def create_mobile_transaction(
     payload: CreateTransactionRequest,
     current_user: auth_models.User = Depends(get_current_user),
@@ -750,7 +768,7 @@ def create_mobile_transaction(
         "category": txn.category
     }
 
-@router.get("/funds", response_model=schemas.MobileFundsResponse)
+@router.get("/funds", response_model=mobile_schemas.MobileFundsResponse)
 def get_mobile_funds(
     member_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
@@ -803,7 +821,7 @@ def get_mobile_funds(
         total_invested += inv
         total_current += cur
         
-        clean_holdings.append(schemas.FundHolding(
+        clean_holdings.append(mobile_schemas.FundHolding(
             scheme_code=h['scheme_code'],
             scheme_name=h['scheme_name'],
             units=units,
@@ -828,7 +846,7 @@ def get_mobile_funds(
         "holdings": clean_holdings
     }
 
-@router.get("/categories", response_model=List[schemas.Category])
+@router.get("/categories", response_model=List[mobile_schemas.Category])
 def get_categories(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -836,10 +854,10 @@ def get_categories(
     from backend.app.modules.finance.services.category_service import CategoryService
     return CategoryService.get_categories(db, str(current_user.tenant_id), tree=True)
 
-@router.patch("/transactions/{transaction_id}", response_model=schemas.RecentTransaction)
+@router.patch("/transactions/{transaction_id}", response_model=mobile_schemas.RecentTransaction)
 def update_transaction_category(
     transaction_id: str,
-    payload: schemas.UpdateTransactionCategoryRequest,
+    payload: mobile_schemas.UpdateTransactionCategoryRequest,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -935,6 +953,53 @@ def test_device_notification(
     )
     
     return {"status": "sent", "message": "Test alert created"}
+
+@router.get("/expense-groups", response_model=List[finance_schemas.ExpenseGroupRead])
+def get_mobile_expense_groups(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Check if user is child (filtered view)
+    user_id = str(current_user.id) if current_user.role == "CHILD" else None
+    return MobileExpenseGroupService.get_expense_groups(db, str(current_user.tenant_id), user_id=user_id)
+
+@router.get("/expense-groups/{group_id}", response_model=finance_schemas.ExpenseGroupRead)
+def get_mobile_expense_group(
+    group_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Check if user is child (filtered view)
+    user_id = str(current_user.id) if current_user.role == "CHILD" else None
+    
+    group = MobileExpenseGroupService.get_expense_group(db, group_id, str(current_user.tenant_id), user_id=user_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Expense group not found")
+    return group
+
+@router.post("/expense-groups/{group_id}/link")
+def mobile_link_transactions(
+    group_id: str,
+    payload: finance_schemas.BulkLinkTransactionsRequest,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    count = MobileExpenseGroupService.link_transactions(
+        db, group_id, payload.transaction_ids, str(current_user.tenant_id)
+    )
+    return {"status": "success", "linked_count": count}
+
+@router.post("/expense-groups/{group_id}/unlink")
+def mobile_unlink_transactions(
+    group_id: str,
+    payload: finance_schemas.BulkLinkTransactionsRequest,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    count = MobileExpenseGroupService.unlink_transactions(
+        db, group_id, payload.transaction_ids, str(current_user.tenant_id)
+    )
+    return {"status": "success", "unlinked_count": count}
 
 @router.get("/mobile-summary")
 def get_mobile_summary(
