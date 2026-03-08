@@ -6,7 +6,7 @@ from backend.app.core.timezone import UTCDateTime
 from backend.app.core import timezone
 
 class Alert(Base):
-    __tablename__ = "mobile_alerts"
+    __tablename__ = "alerts"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
