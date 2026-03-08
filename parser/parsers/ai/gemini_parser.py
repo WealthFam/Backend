@@ -100,14 +100,22 @@ class GeminiParser:
                 contents=prompt,
                 config=config
             )
-            text = response.text.strip()
-            # Clean potential markdown code blocks
-            if text.startswith("```json"):
-                text = text[7:-3]
-            elif text.startswith("```"):
-                text = text[3:-3]
-            
-            data = json.loads(text)
+            raw_text = response.text.strip()
+
+            # More robust JSON cleaning
+            cleaned_text = raw_text
+            if "```json" in cleaned_text:
+                cleaned_text = cleaned_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in cleaned_text:
+                cleaned_text = cleaned_text.split("```")[1].split("```")[0].strip()
+
+            try:
+                data = json.loads(cleaned_text)
+            except json.JSONDecodeError:
+                # Fallback: escape single backslashes in regex/strings
+                import re
+                escaped_text = re.sub(r'(?<!\\)\\(?!["\\/bfnrtu])', r'\\\\', cleaned_text)
+                data = json.loads(escaped_text)
             if not data: return None
             
             # Robust Date Parsing
@@ -228,7 +236,25 @@ class GeminiParser:
                 contents=prompt,
                 config=config
             )
-            data = json.loads(response.text.strip().replace("```json", "").replace("```", ""))
+            raw_text = response.text.strip()
+            
+            # More robust JSON cleaning
+            cleaned_text = raw_text
+            if "```json" in cleaned_text:
+                cleaned_text = cleaned_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in cleaned_text:
+                cleaned_text = cleaned_text.split("```")[1].split("```")[0].strip()
+            
+            # Handle potential raw bit-escape issues in AI-generated regex (e.g. \d -> \\d)
+            # This is tricky with raw json.loads, but we try to decode it safely.
+            try:
+                data = json.loads(cleaned_text)
+            except json.JSONDecodeError:
+                # Fallback: if it's just invalid \ escapes in a regex, let's try to escape them
+                import re
+                escaped_text = re.sub(r'(?<!\\)\\(?!["\\/bfnrtu])', r'\\\\', cleaned_text)
+                data = json.loads(escaped_text)
+                
             return data
         except errors.ClientError as e:
             status_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
