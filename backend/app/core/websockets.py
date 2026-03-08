@@ -15,6 +15,9 @@ class ConnectionManager:
             self.active_connections[tenant_id] = set()
         self.active_connections[tenant_id].add(websocket)
         logger.info(f"WebSocket connected for tenant {tenant_id}. Total connections for tenant: {len(self.active_connections[tenant_id])}")
+        
+        # Send initial confirmation message to trigger Flutter's isConnected state
+        await websocket.send_json({"type": "CONNECTION_ESTABLISHED", "status": "success"})
 
     def disconnect(self, websocket: WebSocket, tenant_id: str):
         if tenant_id in self.active_connections:

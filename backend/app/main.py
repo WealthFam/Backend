@@ -149,21 +149,31 @@ def create_application() -> FastAPI:
 
 app = create_application()
 
+from fastapi import Query
+
 @app.websocket("/ws/{tenant_id}")
-async def websocket_endpoint(websocket: WebSocket, tenant_id: str, token: str):
+async def websocket_endpoint(websocket: WebSocket, tenant_id: str, token: str = Query(...)):
     """
     WebSocket endpoint for real-time notifications.
     Token is passed as a query param for authentication.
     """
+    logger.info(f"Incoming WS connection attempt: tenant_id={tenant_id}, token_length={len(token) if token else 0}")
     try:
         # Authenticate user from token
         with SessionLocal() as db:
             user = get_current_user_from_token(db, token)
         
-        if not user or str(user.tenant_id) != tenant_id:
+        if not user:
+            logger.warning(f"WebSocket auth failed: Invalid or expired token for tenant {tenant_id}.")
+            await websocket.close(code=4008) # Policy Violation / Auth Failed
+            return
+            
+        if str(user.tenant_id) != tenant_id:
+            logger.warning(f"WebSocket auth failed: User {user.email} (tenant {user.tenant_id}) attempted to connect to tenant {tenant_id}.")
             await websocket.close(code=4003) # Forbidden
             return
 
+        logger.info(f"WebSocket authenticated: User {user.email} for tenant {tenant_id}")
         await manager.connect(websocket, tenant_id)
         
         while True:
@@ -173,8 +183,12 @@ async def websocket_endpoint(websocket: WebSocket, tenant_id: str, token: str):
     except WebSocketDisconnect:
         manager.disconnect(websocket, tenant_id)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        manager.disconnect(websocket, tenant_id)
+        logger.error(f"WebSocket fatal error for tenant {tenant_id}: {str(e)}")
+        # Only try to disconnect if it was already connected
+        try:
+            manager.disconnect(websocket, tenant_id)
+        except:
+            pass
 
 @app.get("/")
 def root():
