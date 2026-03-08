@@ -13,6 +13,7 @@ import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/core/services/notification_service.dart';
 
 import 'package:mobile_app/core/services/foreground_service.dart';
+import 'package:mobile_app/core/utils/logger.dart';
 
 extension PlatformCheck on TargetPlatform {
   bool get shouldUseTelephony => this == TargetPlatform.android;
@@ -23,7 +24,7 @@ extension PlatformCheck on TargetPlatform {
 void backgroundMessageHandler(SmsMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (message.body == null || message.address == null) return;
-  debugPrint("Background SMS: ${message.body}");
+  AppLogger.info("Background SMS: ${message.body}");
   
   try {
     // 1. Initialize Prefs
@@ -201,7 +202,7 @@ class SmsService extends ChangeNotifier {
     _loadDebugLogs();
     
     if (kIsWeb || !defaultTargetPlatform.shouldUseTelephony) {
-       debugPrint("SMS features disabled: Not on Android.");
+       AppLogger.info("SMS features disabled: Not on Android.");
        return;
     }
 
@@ -319,7 +320,7 @@ class SmsService extends ChangeNotifier {
   }
 
   Future<void> _handleSms(SmsMessage message) async {
-    debugPrint("Foreground SMS Received: ${message.address} - ${message.body}");
+    AppLogger.info("Foreground SMS Received: ${message.address}");
     if (message.body == null || message.address == null) return;
     
     // Show notification for visibility
@@ -348,7 +349,7 @@ class SmsService extends ChangeNotifier {
       _updateSyncStats(true);
       return res;
     } catch (e) {
-      debugPrint("Failed to send SMS to backend: $e");
+      AppLogger.error("Failed to send SMS to backend", e);
       _updateSyncStats(false);
       // Queue for offline Retry (Step 6 requirement)
       _queueForRetry(address, body, date);
@@ -517,7 +518,7 @@ class SmsService extends ChangeNotifier {
       _lastSyncStatus = "Success";
     } catch (e) {
       _lastSyncStatus = "Failed";
-      debugPrint("Manual Sync Error: $e");
+      AppLogger.error("Manual Sync Error", e);
     } finally {
       _isSyncing = false;
       _lastSyncTime = DateTime.now();

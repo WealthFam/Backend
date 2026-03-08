@@ -15,10 +15,15 @@ import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/modules/home/services/goals_service.dart';
 import 'package:mobile_app/modules/vault/services/vault_service.dart';
 import 'package:mobile_app/core/services/foreground_service.dart';
+import 'package:mobile_app/core/services/socket_service.dart';
+import 'package:mobile_app/core/utils/logger.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Set default logging level to reduce noise
+  AppLogger.minLevel = LogLevel.warning;
   
   // Initialize communication port for Foreground Task (v9.0+)
   FlutterForegroundTask.initCommunicationPort();
@@ -36,15 +41,32 @@ void main() async {
   final sms = SmsService(config, auth);
   await sms.init(); 
 
+  final notifications = NotificationService();
+  
   // 2. Secondary Services (Non-blocking)
-  _initSecondaryServices();
+  _initSecondaryServices(notifications);
 
   final dashboard = DashboardService(config, auth);
   final funds = FundsService(config, auth);
   final categories = CategoriesService(config, auth);
   final vault = VaultService(config, auth);
   final goals = GoalsService(config, auth);
+  final socket = SocketService(config, auth, notifications, dashboard);
   
+  // Connect socket if already authenticated
+  if (auth.isAuthenticated) {
+    socket.connect();
+  }
+  
+  // Listen for auth changes to connect/disconnect socket
+  auth.addListener(() {
+    if (auth.isAuthenticated) {
+      if (!socket.isConnected) socket.connect();
+    } else {
+      socket.disconnect();
+    }
+  });
+
   // Listen for data from Foreground Task Isolate
   FlutterForegroundTask.addTaskDataCallback((data) {
     if (data is Map && data['type'] == 'masking_update') {
@@ -62,13 +84,15 @@ void main() async {
     categories: categories,
     vault: vault,
     goals: goals,
+    socket: socket,
+    notifications: notifications,
   ));
 }
 
 /// Start background services without blocking main app startup
-Future<void> _initSecondaryServices() async {
+Future<void> _initSecondaryServices(NotificationService notifications) async {
   try {
-    await NotificationService().init().timeout(const Duration(seconds: 5));
+    await notifications.init().timeout(const Duration(seconds: 5));
     await ForegroundServiceWrapper.init().timeout(const Duration(seconds: 5));
     debugPrint("Secondary services (Notifications, Foreground) initialized.");
   } catch (e) {
@@ -86,6 +110,8 @@ class MyApp extends StatelessWidget {
   final CategoriesService categories;
   final VaultService vault;
   final GoalsService goals;
+  final SocketService socket;
+  final NotificationService notifications;
 
   const MyApp({
     super.key, 
@@ -98,6 +124,8 @@ class MyApp extends StatelessWidget {
     required this.categories,
     required this.vault,
     required this.goals,
+    required this.socket,
+    required this.notifications,
   });
 
   @override
@@ -113,6 +141,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: categories),
         ChangeNotifierProvider.value(value: vault),
         ChangeNotifierProvider.value(value: goals),
+        ChangeNotifierProvider.value(value: socket),
+        Provider.value(value: notifications),
       ],
       child: Consumer<AuthService>(
         builder: (context, auth, _) {

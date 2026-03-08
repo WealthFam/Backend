@@ -11,6 +11,7 @@ import 'package:mobile_app/modules/home/screens/mutual_funds_screen.dart';
 import 'package:mobile_app/modules/ingestion/screens/triage_screen.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/modules/home/models/transaction_category.dart';
+import 'package:mobile_app/core/services/socket_service.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -104,7 +105,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: _buildSummarySection(context, dashboard.data!.summary, formatAmount),
                       )
                     : null,
-                  actions: [],
+                  actions: [
+                    Consumer<SocketService>(
+                      builder: (context, socket, _) => Tooltip(
+                        message: socket.isConnected ? 'Real-time Connected' : 'Real-time Disconnected',
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: Icon(
+                            socket.isConnected ? Icons.bolt : Icons.bolt_outlined,
+                            color: socket.isConnected ? AppTheme.success : AppTheme.danger,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 if (dashboard.error != null)
                   SliverToBoxAdapter(
