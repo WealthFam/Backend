@@ -1,15 +1,17 @@
+import asyncio
+import logging
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
+
+from backend.app.core import timezone
 from backend.app.core.database import SessionLocal
 from backend.app.modules.finance import models
-from backend.app.modules.finance.services.recurring_service import RecurringService
-from backend.app.core import timezone
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
-from backend.app.modules.ingestion.email_sync import EmailSyncService
+from backend.app.modules.finance.services.recurring_service import RecurringService
 from backend.app.modules.ingestion import models as ingestion_models
-import logging
-import asyncio
+from backend.app.modules.ingestion.email_sync import EmailSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +116,43 @@ def mutual_fund_sync_job():
     finally:
         db.close()
 
+def pulse_check_job():
+    """
+    Periodic job to check for goal milestones and budget alerts for all tenants.
+    Runs every 6 hours.
+    """
+    logger.info("[Pulse] Starting scheduled milestone/budget check...")
+    db: Session = SessionLocal()
+    try:
+        from backend.app.modules.auth.models import Tenant
+        from backend.app.modules.notifications import NotificationService
+        tenants = db.query(Tenant).all()
+        for t in tenants:
+            try:
+                NotificationService.check_all_alerts(db, t.id)
+            except Exception as e:
+                logger.error(f"[Pulse] Error for tenant {t.id}: {e}")
+    finally:
+        db.close()
+
+def daily_summary_job():
+    """
+    Sends a summary of today's activities at 11:00 PM IST (17:30 UTC).
+    """
+    logger.info("[Summary] Starting daily summary broadcast...")
+    db: Session = SessionLocal()
+    try:
+        from backend.app.modules.auth.models import Tenant
+        from backend.app.modules.notifications import NotificationService
+        tenants = db.query(Tenant).all()
+        for t in tenants:
+            try:
+                NotificationService.send_daily_summary(db, t.id)
+            except Exception as e:
+                logger.error(f"[Summary] Error for tenant {t.id}: {e}")
+    finally:
+        db.close()
+
 def start_scheduler():
     # Run daily at 00:01 UTC (or server time)
     trigger = CronTrigger(hour=0, minute=1)
@@ -128,6 +167,12 @@ def start_scheduler():
     
     # Run mutual fund sync every 12 hours
     scheduler.add_job(mutual_fund_sync_job, 'interval', hours=12, id="mutual_fund_sync_job", replace_existing=True)
+    
+    # NEW: Run pulse check every 6 hours
+    scheduler.add_job(pulse_check_job, 'interval', hours=1, id="pulse_check_job", replace_existing=True)
+    
+    # NEW: Run daily summary at 11:00 PM IST (17:30 UTC)
+    scheduler.add_job(daily_summary_job, CronTrigger(hour=17, minute=30), id="daily_summary_job", replace_existing=True)
     
     scheduler.start()
     logger.info("APScheduler started.")
