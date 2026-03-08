@@ -29,66 +29,8 @@ void callbackDispatcher() {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final rawToday = (data['today_total'] ?? 0.0).toDouble();
-        final rawMonth = (data['monthly_total'] ?? 0.0).toDouble();
-        
-        final today = (rawToday / maskingFactor).toStringAsFixed(0);
-        final month = (rawMonth / maskingFactor).toStringAsFixed(0);
-        final symbol = maskingFactor > 1.0 ? '?' : '₹';
-        
-        final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
-        
-        String contentTitle = 'WealthFam';
-        String contentText = 'Today: ₹$today  |  Month: ₹$month';
-        String bigContentTitle = '💰 Your Spending Summary';
-        String bigText = '━━━━━━━━━━━━━━━━━━━━━\n📊 Today\'s Expenses\n₹ $today\n\n📈 This Month\n₹ $month\n━━━━━━━━━━━━━━━━━━━━━';
-        
-        if (data['latest_transaction'] != null) {
-          final latest = data['latest_transaction'];
-          final amount = (latest['amount'] ?? 0.0).toStringAsFixed(0);
-          final desc = latest['description'] ?? 'Transaction';
-          final time = latest['time'] ?? '';
-          
-          contentText = 'Latest: ₹$amount - $desc';
-          bigText = '━━━━━━━━━━━━━━━━━━━━━\n🔔 Latest Transaction\n₹ $amount\n$desc\n🕐 $time\n\n📊 Today\'s Total\n₹ $today\n\n📈 Monthly Total\n₹ $month\n━━━━━━━━━━━━━━━━━━━━━';
-        }
-        
-        await notifications.show(
-          999,
-          contentTitle,
-          contentText,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              'wealthfam_persistent',
-              'WealthFam Live Tracker',
-              channelDescription: 'Real-time expense monitoring',
-              importance: Importance.low,
-              priority: Priority.high,
-              ongoing: true,
-              autoCancel: false,
-              showWhen: true,
-              when: DateTime.now().millisecondsSinceEpoch,
-              usesChronometer: false,
-              icon: 'ic_stat_rupee',
-              largeIcon: const DrawableResourceAndroidBitmap('ic_launcher'),
-              color: const Color(0xFF1E88E5), // Material Blue 600
-              colorized: true,
-              styleInformation: BigTextStyleInformation(
-                bigText,
-                contentTitle: bigContentTitle,
-                summaryText: 'Tap to view details',
-                htmlFormatBigText: false,
-                htmlFormatContentTitle: false,
-                htmlFormatSummaryText: false,
-              ),
-              category: AndroidNotificationCategory.status,
-              visibility: NotificationVisibility.public,
-            ),
-          ),
-        );
-        
-        debugPrint("WorkManager: Notification updated");
+        debugPrint("WorkManager: Data fetched for background refresh");
+        // We don't show ID 999 here anymore. The Foreground Service handles it.
       }
     } catch (e) {
       debugPrint("WorkManager: Error - $e");
@@ -124,24 +66,7 @@ class NotificationService {
       await prefs.setString('backend_url', url);
       await prefs.setString('access_token', token);
       
-      // Show initial notification
-      await _notifications.show(
-        999,
-        'Wealth Fam Monitoring',
-        'Initializing background sync...',
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'wealthfam_persistent',
-            'WealthFam Sync',
-            channelDescription: 'Live transaction monitoring',
-            importance: Importance.low,
-            priority: Priority.low,
-            ongoing: true,
-            autoCancel: false,
-            showWhen: false,
-          ),
-        ),
-      );
+      debugPrint("NotificationService: Sync channel initialized");
       
       // Register periodic task - runs every 15 minutes
       await Workmanager().registerPeriodicTask(
@@ -177,10 +102,11 @@ class NotificationService {
   }
 
   /// Show a one-off notification (e.g. for SMS received events)
-  Future<void> showNotification({required String title, required String body, int id = 100}) async {
+  Future<void> showNotification({required String title, required String body, int? id}) async {
     try {
+      final int notificationId = id ?? DateTime.now().millisecondsSinceEpoch % 2147483647;
       await _notifications.show(
-        id,
+        notificationId,
         title,
         body,
         const NotificationDetails(
@@ -188,8 +114,9 @@ class NotificationService {
             'wealthfam_sms',
             'WealthFam SMS Sync',
             channelDescription: 'Notifications for SMS sync events',
-            importance: Importance.defaultImportance,
-            priority: Priority.defaultPriority,
+            importance: Importance.max,
+            priority: Priority.max,
+            playSound: true,
             autoCancel: true,
           ),
         ),
@@ -209,60 +136,7 @@ class NotificationService {
 
       debugPrint("NotificationService: Response status=${response.statusCode}");
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        debugPrint("NotificationService: Received data: $data");
-        final today = (data['today_total'] ?? 0.0).toStringAsFixed(0);
-        final month = (data['monthly_total'] ?? 0.0).toStringAsFixed(0);
-        
-        String contentTitle = 'WealthFam';
-        String contentText = 'Today: ₹$today  |  Month: ₹$month';
-        String bigContentTitle = '💰 Your Spending Summary';
-        String bigText = '━━━━━━━━━━━━━━━━━━━━━\n📊 Today\'s Expenses\n₹ $today\n\n📈 This Month\n₹ $month\n━━━━━━━━━━━━━━━━━━━━━';
-        
-        if (data['latest_transaction'] != null) {
-          final latest = data['latest_transaction'];
-          final amount = (latest['amount'] ?? 0.0).toStringAsFixed(0);
-          final desc = latest['description'] ?? 'Transaction';
-          final time = latest['time'] ?? '';
-          
-          contentText = 'Latest: ₹$amount - $desc';
-          bigText = '━━━━━━━━━━━━━━━━━━━━━\n🔔 Latest Transaction\n₹ $amount\n$desc\n🕐 $time\n\n📊 Today\'s Total\n₹ $today\n\n📈 Monthly Total\n₹ $month\n━━━━━━━━━━━━━━━━━━━━━';
-        }
-
-        await _notifications.show(
-          999,
-          contentTitle,
-          contentText,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              'wealthfam_persistent',
-              'WealthFam Live Tracker',
-              channelDescription: 'Real-time expense monitoring',
-              importance: Importance.low,
-              priority: Priority.high,
-              ongoing: true,
-              autoCancel: false,
-              showWhen: true,
-              when: DateTime.now().millisecondsSinceEpoch,
-              usesChronometer: false,
-              icon: 'ic_stat_rupee',
-              largeIcon: const DrawableResourceAndroidBitmap('ic_launcher'),
-              color: const Color(0xFF1E88E5), // Material Blue 600
-              colorized: true,
-              styleInformation: BigTextStyleInformation(
-                bigText,
-                contentTitle: bigContentTitle,
-                summaryText: 'Tap to view details',
-                htmlFormatBigText: false,
-                htmlFormatContentTitle: false,
-                htmlFormatSummaryText: false,
-              ),
-              category: AndroidNotificationCategory.status,
-              visibility: NotificationVisibility.public,
-            ),
-          ),
-        );
-        debugPrint("NotificationService: Notification updated with live data");
+        debugPrint("NotificationService: Manual update successful (data will follow via Foreground task)");
       }
     } catch (e) {
       debugPrint("NotificationService: Update failed - $e");

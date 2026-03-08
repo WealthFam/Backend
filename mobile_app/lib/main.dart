@@ -18,6 +18,7 @@ import 'package:mobile_app/core/services/foreground_service.dart';
 import 'package:mobile_app/core/services/socket_service.dart';
 import 'package:mobile_app/core/utils/logger.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,6 +57,15 @@ void main() async {
   // Connect socket if already authenticated
   if (auth.isAuthenticated) {
     socket.connect();
+    
+    // Explicitly start foreground service ASAP if enabled
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('fg_service_enabled') ?? false) {
+       ForegroundServiceWrapper.start(
+         url: config.backendUrl,
+         token: auth.accessToken!,
+       );
+    }
   }
   
   // Listen for auth changes to connect/disconnect socket
