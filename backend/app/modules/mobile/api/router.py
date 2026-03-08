@@ -1,23 +1,25 @@
-from datetime import datetime, timedelta, date
 import calendar
 import uuid
+from datetime import date, datetime, timedelta
 from typing import List, Optional
-from pydantic import BaseModel
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
+
+from backend.app.core import timezone
 from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth import security, services as auth_services
 from backend.app.modules.auth.dependencies import get_current_user
-from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.finance import models as finance_models
-from backend.app.core import timezone
-from backend.app.modules.ingestion.services import IngestionService
-from backend.app.modules.mobile import schemas
 from backend.app.modules.finance.services.analytics_service import AnalyticsService
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.finance.services.transaction_service import TransactionService
-from sqlalchemy import func, or_
+from backend.app.modules.ingestion import models as ingestion_models
+from backend.app.modules.ingestion.services import IngestionService
+from backend.app.modules.mobile import schemas
 
 router = APIRouter(tags=["Mobile"])
 
@@ -879,7 +881,7 @@ def update_transaction_category(
 from backend.app.modules.notifications.schemas import AlertSchema
 
 @router.get("/alerts", response_model=List[AlertSchema])
-def get_mobile_alerts(
+def get_pulse_alerts(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
