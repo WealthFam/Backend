@@ -1,9 +1,11 @@
+import logging
 from datetime import datetime
 from typing import List, Optional
+
 from sqlalchemy.orm import Session
-import logging
-from backend.app.modules.finance import models, schemas
+
 from backend.app.core import timezone
+from backend.app.modules.finance import models, schemas
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,19 @@ class AccountService:
             db.add(snapshot)
         db.commit()
         db.refresh(db_account)
+        
+        # Trigger Notification
+        try:
+            from backend.app.modules.notifications.services import NotificationService
+            NotificationService.notify_new_account(
+                db, 
+                tenant_id, 
+                db_account.name, 
+                db_account.type.value if hasattr(db_account.type, 'value') else db_account.type
+            )
+        except Exception as e:
+            logger.error(f"Failed to trigger new account notification: {e}")
+
         return db_account
 
     @staticmethod
