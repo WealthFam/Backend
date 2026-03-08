@@ -551,10 +551,24 @@ class AnalyticsService:
                 "time": latest_txn.date.strftime("%H:%M") if latest_txn.date else ""
             }
         
+        # 4. Budget Health
+        from backend.app.modules.finance.services.budget_service import BudgetService
+        today = date.today()
+        budgets = BudgetService.get_budgets(db, tenant_id, today.year, today.month)
+        overall = next((b for b in budgets if b.category == "OVERALL"), None)
+        budget_health = None
+        if overall:
+            budget_health = {
+                "percentage": float(overall.percentage),
+                "limit": float(overall.amount_limit),
+                "spent": float(overall.amount_spent)
+            }
+        
         return {
             "today_total": today_total,
             "monthly_total": monthly_total,
-            "latest_transaction": latest_transaction
+            "latest_transaction": latest_transaction,
+            "budget_health": budget_health
         }
 
     @staticmethod
