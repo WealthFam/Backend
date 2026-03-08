@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/home/services/goals_service.dart';
 import 'package:mobile_app/core/widgets/app_shell.dart';
+import 'package:mobile_app/modules/home/screens/expense_group_details_screen.dart';
 
 class ExpenseGroupsScreen extends StatefulWidget {
   const ExpenseGroupsScreen({super.key});
@@ -48,6 +50,7 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
     final budgetController = TextEditingController();
+    final iconController = TextEditingController(text: '📁');
 
     showDialog(
       context: context,
@@ -57,6 +60,13 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              TextField(
+                controller: iconController, 
+                decoration: const InputDecoration(labelText: 'Icon (Emoji)', hintText: 'e.g. 🎒, 🏠'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 24),
+              ),
+              const SizedBox(height: 16),
               TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Group Name', hintText: 'e.g. Goa Trip 2024')),
               const SizedBox(height: 8),
               TextField(controller: descriptionController, decoration: const InputDecoration(labelText: 'Description')),
@@ -77,6 +87,7 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
               final success = await service.createExpenseGroup({
                 'name': nameController.text,
                 'description': descriptionController.text,
+                'icon': iconController.text,
                 'budget': double.tryParse(budgetController.text) ?? 0.0,
                 'start_date': DateTime.now().toIso8601String(),
                 'end_date': DateTime.now().add(const Duration(days: 30)).toIso8601String(),
@@ -122,6 +133,7 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
         final spent = (group['total_spend'] ?? 0.0).toDouble();
         final progress = budget > 0 ? (spent / budget).clamp(0.0, 1.0) : 0.0;
         final isOverBudget = spent > budget && budget > 0;
+        final isActive = group['is_active'] ?? true;
 
         return Card(
           elevation: 0,
@@ -132,81 +144,124 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
           ),
           child: InkWell(
             onTap: () {
-               // Detail view could be implemented later
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ExpenseGroupDetailsScreen(group: group),
+                ),
+              );
             },
             onLongPress: () => _showDeleteConfirm(context, group, service),
             borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.group_work, color: AppTheme.primary, size: 24),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              group['name'] ?? 'Unnamed Group',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                            ),
-                            if (group['description'] != null && group['description'].isNotEmpty)
-                              Text(
-                                group['description'],
-                                style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right, color: Colors.grey),
-                    ],
-                  ),
-                  if (budget > 0) ...[
-                    const SizedBox(height: 20),
+            child: Opacity(
+              opacity: isActive ? 1.0 : 0.6,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Spending Progress', style: TextStyle(color: Colors.grey[700], fontSize: 13, fontWeight: FontWeight.w500)),
-                        Text(
-                          '₹${spent.toStringAsFixed(0)} / ₹${budget.toStringAsFixed(0)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: isOverBudget ? AppTheme.danger : AppTheme.primary,
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: group['icon'] != null && group['icon'].isNotEmpty
+                              ? Text(group['icon'], style: const TextStyle(fontSize: 24))
+                              : const Icon(Icons.group_work, color: AppTheme.primary, size: 24),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                  child: Text(
+                                    group['name'] ?? 'Unnamed Group',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                                  ),
+                                ),
+                                  if (!isActive)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[200],
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Text(
+                                        'Inactive',
+                                        style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                                if (group['description'] != null && group['description'].isNotEmpty)
+                                  Text(
+                                    group['description'],
+                                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                                  ),
+                                if (group['start_date'] != null || group['end_date'] != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4, bottom: 4),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.calendar_today_outlined, size: 11, color: Colors.grey[400]),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${group['start_date'] != null ? DateFormat('MMM d, yyyy').format(DateTime.parse(group['start_date'])) : "..."}'
+                                          ' - '
+                                          '${group['end_date'] != null ? DateFormat('MMM d, yyyy').format(DateTime.parse(group['end_date'])) : "..."}',
+                                          style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w400),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                            ],
                           ),
                         ),
+                        const Icon(Icons.chevron_right, color: Colors.grey),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 8,
-                        backgroundColor: (isOverBudget ? AppTheme.danger : AppTheme.primary).withOpacity(0.1),
-                        valueColor: AlwaysStoppedAnimation<Color>(isOverBudget ? AppTheme.danger : AppTheme.primary),
+                    if (budget > 0) ...[
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Spending Progress', style: TextStyle(color: Colors.grey[700], fontSize: 13, fontWeight: FontWeight.w500)),
+                          Text(
+                            '₹${spent.toStringAsFixed(0)} / ₹${budget.toStringAsFixed(0)}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isOverBudget ? AppTheme.danger : AppTheme.primary,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ] else ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(Icons.wallet, size: 14, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text('Total Spent: ₹${spent.toStringAsFixed(0)}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                      ],
-                    ),
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 8,
+                          backgroundColor: (isOverBudget ? AppTheme.danger : AppTheme.primary).withOpacity(0.1),
+                          valueColor: AlwaysStoppedAnimation<Color>(isOverBudget ? AppTheme.danger : AppTheme.primary),
+                        ),
+                      ),
+                    ] else ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.wallet, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text('Total Spent: ₹${spent.toStringAsFixed(0)}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                        ],
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),

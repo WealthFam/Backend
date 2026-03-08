@@ -55,7 +55,7 @@ class GoalsService extends ChangeNotifier {
 
     try {
       final response = await http.get(
-        Uri.parse('${_config.backendUrl}/api/v1/finance/expense-groups'),
+        Uri.parse('${_config.backendUrl}/api/v1/mobile/expense-groups'),
         headers: {'Authorization': 'Bearer ${_auth.accessToken}'},
       );
       if (response.statusCode == 200) {
