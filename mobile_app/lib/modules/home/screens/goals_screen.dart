@@ -29,23 +29,26 @@ class _GoalsScreenState extends State<GoalsScreen> {
       appBar: AppBar(
         leading: const DrawerMenuButton(),
         title: const Text('Investment Goals'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              goalsService.fetchGoals();
-            },
-          ),
-        ],
       ),
-      body: goalsService.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : goalsService.error != null
-              ? Center(child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Text(goalsService.error!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
-                ))
-              : _buildInvestmentGoalsList(goalsService, goalsService.goals),
+      body: RefreshIndicator(
+        onRefresh: () => goalsService.fetchGoals(),
+        child: goalsService.isLoading && goalsService.goals.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : goalsService.error != null
+                ? SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.7,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(goalsService.error!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+                        ),
+                      ),
+                    ),
+                  )
+                : _buildInvestmentGoalsList(goalsService, goalsService.goals),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddGoalDialog(context),
         child: const Icon(Icons.add),
@@ -95,15 +98,21 @@ class _GoalsScreenState extends State<GoalsScreen> {
 
   Widget _buildInvestmentGoalsList(GoalsService service, List<dynamic> goals) {
     if (goals.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.track_changes, size: 64, color: AppTheme.primary.withOpacity(0.5)),
-            const SizedBox(height: 16),
-            const Text('No investment goals found', style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.track_changes, size: 64, color: AppTheme.primary.withOpacity(0.5)),
+                const SizedBox(height: 16),
+                const Text('No investment goals found', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+        ],
       );
     }
 

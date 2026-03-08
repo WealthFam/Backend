@@ -154,25 +154,27 @@ class _CategoriesManagementScreenState extends State<CategoriesManagementScreen>
       appBar: AppBar(
         leading: const DrawerMenuButton(),
         title: const Text('Categories & Hierarchy'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => categoriesService.fetchCategories(force: true),
-          ),
-        ],
       ),
-      body: categoriesService.isLoading
+      body: categoriesService.isLoading && categoriesService.categories.isEmpty
           ? const Center(child: CircularProgressIndicator())
-          : categoriesService.categories.isEmpty
-              ? const Center(child: Text('No categories found'))
-              : ListView.separated(
-                  itemCount: categoriesService.categories.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final category = categoriesService.categories[index];
-                    return _buildCategoryNode(category, theme);
-                  },
-                ),
+          : RefreshIndicator(
+              onRefresh: () => categoriesService.fetchCategories(force: true),
+              child: categoriesService.categories.isEmpty
+                  ? ListView(
+                      children: [
+                        SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+                        const Center(child: Text('No categories found')),
+                      ],
+                    )
+                  : ListView.separated(
+                      itemCount: categoriesService.categories.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final category = categoriesService.categories[index];
+                        return _buildCategoryNode(category, theme);
+                      },
+                    ),
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showCategoryForm(),
         icon: const Icon(Icons.add),

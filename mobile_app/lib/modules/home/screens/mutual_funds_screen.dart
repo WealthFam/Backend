@@ -88,23 +88,7 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                const Padding(
                  padding: EdgeInsets.symmetric(horizontal: 16),
                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-               )
-            else
-               IconButton(
-                 icon: const Icon(Icons.sync),
-                 tooltip: 'Refresh All NAVs',
-                 onPressed: () {
-                   fundsService.triggerSync();
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     const SnackBar(content: Text('Starting NAV sync in background...'))
-                   );
-                 },
                ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-               tooltip: 'Reload Portfolio',
-              onPressed: () => fundsService.fetchFunds(),
-            ),
         ],
       ),
       body: RefreshIndicator(
