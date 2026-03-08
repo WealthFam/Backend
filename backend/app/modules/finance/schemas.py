@@ -208,8 +208,8 @@ class ExpenseGroupBase(BaseModel):
     name: str
     description: Optional[str] = None
     is_active: bool = True
-    start_date: datetime
-    end_date: datetime
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     budget: Optional[float] = 0.0
     icon: Optional[str] = None
 
