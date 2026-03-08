@@ -439,6 +439,23 @@ def run_auto_migrations(engine: Engine):
             );
             """))
 
+            # 27. Family Alerts (Notification History)
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS alerts (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                user_id VARCHAR,
+                title VARCHAR NOT NULL,
+                body VARCHAR NOT NULL,
+                category VARCHAR DEFAULT 'INFO',
+                is_read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMPTZ,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+                FOREIGN KEY(user_id) REFERENCES users (id)
+            );
+            """))
+
             # Explicitly commit the transaction!
             connection.commit()
             logger.info("Auto-migration complete.")
