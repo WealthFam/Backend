@@ -2,6 +2,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 @pragma('vm:entry-point')
 void startCallback() {
@@ -99,21 +100,32 @@ class SyncTaskHandler extends TaskHandler {
           if (alertsResponse.statusCode == 200) {
             final List alerts = jsonDecode(alertsResponse.body);
             if (alerts.isNotEmpty) {
+              final FlutterLocalNotificationsPlugin alertsPlugin = FlutterLocalNotificationsPlugin();
+              const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('ic_notification');
+              await alertsPlugin.initialize(const InitializationSettings(android: androidSettings));
+
               for (var alert in alerts) {
                 final title = alert['title'] ?? 'Alert';
                 final body = alert['body'] ?? '';
+                final id = (alert['id'] ?? DateTime.now().millisecondsSinceEpoch) % 2147483647;
                 
-                await FlutterForegroundTask.updateService(
-                  notificationTitle: '🔔 $title',
-                  notificationText: body,
+                await alertsPlugin.show(
+                  id,
+                  '🔔 $title',
+                  body,
+                  const NotificationDetails(
+                    android: AndroidNotificationDetails(
+                      'wealthfam_alerts',
+                      'WealthFam Alerts',
+                      channelDescription: 'Real-time financial alerts',
+                      importance: Importance.max,
+                      priority: Priority.high,
+                      playSound: true,
+                      autoCancel: true,
+                    ),
+                  ),
                 );
-                await Future.delayed(const Duration(seconds: 10));
               }
-              // Re-show stats after all alerts are shown
-              await FlutterForegroundTask.updateService(
-                notificationTitle: 'WealthFam Guard',
-                notificationText: 'Today: $symbol$today • Month: $symbol$month\nLast Updated: $timeStr',
-              );
             }
           }
         } else {
