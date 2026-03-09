@@ -37,7 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final dashboard = context.watch<DashboardService>();
     final theme = Theme.of(context);
-    final currencyFormat = NumberFormat.simpleCurrency(name: dashboard.data?.summary.currency ?? 'INR');
+    final currencyFormat = NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0);
 
     // Helper to format with masking
     String formatAmount(double amount) {

@@ -38,6 +38,11 @@ class DashboardService extends ChangeNotifier {
   String? get selectedMemberId => _selectedMemberId;
   int? get selectedMonth => _selectedMonth;
   int? get selectedYear => _selectedYear;
+  
+  String get currencySymbol {
+    final c = _data?.summary.currency ?? 'INR';
+    return c == 'INR' ? '₹' : c;
+  }
 
   DashboardService(this._config, this._auth) {
     var now = DateTime.now();

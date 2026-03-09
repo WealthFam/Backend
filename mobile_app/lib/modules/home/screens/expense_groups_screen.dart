@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/home/services/goals_service.dart';
+import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 import 'package:mobile_app/core/widgets/app_shell.dart';
 import 'package:mobile_app/modules/home/screens/expense_group_details_screen.dart';
 
@@ -181,6 +182,10 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
       );
     }
 
+    final dashboard = context.read<DashboardService>();
+    final currency = dashboard.currencySymbol;
+    final maskingFactor = dashboard.maskingFactor;
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       itemCount: groups.length,
@@ -285,7 +290,7 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
                         children: [
                           Text('Spending Progress', style: TextStyle(color: Colors.grey[700], fontSize: 13, fontWeight: FontWeight.w500)),
                           Text(
-                            '₹${spent.toStringAsFixed(0)} / ₹${budget.toStringAsFixed(0)}',
+                            '$currency${(spent / maskingFactor).toStringAsFixed(0)} / $currency${(budget / maskingFactor).toStringAsFixed(0)}',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: isOverBudget ? AppTheme.danger : AppTheme.primary,
@@ -308,7 +313,7 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
                         children: [
                           const Icon(Icons.wallet, size: 14, color: Colors.grey),
                           const SizedBox(width: 4),
-                          Text('Total Spent: ₹${spent.toStringAsFixed(0)}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          Text('Total Spent: $currency${(spent / maskingFactor).toStringAsFixed(0)}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
                         ],
                       ),
                     ],

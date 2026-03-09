@@ -166,7 +166,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                   trailing: Consumer<DashboardService>(
                     builder: (context, dashboard, _) {
                       return Text(
-                        NumberFormat.simpleCurrency(name: 'INR').format(amount / dashboard.maskingFactor),
+                        NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0).format(amount / dashboard.maskingFactor),
                         style: TextStyle(
                           color: amount < 0 ? AppTheme.danger : AppTheme.success,
                           fontWeight: FontWeight.bold,
@@ -452,12 +452,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
              ),
              const SizedBox(height: 16),
              
-             TextFormField(
-               controller: _amountCtrl,
-               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-               decoration: const InputDecoration(labelText: 'Amount', prefixText: '₹ '),
-               validator: (v) => v!.isEmpty ? 'Required' : null,
-             ),
+              TextFormField(
+                controller: _amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: 'Amount', prefixText: '${context.read<DashboardService>().currencySymbol} '),
+                validator: (v) => v!.isEmpty ? 'Required' : null,
+              ),
              const SizedBox(height: 16),
              
               Consumer<CategoriesService>(

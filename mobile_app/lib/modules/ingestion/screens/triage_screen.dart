@@ -209,8 +209,9 @@ class _TriageScreenState extends State<TriageScreen> {
   }
 
   Widget _buildTriageCard(RecentTransaction item) {
-    final theme = Theme.of(context);
-    final currency = context.read<DashboardService>().data?.summary.currency ?? '₹';
+    final dashboardService = context.read<DashboardService>();
+    final currency = dashboardService.currencySymbol;
+    final maskingFactor = dashboardService.maskingFactor;
     final categories = context.watch<CategoriesService>().categories;
     final selectedCategory = _selectedCategories[item.id] ?? 'Uncategorized';
     final createRule = _createRuleFlags[item.id] ?? false;
@@ -252,7 +253,7 @@ class _TriageScreenState extends State<TriageScreen> {
               ),
               const SizedBox(width: 12),
               Text(
-                '$currency${item.amount.abs().toStringAsFixed(2)}',
+                '$currency${(item.amount.abs() / maskingFactor).toStringAsFixed(0)}',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 20,
