@@ -6,7 +6,12 @@ from backend.app.modules.finance import models, schemas as finance_schemas
 class MobileExpenseGroupService:
     @staticmethod
     def calculate_total_spend(db: Session, group: models.ExpenseGroup, tenant_id: str, user_id: str = None) -> float:
-        # Subquery/Query for this specific group's total
+        """
+        Calculate the total spend for an expense group.
+        Note: We don't filter by dates here because if a transaction is explicitly linked 
+        to a group, it should count towards its total consumed amount regardless of the 
+        group's date range (which is primarily for UI display/event timing).
+        """
         amt_query = db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.expense_group_id == str(group.id),
             models.Transaction.tenant_id == tenant_id,
@@ -14,20 +19,12 @@ class MobileExpenseGroupService:
             models.Transaction.is_transfer == False
         )
         
-        if group.start_date:
-            amt_query = amt_query.filter(models.Transaction.date >= group.start_date)
-        if group.end_date:
-            # Same end of day logic
-            e_date = group.end_date
-            if hasattr(e_date, 'replace'):
-                e_date = e_date.replace(hour=23, minute=59, second=59)
-            amt_query = amt_query.filter(models.Transaction.date <= e_date)
-
         if user_id:
             amt_query = amt_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
                                  .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         
         total_amt = amt_query.scalar()
+        # Return positive spend (debits are negative in DB)
         return float(-(total_amt or 0))
 
     @staticmethod

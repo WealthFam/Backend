@@ -122,15 +122,17 @@ class _ExpenseGroupDetailsScreenState extends State<ExpenseGroupDetailsScreen> {
     final group = _group;
     final budget = (group['budget'] ?? 0.0).toDouble();
     
-    // Calculate spent from transactions as the source of truth for this view
-    // We only sum NEGATIVE amounts (debits/expenses)
+    // Calculate net spend from transactions as the source of truth for this view
+    // We sum all transactions (credits and debits) to get the true consumed amount
     double spent = 0;
     for (var txn in _transactions) {
       final amt = (txn['amount'] as num).toDouble();
-      if (amt < 0) {
-        spent += amt.abs();
-      }
+      // Backend stores expenses as negative, so we subtract them (adds to spent)
+      // and add positive credits (subtracts from spent)
+      spent -= amt; 
     }
+    // Ensure spent doesn't go negative if we have more credits than debits (rare but possible)
+    if (spent < 0) spent = 0;
     
     final progress = budget > 0 ? (spent / budget).clamp(0.0, 1.0) : 0.0;
     final isOverBudget = spent > budget && budget > 0;
