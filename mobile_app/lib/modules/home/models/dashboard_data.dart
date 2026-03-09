@@ -246,6 +246,8 @@ class RecentTransaction {
   final String? accountName;
   final String? accountOwnerName;
   final bool isHidden;
+  final String? expenseGroupId;
+  final String? expenseGroupName;
 
   RecentTransaction({
     required this.id,
@@ -256,6 +258,8 @@ class RecentTransaction {
     this.accountName,
     this.accountOwnerName,
     this.isHidden = false,
+    this.expenseGroupId,
+    this.expenseGroupName,
   });
 
   factory RecentTransaction.fromJson(Map<String, dynamic> json) {
@@ -268,6 +272,8 @@ class RecentTransaction {
       accountName: json['account_name'],
       accountOwnerName: json['account_owner_name'],
       isHidden: json['is_hidden'] ?? false,
+      expenseGroupId: json['expense_group_id'],
+      expenseGroupName: json['expense_group_name'],
     );
   }
 
@@ -280,6 +286,8 @@ class RecentTransaction {
     'account_name': accountName,
     'account_owner_name': accountOwnerName,
     'is_hidden': isHidden,
+    'expense_group_id': expenseGroupId,
+    'expense_group_name': expenseGroupName,
   };
 
   String get formattedDate => DateFormat('MMM d, h:mm a').format(date);

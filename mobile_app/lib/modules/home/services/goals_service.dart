@@ -108,7 +108,7 @@ class GoalsService extends ChangeNotifier {
   Future<bool> createExpenseGroup(Map<String, dynamic> data) async {
     try {
       final response = await http.post(
-        Uri.parse('${_config.backendUrl}/api/v1/finance/expense-groups'),
+        Uri.parse('${_config.backendUrl}/api/v1/mobile/expense-groups'),
         headers: {
           'Authorization': 'Bearer ${_auth.accessToken}',
           'Content-Type': 'application/json',
@@ -125,10 +125,30 @@ class GoalsService extends ChangeNotifier {
     return false;
   }
 
+  Future<bool> updateExpenseGroup(String id, Map<String, dynamic> data) async {
+    try {
+      final response = await http.put(
+        Uri.parse('${_config.backendUrl}/api/v1/mobile/expense-groups/$id'),
+        headers: {
+          'Authorization': 'Bearer ${_auth.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(data),
+      );
+      if (response.statusCode == 200) {
+        await fetchExpenseGroups();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Update Expense Group Error: $e');
+    }
+    return false;
+  }
+
   Future<bool> deleteExpenseGroup(String id) async {
     try {
       final response = await http.delete(
-        Uri.parse('${_config.backendUrl}/api/v1/finance/expense-groups/$id'),
+        Uri.parse('${_config.backendUrl}/api/v1/mobile/expense-groups/$id'),
         headers: {'Authorization': 'Bearer ${_auth.accessToken}'},
       );
       if (response.statusCode == 200) {
