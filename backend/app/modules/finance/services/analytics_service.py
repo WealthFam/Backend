@@ -569,7 +569,8 @@ class AnalyticsService:
             "today_total": today_total,
             "monthly_total": monthly_total,
             "latest_transaction": latest_transaction,
-            "budget_health": budget_health
+            "budget_health": budget_health,
+            "currency": accounts[0].currency if accounts else "INR"
         }
 
     @staticmethod

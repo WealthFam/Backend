@@ -120,13 +120,16 @@ class ForegroundServiceWrapper {
           final data = jsonDecode(response.body);
           final today = (data['today_total'] ?? 0.0).toStringAsFixed(0);
           final month = (data['monthly_total'] ?? 0.0).toStringAsFixed(0);
+          
+          final rawCurrency = data['currency'] ?? 'INR';
+          final currency = rawCurrency == 'INR' ? '₹' : rawCurrency;
 
           final time = DateTime.now();
           final timeStr = "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
 
           await FlutterForegroundTask.updateService(
             notificationTitle: 'WealthFam Guard',
-            notificationText: 'Spending: ₹$today (Today) • ₹$month (Month)\nLast Updated: $timeStr',
+            notificationText: 'Spending: $currency$today (Today) • $currency$month (Month)\nLast Updated: $timeStr',
           );
           debugPrint("ForegroundService: Initial update complete");
         }

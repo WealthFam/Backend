@@ -1,7 +1,7 @@
 import calendar
 import uuid
 from datetime import date, datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -22,6 +22,7 @@ from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.services import IngestionService
 from backend.app.modules.mobile import schemas as mobile_schemas
 from backend.app.modules.mobile.services.expense_group_service import MobileExpenseGroupService
+from backend.app.modules.mobile.services.investment_goal_service import MobileInvestmentGoalService
 
 router = APIRouter(tags=["Mobile"])
 
@@ -1058,3 +1059,81 @@ def get_mobile_summary(
         str(current_user.tenant_id),
         user_id=user_id
     )
+
+# --- Investment Goals ---
+
+@router.get("/investment-goals", response_model=List[finance_schemas.InvestmentGoalProgress])
+def get_mobile_investment_goals(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user_id = str(current_user.id) if current_user.role == "CHILD" else None
+    return MobileInvestmentGoalService.get_goals(db, str(current_user.tenant_id), user_id=user_id)
+
+@router.post("/investment-goals", response_model=finance_schemas.InvestmentGoalRead)
+def create_mobile_investment_goal(
+    goal: finance_schemas.InvestmentGoalCreate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return MobileInvestmentGoalService.create_goal(db, goal, str(current_user.tenant_id))
+
+@router.get("/investment-goals/{goal_id}", response_model=finance_schemas.InvestmentGoalProgress)
+def get_mobile_investment_goal(
+    goal_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user_id = str(current_user.id) if current_user.role == "CHILD" else None
+    goal = MobileInvestmentGoalService.get_goal(db, goal_id, str(current_user.tenant_id), user_id=user_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Investment goal not found")
+    return goal
+
+@router.put("/investment-goals/{goal_id}", response_model=finance_schemas.InvestmentGoalRead)
+def update_mobile_investment_goal(
+    goal_id: str,
+    update: finance_schemas.InvestmentGoalUpdate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    goal = MobileInvestmentGoalService.update_goal(db, goal_id, update, str(current_user.tenant_id))
+    if not goal:
+        raise HTTPException(status_code=404, detail="Investment goal not found")
+    return goal
+
+@router.delete("/investment-goals/{goal_id}")
+def delete_mobile_investment_goal(
+    goal_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    success = MobileInvestmentGoalService.delete_goal(db, goal_id, str(current_user.tenant_id))
+    if not success:
+        raise HTTPException(status_code=404, detail="Investment goal not found")
+    return {"status": "success"}
+
+@router.post("/investment-goals/{goal_id}/link")
+def link_holding_to_goal(
+    goal_id: str,
+    payload: Dict, # {"holding_id": "..."}
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    holding_id = payload.get("holding_id")
+    if not holding_id:
+         raise HTTPException(status_code=400, detail="holding_id is required")
+    success = MobileInvestmentGoalService.link_holding(db, goal_id, holding_id, str(current_user.tenant_id))
+    return {"status": "success" if success else "failed"}
+
+@router.post("/investment-goals/unlink")
+def unlink_holding_from_goal(
+    payload: Dict, # {"holding_id": "..."}
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    holding_id = payload.get("holding_id")
+    if not holding_id:
+         raise HTTPException(status_code=400, detail="holding_id is required")
+    success = MobileInvestmentGoalService.unlink_holding(db, holding_id, str(current_user.tenant_id))
+    return {"status": "success" if success else "failed"}
