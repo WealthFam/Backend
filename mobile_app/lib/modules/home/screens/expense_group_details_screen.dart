@@ -9,6 +9,7 @@ import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/modules/home/models/transaction_category.dart';
 import 'package:mobile_app/modules/home/services/dashboard_service.dart';
+import 'package:mobile_app/modules/home/services/goals_service.dart';
 import 'package:mobile_app/modules/home/screens/manage_group_transactions_screen.dart';
 
 class ExpenseGroupDetailsScreen extends StatefulWidget {
@@ -142,16 +143,28 @@ class _ExpenseGroupDetailsScreenState extends State<ExpenseGroupDetailsScreen> {
       appBar: AppBar(
         title: Text(group['name'] ?? 'Group Details'),
         actions: [
-          if (!isActive)
-            const Padding(
-              padding: EdgeInsets.only(right: 16),
-              child: Center(
-                child: Text(
-                  'INACTIVE',
-                  style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 10),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () => _showEditGroupDialog(context),
+            tooltip: 'Edit Group',
+          ),
+          PopupMenuButton<String>(
+            onSelected: (val) {
+              if (val == 'delete') _showDeleteConfirm(context);
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                    SizedBox(width: 8),
+                    Text('Delete Group', style: TextStyle(color: Colors.red)),
+                  ],
                 ),
               ),
-            ),
+            ],
+          ),
         ],
       ),
       body: RefreshIndicator(
@@ -295,6 +308,139 @@ class _ExpenseGroupDetailsScreenState extends State<ExpenseGroupDetailsScreen> {
     );
   }
 
+  void _showEditGroupDialog(BuildContext context) {
+    final nameController = TextEditingController(text: _group['name']);
+    final descriptionController = TextEditingController(text: _group['description']);
+    final budgetController = TextEditingController(text: _group['budget']?.toString() ?? '');
+    final iconController = TextEditingController(text: _group['icon'] ?? '📁');
+    
+    DateTime startDate = _group['start_date'] != null ? DateTime.parse(_group['start_date']) : DateTime.now();
+    DateTime endDate = _group['end_date'] != null ? DateTime.parse(_group['end_date']) : DateTime.now().add(const Duration(days: 30));
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Expense Group'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: iconController, 
+                  decoration: const InputDecoration(labelText: 'Icon (Emoji)'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 24),
+                ),
+                const SizedBox(height: 16),
+                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Group Name')),
+                const SizedBox(height: 8),
+                TextField(controller: descriptionController, decoration: const InputDecoration(labelText: 'Description')),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: startDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2101),
+                          );
+                          if (picked != null) setDialogState(() => startDate = picked);
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Start Date', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            const SizedBox(height: 4),
+                            Text(DateFormat('MMM d, yyyy').format(startDate)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: endDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2101),
+                          );
+                          if (picked != null) setDialogState(() => endDate = picked);
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('End Date', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            const SizedBox(height: 4),
+                            Text(DateFormat('MMM d, yyyy').format(endDate)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: budgetController, 
+                  decoration: const InputDecoration(labelText: 'Budget', prefixText: '₹ '),
+                  keyboardType: TextInputType.number,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                final service = context.read<GoalsService>();
+                final success = await service.updateExpenseGroup(_group['id'].toString(), {
+                  'name': nameController.text,
+                  'description': descriptionController.text,
+                  'icon': iconController.text,
+                  'budget': double.tryParse(budgetController.text) ?? 0.0,
+                  'start_date': startDate.toIso8601String(),
+                  'end_date': endDate.toIso8601String(),
+                });
+                if (success && mounted) {
+                  Navigator.pop(context);
+                  refreshData();
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteConfirm(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Group?'),
+        content: const Text('All links will be removed. Transactions themselves won\'t be deleted.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              final success = await context.read<GoalsService>().deleteExpenseGroup(_group['id'].toString());
+              if (success && mounted) {
+                Navigator.pop(context); // Close dialog
+                Navigator.pop(context, true); // Go back to list
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSummaryCard(
     ThemeData theme, 
     double spent, 
@@ -307,75 +453,118 @@ class _ExpenseGroupDetailsScreenState extends State<ExpenseGroupDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        gradient: LinearGradient(
+          colors: [theme.colorScheme.surface, theme.colorScheme.surface.withOpacity(0.9)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: theme.dividerColor),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8))
         ],
       ),
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Total Spent', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$currency${(spent / maskingFactor).toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: 24, 
-                      fontWeight: FontWeight.bold,
-                      color: isOverBudget ? AppTheme.danger : theme.colorScheme.onSurface,
-                    ),
-                  ),
-                ],
-              ),
-              if (budget > 0)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Total Budget', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    Text('Actual Spending', style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 4),
                     Text(
-                      '$currency${(budget / maskingFactor).toStringAsFixed(0)}',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      '$currency${(spent / maskingFactor).toStringAsFixed(0)}',
+                      style: TextStyle(
+                        fontSize: 28, 
+                        fontWeight: FontWeight.w900,
+                        color: isOverBudget ? AppTheme.danger : AppTheme.primary,
+                        letterSpacing: -0.5,
+                      ),
                     ),
                   ],
+                ),
+              ),
+              if (budget > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('Target Budget', style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+                      Text(
+                        '$currency${(budget / maskingFactor).toStringAsFixed(0)}',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
+                      ),
+                    ],
+                  ),
                 ),
             ],
           ),
           if (budget > 0) ...[
             const SizedBox(height: 24),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 12,
-                backgroundColor: (isOverBudget ? AppTheme.danger : AppTheme.primary).withOpacity(0.1),
-                valueColor: AlwaysStoppedAnimation<Color>(isOverBudget ? AppTheme.danger : AppTheme.primary),
-              ),
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 16,
+                    backgroundColor: Colors.grey[200],
+                    valueColor: AlwaysStoppedAnimation<Color>(isOverBudget ? AppTheme.danger : AppTheme.primary),
+                  ),
+                ),
+                if (progress > 0.05)
+                Positioned.fill(
+                  child: Center(
+                    child: Text(
+                      '${(progress * 100).toStringAsFixed(0)}%',
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${(progress * 100).toStringAsFixed(1)}% consumed',
-                  style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
-                ),
                 if (isOverBudget)
-                  const Text(
-                    'OVER BUDGET',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.danger),
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, size: 14, color: AppTheme.danger),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Exceeded by $currency${((spent - budget) / maskingFactor).toStringAsFixed(0)}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.danger),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    'Remaining: $currency${((budget - spent) / maskingFactor).toStringAsFixed(0)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.w500),
                   ),
+                Text(
+                  'Goal Balance',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                ),
+              ],
+            ),
+          ] else ...[
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 14, color: Colors.grey),
+                const SizedBox(width: 8),
+                Text('Set a budget to track progress', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
               ],
             ),
           ],

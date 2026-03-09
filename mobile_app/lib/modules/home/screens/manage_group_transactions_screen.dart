@@ -26,6 +26,9 @@ class _ManageGroupTransactionsScreenState extends State<ManageGroupTransactionsS
   bool _isSaving = false;
   String? _error;
   String _searchQuery = '';
+  String? _filterCategory;
+  String? _filterAccount;
+  bool _showLinkedOnly = false;
 
   @override
   void initState() {
@@ -144,11 +147,32 @@ class _ManageGroupTransactionsScreenState extends State<ManageGroupTransactionsS
     final currency = context.read<DashboardService>().data?.summary.currency ?? '₹';
     final maskingFactor = context.read<DashboardService>().maskingFactor;
 
+    final categories = _allTransactions
+        .map((t) => t['category']?.toString() ?? 'Uncategorized')
+        .toSet()
+        .toList()
+      ..sort();
+
+    final accounts = _allTransactions
+        .map((t) => t['account_name']?.toString() ?? 'Unknown Account')
+        .toSet()
+        .toList()
+      ..sort();
+
     final filtered = _allTransactions.where((txn) {
-      if (_searchQuery.isEmpty) return true;
-      final desc = (txn['description'] ?? '').toString().toLowerCase();
-      final acc = (txn['account_name'] ?? '').toString().toLowerCase();
-      return desc.contains(_searchQuery.toLowerCase()) || acc.contains(_searchQuery.toLowerCase());
+      if (_searchQuery.isNotEmpty) {
+        final desc = (txn['description'] ?? '').toString().toLowerCase();
+        final acc = (txn['account_name'] ?? '').toString().toLowerCase();
+        if (!desc.contains(_searchQuery.toLowerCase()) && !acc.contains(_searchQuery.toLowerCase())) {
+          return false;
+        }
+      }
+
+      if (_filterCategory != null && txn['category'] != _filterCategory) return false;
+      if (_filterAccount != null && txn['account_name'] != _filterAccount) return false;
+      if (_showLinkedOnly && !_selectedIds.contains(txn['id'].toString())) return false;
+
+      return true;
     }).toList();
 
     final pinned = filtered.where((t) => _selectedIds.contains(t['id'].toString())).toList();
@@ -172,18 +196,7 @@ class _ManageGroupTransactionsScreenState extends State<ManageGroupTransactionsS
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: TextField(
-                    onChanged: (val) => setState(() => _searchQuery = val),
-                    decoration: InputDecoration(
-                      hintText: 'Search within tracked period...',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    ),
-                  ),
-                ),
+                _buildAdvancedFilters(theme, categories, accounts),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   child: Row(
@@ -230,6 +243,79 @@ class _ManageGroupTransactionsScreenState extends State<ManageGroupTransactionsS
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildAdvancedFilters(ThemeData theme, List<String> categories, List<String> accounts) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        children: [
+          TextField(
+            onChanged: (val) => setState(() => _searchQuery = val),
+            decoration: InputDecoration(
+              hintText: 'Search Description or account...',
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('Pinned Only'),
+                  selected: _showLinkedOnly,
+                  onSelected: (val) => setState(() => _showLinkedOnly = val),
+                ),
+                const SizedBox(width: 8),
+                _buildFilterDropdown(
+                  'Category',
+                  _filterCategory,
+                  categories,
+                  (val) => setState(() => _filterCategory = val),
+                ),
+                const SizedBox(width: 8),
+                _buildFilterDropdown(
+                  'Account',
+                  _filterAccount,
+                  accounts,
+                  (val) => setState(() => _filterAccount = val),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterDropdown(String label, String? current, List<String> items, Function(String?) onChanged) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: current != null ? AppTheme.primary : Colors.transparent),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: current,
+          hint: Text(label, style: const TextStyle(fontSize: 12)),
+          onChanged: onChanged,
+          items: [
+            DropdownMenuItem(value: null, child: Text('All $label', style: const TextStyle(fontSize: 12))),
+            ...items.map((i) => DropdownMenuItem(value: i, child: Text(i, style: const TextStyle(fontSize: 12)))),
+          ],
+        ),
+      ),
     );
   }
 
