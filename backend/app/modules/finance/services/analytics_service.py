@@ -565,12 +565,20 @@ class AnalyticsService:
                 "spent": float(overall['spent'])
             }
         
+        # 5. Currency
+        acc_query = db.query(Account).filter(Account.tenant_id == tenant_id)
+        if user_id:
+            acc_query = acc_query.filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+        
+        first_acc = acc_query.first()
+        currency = first_acc.currency if first_acc else "INR"
+
         return {
             "today_total": today_total,
             "monthly_total": monthly_total,
             "latest_transaction": latest_transaction,
             "budget_health": budget_health,
-            "currency": accounts[0].currency if accounts else "INR"
+            "currency": currency
         }
 
     @staticmethod
