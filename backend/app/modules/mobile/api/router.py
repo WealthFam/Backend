@@ -482,12 +482,28 @@ def get_dashboard_summary(
     # Account map for names
     account_ids = list(set(txn['account_id'] for txn in metrics["recent_transactions"]))
     accounts = db.query(finance_models.Account).filter(finance_models.Account.id.in_(account_ids)).all()
-    account_map = {a.id: a for a in accounts}
+    account_map = {str(a.id): a for a in accounts}
+
+    # Expense Group map for names
+    group_ids = list(set(txn['expense_group_id'] for txn in metrics["recent_transactions"] if txn.get('expense_group_id')))
+    group_map = {}
+    if group_ids:
+        groups = db.query(finance_models.ExpenseGroup).filter(finance_models.ExpenseGroup.id.in_(group_ids)).all()
+        group_map = {str(g.id): g for g in groups}
 
     _, triage_count = TransactionService.get_pending_transactions(
         db, str(current_user.tenant_id), limit=1, user_id=target_user_id
     )
     family_members_count = db.query(auth_models.User).filter(auth_models.User.tenant_id == str(current_user.tenant_id)).count()
+
+    def enrich_txn(txn):
+        ext = {
+            "account_name": account_map.get(txn['account_id']).name if account_map.get(txn['account_id']) else "Unknown",
+        }
+        gid = txn.get('expense_group_id')
+        if gid and group_map.get(gid):
+            ext["expense_group_name"] = group_map[gid].name
+        return {**txn, **ext}
 
     return {
         "summary": {
@@ -501,8 +517,7 @@ def get_dashboard_summary(
         },
         "budget": metrics.get("budget_health", {"limit": 0, "spent": 0, "percentage": 0}),
         "recent_transactions": [
-            {**txn, "account_name": account_map.get(txn['account_id']).name if account_map.get(txn['account_id']) else "Unknown"}
-            for txn in metrics["recent_transactions"]
+            enrich_txn(txn) for txn in metrics["recent_transactions"]
         ],
         "pending_triage_count": triage_count,
         "family_members_count": family_members_count
@@ -963,6 +978,14 @@ def get_mobile_expense_groups(
     user_id = str(current_user.id) if current_user.role == "CHILD" else None
     return MobileExpenseGroupService.get_expense_groups(db, str(current_user.tenant_id), user_id=user_id)
 
+@router.post("/expense-groups", response_model=finance_schemas.ExpenseGroupRead)
+def create_mobile_expense_group(
+    group: finance_schemas.ExpenseGroupCreate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return MobileExpenseGroupService.create_expense_group(db, group, str(current_user.tenant_id))
+
 @router.get("/expense-groups/{group_id}", response_model=finance_schemas.ExpenseGroupRead)
 def get_mobile_expense_group(
     group_id: str,
@@ -976,6 +999,28 @@ def get_mobile_expense_group(
     if not group:
         raise HTTPException(status_code=404, detail="Expense group not found")
     return group
+
+@router.put("/expense-groups/{group_id}", response_model=finance_schemas.ExpenseGroupRead)
+def update_mobile_expense_group(
+    group_id: str,
+    update: finance_schemas.ExpenseGroupUpdate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    group = MobileExpenseGroupService.update_expense_group(db, group_id, update, str(current_user.tenant_id))
+    if not group:
+        raise HTTPException(status_code=404, detail="Expense group not found")
+    return group
+
+@router.delete("/expense-groups/{group_id}")
+def delete_mobile_expense_group(
+    group_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not MobileExpenseGroupService.delete_expense_group(db, group_id, str(current_user.tenant_id)):
+        raise HTTPException(status_code=404, detail="Expense group not found")
+    return {"status": "success"}
 
 @router.post("/expense-groups/{group_id}/link")
 def mobile_link_transactions(

@@ -187,9 +187,10 @@ class AnalyticsService:
                 "description": txn.description,
                 "amount": float(txn.amount),
                 "category": txn.category,
-                "account_id": txn.account_id,
+                "account_id": str(txn.account_id),
                 "is_transfer": txn.is_transfer,
-                "exclude_from_reports": txn.exclude_from_reports
+                "exclude_from_reports": txn.exclude_from_reports,
+                "expense_group_id": str(txn.expense_group_id) if txn.expense_group_id else None
             }
             
             account = account_map.get(txn.account_id)

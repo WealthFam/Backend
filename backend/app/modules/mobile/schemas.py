@@ -83,6 +83,7 @@ class RecentTransaction(BaseModel):
     account_owner_name: Optional[str] = None
     is_hidden: bool = False
     expense_group_id: Optional[str] = None
+    expense_group_name: Optional[str] = None
 
 class SpendingTrendItem(BaseModel):
     date: str

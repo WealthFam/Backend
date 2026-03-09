@@ -84,3 +84,46 @@ class MobileExpenseGroupService:
         
         db.commit()
         return count
+
+    @staticmethod
+    def create_expense_group(db: Session, group: finance_schemas.ExpenseGroupCreate, tenant_id: str) -> models.ExpenseGroup:
+        db_group = models.ExpenseGroup(
+            **group.model_dump(),
+            tenant_id=tenant_id
+        )
+        db.add(db_group)
+        db.commit()
+        db.refresh(db_group)
+        return db_group
+
+    @staticmethod
+    def update_expense_group(db: Session, group_id: str, update: finance_schemas.ExpenseGroupUpdate, tenant_id: str) -> Optional[models.ExpenseGroup]:
+        db_group = db.query(models.ExpenseGroup).filter(
+            models.ExpenseGroup.id == group_id,
+            models.ExpenseGroup.tenant_id == tenant_id
+        ).first()
+        
+        if not db_group:
+            return None
+            
+        data = update.model_dump(exclude_unset=True)
+        for k, v in data.items():
+            setattr(db_group, k, v)
+            
+        db.commit()
+        db.refresh(db_group)
+        return db_group
+
+    @staticmethod
+    def delete_expense_group(db: Session, group_id: str, tenant_id: str) -> bool:
+        db_group = db.query(models.ExpenseGroup).filter(
+            models.ExpenseGroup.id == group_id,
+            models.ExpenseGroup.tenant_id == tenant_id
+        ).first()
+        
+        if not db_group:
+            return False
+            
+        db.delete(db_group)
+        db.commit()
+        return True
