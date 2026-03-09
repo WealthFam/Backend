@@ -209,6 +209,7 @@ class _TriageScreenState extends State<TriageScreen> {
   }
 
   Widget _buildTriageCard(RecentTransaction item) {
+    final theme = Theme.of(context);
     final dashboardService = context.read<DashboardService>();
     final currency = dashboardService.currencySymbol;
     final maskingFactor = dashboardService.maskingFactor;
