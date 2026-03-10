@@ -7,6 +7,8 @@ from typing import List, Optional
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
+logger = logging.getLogger(__name__)
+
 from backend.app.core.timezone import ensure_utc
 from backend.app.modules.finance import models, schemas
 from backend.app.modules.finance.models import TransactionType
@@ -823,24 +825,20 @@ class TransactionService:
         if not keywords:
             return {"success": True, "affected": 0}
             
-        # Find transactions that match keywords
-        query = db.query(models.Transaction).filter(
-            models.Transaction.tenant_id == tenant_id
-        )
-
-        # If not overriding, only search for uncategorized
-        if not override:
-            query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
-        
-        # Build OR clause for keywords
         filters = []
         for k in keywords:
             pattern = f"%{k}%"
-            filters.append(models.Transaction.description.ilike(pattern))
-            filters.append(models.Transaction.recipient.ilike(pattern))
+            filters.append(or_(
+                models.Transaction.description.ilike(pattern),
+                models.Transaction.recipient.ilike(pattern)
+            ))
             
-        query = query.filter(or_(*filters))
+        # 1. Update Confirmed Transactions
+        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+        if not override:
+            query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
         
+        query = query.filter(or_(*filters))
         target_txns = query.all()
         affected_count = 0
         for txn in target_txns:
@@ -849,48 +847,151 @@ class TransactionService:
                 txn.exclude_from_reports = True
             if rule.is_transfer and rule.to_account_id:
                 txn.is_transfer = True
-                # Note: We don't auto-create the other leg here to avoid mess, 
-                # but we could if needed. For retrospective, usually just the category/hidden flag is enough.
             db.add(txn)
             affected_count += 1
             
+        # 2. Update Pending Transactions (Triage)
+        pending_filters = []
+        for k in keywords:
+            pattern = f"%{k}%"
+            pending_filters.append(or_(
+                ingestion_models.PendingTransaction.description.ilike(pattern),
+                ingestion_models.PendingTransaction.recipient.ilike(pattern)
+            ))
+
+        pending_query = db.query(ingestion_models.PendingTransaction).filter(
+            ingestion_models.PendingTransaction.tenant_id == tenant_id
+        )
+        if not override:
+            pending_query = pending_query.filter(
+                (ingestion_models.PendingTransaction.category == "Uncategorized") | 
+                (ingestion_models.PendingTransaction.category == None)
+            )
+        
+        pending_query = pending_query.filter(or_(*pending_filters))
+        target_pending = pending_query.all()
+        for p_txn in target_pending:
+            p_txn.category = rule.category
+            if rule.exclude_from_reports:
+                p_txn.exclude_from_reports = True
+            if rule.is_transfer and rule.to_account_id:
+                p_txn.is_transfer = True
+                p_txn.to_account_id = rule.to_account_id
+            db.add(p_txn)
+            affected_count += 1
+
         db.commit()
         return {"success": True, "affected": affected_count, "category": rule.category}
 
     @staticmethod
     def get_matching_count(db: Session, keywords: List[str], tenant_id: str, only_uncategorized: bool = True) -> int:
         if not keywords: return 0
-        query = db.query(models.Transaction).filter(
-            models.Transaction.tenant_id == tenant_id
-        )
+        
+        # Confirmed Transactions
+        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
         if only_uncategorized:
             query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
             
         filters = []
         for k in keywords:
             pattern = f"%{k}%"
-            filters.append(models.Transaction.description.ilike(pattern))
-            filters.append(models.Transaction.recipient.ilike(pattern))
+            filters.append(or_(
+                models.Transaction.description.ilike(pattern),
+                models.Transaction.recipient.ilike(pattern)
+            ))
         query = query.filter(or_(*filters))
-        return query.count()
+        confirmed_count = query.count()
+
+        # Pending Transactions
+        pending_query = db.query(ingestion_models.PendingTransaction).filter(
+            ingestion_models.PendingTransaction.tenant_id == tenant_id
+        )
+        if only_uncategorized:
+            pending_query = pending_query.filter(
+                (ingestion_models.PendingTransaction.category == "Uncategorized") | 
+                (ingestion_models.PendingTransaction.category == None)
+            )
+            
+        pending_filters = []
+        for k in keywords:
+            pattern = f"%{k}%"
+            pending_filters.append(or_(
+                ingestion_models.PendingTransaction.description.ilike(pattern),
+                ingestion_models.PendingTransaction.recipient.ilike(pattern)
+            ))
+        pending_query = pending_query.filter(or_(*pending_filters))
+        pending_count = pending_query.count()
+
+        return confirmed_count + pending_count
 
     @staticmethod
-    def get_matching_preview(db: Session, keywords: List[str], tenant_id: str, skip: int = 0, limit: int = 5, only_uncategorized: bool = True) -> List[models.Transaction]:
+    def get_matching_preview(db: Session, keywords: List[str], tenant_id: str, skip: int = 0, limit: int = 5, only_uncategorized: bool = True) -> List[dict]:
         if not keywords: return []
-        query = db.query(models.Transaction).filter(
-            models.Transaction.tenant_id == tenant_id
-        )
+        
+        # Confirmed
+        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
         if only_uncategorized:
             query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
             
         filters = []
         for k in keywords:
             pattern = f"%{k}%"
-            filters.append(models.Transaction.description.ilike(pattern))
-            filters.append(models.Transaction.recipient.ilike(pattern))
-        
-        query = query.filter(or_(*filters)).order_by(models.Transaction.date.desc())
-        return query.offset(skip).limit(limit).all()
+            filters.append(or_(
+                models.Transaction.description.ilike(pattern),
+                models.Transaction.recipient.ilike(pattern)
+            ))
+        query = query.filter(or_(*filters))
+        confirmed_matches = query.order_by(models.Transaction.date.desc()).limit(limit + skip).all()
+
+        # Pending
+        pending_query = db.query(ingestion_models.PendingTransaction).filter(
+            ingestion_models.PendingTransaction.tenant_id == tenant_id
+        )
+        if only_uncategorized:
+            pending_query = pending_query.filter(
+                (ingestion_models.PendingTransaction.category == "Uncategorized") | 
+                (ingestion_models.PendingTransaction.category == None)
+            )
+            
+        pending_filters = []
+        for k in keywords:
+            pattern = f"%{k}%"
+            pending_filters.append(or_(
+                ingestion_models.PendingTransaction.description.ilike(pattern),
+                ingestion_models.PendingTransaction.recipient.ilike(pattern)
+            ))
+        pending_query = pending_query.filter(or_(*pending_filters))
+        pending_matches = pending_query.order_by(ingestion_models.PendingTransaction.date.desc()).limit(limit + skip).all()
+
+        # Combine and Sort
+        combined = []
+        for m in confirmed_matches:
+            combined.append({
+                "id": m.id,
+                "date": m.date,
+                "description": m.description,
+                "recipient": m.recipient,
+                "amount": m.amount,
+                "category": m.category,
+                "tenant_id": m.tenant_id,
+                "account_id": m.account_id,
+                "is_pending": False
+            })
+        for m in pending_matches:
+            combined.append({
+                "id": m.id,
+                "date": m.date,
+                "description": m.description,
+                "recipient": m.recipient,
+                "amount": m.amount,
+                "category": m.category,
+                "tenant_id": m.tenant_id,
+                "account_id": m.account_id,
+                "is_pending": True
+            })
+            
+        combined.sort(key=lambda x: x["date"], reverse=True)
+        return combined[skip:skip+limit]
 
     @staticmethod
     def bulk_rename(db: Session, old_name: str, new_name: str, tenant_id: str, sync_to_parser: bool = False) -> int:

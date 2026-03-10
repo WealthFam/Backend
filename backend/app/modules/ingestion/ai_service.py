@@ -72,8 +72,7 @@ class GeminiProvider:
             return response.text if response else None
         except Exception as e:
             logger.error(f"Gemini generate_analysis error: {e}")
-            logger.error(traceback.format_exc())
-            raise e
+            return None
 
     def generate_structured_insights(self, config: ingestion_models.AIConfiguration, summary_data: str) -> Optional[List[Dict[str, Any]]]:
         if not config.api_key:
@@ -197,8 +196,7 @@ class GeminiProvider:
             return response.text if response else None
         except Exception as e:
             logger.error(f"Gemini loan advice error: {e}")
-            logger.error(traceback.format_exc())
-            raise e
+            return None
 
     def generate_loans_overview_advice(self, config: ingestion_models.AIConfiguration, loans_data: str) -> Optional[str]:
         if not config.api_key:
@@ -229,8 +227,7 @@ class GeminiProvider:
             return response.text if response else None
         except Exception as e:
             logger.error(f"Gemini loans overview advice error: {e}")
-            logger.error(traceback.format_exc())
-            raise e
+            return None
 
     def batch_clean_merchant_names(self, config: ingestion_models.AIConfiguration, descriptions: List[str]) -> Optional[Dict[str, str]]:
         if not config.api_key or not descriptions:
@@ -268,8 +265,7 @@ class GeminiProvider:
                 return json.loads(text[start:end])
         except Exception as e:
             logger.error(f"Gemini batch_clean_merchant_names error: {e}")
-            logger.error(traceback.format_exc())
-            raise e
+            return None
 
 class AIService:
     _providers = {

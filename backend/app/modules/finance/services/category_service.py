@@ -1,5 +1,9 @@
 from typing import List, Optional
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from backend.app.modules.finance import models, schemas
@@ -229,7 +233,14 @@ class CategoryService:
 
         # 2. Extract clean names
         descriptions = list(set([c.description for c in candidates if c.description]))
-        clean_map = AIService.clean_merchant_names(db, tenant_id, descriptions)
+        try:
+            clean_map = AIService.clean_merchant_names(db, tenant_id, descriptions)
+        except Exception as e:
+            # Fallback to heuristic cleaning if AI fails (e.g. 429 quota exceeded)
+            from backend.app.modules.ingestion.ai_service import AIService
+            clean_map = {d: AIService.heuristic_clean_merchant(d) for d in descriptions}
+            # Log as warning not error if it's just a quota issue
+            logger.warning(f"AI cleaning failed for suggestions, falling back to heuristic: {e}")
 
         # 3. Aggregate by clean name
         aggregated = {} 
