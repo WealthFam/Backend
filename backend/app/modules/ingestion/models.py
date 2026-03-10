@@ -154,3 +154,13 @@ class IgnoredPattern(Base):
     pattern = Column(String, nullable=False) # merchant, description or recipient
     source = Column(String, nullable=True) # SMS, EMAIL, ALL
     created_at = Column(UTCDateTime, default=timezone.utcnow)
+
+class AIInsightCache(Base):
+    __tablename__ = "ai_insight_cache"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    insight_type = Column(String, nullable=False, index=True) # e.g. "dashboard_summary", "loan_advice"
+    content = Column(String, nullable=False) # Storing the JSON response as string
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)

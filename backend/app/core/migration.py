@@ -456,6 +456,19 @@ def run_auto_migrations(engine: Engine):
             );
             """))
 
+            # 28. AI Insight Cache
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS ai_insight_cache (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                insight_type VARCHAR NOT NULL,
+                content VARCHAR NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+            );
+            """))
+
             # Explicitly commit the transaction!
             connection.commit()
             logger.info("Auto-migration complete.")

@@ -570,3 +570,16 @@ CREATE TABLE alerts (
 );
 
 CREATE INDEX ix_alerts_tenant_user ON alerts (tenant_id, user_id);
+
+CREATE TABLE ai_insight_cache (
+	id VARCHAR NOT NULL,
+	tenant_id VARCHAR NOT NULL,
+	insight_type VARCHAR NOT NULL,
+	content VARCHAR NOT NULL,
+	created_at TIMESTAMPTZ WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMPTZ WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+);
+
+CREATE INDEX ix_ai_insight_cache_lookup ON ai_insight_cache (tenant_id, insight_type);

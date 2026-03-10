@@ -11,6 +11,7 @@ from google.genai.errors import ClientError
 from sqlalchemy.orm import Session
 
 from backend.app.modules.ingestion import models as ingestion_models
+from backend.app.core import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class GeminiProvider:
             logger.error(f"Gemini generate_analysis error: {e}")
             return None
 
-    def generate_structured_insights(self, config: ingestion_models.AIConfiguration, summary_data: str) -> Optional[List[Dict[str, Any]]]:
+    def generate_structured_insights(self, config: ingestion_models.AIConfiguration, summary_data: str, db: Session, tenant_id: str) -> Optional[List[Dict[str, Any]]]:
         if not config.api_key:
             logger.error("Gemini generate_structured_insights: API Key is MISSING in config")
             return None
@@ -123,12 +124,28 @@ class GeminiProvider:
                 return json.loads(text[start:end])
         except ClientError as e:
             if e.code == 429 or "RESOURCE_EXHAUSTED" in str(e):
-                logger.warning("Gemini structured insights: Quota exceeded")
+                logger.warning("Gemini structured insights: Quota exceeded, attempting to use cache")
+                cached = db.query(ingestion_models.AIInsightCache).filter(
+                    ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                    ingestion_models.AIInsightCache.insight_type == "dashboard_summary"
+                ).first()
+                if cached and cached.content:
+                    try:
+                        insights = json.loads(cached.content)
+                        # Optional: Add a subtle indicator that this is cached data
+                        if isinstance(insights, list) and len(insights) > 0:
+                            insights[0]['title'] = "⚡ " + insights[0].get('title', '')
+                            # Ensure we don't have multiple quota warnings if cached version had one
+                            insights = [i for i in insights if i.get('id') != 'ai_quota']
+                        return insights
+                    except Exception as cache_err:
+                        logger.error(f"Error parsing cached insights: {cache_err}")
+
                 return [{
                     "id": "ai_quota",
                     "type": "warning",
                     "title": "AI Quota Exceeded",
-                    "content": "You've hit the usage limit for the free Gemini API. Insights will refresh later.",
+                    "content": "You've hit the usage limit. Showing default insights until quota refreshes.",
                     "icon": "hourglass_empty"
                 }]
             elif e.code in [400, 401, 403]:
@@ -144,12 +161,26 @@ class GeminiProvider:
             logger.error(f"AI ClientError in structured insights: {e}")
             logger.error(traceback.format_exc())
         except ResourceExhausted:
-            logger.warning("Gemini structured insights: ResourceExhausted")
+            logger.warning("Gemini structured insights: ResourceExhausted, attempting to use cache")
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == "dashboard_summary"
+            ).first()
+            if cached and cached.content:
+                try:
+                    insights = json.loads(cached.content)
+                    if isinstance(insights, list) and len(insights) > 0:
+                        insights[0]['title'] = "⚡ " + insights[0].get('title', '')
+                        insights = [i for i in insights if i.get('id') != 'ai_quota']
+                    return insights
+                except Exception as cache_err:
+                    logger.error(f"Error parsing cached insights: {cache_err}")
+            
             return [{
                 "id": "ai_quota",
                 "type": "warning",
                 "title": "AI Quota Exceeded",
-                "content": "You've hit the usage limit for the free Gemini API. Insights will refresh later.",
+                "content": "You've hit the usage limit. Showing default insights until quota refreshes.",
                 "icon": "hourglass_empty"
             }]
         except (InvalidArgument, Unauthenticated):
@@ -349,7 +380,33 @@ class AIService:
 
         summary_str = json.dumps(summary_data, indent=2, default=str)
         
-        return provider.generate_structured_insights(config, summary_str)
+        result = provider.generate_structured_insights(config, summary_str, db, tenant_id)
+        
+        # Cache successful results
+        if result and len(result) > 0 and result[0].get('id') != 'ai_quota' and result[0].get('id') != 'ai_auth_error':
+            try:
+                cached = db.query(ingestion_models.AIInsightCache).filter(
+                    ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                    ingestion_models.AIInsightCache.insight_type == "dashboard_summary"
+                ).first()
+                
+                content_str = json.dumps(result)
+                if cached:
+                    cached.content = content_str
+                    cached.updated_at = timezone.utcnow()
+                else:
+                    new_cache = ingestion_models.AIInsightCache(
+                        tenant_id=tenant_id,
+                        insight_type="dashboard_summary",
+                        content=content_str
+                    )
+                    db.add(new_cache)
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Error caching structured insights: {e}")
+                
+        return result
 
     @classmethod
     def generate_loan_insights(cls, db: Session, tenant_id: str, loan_data: Dict[str, Any]) -> Optional[str]:
