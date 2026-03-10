@@ -459,11 +459,12 @@ function handleMouseMove(e: MouseEvent) {
 }
 
 .premium-header {
-    background: rgba(var(--v-theme-surface), 0.75) !important;
-    backdrop-filter: blur(16px) saturate(180%);
-    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    background: rgba(var(--v-theme-surface), 0.7) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
     z-index: 1000 !important;
-    border-bottom: 1px solid rgba(var(--v-border-color), 0.12);
+    border-bottom: 1px solid rgba(var(--v-border-color), 0.08) !important;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
 }
 
 .brand-link {
@@ -472,6 +473,11 @@ function handleMouseMove(e: MouseEvent) {
     text-decoration: none;
     color: inherit;
     margin-left: 1rem;
+    transition: transform 0.3s ease;
+}
+
+.brand-link:hover {
+    transform: scale(1.02);
 }
 
 .logo-theme-aware {
@@ -488,23 +494,24 @@ function handleMouseMove(e: MouseEvent) {
 
 .brand-name {
     display: block;
-    font-size: 1.25rem;
-    font-weight: 900;
+    font-size: 1.5rem;
+    font-weight: 950;
     color: rgb(var(--v-theme-on-surface));
-    /* text-slate-900 */
-    letter-spacing: -0.03em;
+    letter-spacing: -0.05em;
     line-height: 1;
+    background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, #6366f1 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
 
 .brand-tag {
     display: block;
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: rgb(var(--v-theme-on-surface), 0.6);
-    /* text-slate-600 for better contrast */
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: rgb(var(--v-theme-on-surface), 0.4);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-top: 2px;
+    letter-spacing: 0.2em;
+    margin-top: 1px;
 }
 
 
@@ -765,13 +772,13 @@ function handleMouseMove(e: MouseEvent) {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 12px;
-    background: rgb(var(--v-theme-surface), 0.5);
+    padding: 6px 14px;
+    background: rgba(var(--v-theme-primary), 0.05);
     border-radius: 20px;
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: rgb(var(--v-theme-on-surface), 0.8);
-    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: rgb(var(--v-theme-primary));
+    border: 1px solid rgba(var(--v-theme-primary), 0.1);
 }
 
 .pulse-dot {

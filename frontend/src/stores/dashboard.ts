@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { financeApi } from '@/api/client'
+import { financeApi, aiApi } from '@/api/client'
 import { useStorePersistence } from '@/utils/persistence'
 import { useAuthStore } from '@/stores/auth'
 
@@ -12,6 +12,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     const mfPortfolio = ref<any>(null)
     const netWorthTrend = ref<number[]>([])
     const spendingTrend = ref<number[]>([])
+    const aiInsights = ref<any>(null)
     const loading = ref(false)
 
     // Apply Persistence
@@ -19,6 +20,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     useStorePersistence('dashboard_portfolio', mfPortfolio, memberId)
     useStorePersistence('dashboard_net_worth_trend', netWorthTrend, memberId)
     useStorePersistence('dashboard_spending_trend', spendingTrend, memberId)
+    useStorePersistence('dashboard_ai_insights', aiInsights, memberId)
 
     async function fetchDashboardData(userId?: string) {
         loading.value = true
@@ -48,6 +50,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
             netWorthTrend.value = nwt.data.map((p: any) => Number(p.total || 0))
             spendingTrend.value = st.data.map((p: any) => Number(p.amount || 0))
+
+            // Fetch AI Insights if metrics are available
+            if (metrics.value) {
+                // Background fetch for AI
+                aiApi.generateSummaryInsights(metrics.value)
+                    .then(res => { aiInsights.value = res.data })
+                    .catch(() => { /* Silent fail for AI */ })
+            }
         } catch (error) {
             console.error('[DashboardStore] Failed to fetch data', error)
         } finally {
@@ -60,6 +70,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
         mfPortfolio,
         netWorthTrend,
         spendingTrend,
+        aiInsights,
         loading,
         fetchDashboardData
     }
