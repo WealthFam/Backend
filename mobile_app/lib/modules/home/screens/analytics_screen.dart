@@ -158,7 +158,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget build(BuildContext context) {
     final dashboard = context.watch<DashboardService>();
     final theme = Theme.of(context);
-    final currencyFormat = NumberFormat.simpleCurrency(name: dashboard.data?.summary.currency ?? 'INR');
+    final currencyFormat = NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0);
 
     String formatAmount(double amount) {
       return currencyFormat.format(amount / dashboard.maskingFactor);
@@ -439,6 +439,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget _buildDailyHealthCard(BuildContext context, DashboardSummary summary, double maskingFactor) {
     final theme = Theme.of(context);
     final isOverDaily = summary.todayTotal > summary.dailyBudgetLimit;
+    final currency = context.read<DashboardService>().data?.summary.currency ?? '₹';
     final healthColor = isOverDaily ? AppTheme.danger : AppTheme.success;
     
     final yesterdayDiff = summary.todayTotal - summary.yesterdayTotal;
@@ -468,7 +469,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                    ),
                    const SizedBox(height: 4),
                    Text(
-                     '₹${NumberFormat.decimalPattern().format(summary.todayTotal / maskingFactor)}',
+                     '$currency${NumberFormat.decimalPattern().format(summary.todayTotal / maskingFactor)}',
                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface),
                    ),
                 ],
@@ -478,7 +479,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 children: [
                   const Text('Daily Limit', style: TextStyle(fontSize: 10, color: Colors.grey)),
                   Text(
-                    '₹${NumberFormat.compact().format(summary.dailyBudgetLimit / maskingFactor)}',
+                    '$currency${NumberFormat.compact().format(summary.dailyBudgetLimit / maskingFactor)}',
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                   Container(

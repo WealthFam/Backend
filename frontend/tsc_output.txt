@@ -1,0 +1,15 @@
+src/components/groups/ExpenseGroupModal.vue(299,1): error TS6192: All imports in import declaration are unused.
+src/components/groups/ExpenseGroupModal.vue(300,1): error TS6133: 'VueDatePicker' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(317,7): error TS6133: 'formatAmount' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(340,7): error TS6133: 'emojis' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(342,7): error TS6133: 'dateRangeDisplay' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(369,7): error TS6133: 'pinnedTxns' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(374,7): error TS6133: 'unpinnedTxns' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(379,7): error TS6133: 'selectedTransactionsTotal' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(460,26): error TS2339: Property 'selectedMemberId' does not exist on type 'Store<"finance", Pick<{ categories: Ref<any[], any[]>; accounts: Ref<any[], any[]>; recurringTransactions: Ref<any[], any[]>; loading: Ref<boolean, boolean>; error: Ref<string | null, string | null>; ... 6 more ...; getAccountName: (id: string) => string; }, "loading" | ... 3 more ... | "recurringTransactions">, Pic...'.
+src/components/groups/ExpenseGroupModal.vue(480,26): error TS2339: Property 'selectedMemberId' does not exist on type 'Store<"finance", Pick<{ categories: Ref<any[], any[]>; accounts: Ref<any[], any[]>; recurringTransactions: Ref<any[], any[]>; loading: Ref<boolean, boolean>; error: Ref<string | null, string | null>; ... 6 more ...; getAccountName: (id: string) => string; }, "loading" | ... 3 more ... | "recurringTransactions">, Pic...'.
+src/components/groups/ExpenseGroupModal.vue(494,7): error TS6133: 'toggleTxn' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(500,7): error TS6133: 'handleSubmit' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(531,10): error TS6133: 'getAccountName' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(536,10): error TS6133: 'getCategoryDisplay' is declared but its value is never read.
+src/components/groups/ExpenseGroupModal.vue(550,7): error TS6133: 'generateColor' is declared but its value is never read.

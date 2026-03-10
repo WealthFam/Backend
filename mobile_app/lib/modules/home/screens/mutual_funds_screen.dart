@@ -35,7 +35,7 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
     final theme = Theme.of(context);
     
     // Masking Helper
-    final currencyFormat = NumberFormat.currency(symbol: '₹', decimalDigits: 0);
+    final currencyFormat = NumberFormat.currency(symbol: dashboardService.currencySymbol, decimalDigits: 0);
     String formatAmount(double amount) {
        return currencyFormat.format(amount / dashboardService.maskingFactor);
     }
@@ -88,23 +88,7 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                const Padding(
                  padding: EdgeInsets.symmetric(horizontal: 16),
                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-               )
-            else
-               IconButton(
-                 icon: const Icon(Icons.sync),
-                 tooltip: 'Refresh All NAVs',
-                 onPressed: () {
-                   fundsService.triggerSync();
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     const SnackBar(content: Text('Starting NAV sync in background...'))
-                   );
-                 },
                ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-               tooltip: 'Reload Portfolio',
-              onPressed: () => fundsService.fetchFunds(),
-            ),
         ],
       ),
       body: RefreshIndicator(
@@ -289,6 +273,7 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                       final isTouched = index == _touchedIndex;
                       final double fontSize = isTouched ? 16.0 : 10.0;
                       final double radius = isTouched ? 50.0 : 40.0;
+                      final currency = context.read<DashboardService>().currencySymbol;
                       final percentage = (h.currentValue / portfolio.totalCurrent) * 100;
                       
                       return PieChartSectionData(
@@ -410,6 +395,19 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
           ),
           child: LineChart(
             LineChartData(
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipItems: (touchedSpots) {
+                    return touchedSpots.map((LineBarSpot touchedSpot) {
+                      final date = DateTime.fromMillisecondsSinceEpoch(touchedSpot.x.toInt());
+                      return LineTooltipItem(
+                        '${DateFormat('MMM d, y').format(date)}\n${NumberFormat.currency(symbol: dashboardService.currencySymbol, decimalDigits: 0).format(touchedSpot.y)}',
+                        const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      );
+                    }).toList();
+                  },
+                ),
+              ),
               gridData: const FlGridData(show: false),
               titlesData: FlTitlesData(
                 leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -452,19 +450,6 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                   ),
                 ),
               ],
-              lineTouchData: LineTouchData(
-                touchTooltipData: LineTouchTooltipData(
-                  getTooltipItems: (touchedSpots) {
-                    return touchedSpots.map((LineBarSpot touchedSpot) {
-                      final date = DateTime.fromMillisecondsSinceEpoch(touchedSpot.x.toInt());
-                      return LineTooltipItem(
-                        '${DateFormat('MMM d, y').format(date)}\n${NumberFormat.compactCurrency(symbol: '₹').format(touchedSpot.y)}',
-                        const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      );
-                    }).toList();
-                  },
-                ),
-              ),
             ),
           ),
         ),
@@ -474,6 +459,7 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
 
   Widget _buildHoldingItem(BuildContext context, FundHolding h, Function(double) format) {
     final theme = Theme.of(context);
+    final dashboard = context.watch<DashboardService>();
     final isProfit = h.profitLoss >= 0;
     
     return Container(
@@ -536,9 +522,9 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                    const Text("Total Returns", style: TextStyle(color: Colors.grey, fontSize: 11)),
                    const SizedBox(height: 2),
                    Text(
-                     "${isProfit ? '+' : ''}${format(h.profitLoss)}",
+                     NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0).format(h.profitLoss / dashboard.maskingFactor),
                      style: TextStyle(
-                       color: isProfit ? AppTheme.success : AppTheme.danger,
+                       color: h.profitLoss < 0 ? AppTheme.danger : AppTheme.success,
                        fontWeight: FontWeight.bold,
                        fontSize: 13,
                      ),

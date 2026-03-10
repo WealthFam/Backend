@@ -35,8 +35,8 @@ COPY scripts/ ./scripts/
 COPY run_backend.py ./
 COPY version.json ./
 
-# Create entrypoint.sh with vacuum step
-RUN printf "#!/bin/bash\npython scripts/vacuum_db.py\nnginx\npython run_backend.py\n" > entrypoint.sh && chmod +x entrypoint.sh
+# Create entrypoint.sh with recovery and vacuum step
+RUN printf "#!/bin/bash\npython scripts/recover_db.py\npython scripts/vacuum_db.py\nnginx\npython run_backend.py\n" > entrypoint.sh && chmod +x entrypoint.sh
 
 # Environment variables
 ENV APP_DATABASE_URL="duckdb:////data/family_finance_v3.duckdb"

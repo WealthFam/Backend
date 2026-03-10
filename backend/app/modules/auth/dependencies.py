@@ -11,6 +11,19 @@ from fastapi.security import OAuth2PasswordBearer, HTTPBasic, HTTPBasicCredentia
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False)
 basic_scheme = HTTPBasic(auto_error=False)
 
+def get_current_user_from_token(db: Session, token: str) -> Optional[models.User]:
+    """Synchronous helper for token validation (used by WebSockets)"""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        email: str = payload.get("sub")
+        tenant_id: str = payload.get("tenant_id")
+        if email is None or tenant_id is None:
+            return None
+        
+        return db.query(models.User).filter(models.User.email == email).first()
+    except JWTError:
+        return None
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     token_query: Optional[str] = Query(None, alias="token"),
@@ -26,20 +39,10 @@ def get_current_user(
     # Priority 1: Bearer Token (JWT)
     final_token = token or token_query
     if final_token:
-        try:
-            payload = jwt.decode(final_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-            email: str = payload.get("sub")
-            tenant_id: str = payload.get("tenant_id")
-            if email is None or tenant_id is None:
-                raise credentials_exception
-            token_data = schemas.TokenData(email=email, tenant_id=tenant_id)
-            
-            user = db.query(models.User).filter(models.User.email == token_data.email).first()
-            if user is None:
-                raise credentials_exception
+        user = get_current_user_from_token(db, final_token)
+        if user:
             return user
-        except JWTError:
-            raise credentials_exception
+        raise credentials_exception
 
     # Priority 2: Basic Auth
     if basic_auth:

@@ -81,13 +81,50 @@
                             <div v-if="aiInsights" class="ai-markdown-container premium-scroll">
                                 <div class="markdown-content" v-html="marked(aiInsights)"></div>
                             </div>
-                            <div v-else-if="generatingAI" class="ai-shimmer-container">
-                                <div v-for="i in 3" :key="i" class="shimmer-line"></div>
+                            <div v-else-if="generatingAI" class="ai-loading-state py-8">
+                                <div class="premium-loader mb-4">
+                                    <div class="loader-circle"></div>
+                                    <Sparkles :size="32" class="loader-icon sparkles-animate" />
+                                </div>
+                                <div class="text-center">
+                                    <p class="text-h6 font-weight-bold text-white mb-1">Synthesizing Strategy</p>
+                                    <p class="text-caption text-blue-lighten-4 opacity-70">Correlating patterns from
+                                        your
+                                        spending vectors...</p>
+                                </div>
+                            </div>
+                            <div v-else-if="aiError" class="ai-error-state text-center py-8 px-6">
+                                <div class="error-glow-container mb-6 mx-auto">
+                                    <v-icon :color="aiError.includes('Quota') ? 'warning' : 'error'" size="42"
+                                        class="error-icon-animate">
+                                        {{ aiError.includes('Quota') ? 'mdi-clock-outline' : 'mdi-shield-alert-outline'
+                                        }}
+                                    </v-icon>
+                                </div>
+                                <h4 class="text-h5 font-weight-black text-white mb-2">
+                                    {{ aiError.includes('Quota') ? 'Quota Limit Reached' : 'Intelligence Paused' }}
+                                </h4>
+                                <p class="text-body-1 text-blue-lighten-4 opacity-80 mb-6 max-w-md mx-auto">
+                                    {{ aiError }}
+                                </p>
+                                <div class="d-flex justify-center gap-3">
+                                    <v-btn variant="flat" color="primary" rounded="xl" @click="generateAIInsights"
+                                        class="text-none px-6">
+                                        Retry Connection
+                                    </v-btn>
+                                    <v-btn variant="text" color="white" rounded="xl" to="/settings" class="text-none">
+                                        AI Settings
+                                    </v-btn>
+                                </div>
                             </div>
                             <div v-else class="ai-empty-state text-center py-6">
-                                <Brain :size="48" class="text-blue-lighten-4 mb-2" />
-                                <p class="text-body-2 text-blue-lighten-4">Analysis ready. Generate smart optimization
-                                    tips based on your patterns.</p>
+                                <div class="brain-glow-container mb-4">
+                                    <Brain :size="56" class="text-white brain-animate" />
+                                </div>
+                                <p class="text-h6 font-weight-black text-white mb-1">Analysis Ready</p>
+                                <p class="text-body-2 text-blue-lighten-4 opacity-70">Ready to generate smart
+                                    optimization tips
+                                    based on your spending patterns.</p>
                             </div>
                         </v-expand-transition>
                     </div>
@@ -260,7 +297,7 @@
                                         offset: 4,
                                         color: isDark ? '#ffffff' : '#0f172a',
                                         font: { weight: 'bold', size: 10 },
-                                        formatter: (value: number) => '₹' + Math.abs(value).toLocaleString()
+                                        formatter: (value: number) => formatAmount(value)
                                     }
                                 },
                                 layout: {
@@ -432,6 +469,7 @@ import { localDateString } from '@/utils/time'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 import { financeApi, aiApi } from '@/api/client'
 import { useCurrency } from '@/composables/useCurrency'
 import BaseChart from '@/components/BaseChart.vue'
@@ -453,6 +491,7 @@ const props = defineProps<Props>()
 
 const store = useFinanceStore()
 const authStore = useAuthStore()
+const settings = useSettingsStore()
 const theme = useTheme()
 const { formatAmount } = useCurrency()
 
@@ -535,6 +574,7 @@ const forecastData = ref<any[]>([])
 const budgets = ref<any[]>([])
 const budgetHistory = ref<any[]>([])
 const aiInsights = ref<string>('')
+const aiError = ref<string | null>(null)
 const generatingAI = ref(false)
 const loading = ref(false)
 const showExcludedDetails = ref(false)
@@ -626,6 +666,7 @@ async function fetchAnalyticsData() {
 
 async function generateAIInsights() {
     generatingAI.value = true
+    aiError.value = null
     try {
         const timeContext = selectedTimeRange.value === 'custom'
             ? `from ${startDate.value} to ${endDate.value}`
@@ -656,10 +697,28 @@ async function generateAIInsights() {
             member_context: authStore.selectedMemberId ? "Filtered by specific member" : "Global view"
         }
         const res = await aiApi.generateSummaryInsights(promptData)
-        aiInsights.value = res.data.insights
-    } catch (e) {
-        console.error(e)
-        aiInsights.value = "Failed to generate insights. Ensure AI settings are configured."
+        if (res.data && res.data.insights) {
+            aiInsights.value = res.data.insights
+            aiError.value = null
+        } else {
+            console.warn("AI Response successful but missing data:", res.data)
+            aiError.value = "AI reached (v2) but returned empty analysis. This usually means the model generated no content. Check settings."
+        }
+    } catch (e: any) {
+        console.error("AI Insight Error:", e)
+        const rawMsg = e.response?.data?.detail || e.message || ""
+
+        // Final fallback Mapping
+        if (rawMsg.includes("Quota") || rawMsg.includes("429") || rawMsg.includes("RESOURCE_EXHAUSTED")) {
+            aiError.value = "Your API quota has been reached. Please try again in a few minutes or switch the model in settings."
+        } else if (rawMsg.includes("Authentication") || rawMsg.includes("401") || rawMsg.includes("API Key")) {
+            aiError.value = "Authentication failed. Please verify your Gemini API key in settings."
+        } else if (rawMsg.length > 100) {
+            // If message is too long or contains bits of code/json
+            aiError.value = "The intelligence service is temporarily unavailable. This usually happens during high demand or config sync."
+        } else {
+            aiError.value = rawMsg || "Failed to connect to the intelligence service."
+        }
     } finally {
         generatingAI.value = false
     }
@@ -707,7 +766,7 @@ const trendChartData = computed(() => {
         labels: filteredTrendData.value.map((d: any) => trendView.value === 'daily' ? d.label.slice(5) : d.label),
         datasets: [{
             label: selectedTrendCategory.value || 'All Spending',
-            data: filteredTrendData.value.map((d: any) => d.value),
+            data: filteredTrendData.value.map((d: any) => d.value / (settings.maskingFactor || 1)),
             borderColor: color,
             backgroundColor: bgColor,
             fill: true,
@@ -727,7 +786,7 @@ const merchantChartData = computed(() => ({
     labels: analyticsData.value.merchants?.map((m: any) => m.name) || [],
     datasets: [{
         label: 'Spending',
-        data: analyticsData.value.merchants?.map((m: any) => m.value) || [],
+        data: analyticsData.value.merchants?.map((m: any) => m.value / (settings.maskingFactor || 1)) || [],
         backgroundColor: analyticsData.value.merchants?.map((_: any, i: number) => chartPalette[i % chartPalette.length]) || [],
         borderRadius: 6,
         borderSkipped: false,
@@ -737,7 +796,7 @@ const merchantChartData = computed(() => ({
 const categoryChartData = computed(() => ({
     labels: analyticsData.value.categories?.map((c: any) => c.name) || [],
     datasets: [{
-        data: analyticsData.value.categories?.map((c: any) => c.value) || [],
+        data: analyticsData.value.categories?.map((c: any) => c.value / (settings.maskingFactor || 1)) || [],
         backgroundColor: analyticsData.value.categories?.map((_: any, i: number) => chartPalette[i % chartPalette.length]) || [],
         hoverOffset: 12,
         borderWidth: 0
@@ -748,7 +807,7 @@ const forecastChartData = computed(() => ({
     labels: forecastData.value.map((d: any) => d.date.split('T')[0].slice(5)),
     datasets: [{
         label: 'Projected Balance',
-        data: forecastData.value.map((d: any) => d.balance),
+        data: forecastData.value.map((d: any) => d.balance / (settings.maskingFactor || 1)),
         borderColor: 'rgb(var(--v-theme-success))',
         backgroundColor: 'rgba(var(--v-theme-success), 0.1)',
         fill: true,
@@ -1029,5 +1088,134 @@ const forecastChartData = computed(() => ({
 
 .h-32 {
     height: 32px !important;
+}
+
+/* Premium AI States */
+.ai-loading-state,
+.ai-error-state,
+.ai-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.premium-loader {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.loader-circle {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+}
+
+.loader-icon {
+    z-index: 1;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.5));
+}
+
+.sparkles-animate {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.brain-animate {
+    animation: brain-bounce 3s ease-in-out infinite;
+}
+
+.error-glow-icon {
+    width: 64px;
+    height: 64px;
+    background: rgba(239, 68, 68, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.brain-glow-container {
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 50%;
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.1);
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        opacity: 0.7;
+        transform: scale(0.9);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+        filter: drop-shadow(0 0 12px #fff);
+    }
+}
+
+@keyframes brain-bounce {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.error-glow-container {
+    width: 80px;
+    height: 80px;
+    background: rgba(var(--v-theme-warning), 0.1);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(var(--v-theme-warning), 0.2);
+    box-shadow: 0 0 30px rgba(var(--v-theme-warning), 0.1);
+}
+
+.error-icon-animate {
+    animation: icon-pulse 2s infinite ease-in-out;
+}
+
+@keyframes icon-pulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 1;
+    }
+}
+
+.max-w-md {
+    max-width: 450px;
 }
 </style>

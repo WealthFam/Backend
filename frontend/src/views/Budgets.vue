@@ -372,7 +372,7 @@ onMounted(() => {
                                     <div class="d-flex align-baseline ga-3 mb-8">
                                         <span class="text-h2 font-weight-black text-white letter-spacing-tight">{{
                                             formatAmount(overallBudget.spent)
-                                            }}</span>
+                                        }}</span>
                                         <span class="text-h4 text-white opacity-30">/</span>
                                         <span class="text-h4 font-weight-bold text-white opacity-60">
                                             {{ overallBudget.amount_limit ? formatAmount(overallBudget.amount_limit) :
@@ -582,13 +582,13 @@ onMounted(() => {
                                         class="text-subtitle-2 font-weight-black opacity-60 d-flex justify-space-between align-center">
                                         <span>Outflow</span>
                                         <span class="text-subtitle-1">{{ formatAmount(overallBudget.total_excluded)
-                                            }}</span>
+                                        }}</span>
                                     </div>
                                     <div v-if="overallBudget.excluded_income > 0"
                                         class="text-subtitle-2 font-weight-black text-success d-flex justify-space-between align-center">
                                         <span>Inflow</span>
                                         <span class="text-subtitle-1">+{{ formatAmount(overallBudget.excluded_income)
-                                            }}</span>
+                                        }}</span>
                                     </div>
                                 </div>
                             </v-card>
@@ -692,13 +692,13 @@ onMounted(() => {
                                             <div class="category-icon-container"
                                                 :style="{ '--icon-color': group.parent.color || (activeTab === 'expense' ? '#F43F5E' : '#10B981') }">
                                                 <span class="text-h4 relative-pos z-2">{{ group.parent.icon || '🏷️'
-                                                    }}</span>
+                                                }}</span>
                                                 <div class="icon-gradient-bg"></div>
                                             </div>
                                             <div>
                                                 <span class="text-h6 font-weight-black line-height-1 mb-1 d-block">{{
                                                     group.parent.category
-                                                }}</span>
+                                                    }}</span>
                                                 <div class="d-flex ga-2">
                                                     <v-chip v-if="group.children.length > 0" size="x-small"
                                                         variant="tonal" color="primary" class="font-weight-bold">
@@ -853,7 +853,7 @@ onMounted(() => {
                                                         </div>
                                                         <div v-else class="d-flex justify-end relative-pos z-2">
                                                             <v-btn size="x-small" variant="text" color="primary"
-                                                                @click="editBudget(child)"
+                                                                @click.stop="editBudget(child)"
                                                                 class="px-0 text-none font-weight-black"
                                                                 style="height: 20px; font-size: 10px;">
                                                                 Set Limit

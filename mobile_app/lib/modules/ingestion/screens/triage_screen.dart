@@ -163,44 +163,56 @@ class _TriageScreenState extends State<TriageScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Transaction Triage'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadTriage,
-          ),
-        ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: AppTheme.danger)))
-              : _items.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.check_circle_outline, size: 64, color: AppTheme.success.withOpacity(0.5)),
-                          const SizedBox(height: 16),
-                          const Text('All caught up!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          Text('No transactions need review.', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-                        ],
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _items.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 16),
-                      itemBuilder: (context, index) {
-                        final item = _items[index];
-                        return _buildTriageCard(item);
-                      },
+      body: RefreshIndicator(
+        onRefresh: _loadTriage,
+        child: _isLoading && _items.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.7,
+                      child: Center(child: Text(_error!, style: const TextStyle(color: AppTheme.danger))),
                     ),
+                  )
+                : _items.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+                          Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.check_circle_outline, size: 64, color: AppTheme.success.withOpacity(0.5)),
+                                const SizedBox(height: 16),
+                                const Text('All caught up!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                Text('No transactions need review.', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 16),
+                        itemBuilder: (context, index) {
+                          final item = _items[index];
+                          return _buildTriageCard(item);
+                        },
+                      ),
+      ),
     );
   }
 
   Widget _buildTriageCard(RecentTransaction item) {
     final theme = Theme.of(context);
-    final currency = context.read<DashboardService>().data?.summary.currency ?? '₹';
+    final dashboardService = context.read<DashboardService>();
+    final currency = dashboardService.currencySymbol;
+    final maskingFactor = dashboardService.maskingFactor;
     final categories = context.watch<CategoriesService>().categories;
     final selectedCategory = _selectedCategories[item.id] ?? 'Uncategorized';
     final createRule = _createRuleFlags[item.id] ?? false;
@@ -242,7 +254,7 @@ class _TriageScreenState extends State<TriageScreen> {
               ),
               const SizedBox(width: 12),
               Text(
-                '$currency${item.amount.abs().toStringAsFixed(2)}',
+                '$currency${(item.amount.abs() / maskingFactor).toStringAsFixed(0)}',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 20,

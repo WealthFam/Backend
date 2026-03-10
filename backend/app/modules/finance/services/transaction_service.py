@@ -1,18 +1,18 @@
-from typing import List, Optional
-from datetime import datetime
 import json
-import uuid
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_
 import logging
-from backend.app.modules.finance import models, schemas
+import uuid
+from datetime import datetime
+from typing import List, Optional
 
-logger = logging.getLogger(__name__)
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, joinedload
+
+from backend.app.core.timezone import ensure_utc
+from backend.app.modules.finance import models, schemas
 from backend.app.modules.finance.models import TransactionType
 from backend.app.modules.finance.services.category_service import CategoryService
 from backend.app.modules.finance.services.transfer_service import TransferService
 from backend.app.modules.ingestion import models as ingestion_models
-from backend.app.core.timezone import ensure_utc
 from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
 
 class TransactionService:
@@ -129,6 +129,24 @@ class TransactionService:
         db.commit()
         db.refresh(db_transaction)
         logger.info(f"TRANSACTION CREATED: ID {db_transaction.id} for Account {db_transaction.account_id}")
+
+        # Trigger Pulse Notification
+        try:
+            from backend.app.modules.notifications import NotificationService
+            # Get account name and owner_id for the notification
+            db_account = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
+            if db_account:
+                NotificationService.notify_transaction(
+                    db, 
+                    tenant_id, 
+                    float(db_transaction.amount), 
+                    db_transaction.description or "New Transaction",
+                    db_account.name,
+                    user_id=db_account.owner_id
+                )
+        except Exception as e:
+            logger.error(f"Failed to trigger transaction notification: {e}")
+
         return db_transaction
 
     @staticmethod

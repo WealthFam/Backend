@@ -13,6 +13,7 @@ import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/core/services/notification_service.dart';
 
 import 'package:mobile_app/core/services/foreground_service.dart';
+import 'package:mobile_app/core/utils/logger.dart';
 
 extension PlatformCheck on TargetPlatform {
   bool get shouldUseTelephony => this == TargetPlatform.android;
@@ -23,7 +24,7 @@ extension PlatformCheck on TargetPlatform {
 void backgroundMessageHandler(SmsMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (message.body == null || message.address == null) return;
-  debugPrint("Background SMS: ${message.body}");
+  AppLogger.info("Background SMS: ${message.body}");
   
   try {
     // 1. Initialize Prefs
@@ -115,17 +116,18 @@ void backgroundMessageHandler(SmsMessage message) async {
        // Optional: Notification for background sync (can be noisy, but good for debugging)
        // NotificationService().showNotification(title: "SMS Synced", body: "From ${message.address}");
     } else {
-       debugPrint("Background SMS: Failed ${response.statusCode}");
-       // Add to offline queue
-       final queue = prefs.getStringList('sms_offline_queue') ?? [];
-       final item = {
-          'address': message.address,
-          'body': message.body,
-          'date': date,
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-       };
-       queue.add(jsonEncode(item));
-       await prefs.setStringList('sms_offline_queue', queue);
+        // Add to offline queue with location if available
+        final queue = prefs.getStringList('sms_offline_queue') ?? [];
+        final item = {
+           'address': message.address,
+           'body': message.body,
+           'date': date,
+           'timestamp': DateTime.now().millisecondsSinceEpoch,
+           'latitude': lat,
+           'longitude': lng,
+        };
+        queue.add(jsonEncode(item));
+        await prefs.setStringList('sms_offline_queue', queue);
     }
   } catch (e) {
      debugPrint("Background SMS Error: $e");
@@ -201,7 +203,7 @@ class SmsService extends ChangeNotifier {
     _loadDebugLogs();
     
     if (kIsWeb || !defaultTargetPlatform.shouldUseTelephony) {
-       debugPrint("SMS features disabled: Not on Android.");
+       AppLogger.info("SMS features disabled: Not on Android.");
        return;
     }
 
@@ -319,7 +321,7 @@ class SmsService extends ChangeNotifier {
   }
 
   Future<void> _handleSms(SmsMessage message) async {
-    debugPrint("Foreground SMS Received: ${message.address} - ${message.body}");
+    AppLogger.info("Foreground SMS Received: ${message.address}");
     if (message.body == null || message.address == null) return;
     
     // Show notification for visibility
@@ -348,10 +350,24 @@ class SmsService extends ChangeNotifier {
       _updateSyncStats(true);
       return res;
     } catch (e) {
-      debugPrint("Failed to send SMS to backend: $e");
+      AppLogger.error("Failed to send SMS to backend", e);
       _updateSyncStats(false);
+      
+      // Attempt to get location for the offline record even if backend failed
+      double? lat;
+      double? lng;
+      try {
+        if (_config.sendDebugPayload) {
+          final pos = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+          ).timeout(const Duration(seconds: 3));
+          lat = pos.latitude;
+          lng = pos.longitude;
+        }
+      } catch (_) {}
+
       // Queue for offline Retry (Step 6 requirement)
-      _queueForRetry(address, body, date);
+      _queueForRetry(address, body, date, lat: lat, lng: lng);
       rethrow; // Rethrow for UI to see error if manual
     }
   }
@@ -392,15 +408,16 @@ class SmsService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<Map<String, dynamic>> _sendToBackend(String address, String body, int date) async {
+  Future<Map<String, dynamic>> _sendToBackend(String address, String body, int date, {double? lat, double? lng}) async {
     if (!_auth.isAuthenticated || _auth.accessToken == null) {
       throw Exception("Not Authenticated");
     }
 
-    // Get Location if possible and debug payload is enabled
-    double? lat;
-    double? lng;
-    if (_config.sendDebugPayload) {
+    // Get Location if possible and debug payload is enabled (fallback if not provided)
+    double? finalLat = lat;
+    double? finalLng = lng;
+    
+    if (finalLat == null && _config.sendDebugPayload) {
       try {
         LocationPermission permission = await Geolocator.checkPermission();
         if (permission == LocationPermission.denied) {
@@ -411,8 +428,8 @@ class SmsService extends ChangeNotifier {
           Position position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
           ).timeout(const Duration(seconds: 10));
-          lat = position.latitude;
-          lng = position.longitude;
+          finalLat = position.latitude;
+          finalLng = position.longitude;
         }
       } catch (e) {
         debugPrint("SmsService: Error getting location: $e");
@@ -425,8 +442,8 @@ class SmsService extends ChangeNotifier {
       'sender': address,
       'message': body,
       'device_id': _auth.deviceId,
-      'latitude': lat,
-      'longitude': lng,
+      'latitude': finalLat,
+      'longitude': finalLng,
     };
 
     if (_config.sendDebugPayload) {
@@ -456,7 +473,7 @@ class SmsService extends ChangeNotifier {
   // --- Offline Queue Logic ---
   static const String keyQueue = 'sms_offline_queue';
 
-  Future<void> _queueForRetry(String address, String body, int date) async {
+  Future<void> _queueForRetry(String address, String body, int date, {double? lat, double? lng}) async {
     final List<String> queue = _prefs.getStringList(keyQueue) ?? [];
     
     final item = {
@@ -464,6 +481,8 @@ class SmsService extends ChangeNotifier {
       'body': body,
       'date': date,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'latitude': lat,
+      'longitude': lng,
     };
     
     queue.add(jsonEncode(item));
@@ -487,7 +506,13 @@ class SmsService extends ChangeNotifier {
         
         final hash = _computeHash(address, date.toString(), body);
         if (!_isCached(hash)) {
-          await _sendToBackend(address, body, date);
+          await _sendToBackend(
+            address, 
+            body, 
+            date, 
+            lat: item['latitude'] as double?, 
+            lng: item['longitude'] as double?
+          );
            await _cacheHash(hash);
         }
         successCount++;
@@ -517,7 +542,7 @@ class SmsService extends ChangeNotifier {
       _lastSyncStatus = "Success";
     } catch (e) {
       _lastSyncStatus = "Failed";
-      debugPrint("Manual Sync Error: $e");
+      AppLogger.error("Manual Sync Error", e);
     } finally {
       _isSyncing = false;
       _lastSyncTime = DateTime.now();
@@ -644,8 +669,8 @@ class SmsService extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>> sendSmsToBackend(String address, String body, int date) async {
-    final res = await _sendToBackend(address, body, date);
+  Future<Map<String, dynamic>> sendSmsToBackend(String address, String body, int date, {double? lat, double? lng}) async {
+    final res = await _sendToBackend(address, body, date, lat: lat, lng: lng);
     final hash = computeHash(address, date.toString(), body);
     await cacheHash(hash);
     _updateSyncStats(true);

@@ -7,7 +7,9 @@ export function localISOString(d: Date = new Date()): string {
 
 /** Local YYYY-MM-DD — safe replacement for new Date(y,m,d).toISOString().split('T')[0] */
 export function localDateString(year: number, month: number, day: number): string {
-    return `${year}-${p(month + 1)}-${p(day)}`
+    // Normalization: new Date(year, month, day) handles overflows/underflows (e.g. day 0 is last day of prev month)
+    const d = new Date(year, month, day)
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
 /** Today as YYYY-MM-DD in local timezone */

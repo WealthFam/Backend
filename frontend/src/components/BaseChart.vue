@@ -1,12 +1,14 @@
 <template>
   <div class="chart-container" :style="{ height: height + 'px' }">
-    <component :is="chartComponent" :data="chartData" :options="chartOptions" />
+    <component :is="chartComponent" :data="chartData" :options="chartOptions" :key="settings.maskingFactor" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useTheme } from 'vuetify'
+import { useCurrency } from '@/composables/useCurrency'
+import { useSettingsStore } from '@/stores/settings'
 import {
   Chart as ChartJS,
   Title,
@@ -48,6 +50,8 @@ const emit = defineEmits(['chart-click'])
 
 const vTheme = useTheme()
 const isDark = computed(() => vTheme.global.current.value.dark)
+const { formatAmount } = useCurrency()
+const settings = useSettingsStore()
 
 /**
  * Custom Polyline Plugin for Doughnut Charts
@@ -96,7 +100,7 @@ const polylineLabelsPlugin = {
         ctx.textAlign = isRight ? 'left' : 'right'
         ctx.textBaseline = 'middle'
 
-        const labelText = `${label}: ${percent} (₹${value.toLocaleString()})`
+        const labelText = `${label}: ${percent} (${formatAmount(value)})`
         ctx.fillText(labelText, endX + (isRight ? 12 : -12), endY)
       })
     })
@@ -116,65 +120,79 @@ const chartComponent = computed(() => {
   return Bar
 })
 
-const defaultOptions = computed(() => ({
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    datalabels: { display: false }, // Disable by default for all charts
-    legend: {
-      display: props.type === 'doughnut',
-      position: 'bottom' as const,
-      labels: {
-        usePointStyle: true,
-        padding: 20,
-        color: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)',
-        font: { size: 11, weight: 'bold' }
-      }
-    },
-    tooltip: {
-      backgroundColor: isDark.value ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-      padding: 12,
-      cornerRadius: 12,
-      titleFont: { size: 14, weight: 'bold' },
-      bodyColor: isDark.value ? '#ffffff' : '#0f172a',
-      titleColor: isDark.value ? '#ffffff' : '#0f172a',
-      borderColor: 'rgba(var(--v-border-color), 0.1)',
-      borderWidth: 1
-    }
-  },
-  scales: props.type !== 'doughnut' ? {
-    y: {
-      beginAtZero: true,
-      grid: {
-        display: true,
-        drawBorder: false,
-        color: isDark.value ? 'rgba(254,254,254,0.05)' : 'rgba(0, 0, 0, 0.05)'
+const defaultOptions = computed(() => {
+    // Access maskingFactor to trigger reactivity when it changes
+    settings.maskingFactor;
+    return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      datalabels: { display: false }, // Disable by default for all charts
+      legend: {
+        display: props.type === 'doughnut',
+        position: 'bottom' as const,
+        labels: {
+          usePointStyle: true,
+          padding: 20,
+          color: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)',
+          font: { size: 11, weight: 'bold' }
+        }
       },
-      ticks: {
-        color: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)',
-        font: { size: 11, weight: 'bold' },
-        callback: function (this: any, value: any) {
-          // Chart.js passes 'this' as the scale object
-          const label = this.getLabelForValue(value)
-          // If it's a numeric value (and not just an index for a category axis)
-          if (typeof label === 'number') {
-            return '₹' + label.toLocaleString()
+      tooltip: {
+        backgroundColor: isDark.value ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+        padding: 12,
+        cornerRadius: 12,
+        titleFont: { size: 14, weight: 'bold' },
+        bodyColor: isDark.value ? '#ffffff' : '#0f172a',
+        titleColor: isDark.value ? '#ffffff' : '#0f172a',
+        borderColor: 'rgba(var(--v-border-color), 0.1)',
+        borderWidth: 1,
+        callbacks: {
+          label: (context: any) => {
+            let label = context.dataset.label || ''
+            if (label) label += ': '
+            if (context.parsed.y !== null && context.parsed.y !== undefined) {
+              label += formatAmount(context.parsed.y, 'INR', false, true)
+            } else if (context.parsed !== null) {
+              label += formatAmount(context.parsed, 'INR', false, true)
+            }
+            return label
           }
-          return label
         }
       }
     },
-    x: {
-      grid: {
-        display: false
+    scales: props.type !== 'doughnut' ? {
+      y: {
+        beginAtZero: true,
+        grid: {
+          display: true,
+          drawBorder: false,
+          color: isDark.value ? 'rgba(254,254,254,0.05)' : 'rgba(0, 0, 0, 0.05)'
+        },
+        ticks: {
+          color: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)',
+          font: { size: 11, weight: 'bold' },
+          callback: function (this: any, value: any) {
+            if (typeof value === 'number') {
+              // Pass true to formatAmount for compact formatting and skipMasking=true
+              return formatAmount(value, 'INR', true, true)
+            }
+            return value
+          }
+        }
       },
-      ticks: {
-        font: { size: 11, weight: 'bold' },
-        color: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)'
+      x: {
+        grid: {
+          display: false
+        },
+        ticks: {
+          font: { size: 11, weight: 'bold' },
+          color: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)'
+        }
       }
-    }
-  } : {}
-}))
+    } : {}
+  }
+})
 
 const computedChartData = computed(() => {
   if (!props.data) return props.data

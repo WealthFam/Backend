@@ -11,6 +11,7 @@ import 'package:mobile_app/modules/home/screens/mutual_funds_screen.dart';
 import 'package:mobile_app/modules/ingestion/screens/triage_screen.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/modules/home/models/transaction_category.dart';
+import 'package:mobile_app/core/services/socket_service.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -36,7 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final dashboard = context.watch<DashboardService>();
     final theme = Theme.of(context);
-    final currencyFormat = NumberFormat.simpleCurrency(name: dashboard.data?.summary.currency ?? 'INR');
+    final currencyFormat = NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0);
 
     // Helper to format with masking
     String formatAmount(double amount) {
@@ -104,7 +105,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: _buildSummarySection(context, dashboard.data!.summary, formatAmount),
                       )
                     : null,
-                  actions: [],
+                  actions: [
+                    Consumer<SocketService>(
+                      builder: (context, socket, _) => Tooltip(
+                        message: socket.isConnected ? 'Real-time Connected' : 'Real-time Disconnected',
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: Icon(
+                            socket.isConnected ? Icons.bolt : Icons.bolt_outlined,
+                            color: socket.isConnected ? AppTheme.success : AppTheme.danger,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 if (dashboard.error != null)
                   SliverToBoxAdapter(
@@ -583,16 +598,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w500),
         ),
-        subtitle: Row(
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                '${txn.category} • ${txn.accountName ?? 'Account'} • ${txn.formattedDate}',
-                style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+            Text(
+              '${txn.category} • ${txn.accountName ?? 'Account'} • ${txn.formattedDate}',
+              style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
+            if (txn.expenseGroupName != null) ...[
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.folder_shared_outlined, size: 8, color: AppTheme.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      txn.expenseGroupName!,
+                      style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         trailing: Text(

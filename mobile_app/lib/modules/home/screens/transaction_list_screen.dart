@@ -39,11 +39,15 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     });
   }
 
-  Future<void> _fetchTransactions() async {
-    if (_isLoading || !_hasMore) return;
+  Future<void> _fetchTransactions({bool reset = false}) async {
+    if (_isLoading || (!reset && !_hasMore)) return;
     
     setState(() {
       _isLoading = true;
+      if (reset) {
+        _page = 1;
+        _hasMore = true;
+      }
     });
 
     final config = context.read<AppConfig>();
@@ -71,6 +75,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
         final nextPage = data['next_page'];
 
         setState(() {
+          if (reset) _transactions.clear();
           _transactions.addAll(newItems);
           _page++;
           _hasMore = nextPage != null;
@@ -92,83 +97,87 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
      final theme = Theme.of(context);
      return Scaffold(
        appBar: AppBar(title: const Text("Transactions")),
-       body: ListView.builder(
-         controller: _scrollController,
-         itemCount: _transactions.length + (_hasMore ? 1 : 0),
-         itemBuilder: (context, index) {
-           if (index == _transactions.length) {
-             return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
-           }
-           
-           final txn = _transactions[index];
-           final amount = (txn['amount'] as num).toDouble();
-           final date = DateTime.parse(txn['date']).toLocal();
-           final category = txn['category'];
-           
-           return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: theme.dividerColor),
-              ),
-              child: ListTile(
-                onTap: () => _showEditCategoryDialog(context, txn),
-                leading: Consumer<CategoriesService>(
-                  builder: (context, catService, _) {
-                    final catName = category as String;
-                    // Find category case-insensitive or exact
-                    final matched = catService.categories
-                        .cast<TransactionCategory?>()
-                        .firstWhere(
-                          (c) => c?.name.toLowerCase() == catName.toLowerCase(),
-                          orElse: () => null,
+       body: RefreshIndicator(
+         onRefresh: () => _fetchTransactions(reset: true),
+         child: ListView.builder(
+           physics: const AlwaysScrollableScrollPhysics(),
+           controller: _scrollController,
+           itemCount: _transactions.length + (_hasMore ? 1 : 0),
+           itemBuilder: (context, index) {
+             if (index == _transactions.length) {
+               return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
+             }
+             
+             final txn = _transactions[index];
+             final amount = (txn['amount'] as num).toDouble();
+             final date = DateTime.parse(txn['date']).toLocal();
+             final category = txn['category'];
+             
+             return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.dividerColor),
+                ),
+                child: ListTile(
+                  onTap: () => _showEditCategoryDialog(context, txn),
+                  leading: Consumer<CategoriesService>(
+                    builder: (context, catService, _) {
+                      final String catName = category as String;
+                      // Find category case-insensitive or exact
+                      final matched = catService.categories
+                          .cast<TransactionCategory?>()
+                          .firstWhere(
+                            (c) => c?.name.toLowerCase() == catName.toLowerCase(),
+                            orElse: () => null,
+                          );
+                      
+                      if (matched?.icon != null) {
+                        return CircleAvatar(
+                          backgroundColor: theme.primaryColor.withOpacity(0.1),
+                          child: Text(matched!.icon!, style: const TextStyle(fontSize: 20)),
                         );
-                    
-                    if (matched?.icon != null) {
+                      }
+                      
                       return CircleAvatar(
                         backgroundColor: theme.primaryColor.withOpacity(0.1),
-                        child: Text(matched!.icon!, style: const TextStyle(fontSize: 20)),
+                        child: Text(
+                          catName.isNotEmpty ? catName[0].toUpperCase() : '?',
+                          style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold),
+                        ),
+                      );
+                    },
+                  ),
+                  title: Text(txn['description'], maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${DateFormat('MMM d').format(date)} • ${txn['account_owner_name'] != null ? "${txn['account_owner_name']} - " : ""}${txn['account_name'] ?? 'Account'}',
+                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Icon(Icons.edit, size: 12, color: theme.disabledColor),
+                    ],
+                  ),
+                  trailing: Consumer<DashboardService>(
+                    builder: (context, dashboard, _) {
+                      return Text(
+                        NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0).format(amount / dashboard.maskingFactor),
+                        style: TextStyle(
+                          color: amount < 0 ? AppTheme.danger : AppTheme.success,
+                          fontWeight: FontWeight.bold,
+                        ),
                       );
                     }
-                    
-                    return CircleAvatar(
-                      backgroundColor: theme.primaryColor.withOpacity(0.1),
-                      child: Text(
-                        catName.isNotEmpty ? catName[0].toUpperCase() : '?',
-                        style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold),
-                      ),
-                    );
-                  },
+                  ),
                 ),
-                title: Text(txn['description'], maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${DateFormat('MMM d').format(date)} • ${txn['account_owner_name'] != null ? "${txn['account_owner_name']} - " : ""}${txn['account_name'] ?? 'Account'}',
-                        style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Icon(Icons.edit, size: 12, color: theme.disabledColor),
-                  ],
-                ),
-                trailing: Consumer<DashboardService>(
-                  builder: (context, dashboard, _) {
-                    return Text(
-                      NumberFormat.simpleCurrency(name: 'INR').format(amount / dashboard.maskingFactor),
-                      style: TextStyle(
-                        color: amount < 0 ? AppTheme.danger : AppTheme.success,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    );
-                  }
-                ),
-              ),
-           );
-         },
+             );
+           },
+         ),
        ),
        floatingActionButton: FloatingActionButton(
          child: const Icon(Icons.add),
@@ -443,12 +452,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
              ),
              const SizedBox(height: 16),
              
-             TextFormField(
-               controller: _amountCtrl,
-               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-               decoration: const InputDecoration(labelText: 'Amount', prefixText: '₹ '),
-               validator: (v) => v!.isEmpty ? 'Required' : null,
-             ),
+              TextFormField(
+                controller: _amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: 'Amount', prefixText: '${context.read<DashboardService>().currencySymbol} '),
+                validator: (v) => v!.isEmpty ? 'Required' : null,
+              ),
              const SizedBox(height: 16),
              
               Consumer<CategoriesService>(

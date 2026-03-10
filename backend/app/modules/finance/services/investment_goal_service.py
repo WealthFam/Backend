@@ -1,7 +1,9 @@
-from typing import List, Optional
-from sqlalchemy.orm import Session
-from backend.app.modules.finance import models, schemas
 from decimal import Decimal
+from typing import List, Optional
+
+from sqlalchemy.orm import Session
+
+from backend.app.modules.finance import models, schemas
 
 class InvestmentGoalService:
     @staticmethod
@@ -224,3 +226,52 @@ class InvestmentGoalService:
         db.delete(db_asset)
         db.commit()
         return True
+    @staticmethod
+    def check_goal_milestones(db: Session, tenant_id: str):
+        """
+        Check all goals for a tenant and trigger notifications for milestones (80%, 100%).
+        Uses Alert system to prevent duplicate notifications for the same milestone.
+        """
+        from backend.app.modules.notifications.services import NotificationService
+        from backend.app.modules.notifications.models import Alert
+        from backend.app.modules.auth.models import User
+
+        goals_progress = InvestmentGoalService.get_goals(db, tenant_id)
+        
+        for goal in goals_progress:
+            # Determine appropriate milestone
+            milestone = None
+            if goal.progress_percentage >= 100:
+                milestone = 100
+            elif goal.progress_percentage >= 80:
+                milestone = 80
+            
+            if not milestone:
+                continue
+            
+            # Check if alert already sent today or recently for this milestone
+            # We look for an alert with this text/milestone in the last 7 days to avoid spam
+            existing_alert = db.query(Alert).filter(
+                Alert.tenant_id == tenant_id,
+                Alert.category == "MILESTONE",
+                Alert.body.contains(f"reached {milestone}%"),
+                Alert.body.contains(f"'{goal.name}'")
+            ).first()
+            
+            if existing_alert:
+                continue
+                
+            # Get owner name
+            owner_name = "Someone"
+            if goal.owner_id:
+                owner = db.query(User).filter(User.id == goal.owner_id).first()
+                if owner:
+                    owner_name = owner.full_name or owner.email.split('@')[0]
+            
+            NotificationService.notify_milestone(
+                db, 
+                tenant_id, 
+                goal_name=goal.name, 
+                progress=milestone, 
+                user_name=owner_name
+            )

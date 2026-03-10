@@ -26,11 +26,27 @@ import {
     Search,
     RefreshCw,
     ShieldCheck,
+    Zap,
 } from 'lucide-vue-next'
 import { onUnmounted, computed, watch } from 'vue'
 import { useMutualFundStore } from '@/stores/finance/mutualFunds'
 import ToastContainer from '@/components/ToastContainer.vue'
 import GlobalSearch from '@/components/common/GlobalSearch.vue'
+import { useWebSockets } from '@/composables/useWebSockets'
+
+const { notifications, clearNotifications } = useWebSockets()
+const unreadCount = computed(() => notifications.value.length)
+
+// Bell Ring Animation State
+const isBellRinging = ref(false)
+watch(unreadCount, (newVal, oldVal) => {
+    if (newVal > oldVal) {
+        isBellRinging.value = true
+        setTimeout(() => {
+            isBellRinging.value = false
+        }, 1000)
+    }
+})
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -224,7 +240,7 @@ function handleMouseMove(e: MouseEvent) {
                                 </template>
                                 <v-list-item-title class="font-weight-bold">{{ user.full_name ||
                                     user.email.split('@')[0]
-                                }}</v-list-item-title>
+                                    }}</v-list-item-title>
                             </v-list-item>
                         </v-list>
                     </v-card>
@@ -246,10 +262,43 @@ function handleMouseMove(e: MouseEvent) {
                     <component :is="theme.global.current.value.dark ? Sun : Moon" :size="20" />
                 </v-btn>
 
-                <!-- Utility Actions -->
-                <v-btn icon color="slate-600" class="mr-2" size="40">
-                    <Bell :size="20" />
-                </v-btn>
+                <!-- Real-time Notifications Bell -->
+                <v-menu offset="12" transition="scale-transition">
+                    <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" icon color="slate-600" class="mr-2" size="40">
+                            <v-badge v-if="unreadCount > 0" :content="unreadCount" color="error" overlap
+                                location="top right" offset-x="2" offset-y="2">
+                                <Bell :size="20" :class="{ 'bell-ring': isBellRinging }" />
+                            </v-badge>
+                            <Bell v-else :size="20" :class="{ 'bell-ring': isBellRinging }" />
+                        </v-btn>
+                    </template>
+                    <v-card width="350" rounded="xl" elevation="10" border class="premium-popup">
+                        <div class="pa-4 d-flex justify-space-between align-center border-b">
+                            <span class="text-subtitle-1 font-weight-black">Notifications</span>
+                            <v-btn variant="text" size="x-small" color="primary" class="text-none font-weight-black"
+                                @click="clearNotifications">Clear All</v-btn>
+                        </div>
+                        <v-list v-if="notifications.length > 0" class="pa-2 overflow-y-auto" max-height="400">
+                            <v-list-item v-for="note in notifications" :key="note.id" rounded="lg" class="mb-1 pa-3">
+                                <template v-slot:prepend>
+                                    <v-avatar size="32" color="primary-lighten-5" class="mr-3">
+                                        <Zap v-if="note.category === 'MILESTONE'" :size="16" class="text-success" />
+                                        <Bell v-else :size="16" class="text-primary" />
+                                    </v-avatar>
+                                </template>
+                                <v-list-item-title class="font-weight-black text-caption">{{ note.title
+                                    }}</v-list-item-title>
+                                <v-list-item-subtitle class="text-tiny line-height-1-2 opacity-60 mt-1">{{ note.body
+                                    }}</v-list-item-subtitle>
+                            </v-list-item>
+                        </v-list>
+                        <div v-else class="pa-10 text-center opacity-40">
+                            <Bell :size="32" class="mb-2" />
+                            <p class="text-caption font-weight-black">No new alerts</p>
+                        </div>
+                    </v-card>
+                </v-menu>
 
                 <!-- User Profile Menu -->
                 <v-menu offset="12" transition="scale-transition" v-if="auth.user">
@@ -259,7 +308,7 @@ function handleMouseMove(e: MouseEvent) {
                                 <span class="avatar-emoji">{{ AVATARS[selectedAvatar] }}</span>
                             </v-avatar>
                             <span class="user-display-name d-none d-sm-inline">{{ auth.user.email.split('@')[0]
-                                }}</span>
+                            }}</span>
                         </v-btn>
                     </template>
 
@@ -272,7 +321,7 @@ function handleMouseMove(e: MouseEvent) {
                                     </v-avatar>
                                 </template>
                                 <v-list-item-title class="text-h6 font-weight-bold">{{ auth.user.email.split('@')[0]
-                                }}</v-list-item-title>
+                                    }}</v-list-item-title>
                                 <v-list-item-subtitle class="text-primary font-weight-medium">Family
                                     Admin</v-list-item-subtitle>
                             </v-list-item>
@@ -808,5 +857,34 @@ function handleMouseMove(e: MouseEvent) {
 
 .sync-btn:active {
     transform: scale(0.9);
+}
+
+@keyframes bell-ring {
+
+    0%,
+    100% {
+        transform: rotate(0deg);
+    }
+
+    10%,
+    30%,
+    50%,
+    70%,
+    90% {
+        transform: rotate(15deg);
+    }
+
+    20%,
+    40%,
+    60%,
+    80% {
+        transform: rotate(-15deg);
+    }
+}
+
+.bell-ring {
+    animation: bell-ring 0.6s ease-in-out;
+    transform-origin: top center;
+    color: var(--v-theme-error) !important;
 }
 </style>

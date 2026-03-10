@@ -62,28 +62,27 @@ class _VaultScreenState extends State<VaultScreen> {
             icon: Icon(_isGridView ? Icons.list : Icons.grid_view),
             onPressed: () => setState(() => _isGridView = !_isGridView),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => vaultService.fetchDocuments(),
-          ),
         ],
       ),
-      body: vaultService.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                _buildFilterBar(),
-                Expanded(
-                  child: vaultService.error != null
-                      ? _buildErrorState(vaultService.error!)
-                      : filteredDocs.isEmpty
-                          ? _buildEmptyState()
-                          : _isGridView 
-                              ? _buildGridView(vaultService, filteredDocs)
-                              : _buildListView(vaultService, filteredDocs),
-                ),
-              ],
-            ),
+      body: RefreshIndicator(
+        onRefresh: () => vaultService.fetchDocuments(),
+        child: vaultService.isLoading && vaultService.documents.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  _buildFilterBar(),
+                  Expanded(
+                    child: vaultService.error != null
+                        ? _buildErrorState(vaultService.error!)
+                        : filteredDocs.isEmpty
+                            ? _buildEmptyState()
+                            : _isGridView 
+                                ? _buildGridView(vaultService, filteredDocs)
+                                : _buildListView(vaultService, filteredDocs),
+                  ),
+                ],
+              ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddMenu(context),
         child: const Icon(Icons.add),

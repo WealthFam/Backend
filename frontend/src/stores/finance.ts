@@ -102,6 +102,7 @@ export const useFinanceStore = defineStore('finance', () => {
         fetchRecurring,
         getCategoryColor,
         getCategoryIcon,
-        getAccountName
+        getAccountName,
+        selectedMemberId: memberId
     }
 })

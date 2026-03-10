@@ -197,6 +197,10 @@ export function useTransactionModals(
                 await financeApi.updateTransaction(editingTxnId.value, payload)
                 notify.success('Transaction updated')
 
+                // Sync internal form state with submitted manual changes 
+                // to ensure follow-up logic (smart prompt) uses correct values
+                Object.assign(form.value, submissionData)
+
                 // Smart Categorization Detection
                 if (submissionData.category !== originalCategory.value && submissionData.category) {
                     const txn = transactions.value.find(t => t.id === editingTxnId.value)
@@ -209,7 +213,7 @@ export function useTransactionModals(
                             if (totalSimilar > 0 || txn.recipient) {
                                 smartPromptData.value = {
                                     txnId: editingTxnId.value,
-                                    category: form.value.category,
+                                    category: submissionData.category,
                                     pattern: pattern,
                                     count: totalSimilar,
                                     createRule: true,
@@ -269,8 +273,8 @@ export function useTransactionModals(
                 notify.success('Transaction added')
             }
             showModal.value = false
-            fetchData()
-            refreshAccounts()
+            await fetchData()
+            await refreshAccounts()
         } catch (e: any) {
             console.error(e)
             const msg = e.response?.data?.detail || 'Failed to save transaction'

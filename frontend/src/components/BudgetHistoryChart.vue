@@ -1,7 +1,7 @@
 <template>
   <div class="budget-history-render">
     <div class="chart-box-render">
-      <BaseChart type="bar" :data="chartData" :options="chartOptions" :height="300" />
+      <BaseChart type="bar" :data="chartData" :options="chartOptions" :height="300" :key="settings.maskingFactor" />
     </div>
   </div>
 </template>
@@ -9,6 +9,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import BaseChart from './BaseChart.vue'
+import { useCurrency } from '@/composables/useCurrency'
+import { useSettingsStore } from '@/stores/settings'
+
+const { formatAmount } = useCurrency()
+const settings = useSettingsStore()
 
 const props = defineProps<{
   history: any[]
@@ -21,14 +26,18 @@ const chartData = computed(() => {
 
   const limits = props.history.map(h => {
     const overall = h.data.find((d: any) => d.category === 'OVERALL')
-    if (overall) return Number(overall.limit)
-    return h.data.reduce((sum: number, d: any) => sum + Number(d.limit), 0)
+    let val = 0
+    if (overall) val = Number(overall.limit)
+    else val = h.data.reduce((sum: number, d: any) => sum + Number(d.limit), 0)
+    return val / (settings.maskingFactor || 1)
   })
 
   const spent = props.history.map(h => {
     const overall = h.data.find((d: any) => d.category === 'OVERALL')
-    if (overall) return Number(overall.spent)
-    return h.data.reduce((sum: number, d: any) => sum + Number(d.spent), 0)
+    let val = 0
+    if (overall) val = Number(overall.spent)
+    else val = h.data.reduce((sum: number, d: any) => sum + Number(d.spent), 0)
+    return val / (settings.maskingFactor || 1)
   })
 
   return {
@@ -61,39 +70,42 @@ const chartData = computed(() => {
   }
 })
 
-const chartOptions = {
-  scales: {
-    x: {
-      grid: { display: false },
-      ticks: { color: '#94a3b8', font: { size: 11 } }
-    },
-    y: {
-      grid: { color: 'rgba(0,0,0,0.03)' },
-      ticks: {
-        color: '#94a3b8',
-        font: { size: 11 },
-        callback: (value: any) => '₹' + value.toLocaleString()
+const chartOptions = computed(() => {
+  settings.maskingFactor // Trigger reactivity
+  return {
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { color: '#94a3b8', font: { size: 11 } }
+      },
+      y: {
+        grid: { color: 'rgba(0,0,0,0.03)' },
+        ticks: {
+          color: '#94a3b8',
+          font: { size: 11 },
+          callback: (value: any) => formatAmount(value, 'INR', true, true)
+        }
       }
-    }
-  },
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      mode: 'index',
-      intersect: false,
-      callbacks: {
-        label: (context: any) => {
-          let label = context.dataset.label || ''
-          if (label) label += ': '
-          if (context.parsed.y !== null) {
-            label += new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(context.parsed.y)
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+        callbacks: {
+          label: (context: any) => {
+            let label = context.dataset.label || ''
+            if (label) label += ': '
+            if (context.parsed.y !== null) {
+              label += formatAmount(context.parsed.y, 'INR', false, true)
+            }
+            return label
           }
-          return label
         }
       }
     }
   }
-}
+})
 </script>
 
 <style scoped>

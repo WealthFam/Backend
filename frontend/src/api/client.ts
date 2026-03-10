@@ -1,6 +1,12 @@
 import axios, { type AxiosInstance } from 'axios'
 import { useNotificationStore } from '@/stores/notification'
 
+declare module 'axios' {
+    export interface AxiosRequestConfig {
+        skipNotification?: boolean;
+    }
+}
+
 // Create Axios instance
 const apiClient: AxiosInstance = axios.create({
     baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -44,7 +50,13 @@ apiClient.interceptors.response.use(
             window.location.href = '/login'
             notification.error('Session expired. Please login again.')
         } else if (error.response) {
-            // Generic error handling
+            // Check for skipNotification in the config
+            // Axios 1.x uses error.config, but we also check error.response.config for safety
+            const config = error.config || error.response.config
+            if (config?.skipNotification) {
+                return Promise.reject(error)
+            }
+
             const message = error.response.data?.detail || error.response.data?.message || 'Server error occurred'
             notification.error(message)
         } else {
@@ -75,12 +87,18 @@ export interface AccountUpdate {
 
 export interface TransactionUpdate {
     description?: string;
+    recipient?: string;
     category?: string;
     amount?: number;
     date?: string;
+    account_id?: string;
     is_transfer?: boolean;
     to_account_id?: string;
+    linked_transaction_id?: string;
     exclude_from_reports?: boolean;
+    is_emi?: boolean;
+    loan_id?: string;
+    expense_group_id?: string;
 }
 
 export const financeApi = {
@@ -127,6 +145,7 @@ export const financeApi = {
     createExpenseGroup: (data: any) => apiClient.post('/finance/expense-groups', data),
     updateExpenseGroup: (id: string, data: any) => apiClient.put(`/finance/expense-groups/${id}`, data),
     deleteExpenseGroup: (id: string) => apiClient.delete(`/finance/expense-groups/${id}`),
+    linkExpenseGroupTransactions: (groupId: string, transactionIds: string[]) => apiClient.post(`/finance/expense-groups/${groupId}/transactions`, { transaction_ids: transactionIds }),
 
     getBudgets: (year?: number, month?: number, userId?: string) => apiClient.get('/finance/budgets', { params: { year, month, user_id: userId } }),
     getBudgetOverview: (year?: number, month?: number, userId?: string) => apiClient.get('/finance/budgets/overview', { params: { year, month, user_id: userId } }),
@@ -356,7 +375,7 @@ export const aiApi = {
     updateSettings: (data: any) => apiClient.post('/ingestion/ai/settings', data),
     testConnection: (content: string) => apiClient.post('/ingestion/ai/test', { content }),
     listModels: (provider: string, apiKey?: string) => apiClient.get('/ingestion/ai/models', { params: { provider, api_key: apiKey } }),
-    generateSummaryInsights: (summary_data: any) => apiClient.post('/ingestion/ai/generate-insights', { summary_data }),
+    generateSummaryInsights: (summary_data: any) => apiClient.post('/ingestion/ai/generate-insights', { summary_data }, { skipNotification: true }),
     getAliases: () => apiClient.get('/ingestion/ai/aliases'),
     createAlias: (pattern: string, alias: string) => apiClient.post('/ingestion/ai/aliases', { pattern, alias }),
     deleteAlias: (id: string) => apiClient.delete(`/ingestion/ai/aliases/${id}`)

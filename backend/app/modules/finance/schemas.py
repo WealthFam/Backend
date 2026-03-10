@@ -234,6 +234,9 @@ class ExpenseGroupRead(ExpenseGroupBase):
     class Config:
         from_attributes = True
 
+class BulkLinkTransactionsRequest(BaseModel):
+    transaction_ids: List[str]
+
 class BudgetBase(BaseModel):
     category: str
     amount_limit: Decimal

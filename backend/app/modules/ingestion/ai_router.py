@@ -8,6 +8,7 @@ from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.ingestion import models as ingestion_models
 import json
 import logging
+from google.genai.errors import ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class AISettingsRead(BaseModel):
     model_name: str
     is_enabled: bool
     prompts: Dict[str, str]
+    api_key: Optional[str] = None
     has_api_key: bool
 
 @router.get("/settings", response_model=AISettingsRead)
@@ -37,7 +39,6 @@ def get_ai_settings(
     ).first()
 
     if not config:
-        # Return defaults
         return {
             "provider": "gemini",
             "model_name": "gemini-pro",
@@ -53,6 +54,7 @@ def get_ai_settings(
         "model_name": config.model_name,
         "is_enabled": config.is_enabled,
         "prompts": json.loads(config.prompts_json or "{}"),
+        "api_key": config.api_key,
         "has_api_key": bool(config.api_key)
     }
 
@@ -82,7 +84,6 @@ def update_ai_settings(
 
     db.commit()
     
-    # Sync with External Parser
     try:
         from backend.app.modules.ingestion.parser_service import ExternalParserService
         ExternalParserService.sync_ai_config(
@@ -105,9 +106,7 @@ def test_ai_connection(
     from backend.app.modules.ingestion.parser_service import ExternalParserService
     content = payload.get("content", "Test transaction: Spent Rs 500 at Amazon using card XX1234 on 01/01/2024")
     
-    # Use generic 'SMS' source for testing as it fits the snippet format best
     try:
-         # We use parse_sms as a proxy for generic parsing since content is short text
         res = ExternalParserService.parse_sms(str(current_user.tenant_id), "TEST_SENDER", content)
         
         if res and res.get("status") in ["success", "processed"]:
@@ -140,8 +139,29 @@ def generate_insights(
     if not summary_data:
         raise HTTPException(status_code=400, detail="Missing summary_data")
     
-    insights = AIService.generate_summary_insights(db, str(current_user.tenant_id), summary_data)
-    return {"insights": insights}
+    try:
+        insights = AIService.generate_summary_insights(db, str(current_user.tenant_id), summary_data)
+        return {"insights": insights}
+    except ClientError as e:
+        logger.error(f"Gemini API Error in router: {e}")
+        status = e.code if hasattr(e, 'code') else 500
+        
+        detail = "AI intelligence is currently unavailable. Please check your settings."
+        err_str = str(e).upper()
+        
+        if status == 429 or "RESOURCE_EXHAUSTED" in err_str:
+            detail = "Quota limit reached for your Gemini API key. Please try again in a few minutes or switch models."
+        elif status == 401 or "UNAUTHENTICATED" in err_str or "API_KEY_INVALID" in err_str:
+            detail = "Authentication failed. Your API key might be invalid or expired."
+        elif status == 404 or "NOT_FOUND" in err_str:
+            detail = "The requested model was not found in your Google project."
+        elif status == 400 or "INVALID_ARGUMENT" in err_str:
+            detail = "The data requested is too large for the current AI model capacity."
+            
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        logger.error(f"Unexpected AI error: {e}")
+        raise HTTPException(status_code=500, detail="Intelligence service encountered an unexpected error.")
 
 @router.get("/aliases")
 def get_merchant_aliases(

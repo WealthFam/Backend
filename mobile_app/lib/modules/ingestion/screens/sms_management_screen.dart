@@ -228,10 +228,6 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
                Navigator.push(context, MaterialPageRoute(builder: (_) => const SmsDebugLogsScreen()));
             },
           ),
-          IconButton(
-            icon: Icon(Icons.refresh, color: theme.colorScheme.onSurface),
-            onPressed: _isLoading ? null : _loadMessages,
-          ),
         ],
       ),
       body: Column(
@@ -307,24 +303,34 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
             ),
           ),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : displayList.isEmpty
-                    ? Center(child: Text(_filterController.text.isEmpty ? 'No SMS messages found' : 'No matching SMS found', 
-                        style: TextStyle(color: theme.colorScheme.onSurfaceVariant)))
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: displayList.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final msg = displayList[index];
-                          final hash = smsService.computeHash(msg.address ?? '', (msg.date ?? 0).toString(), msg.body ?? '');
-                          final isSynced = smsService.isCached(hash);
-                          final isSelected = _selectedHashes.contains(hash);
+            child: RefreshIndicator(
+              onRefresh: _loadMessages,
+              child: _isLoading && _messages.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : displayList.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+                            Center(child: Text(_filterController.text.isEmpty ? 'No SMS messages found' : 'No matching SMS found', 
+                                style: TextStyle(color: theme.colorScheme.onSurfaceVariant))),
+                          ],
+                        )
+                      : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: displayList.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final msg = displayList[index];
+                            final hash = smsService.computeHash(msg.address ?? '', (msg.date ?? 0).toString(), msg.body ?? '');
+                            final isSynced = smsService.isCached(hash);
+                            final isSelected = _selectedHashes.contains(hash);
 
-                          return _buildSmsCard(msg, hash, isSynced, isSelected);
-                        },
-                      ),
+                            return _buildSmsCard(msg, hash, isSynced, isSelected);
+                          },
+                        ),
+            ),
           ),
         ],
       ),

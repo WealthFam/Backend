@@ -26,9 +26,14 @@ def vacuum(path):
         
         # 2. Export the database to Parquet files
         print(f"  Exporting to {export_dir}...")
-        con = duckdb.connect(path, read_only=True)
-        con.execute(f"EXPORT DATABASE '{export_dir}' (FORMAT PARQUET);")
-        con.close()
+        try:
+            con = duckdb.connect(path, read_only=True)
+            con.execute(f"EXPORT DATABASE '{export_dir}' (FORMAT PARQUET);")
+            con.close()
+        except Exception as conn_err:
+            print(f"  FAILED to connect to {path}. Usually indicates WAL corruption.")
+            print(f"  Error details: {conn_err}")
+            raise conn_err
         
         # 3. Import into a fresh new database file to eliminate fragmentation
         print(f"  Importing into new file: {rebuild_path}...")

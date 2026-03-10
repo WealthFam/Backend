@@ -29,6 +29,7 @@ class AuthService extends ChangeNotifier {
   String? get userRole => _userRole;
   String? get userName => _userName;
   String? get userAvatar => _userAvatar;
+  String? get tenantId => _tenantId;
 
   AuthService(this._config);
 

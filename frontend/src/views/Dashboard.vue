@@ -183,8 +183,12 @@
                     </v-row>
                 </v-col>
 
-                <!-- ROW 3: Side-by-Side Activity and Bills -->
-                <v-col cols="12" lg="7">
+                <!-- ROW 3: Family Activity Pulse & Recent Activity -->
+                <v-col cols="12" lg="4">
+                    <ActivityPulse />
+                </v-col>
+
+                <v-col cols="12" lg="8">
                     <v-card class="premium-glass-card pa-6 pa-md-8 h-100" rounded="xl" elevation="1">
                         <div class="d-flex justify-space-between align-center mb-8">
                             <h2 class="text-h6 font-weight-black d-flex align-center">
@@ -222,6 +226,7 @@
                     </v-card>
                 </v-col>
 
+                <!-- ROW 4: Bills & Intelligence -->
                 <v-col cols="12" lg="5">
                     <v-card class="premium-glass-card pa-6 pa-md-8 h-100" rounded="xl" elevation="1">
                         <div class="d-flex justify-space-between align-center mb-8">
@@ -409,12 +414,13 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useBudgetStore } from '@/stores/finance/budgets'
 import { useExpenseGroupStore } from '@/stores/expenseGroups'
 import { useFinanceStore } from '@/stores/finance'
+import ActivityPulse from '@/components/dashboard/ActivityPulse.vue'
 import {
+    Activity,
+    Landmark,
     Wallet,
     PieChart,
-    Landmark,
     Sparkles,
-    Activity,
     CalendarClock,
     CreditCard
 } from 'lucide-vue-next'
