@@ -12,9 +12,16 @@ export function useWebSockets() {
         if (!auth.user || !auth.user.tenant_id) return
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const host = window.location.host.includes('localhost') || window.location.host.includes('127.0.0.1')
-            ? 'localhost:8000'
-            : window.location.host
+        let host = window.location.host
+        
+        // If we're hitting the frontend (usually port 5173 or 80), 
+        // and we're on localhost or an IP, we might need to point to the backend (8000)
+        if (host.includes('localhost') || host.includes('127.0.0.1')) {
+            host = 'localhost:8000'
+        } else if (window.location.port === '5173' || window.location.port === '3000') {
+            // Development mode usually runs on 5173, backend on 8000
+            host = `${window.location.hostname}:8000`
+        }
 
         const tenantId = auth.user.tenant_id
         const token = auth.token

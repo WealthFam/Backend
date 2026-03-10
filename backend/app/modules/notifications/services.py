@@ -22,20 +22,17 @@ class NotificationService:
 
         # Real-time Broadcast via WebSocket
         try:
-            # We use asyncio.create_task or just await if in async context. 
-            # Since services are often called from sync code, we might need a helper.
-            # However, for now, let's just try to broadcast.
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                data = AlertSchema.model_validate(alert).model_dump()
-                # Ensure datetime is serializable
-                data['created_at'] = data['created_at'].isoformat() if data.get('created_at') else None
-                asyncio.create_task(manager.broadcast_to_tenant(tenant_id, {
-                    "type": "NOTIFICATION",
-                    "payload": data
-                }))
+            data = AlertSchema.model_validate(alert).model_dump()
+            # Ensure datetime is serializable
+            data['created_at'] = data['created_at'].isoformat() if data.get('created_at') else None
+            
+            manager.broadcast_to_tenant_threadsafe(tenant_id, {
+                "type": "NOTIFICATION",
+                "payload": data
+            })
         except Exception as e:
             # Don't fail the transaction if broadcast fails
+            logger.error(f"Failed to broadcast alert: {e}")
             pass
 
         return alert
