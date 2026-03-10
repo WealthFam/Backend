@@ -56,6 +56,8 @@ def create_application() -> FastAPI:
 
     @application.on_event("startup")
     async def startup_event():
+        # Set the event loop for the connection manager to enable thread-safe broadcasts
+        manager.set_loop(asyncio.get_event_loop())
         
         # 1. Ensure all ORM-defined tables exist (CREATE TABLE IF NOT EXISTS)
         logger.info("Running Base.metadata.create_all...")
