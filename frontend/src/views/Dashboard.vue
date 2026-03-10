@@ -267,7 +267,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
-import { financeApi, aiApi } from '@/api/client'
+import { financeApi } from '@/api/client'
 import { useRouter } from 'vue-router'
 import { useTransactionHelpers } from '@/composables/useTransactionHelpers'
 import { useDashboardHelpers } from '@/composables/useDashboardHelpers'
@@ -292,8 +292,7 @@ import {
     TrendingUp,
     TrendingDown,
     RefreshCw,
-    Zap,
-    Loader2
+    Zap
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -314,7 +313,6 @@ const loading = computed(() => dashboardStore.loading)
 
 const accounts = computed(() => financeStore.accounts)
 const categories = computed(() => financeStore.categories)
-const budgets = computed(() => budgetStore.budgets)
 const expenseGroups = computed(() => expenseGroupStore.groups)
 const recurringTransactions = ref<any[]>([])
 
