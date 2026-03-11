@@ -82,6 +82,16 @@ def update_transaction(
         raise HTTPException(status_code=404, detail="Transaction not found")
     return db_txn
 
+@router.get("/transactions/stats/vendor")
+def get_vendor_stats(
+    vendor_name: str,
+    skip: int = 0,
+    limit: int = 3,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return TransactionService.get_vendor_stats(db, str(current_user.tenant_id), vendor_name, user_id=None, skip=skip, limit=limit)
+
 @router.post("/transactions/smart-categorize")
 def smart_categorize_transaction(
     payload: schemas.SmartCategorizeRequest,

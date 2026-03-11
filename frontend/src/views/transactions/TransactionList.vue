@@ -58,9 +58,10 @@ const emit = defineEmits<{
     'sortChange': [key: string]
     'editTxn': [txn: any]
     'deleteSelected': []
-    'importCsv': []
-    'fetchData': []
-    'resetFilters': []
+    'importCsv': [],
+    'fetchData': [],
+    'resetFilters': [],
+    'showVendorInsights': [vendorName: string]
 }>()
 
 // --- Merchant Alias Logic (Encapsulated) ---
@@ -551,11 +552,19 @@ function handleReset() {
                                 </router-link>
                                 <span v-else>{{ item.description }}</span>
                             </div>
-                            <div class="text-caption opacity-50 d-flex align-center gap-1 font-weight-bold"
-                                v-if="item.source">
-                                <span class="source-icon-mini">{{ item.source === 'SMS' ? '📱' : (item.source ===
-                                    'EMAIL' ? '📧' : '⌨️') }}</span>
-                                {{ item.source }}
+                            <div class="text-caption d-flex align-center gap-1 font-weight-bold" v-if="item.source">
+                                <div class="d-flex align-center opacity-50">
+                                    <span class="source-icon-mini">{{ item.source === 'SMS' ? '📱' : (item.source ===
+                                        'EMAIL' ? '📧' : '⌨️') }}</span>
+                                    {{ item.source }}
+                                </div>
+                                <v-tooltip text="Quick Insights" location="top">
+                                    <template v-slot:activator="{ props }">
+                                        <v-btn v-if="item.recipient" v-bind="props" icon variant="text" size="x-small" density="compact" class="ml-1" color="primary" @click.stop="emit('showVendorInsights', item.recipient)">
+                                            <v-icon size="small" icon="$info"></v-icon>
+                                        </v-btn>
+                                    </template>
+                                </v-tooltip>
                             </div>
                         </div>
                     </div>

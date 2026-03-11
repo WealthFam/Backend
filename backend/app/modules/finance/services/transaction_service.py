@@ -251,6 +251,69 @@ class TransactionService:
         return query.offset(skip).limit(limit).all()
 
     @staticmethod
+    def get_vendor_stats(db: Session, tenant_id: str, vendor_name: str, user_id: Optional[str] = None, skip: int = 0, limit: int = 3) -> dict:
+        search_pattern = f"%{vendor_name}%"
+        from sqlalchemy import or_, func, desc
+        from dateutil.relativedelta import relativedelta
+        from backend.app.core.timezone import ensure_utc
+        from datetime import datetime
+        now = ensure_utc(datetime.utcnow())
+        six_months_ago = now - relativedelta(months=6)
+
+        query = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.exclude_from_reports == False,
+            models.Transaction.is_transfer == False,
+            or_(
+                models.Transaction.description.ilike(search_pattern),
+                models.Transaction.recipient.ilike(search_pattern)
+            )
+        )
+        if user_id:
+            query = query.outerjoin(models.Account, models.Transaction.account_id == models.Account.id)\
+                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+
+        # Total count for pagination
+        total_count = query.count()
+        
+        # Stats are based on all transactions for this vendor
+        all_txns = query.all()
+        
+        total_spent = sum(abs(t.amount) for t in all_txns if t.amount < 0)
+        total_income = sum(t.amount for t in all_txns if t.amount > 0)
+        
+        debit_count = sum(1 for t in all_txns if t.amount < 0)
+        avg_txn = (total_spent / debit_count) if debit_count > 0 else 0
+
+        # Group by month for chart
+        monthly_map = {}
+        for i in range(6):
+            dt = now - relativedelta(months=i)
+            key = f"{dt.year}-{dt.month:02d}"
+            monthly_map[key] = 0.0
+            
+        for t in all_txns:
+            if t.date >= six_months_ago and t.amount < 0:
+                key = f"{t.date.year}-{t.date.month:02d}"
+                if key in monthly_map:
+                    monthly_map[key] += float(abs(t.amount))
+                    
+        chart_data = [{"month": k, "amount": v} for k, v in reversed(monthly_map.items())]
+
+        # Paginated recent transactions
+        recent_txns = query.order_by(desc(models.Transaction.date)).offset(skip).limit(limit).all()
+
+        return {
+            "vendor_name": vendor_name,
+            "total_spent": total_spent,
+            "total_income": total_income,
+            "transaction_count": total_count,
+            "average_transaction": avg_txn,
+            "chart_data": chart_data,
+            "recent_transactions": [{"id": t.id, "date": t.date.isoformat(), "amount": t.amount, "description": t.description, "category": t.category} for t in recent_txns]
+        }
+
+    @staticmethod
     def count_transactions(
         db: Session, 
         tenant_id: str, 
