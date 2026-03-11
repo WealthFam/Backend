@@ -126,11 +126,21 @@
                 <v-col cols="12" lg="5">
                     <v-card class="premium-glass-card intelligence-card pa-6 h-100" rounded="xl" elevation="1">
                         <div class="d-flex justify-space-between align-center mb-6">
-                            <h2 class="text-h6 font-weight-black d-flex align-center">
-                                <Zap :size="20" class="text-primary mr-2" />
-                                AI Intelligence
-                            </h2>
-                            <v-icon v-if="!aiInsights" class="rotate-anim opacity-40">Loader2</v-icon>
+                            <div class="d-flex align-center">
+                                <h2 class="text-h6 font-weight-black d-flex align-center mb-0">
+                                    <Zap :size="20" class="text-primary mr-2" />
+                                    AI Intelligence
+                                </h2>
+                                <v-chip v-if="isAiCached" size="small" color="warning" class="ml-3 font-weight-bold" variant="tonal">
+                                    Cached
+                                </v-chip>
+                            </div>
+                            <div class="d-flex align-center">
+                                <v-btn v-if="aiInsights" icon variant="text" size="small" color="primary" @click="forceRefreshAi" :loading="refreshingAi">
+                                    <RefreshCw :size="16" />
+                                </v-btn>
+                                <v-icon v-if="!aiInsights" class="rotate-anim opacity-40">Loader2</v-icon>
+                            </div>
                         </div>
                         
                         <div v-if="aiInsights" class="ai-content">
@@ -335,7 +345,7 @@ const formattedInsights = computed(() => {
     if (!aiInsights.value) return []
     // If its a string (classic bullet points), try to parse or just wrap
     if (typeof aiInsights.value === 'string') {
-        return aiInsights.value.split('\n').filter(l => l.trim()).map(l => {
+        return aiInsights.value.split('\n').filter((l: string) => l.trim()).map((l: string) => {
             const clean = l.replace(/^[-*•]\s+/, '')
             return { icon: '✨', title: 'Observation', content: clean }
         }).slice(0, 3)
@@ -344,6 +354,20 @@ const formattedInsights = computed(() => {
     if (Array.isArray(aiInsights.value)) return aiInsights.value.slice(0, 3)
     return []
 })
+
+const isAiCached = computed(() => {
+    if (Array.isArray(aiInsights.value)) {
+        return aiInsights.value.some((i: any) => i.is_cached)
+    }
+    return false
+})
+
+const refreshingAi = ref(false)
+async function forceRefreshAi() {
+    refreshingAi.value = true
+    await dashboardStore.fetchAiInsights(true)
+    refreshingAi.value = false
+}
 
 const creditSummary = computed(() => {
     const limit = metrics.value?.breakdown?.total_credit_limit || 0

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { financeApi, aiApi } from '@/api/client'
+import { financeApi } from '@/api/client'
 import { useStorePersistence } from '@/utils/persistence'
 import { useAuthStore } from '@/stores/auth'
 
@@ -53,15 +53,24 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
             // Fetch AI Insights if metrics are available
             if (metrics.value) {
-                // Background fetch for AI
-                aiApi.generateSummaryInsights(metrics.value)
-                    .then(res => { aiInsights.value = res.data })
-                    .catch(() => { /* Silent fail for AI */ })
+                // Background fetch for AI (no force refresh by default)
+                fetchAiInsights(false)
             }
         } catch (error) {
             console.error('[DashboardStore] Failed to fetch data', error)
         } finally {
             loading.value = false
+        }
+    }
+
+    async function fetchAiInsights(forceRefresh: boolean = false) {
+        const uId = memberId.value || undefined
+        const now = new Date()
+        try {
+            const res = await financeApi.getBudgetsInsights(now.getFullYear(), now.getMonth() + 1, uId, forceRefresh)
+            aiInsights.value = res.data
+        } catch (error) {
+            console.error('[DashboardStore] Failed to fetch AI Insights', error)
         }
     }
 
@@ -72,6 +81,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
         spendingTrend,
         aiInsights,
         loading,
-        fetchDashboardData
+        fetchDashboardData,
+        fetchAiInsights
     }
 })

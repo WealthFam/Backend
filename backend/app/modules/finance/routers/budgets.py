@@ -54,7 +54,8 @@ def get_ai_insights(
     year: int = None,
     month: int = None,
     user_id: str = None,
+    force_refresh: bool = False,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return BudgetService.get_ai_insights(db, str(current_user.tenant_id), year=year, month=month, user_id=user_id)
+    return BudgetService.get_ai_insights(db, str(current_user.tenant_id), year=year, month=month, user_id=user_id, force_refresh=force_refresh)

@@ -266,7 +266,7 @@ class BudgetService:
         return True
 
     @staticmethod
-    def get_ai_insights(db: Session, tenant_id: str, year: int = None, month: int = None, user_id: str = None) -> List[dict]:
+    def get_ai_insights(db: Session, tenant_id: str, year: int = None, month: int = None, user_id: str = None, force_refresh: bool = False) -> List[dict]:
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
         """
@@ -350,7 +350,7 @@ class BudgetService:
                 },
                 "ytd_stats": ytd_stats
             }
-            ai_insights = AIService.generate_structured_insights(db, tenant_id, ai_context)
+            ai_insights = AIService.generate_structured_insights(db, tenant_id, ai_context, force_refresh)
             if ai_insights:
                 return ai_insights
         except Exception as e:
