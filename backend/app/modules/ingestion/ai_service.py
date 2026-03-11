@@ -75,10 +75,30 @@ class GeminiProvider:
             logger.error(f"Gemini generate_analysis error: {e}")
             return None
 
-    def generate_structured_insights(self, config: ingestion_models.AIConfiguration, summary_data: str, db: Session, tenant_id: str) -> Optional[List[Dict[str, Any]]]:
+    def generate_structured_insights(self, config: ingestion_models.AIConfiguration, summary_data: str, db: Session, tenant_id: str, force_refresh: bool = False) -> Optional[List[Dict[str, Any]]]:
         if not config.api_key:
             logger.error("Gemini generate_structured_insights: API Key is MISSING in config")
             return None
+            
+        # Check Cache First (if not forced to refresh)
+        if not force_refresh:
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == "dashboard_summary"
+            ).first()
+            if cached and cached.content:
+                # Check if it's less than 24 hours old
+                if cached.updated_at:
+                    age = (timezone.utcnow() - cached.updated_at).total_seconds()
+                    if age < 86400: # 24 hours
+                        try:
+                            insights = json.loads(cached.content)
+                            if isinstance(insights, list):
+                                for insight in insights:
+                                    insight['is_cached'] = True
+                            return insights
+                        except Exception as cache_err:
+                            logger.error(f"Error parsing recent cached insights: {cache_err}")
             
         logger.info(f"Gemini generate_structured_insights: API Key is present. Model name: {config.model_name}")
         client = genai.Client(api_key=config.api_key)
@@ -132,10 +152,10 @@ class GeminiProvider:
                 if cached and cached.content:
                     try:
                         insights = json.loads(cached.content)
-                        # Optional: Add a subtle indicator that this is cached data
+                        # Add a flag that this is cached data
                         if isinstance(insights, list) and len(insights) > 0:
-                            insights[0]['title'] = "⚡ " + insights[0].get('title', '')
-                            # Ensure we don't have multiple quota warnings if cached version had one
+                            for insight in insights:
+                                insight['is_cached'] = True
                             insights = [i for i in insights if i.get('id') != 'ai_quota']
                         return insights
                     except Exception as cache_err:
@@ -170,7 +190,8 @@ class GeminiProvider:
                 try:
                     insights = json.loads(cached.content)
                     if isinstance(insights, list) and len(insights) > 0:
-                        insights[0]['title'] = "⚡ " + insights[0].get('title', '')
+                        for insight in insights:
+                            insight['is_cached'] = True
                         insights = [i for i in insights if i.get('id') != 'ai_quota']
                     return insights
                 except Exception as cache_err:
@@ -365,7 +386,7 @@ class AIService:
         return provider.generate_analysis(config, summary_str)
 
     @classmethod
-    def generate_structured_insights(cls, db: Session, tenant_id: str, summary_data: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    def generate_structured_insights(cls, db: Session, tenant_id: str, summary_data: Dict[str, Any], force_refresh: bool = False) -> Optional[List[Dict[str, Any]]]:
         config = db.query(ingestion_models.AIConfiguration).filter(
             ingestion_models.AIConfiguration.tenant_id == tenant_id,
             ingestion_models.AIConfiguration.is_enabled == True
@@ -380,7 +401,7 @@ class AIService:
 
         summary_str = json.dumps(summary_data, indent=2, default=str)
         
-        result = provider.generate_structured_insights(config, summary_str, db, tenant_id)
+        result = provider.generate_structured_insights(config, summary_str, db, tenant_id, force_refresh)
         
         # Cache successful results
         if result and len(result) > 0 and result[0].get('id') != 'ai_quota' and result[0].get('id') != 'ai_auth_error':
