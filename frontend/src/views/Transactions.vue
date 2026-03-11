@@ -10,6 +10,7 @@ import SpendingHeatmap from '@/components/SpendingHeatmap.vue'
 import TransactionList from './transactions/TransactionList.vue'
 import TransactionTriage from './transactions/TransactionTriage.vue'
 import TransactionModal from './transactions/TransactionModal.vue'
+import VendorInsightsModal from '@/components/transactions/VendorInsightsModal.vue'
 import {
     LayoutList,
     Inbox,
@@ -57,6 +58,14 @@ const smartPromptData = ref({
     applyToSimilar: true,
     excludeFromReports: false
 })
+
+const showVendorModal = ref(false)
+const selectedVendorForInsights = ref('')
+
+function openVendorInsights(name: string) {
+    selectedVendorForInsights.value = name
+    showVendorModal.value = true
+}
 
 
 
@@ -240,6 +249,7 @@ onMounted(() => {
                             @editTxn="(t) => { fetchModalData(); openEditModal(t) }"
                             @deleteSelected="showDeleteConfirm = true" @importCsv="showImportModal = true"
                             @fetchData="fetchData"
+                            @showVendorInsights="openVendorInsights"
                             @resetFilters="selectedTimeRange = 'all'; startDate = ''; endDate = ''; searchQuery = ''; categoryFilter = ''; fetchData()" />
                     </v-window-item>
 
@@ -296,6 +306,8 @@ onMounted(() => {
             :potentialMatches="potentialMatches" :isSearchingMatches="isSearchingMatches"
             :matchesSearched="matchesSearched" @close="showModal = false" @submit="handleSubmit"
             @findMatches="findMatches" @selectMatch="selectMatch" />
+
+        <VendorInsightsModal v-model="showVendorModal" :vendor-name="selectedVendorForInsights" />
 
 
 
