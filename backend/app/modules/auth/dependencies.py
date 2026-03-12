@@ -11,18 +11,32 @@ from fastapi.security import OAuth2PasswordBearer, HTTPBasic, HTTPBasicCredentia
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False)
 basic_scheme = HTTPBasic(auto_error=False)
 
+from backend.app.core import timezone
+
 def get_current_user_from_token(db: Session, token: str) -> Optional[models.User]:
     """Synchronous helper for token validation (used by WebSockets)"""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         email: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
-        if email is None or tenant_id is None:
+        jti: str = payload.get("jti")
+        
+        if email is None or tenant_id is None or jti is None:
             return None
         
+        # Check revocation status
+        token_record = db.query(models.UserToken).filter(models.UserToken.token_jti == jti).first()
+        if not token_record or token_record.is_revoked:
+            return None
+            
+        # Optional: verify not expired (jose usually does this, but we can double check vs DB)
+        if token_record.expires_at < timezone.utcnow():
+            return None
+
         return db.query(models.User).filter(models.User.email == email).first()
     except JWTError:
         return None
+
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),

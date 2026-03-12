@@ -2,6 +2,7 @@ from datetime import timedelta
 from backend.app.core import timezone
 from typing import Optional
 from jose import jwt
+from fastapi.security import OAuth2PasswordBearer
 from backend.app.core.config import settings
 
 import bcrypt
@@ -24,12 +25,23 @@ def get_password_hash(password: str) -> str:
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password_bytes, salt).decode('utf-8')
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+import uuid
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> tuple[str, str]:
     to_encode = data.copy()
+    now = timezone.utcnow()
+    jti = str(uuid.uuid4())
+    
     if expires_delta:
-        expire = timezone.utcnow() + expires_delta
+        expire = now + expires_delta
     else:
-        expire = timezone.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+        expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    to_encode.update({
+        "exp": expire,
+        "iat": now,
+        "jti": jti
+    })
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    return encoded_jwt, jti
+

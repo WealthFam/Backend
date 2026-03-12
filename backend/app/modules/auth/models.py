@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SqlEnum
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SqlEnum, Boolean
 from sqlalchemy.orm import relationship
 from backend.app.core.database import Base
 from backend.app.core.timezone import UTCDateTime
@@ -48,3 +48,15 @@ class TenantSetting(Base):
     key = Column(String, nullable=False, index=True) # e.g. "parser_service_url"
     value = Column(String, nullable=True) # e.g. "http://localhost:8001/v1"
     updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
+
+class UserToken(Base):
+    """Tracks active/revoked sessions using JWT JTIs"""
+    __tablename__ = "user_tokens"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    token_jti = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(UTCDateTime, nullable=False)
+    is_revoked = Column(Boolean, default=False)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+
