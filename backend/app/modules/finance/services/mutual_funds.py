@@ -8,8 +8,7 @@ from backend.app.modules.finance.models import MutualFundsMeta, MutualFundHoldin
 
 MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 
-# Global lock for DuckDB writes to prevent Conflict on Update within this process
-_db_write_lock = threading.Lock()
+from backend.app.core.database import db_write_lock
 
 class MutualFundService:
 
@@ -78,7 +77,7 @@ class MutualFundService:
             
             # 4. Update Holdings
             updated_count = 0
-            with _db_write_lock:
+            with db_write_lock:
                 for nav_data in nav_results:
                     if not nav_data: continue
                     
@@ -424,7 +423,7 @@ class MutualFundService:
         stats = {"processed": 0, "failed": 0, "details": {"imported": [], "failed": []}}
         
         
-        with _db_write_lock:
+        with db_write_lock:
             for idx, txn in enumerate(transactions):
                 try:
                     if txn.get('is_duplicate'):
@@ -451,7 +450,7 @@ class MutualFundService:
     @staticmethod
     def add_transaction(db: Session, tenant_id: str, data: dict):
         """Public method that wraps logic in a global lock for DuckDB safety."""
-        with _db_write_lock:
+        with db_write_lock:
             result = MutualFundService._add_transaction_logic(db, tenant_id, data)
             MutualFundService._safe_commit(db)
             return result
@@ -618,7 +617,7 @@ class MutualFundService:
     @staticmethod
     def cleanup_duplicates(db: Session, tenant_id: str):
         """Find and remove duplicate orders, then rebuild holdings."""
-        with _db_write_lock:
+        with db_write_lock:
             # 1. Find duplicate groups
             from sqlalchemy import func
             duplicates = db.query(
@@ -664,7 +663,7 @@ class MutualFundService:
 
     @staticmethod
     def recalculate_holdings(db: Session, tenant_id: str, user_id: Optional[str] = None):
-        with _db_write_lock:
+        with db_write_lock:
             return MutualFundService._recalculate_holdings_logic(db, tenant_id, user_id)
 
     @staticmethod
@@ -697,7 +696,7 @@ class MutualFundService:
 
     @staticmethod
     def delete_holding(db: Session, tenant_id: str, holding_id: str):
-        with _db_write_lock:
+        with db_write_lock:
             holding = db.query(MutualFundHolding).filter(
                 MutualFundHolding.id == holding_id,
                 MutualFundHolding.tenant_id == tenant_id
@@ -784,7 +783,7 @@ class MutualFundService:
         
         # Phase 1: Update Holdings (Write Lock)
         updates_made = False
-        with _db_write_lock:
+        with db_write_lock:
             try:
                 for h, nav_data in zip(holdings, nav_data_list):
                     latest_nav = nav_data.get("latest_nav", 0.0)
@@ -1285,7 +1284,7 @@ class MutualFundService:
 
     @staticmethod
     def update_holding(db: Session, tenant_id: str, holding_id: str, data: dict):
-        with _db_write_lock:
+        with db_write_lock:
             holding = db.query(MutualFundHolding).filter(
                 MutualFundHolding.id == holding_id,
                 MutualFundHolding.tenant_id == tenant_id
@@ -1812,7 +1811,7 @@ class MutualFundService:
         
         # Commit cache entries to database
         try:
-            with _db_write_lock:
+            with db_write_lock:
                 MutualFundService._safe_commit(db)
         except Exception as e:
             # Silent fail or log properly
