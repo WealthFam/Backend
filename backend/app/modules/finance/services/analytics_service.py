@@ -679,7 +679,8 @@ class AnalyticsService:
             user_id = None
         
         now = timezone.utcnow()
-        start_date = datetime(now.year, now.month, 1)
+        start_date = timezone.ensure_utc(datetime(now.year, now.month, 1))
+
         
         # Daily spending
         query = db.query(
