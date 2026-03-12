@@ -469,8 +469,23 @@ def run_auto_migrations(engine: Engine):
             );
             """))
 
+            # 29. User Tokens (JWT JTI Tracking)
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS user_tokens (
+                id VARCHAR PRIMARY KEY,
+                user_id VARCHAR NOT NULL,
+                token_jti VARCHAR NOT NULL UNIQUE,
+                expires_at TIMESTAMPTZ NOT NULL,
+                is_revoked BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users (id)
+            );
+            """))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_user_tokens_jti ON user_tokens (token_jti)"))
+
             # Explicitly commit the transaction!
             connection.commit()
+
             logger.info("Auto-migration complete.")
             
     except Exception as e:
