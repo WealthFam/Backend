@@ -116,9 +116,6 @@ def mutual_fund_sync_job():
     finally:
         db.close()
 
-    finally:
-        db.close()
-
 def pulse_check_job():
     """
     Periodic job to check for goal milestones and budget alerts for all tenants.

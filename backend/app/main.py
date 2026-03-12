@@ -32,13 +32,26 @@ def create_application() -> FastAPI:
     )
 
     # Middleware
-    application.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",")] if settings.ALLOWED_ORIGINS else []
+    
+    # Starlette/FastAPI CORS does not allow allow_origins=["*"] when allow_credentials=True.
+    # If the user put "*", we'll use allow_origin_regex=".*" which effectively does the same
+    # while satisfying the library requirements, though it's less secure.
+    # BEST PRACTICE: Define explicit origins in .env
+    
+    cors_params = {
+        "allow_credentials": True,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+    }
+    
+    if "*" in origins:
+        cors_params["allow_origin_regex"] = ".*"
+    else:
+        cors_params["allow_origins"] = origins
+
+    application.add_middleware(CORSMiddleware, **cors_params)
+
 
     # Exception Handlers
     application.add_exception_handler(StarletteHTTPException, http_exception_handler)
