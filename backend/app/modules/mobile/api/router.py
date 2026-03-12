@@ -81,10 +81,19 @@ def mobile_login(
     
     # Issue Long-Lived Token
     access_token_expires = timedelta(days=30) 
-    access_token = security.create_access_token(
+    access_token, jti = security.create_access_token(
         data={"sub": user.email, "tenant_id": str(user.tenant_id), "device_id": device.device_id},
         expires_delta=access_token_expires
     )
+    
+    # Record token in DB for revocation tracking
+    db_token = auth_models.UserToken(
+        user_id=user.id,
+        token_jti=jti,
+        expires_at=timezone.utcnow() + access_token_expires
+    )
+    db.add(db_token)
+    db.commit()
     
     # Construct DeviceResponse dict explicitly
     device_status = {
@@ -111,6 +120,7 @@ def mobile_login(
         "user_name": user.full_name,
         "user_avatar": user.avatar
     }
+
 
 @router.post("/register-device", response_model=mobile_schemas.DeviceResponse)
 def register_device(
