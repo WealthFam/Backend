@@ -1,5 +1,6 @@
 import json
 from sqlalchemy.orm import Session
+from backend.app.core.database import db_write_lock
 import hashlib
 from typing import Optional
 from backend.app.modules.finance import models as finance_models
@@ -12,9 +13,10 @@ from backend.app.modules.ingestion.transfer_detector import TransferDetector
 class IngestionService:
     @staticmethod
     def log_event(db: Session, tenant_id: str, event_type: str, status: str, message: Optional[str] = None, data: Optional[dict] = None, device_id: Optional[str] = None):
-        """
-        Log an ingestion event for auditing.
-        """
+        with db_write_lock:
+            """
+            Log an ingestion event for auditing.
+            """
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"INGESTION EVENT: {event_type} | STATUS: {status} | MESSAGE: {message}")
@@ -55,9 +57,10 @@ class IngestionService:
 
     @staticmethod
     def process_transaction(db: Session, tenant_id: str, parsed: ParsedTransaction, extra_data: Optional[dict] = None):
-        """
-        Process a parsed transaction: match account, save transaction.
-        """
+        with db_write_lock:
+            """
+            Process a parsed transaction: match account, save transaction.
+            """
         account = None
         if parsed.account_mask:
             account = IngestionService.match_account(db, tenant_id, parsed.account_mask)
@@ -274,9 +277,10 @@ class IngestionService:
 
     @staticmethod
     def capture_unparsed(db: Session, tenant_id: str, source: str, raw_content: str, subject: Optional[str] = None, sender: Optional[str] = None):
-        """
-        Save a message that looks like a transaction but failed all parsers.
-        """
+        with db_write_lock:
+            """
+            Save a message that looks like a transaction but failed all parsers.
+            """
         msg_hash = hashlib.md5(raw_content.encode()).hexdigest()
 
         # Ignore Pattern Check

@@ -6,7 +6,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
 from backend.app.core import timezone
-from backend.app.core.database import SessionLocal
+from backend.app.core.database import SessionLocal, db_write_lock
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.finance.services.recurring_service import RecurringService
@@ -116,40 +116,71 @@ def mutual_fund_sync_job():
     finally:
         db.close()
 
+    finally:
+        db.close()
+
 def pulse_check_job():
     """
     Periodic job to check for goal milestones and budget alerts for all tenants.
     Runs every 6 hours.
     """
-    logger.info("[Pulse] Starting scheduled milestone/budget check...")
-    db: Session = SessionLocal()
-    try:
-        from backend.app.modules.auth.models import Tenant
-        from backend.app.modules.notifications import NotificationService
-        tenants = db.query(Tenant).all()
-        for t in tenants:
-            try:
-                NotificationService.check_all_alerts(db, t.id)
-            except Exception as e:
-                logger.error(f"[Pulse] Error for tenant {t.id}: {e}")
-    finally:
-        db.close()
+    with db_write_lock:
+        logger.info("[Pulse] Starting scheduled milestone/budget check...")
+        db: Session = SessionLocal()
+        try:
+            from backend.app.modules.auth.models import Tenant
+            from backend.app.modules.notifications import NotificationService
+            tenants = db.query(Tenant).all()
+            for t in tenants:
+                try:
+                    NotificationService.check_all_alerts(db, t.id)
+                except Exception as e:
+                    logger.error(f"[Pulse] Error for tenant {t.id}: {e}")
+        finally:
+            db.close()
 
 def daily_summary_job():
     """
     Sends a summary of today's activities at 11:00 PM IST (17:30 UTC).
     """
-    logger.info("[Summary] Starting daily summary broadcast...")
+    with db_write_lock:
+        logger.info("[Summary] Starting daily summary broadcast...")
+        db: Session = SessionLocal()
+        try:
+            from backend.app.modules.auth.models import Tenant
+            from backend.app.modules.notifications import NotificationService
+            tenants = db.query(Tenant).all()
+            for t in tenants:
+                try:
+                    NotificationService.send_daily_summary(db, t.id)
+                except Exception as e:
+                    logger.error(f"[Summary] Error for tenant {t.id}: {e}")
+        finally:
+            db.close()
+
+def prune_expired_tokens():
+    """
+    Job to delete expired or revoked tokens from user_tokens table.
+    Runs daily.
+    """
+    logger.info("[Maintenance] Starting session token pruning...")
     db: Session = SessionLocal()
     try:
-        from backend.app.modules.auth.models import Tenant
-        from backend.app.modules.notifications import NotificationService
-        tenants = db.query(Tenant).all()
-        for t in tenants:
-            try:
-                NotificationService.send_daily_summary(db, t.id)
-            except Exception as e:
-                logger.error(f"[Summary] Error for tenant {t.id}: {e}")
+        from backend.app.modules.auth.models import UserToken
+        from backend.app.core import timezone
+        
+        # Delete tokens that expired more than 24 hours ago OR are revoked
+        # (Keeping revoked for a bit is fine, but eventually they should go)
+        now = timezone.utcnow()
+        count = db.query(UserToken).filter(
+            (UserToken.expires_at < now) | (UserToken.is_revoked == True)
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        logger.info(f"[Maintenance] Pruned {count} session tokens.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Maintenance] Error pruning tokens: {e}")
     finally:
         db.close()
 
@@ -173,6 +204,9 @@ def start_scheduler():
     
     # NEW: Run daily summary at 11:00 PM IST (17:30 UTC)
     scheduler.add_job(daily_summary_job, CronTrigger(hour=17, minute=30), id="daily_summary_job", replace_existing=True)
+    
+    # NEW: Run token pruning daily at 03:00 UTC
+    scheduler.add_job(prune_expired_tokens, CronTrigger(hour=3, minute=0), id="prune_expired_tokens", replace_existing=True)
     
     scheduler.start()
     logger.info("APScheduler started.")
