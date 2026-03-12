@@ -251,6 +251,7 @@ export const financeApi = {
     // Tenants / Management
     getTenants: () => apiClient.get('/auth/tenants'),
     updateTenant: (id: string, data: any) => apiClient.put(`/auth/tenants/${id}`, data),
+    logoutAll: () => apiClient.post('/auth/logout-all'),
 
     // Triage & Training
     getTriage: (params?: { limit?: number, skip?: number, sort_by?: string, sort_order?: string }) => apiClient.get('/ingestion/triage', { params }),
