@@ -10,6 +10,23 @@ export function useTransactionHelpers(
     expenseGroups: Ref<any[]>
 ) {
     /**
+     * Format a timestamp into a 'time ago' string
+     * @param timestamp - ISO date string
+     * @returns Relative time string (e.g., '2h ago')
+     */
+    function formatTimeAgo(timestamp: string) {
+        if (!timestamp) return 'Now'
+        const date = new Date(timestamp)
+        const now = new Date()
+        const diff = now.getTime() - date.getTime()
+
+        if (diff < 60000) return 'Just now'
+        if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+        if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+        return date.toLocaleDateString()
+    }
+
+    /**
      * Format a date string into a human-readable format
      * @param dateStr - ISO date string
      * @returns Object with day and meta (time) information
@@ -176,6 +193,7 @@ export function useTransactionHelpers(
     return {
         // Functions
         formatDate,
+        formatTimeAgo,
         getAccountName,
         getCategoryDisplay,
         getExpenseGroupName,

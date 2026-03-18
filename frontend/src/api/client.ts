@@ -392,5 +392,6 @@ export const mobileApi = {
     updateDevice: (id: string, data: { device_name?: string, is_enabled?: boolean, is_ignored?: boolean, user_id?: string | null }) =>
         apiClient.patch(`/mobile/devices/${id}`, data),
     testNotification: (id: string) => apiClient.post(`/mobile/devices/${id}/test-notification`),
-    deleteDevice: (id: string) => apiClient.delete(`/mobile/devices/${id}`)
+    deleteDevice: (id: string) => apiClient.delete(`/mobile/devices/${id}`),
+    getAlerts: () => apiClient.get<any[]>('/mobile/alerts'),
 }

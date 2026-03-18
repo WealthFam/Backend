@@ -8,8 +8,22 @@ export const useDashboardStore = defineStore('dashboard', () => {
     const auth = useAuthStore()
     const memberId = computed(() => auth.selectedMemberId)
 
-    const metrics = ref<any>(null)
-    const mfPortfolio = ref<any>(null)
+    const metrics = ref<any>(null) // Metrics are complex, keeping as any for now but could be typed if needed
+    const mfPortfolio = ref<{
+        invested: number
+        current: number
+        pl: number
+        plPercent: number
+        xirr: number
+        loading: boolean
+    }>({
+        invested: 0,
+        current: 0,
+        pl: 0,
+        plPercent: 0,
+        xirr: 0,
+        loading: true
+    })
     const netWorthTrend = ref<number[]>([])
     const spendingTrend = ref<number[]>([])
     const aiInsights = ref<any>(null)
@@ -37,12 +51,12 @@ export const useDashboardStore = defineStore('dashboard', () => {
             // Basic portfolio aggregation for summary
             if (p.data && Array.isArray(p.data)) {
                 let invested = 0, current = 0
-                p.data.forEach((h: any) => {
+                p.data.forEach((h: { invested_value?: number, current_value?: number }) => {
                     invested += Number(h.invested_value || 0)
                     current += Number(h.current_value || 0)
                 })
                 mfPortfolio.value = {
-                    ...(mfPortfolio.value || {}),
+                    ...mfPortfolio.value,
                     invested,
                     current
                 }

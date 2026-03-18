@@ -1,14 +1,23 @@
 <template>
-    <v-card class="premium-glass-card activity-pulse pa-6" rounded="xl" elevation="1">
+    <v-card class="premium-glass-card activity-pulse pa-6 h-100" rounded="xl" elevation="1">
         <div class="d-flex justify-space-between align-center mb-6">
             <h2 class="text-h6 font-weight-black d-flex align-center">
                 <Zap :size="20" class="text-primary mr-2" />
                 Family Pulse
             </h2>
-            <v-chip v-if="isConnected" size="x-small" color="success" variant="tonal"
-                class="font-weight-black pulse-dot">
-                Real-time
-            </v-chip>
+            <v-tooltip location="bottom">
+                <template v-slot:activator="{ props }">
+                    <v-chip v-if="isConnected" v-bind="props" size="x-small" color="success" variant="tonal"
+                        class="font-weight-black pulse-dot">
+                        Real-time
+                    </v-chip>
+                    <v-chip v-else v-bind="props" size="x-small" color="error" variant="tonal"
+                        class="font-weight-black offline-dot">
+                        Offline
+                    </v-chip>
+                </template>
+                <span>{{ isConnected ? 'Connected to live feed' : 'Live feed disconnected' }}</span>
+            </v-tooltip>
         </div>
 
         <div v-if="displayItems.length === 0" class="text-center py-10 opacity-40">
@@ -29,7 +38,7 @@
                                 {{ item.category }}
                             </span>
                             <span class="text-tiny font-weight-bold opacity-40">
-                                {{ formatTime(item.created_at) }}
+                                {{ formatTimeAgo(item.created_at) }}
                             </span>
                         </div>
                         <div class="text-subtitle-2 font-weight-black line-height-1-2">
@@ -49,8 +58,10 @@
 import { computed } from 'vue'
 import { Zap } from 'lucide-vue-next'
 import { useWebSockets } from '@/composables/useWebSockets'
+import { useTransactionHelpers } from '@/composables/useTransactionHelpers'
 
 const { notifications, isConnected } = useWebSockets()
+const { formatTimeAgo } = useTransactionHelpers({ value: [] } as any, { value: [] } as any, { value: [] } as any)
 
 const displayItems = computed(() => {
     // Show top 5 recent notifications
@@ -76,23 +87,11 @@ function getCategoryColor(category: string) {
         default: return 'slate'
     }
 }
-
-function formatTime(timestamp: string) {
-    if (!timestamp) return 'Now'
-    const date = new Date(timestamp)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-
-    if (diff < 60000) return 'Just now'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-    return date.toLocaleDateString()
-}
 </script>
 
 <style scoped>
 .activity-pulse {
-    max-height: 500px;
+    min-height: 400px;
     display: flex;
     flex-direction: column;
 }
@@ -124,6 +123,16 @@ function formatTime(timestamp: string) {
     border-radius: 50%;
     margin-right: 6px;
     animation: pulse 2s infinite;
+}
+
+.offline-dot::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: currentColor;
+    border-radius: 50%;
+    margin-right: 6px;
+    opacity: 0.8;
 }
 
 @keyframes pulse {

@@ -52,7 +52,7 @@
                             <div class="d-flex align-center text-caption font-weight-bold" :class="netWorthChange >= 0 ? 'text-success' : 'text-error'">
                                 <TrendingUp v-if="netWorthChange >= 0" :size="14" class="mr-1" />
                                 <TrendingDown v-else :size="14" class="mr-1" />
-                                {{ Math.abs(netWorthChange).toFixed(1) }}% from last month
+                                {{ Number(netWorthChange || 0).toFixed(1) }}% from last month
                             </div>
                         </v-card>
                     </v-hover>
@@ -82,13 +82,13 @@
                                     <Sparkles :size="24" />
                                 </v-avatar>
                                 <v-chip size="small" color="success" variant="flat" class="font-weight-black">
-                                    {{ (mfPortfolio.xirr || 0).toFixed(1) }}% XIRR
+                                    {{ Number(mfPortfolio.xirr || 0).toFixed(1) }}% XIRR
                                 </v-chip>
                             </div>
                             <div class="text-overline opacity-60 font-weight-black">Mutual Funds</div>
                             <div class="text-h4 font-weight-black text-success mb-1">{{ formatAmount(mfPortfolio.current) }}</div>
                             <div class="text-caption font-weight-bold text-success">
-                                Profit: {{ formatAmount(mfPortfolio.pl) }} ({{ mfPortfolio.plPercent.toFixed(1) }}%)
+                                Profit: {{ formatAmount(mfPortfolio.pl) }} ({{ Number(mfPortfolio.plPercent || 0).toFixed(1) }}%)
                             </div>
                         </v-card>
                     </v-hover>
@@ -102,7 +102,7 @@
                                     <PieChart :size="24" />
                                 </v-avatar>
                                 <div class="text-h4 font-weight-black" :class="metrics.budget_health?.percentage > 90 ? 'text-error' : 'text-warning'">
-                                    {{ (metrics.budget_health?.percentage || 0).toFixed(0) }}%
+                                    {{ Number(metrics.budget_health?.percentage || 0).toFixed(0) }}%
                                 </div>
                             </div>
                             <div class="text-overline opacity-60 font-weight-black">Budget Health</div>
@@ -113,7 +113,7 @@
                                 class="mt-4 budget-progress-premium"
                                 :class="metrics.budget_health?.percentage > 90 ? 'health-danger' : 'health-warning'"
                             ></v-progress-linear>
-                            <div class="text-caption font-weight-bold opacity-50 mt-1">Remaining: {{ formatAmount(Math.max(0, (metrics.budget_health?.limit || 0) - (metrics.budget_health?.spent || 0))) }}</div>
+                            <div class="text-caption font-weight-bold opacity-50 mt-1">Remaining: {{ formatAmount(Math.max(0, (Number(metrics.budget_health?.limit || 0) - Number(metrics.budget_health?.spent || 0)))) }}</div>
                         </v-card>
                     </v-hover>
                 </v-col>
@@ -163,13 +163,13 @@
                     </v-card>
                 </v-col>
 
-                <!-- ROW 3: Budget Pulse & Activity -->
-                <v-col cols="12" lg="4">
-                    <ActivityPulse />
+                <!-- ROW 3: Family Pulse & Activity -->
+                <v-col cols="12" lg="4" class="d-flex">
+                    <ActivityPulse class="w-100" />
                 </v-col>
 
-                <v-col cols="12" lg="8">
-                    <v-card class="premium-glass-card pa-6 h-100" rounded="xl" elevation="1">
+                <v-col cols="12" lg="8" class="d-flex">
+                    <v-card class="premium-glass-card pa-6 w-100" rounded="xl" elevation="1">
                         <div class="d-flex justify-space-between align-center mb-6">
                             <h2 class="text-h6 font-weight-black d-flex align-center">
                                 <Activity :size="20" class="text-primary mr-2" />
@@ -198,7 +198,7 @@
                     </v-card>
                 </v-col>
 
-                <!-- ROW 4: Bills & Credit Outlook -->
+                <!-- ROW 5: Bills & Credit Outlook -->
                 <v-col cols="12" lg="5">
                     <v-card class="premium-glass-card pa-6 h-100" rounded="xl" elevation="1">
                         <h2 class="text-h6 font-weight-black d-flex align-center mb-6">
@@ -237,7 +237,7 @@
                             </h2>
                             <div class="text-right">
                                 <div class="text-caption opacity-60 font-weight-black">UTILIZATION</div>
-                                <div class="text-h6 font-weight-black text-primary">{{ creditSummary.utilization.toFixed(0) }}%</div>
+                                <div class="text-h6 font-weight-black text-primary">{{ Number(creditSummary.utilization || 0).toFixed(0) }}%</div>
                             </div>
                         </div>
                         
@@ -324,7 +324,7 @@ const loading = computed(() => dashboardStore.loading)
 const accounts = computed(() => financeStore.accounts)
 const categories = computed(() => financeStore.categories)
 const expenseGroups = computed(() => expenseGroupStore.groups)
-const recurringTransactions = ref<any[]>([])
+const recurringTransactions = ref<any[]>([]) // Should define type if possible later
 
 const netWorth = computed(() => {
     const liquid = (metrics.value?.breakdown?.bank_balance || 0) + (metrics.value?.breakdown?.cash_balance || 0)

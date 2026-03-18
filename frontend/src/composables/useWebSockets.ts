@@ -1,7 +1,17 @@
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { mobileApi } from '@/api/client'
 
-const notifications = ref<any[]>([])
+export interface Notification {
+    id: string
+    title: string
+    body: string
+    category: 'EXPENSE' | 'MILESTONE' | 'BUDGET_ALERT' | 'ACCOUNT' | 'INFO'
+    created_at: string
+    payload?: any
+}
+
+const notifications = ref<Notification[]>([])
 const isConnected = ref(false)
 const socket = ref<WebSocket | null>(null)
 
@@ -14,12 +24,9 @@ export function useWebSockets() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         let host = window.location.host
         
-        // If we're hitting the frontend (usually port 5173 or 80), 
-        // and we're on localhost or an IP, we might need to point to the backend (8000)
         if (host.includes('localhost') || host.includes('127.0.0.1')) {
             host = 'localhost:8000'
         } else if (window.location.port === '5173' || window.location.port === '3000') {
-            // Development mode usually runs on 5173, backend on 8000
             host = `${window.location.hostname}:8000`
         }
 
@@ -27,12 +34,9 @@ export function useWebSockets() {
         const token = auth.token
 
         const wsUrl = `${protocol}//${host}/ws/${tenantId}?token=${token}`
-
-        // console.log('Connecting to WebSocket:', wsUrl)
         socket.value = new WebSocket(wsUrl)
 
         socket.value.onopen = () => {
-            // console.log('WebSocket Connected')
             isConnected.value = true
         }
 
@@ -40,7 +44,6 @@ export function useWebSockets() {
             try {
                 const data = JSON.parse(event.data)
                 if (data.type === 'NOTIFICATION') {
-                    // Prepend new notification
                     notifications.value = [data.payload, ...notifications.value].slice(0, 50)
                 }
             } catch (e) {
@@ -49,7 +52,6 @@ export function useWebSockets() {
         }
 
         socket.value.onclose = () => {
-            // console.log('WebSocket Disconnected. Retrying in 5s...')
             isConnected.value = false
             setTimeout(connect, 5000)
         }
@@ -63,15 +65,8 @@ export function useWebSockets() {
     const fetchNotifications = async () => {
         if (!auth.token) return
         try {
-            const response = await fetch(`${window.location.protocol}//${window.location.host.includes('localhost') ? 'localhost:8000' : window.location.host}/api/v1/mobile/alerts`, {
-                headers: {
-                    'Authorization': `Bearer ${auth.token}`
-                }
-            })
-            if (response.ok) {
-                const data = await response.json()
-                notifications.value = data
-            }
+            const res = await mobileApi.getAlerts()
+            notifications.value = res.data
         } catch (e) {
             console.error('Error fetching initial notifications:', e)
         }
