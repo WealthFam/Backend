@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 logger = logging.getLogger(__name__)
 
+from backend.app.core.database import db_write_lock
 from backend.app.core.timezone import ensure_utc
 from backend.app.modules.finance import models, schemas
 from backend.app.modules.finance.models import TransactionType
@@ -20,136 +21,109 @@ from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
 class TransactionService:
     @staticmethod
     def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None, update_balance: bool = True):
-        # 1. Unified Deduplication Check (Ref ID, Hash-Fallback, and Fields)
-        
-        # Skip strict deduplication for MANUAL entries to allow user intent
-        is_dup = False
-        reason = None
-        existing_id = None
-        
-        if getattr(transaction, 'source', 'MANUAL') != 'MANUAL':
-            is_dup, reason, existing_id = TransactionDeduplicator.check_raw_duplicate(
-                db, tenant_id, str(transaction.account_id), transaction.amount, transaction.date, 
-                transaction.description, transaction.recipient, transaction.external_id,
-                exclude_pending_id=exclude_pending_id
-            )
-        
-        if is_dup:
-            # If it found a match in confirmed transactions, return it
-            # We check the confirmed table specifically here to be sure
-            existing = db.query(models.Transaction).filter(models.Transaction.id == existing_id).first()
-            if existing: return existing
+        with db_write_lock:
+            # 1. Unified Deduplication Check (Ref ID, Hash-Fallback, and Fields)
             
-            # If it was in pending/triage, the deduplicator returns it, but create_transaction 
-            # should probably still proceed or throw if it's strictly enforced.
-            # In our system, manual creation/import should skip if already in triage too.
-            # For now, let's treat it as a skip (return None or raise?) 
-            # But the service signature returns models.Transaction.
-            # Easiest: return None or raise. Usually create_transaction should be idempotent.
-            raise ValueError(f"Duplicate transaction: {reason}")
+            # Skip strict deduplication for MANUAL entries to allow user intent
+            is_dup = False
+            reason = None
+            existing_id = None
             
-        # 2. Content Hash Generation (for storage)
-        txn_hash = getattr(transaction, 'content_hash', None)
-        if not txn_hash:
-            txn_hash = TransactionDeduplicator.generate_hash(
-                tenant_id, str(transaction.account_id), transaction.date, transaction.amount, transaction.description, transaction.recipient
-            )
-
-        # Serialize tags if present
-        tags_str = json.dumps(transaction.tags) if transaction.tags else None
-        
-        # --- Auto-Categorization Logic ---
-        final_category = transaction.category
-        final_exclude = transaction.exclude_from_reports or transaction.is_transfer
-        
-        if (not final_category or final_category == "Uncategorized") and (transaction.description or transaction.recipient):
-            rules = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id).order_by(models.CategoryRule.priority.desc()).all()
-            
-            desc_lower = (transaction.description or "").lower()
-            recipient_lower = (transaction.recipient or "").lower()
-            
-            for rule in rules:
-                try:
-                    keywords = json.loads(rule.keywords)
-                    if any(k.lower() in desc_lower or k.lower() in recipient_lower for k in keywords):
-                        final_category = rule.category
-                        if rule.exclude_from_reports:
-                            final_exclude = True
-                        break
-                except Exception as e:
-                    pass
-        # ---------------------------------
-        
-        txn_type = models.TransactionType.DEBIT if transaction.amount < 0 else models.TransactionType.CREDIT
-
-        db_transaction = models.Transaction(
-            account_id=str(transaction.account_id),
-            tenant_id=tenant_id,
-            amount=transaction.amount,
-            date=transaction.date,
-            description=transaction.description,
-            recipient=transaction.recipient,
-            category=final_category,
-            tags=tags_str,
-            external_id=transaction.external_id if transaction.external_id else str(uuid.uuid4()), # Ensure external_id or UUID? Model might allow null, but safer to have ID
-            type=txn_type,
-            is_transfer=transaction.is_transfer,
-            linked_transaction_id=getattr(transaction, 'linked_transaction_id', None),
-            source=transaction.source if hasattr(transaction, 'source') else "MANUAL",
-            content_hash=txn_hash,
-            exclude_from_reports=final_exclude,
-            is_emi=getattr(transaction, 'is_emi', False),
-            loan_id=getattr(transaction, 'loan_id', None),
-            latitude=getattr(transaction, 'latitude', None),
-            longitude=getattr(transaction, 'longitude', None),
-            location_name=getattr(transaction, 'location_name', None)
-        )
-        
-        # Update Account Balance
-        if update_balance:
-            db_account = db.query(models.Account).filter(models.Account.id == str(transaction.account_id)).first()
-            if db_account:
-                # ANCHOR CHECK: If this transaction is older than (or equal to) the last sync,
-                # we assume it's already factored into the anchored balance.
-                from backend.app.core import timezone
-                last_sync = timezone.ensure_utc(db_account.last_synced_at)
-                txn_date = timezone.ensure_utc(transaction.date)
-                
-                if last_sync and txn_date <= last_sync:
-                    pass # Do not update balance
-                else:
-                    current_bal = db_account.balance or 0
-                    # If it's a liability (Loan/Credit Card), adding money (Credit) reduces the balance owed
-                    # Spending money (Debit/Negative) increases the balance owed
-                    if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                        db_account.balance = current_bal - transaction.amount
-                    else:
-                        db_account.balance = current_bal + transaction.amount
-                    db.add(db_account)
-
-        db.add(db_transaction)
-        db.commit()
-        db.refresh(db_transaction)
-        logger.info(f"TRANSACTION CREATED: ID {db_transaction.id} for Account {db_transaction.account_id}")
-
-        # Trigger Pulse Notification
-        try:
-            from backend.app.modules.notifications import NotificationService
-            # Get account name and owner_id for the notification
-            db_account = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
-            if db_account:
-                NotificationService.notify_transaction(
-                    db, 
-                    tenant_id, 
-                    float(db_transaction.amount), 
-                    db_transaction.description or "New Transaction",
-                    db_account.name,
-                    user_id=db_account.owner_id
+            if getattr(transaction, 'source', 'MANUAL') != 'MANUAL':
+                is_dup, reason, existing_id = TransactionDeduplicator.check_raw_duplicate(
+                    db, tenant_id, str(transaction.account_id), transaction.amount, transaction.date, 
+                    transaction.description, transaction.recipient, transaction.external_id,
+                    exclude_pending_id=exclude_pending_id
                 )
-        except Exception as e:
-            logger.error(f"Failed to trigger transaction notification: {e}")
-
-        return db_transaction
+            
+            if is_dup:
+                # If it found a match in confirmed transactions, return it
+                # We check the confirmed table specifically here to be sure
+                existing = db.query(models.Transaction).filter(models.Transaction.id == existing_id).first()
+                if existing: return existing
+                
+                # If it was in pending/triage, the deduplicator returns it, but create_transaction 
+                # should probably still proceed or throw if it's strictly enforced.
+                # In our system, manual creation/import should skip if already in triage too.
+                # For now, let's treat it as a skip (return None or raise?) 
+                # But the service signature returns models.Transaction.
+                # Easiest: return None or raise. Usually create_transaction should be idempotent.
+                # If it's a confirmed duplicate in another table, we return it to represent "creation was handled"
+                # If it's simply "triage", we skip creation in confirmed.
+                return None
+    
+            data = transaction.model_dump()
+            data['tenant_id'] = tenant_id
+            
+            # Use UUID if not provided (though models usually handle this, explicit is safer for deduplication sync)
+            if not data.get('id'):
+                import uuid
+                data['id'] = str(uuid.uuid4())
+    
+            # Content Hash for weak deduplication
+            if not data.get('content_hash'):
+                from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
+                data['content_hash'] = TransactionDeduplicator.generate_hash(
+                    tenant_id, str(data['account_id']), data['date'], data['amount'], 
+                    data['description'], data['recipient']
+                )
+    
+            db_transaction = models.Transaction(**data)
+            db.add(db_transaction)
+            
+            # 2. Update Account Balance
+            if update_balance:
+                db_account = db.query(models.Account).filter(
+                    models.Account.id == transaction.account_id,
+                    models.Account.tenant_id == tenant_id
+                ).first()
+                
+                if db_account:
+                    from backend.app.core import timezone
+                    anchor_date = timezone.ensure_utc(db_account.last_synced_at)
+                    txn_date = timezone.ensure_utc(db_transaction.date)
+                    
+                    # Only affect balance if transaction is NEWER than the last sync anchor
+                    if not anchor_date or txn_date > anchor_date:
+                        # Transaction amount is already signed (e.g. -500 for debit)
+                        # For LOAN/CREDIT accounts, a debit (-500) INCREASES the positive balance (debt)
+                        # For BANK accounts, a debit (-500) DECREASES the positive balance
+                        
+                        balance_change = 0
+                        if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                            # Debt increase = -(-500) = +500
+                            balance_change = -db_transaction.amount
+                        else:
+                            # Cash decrease = +(-500) = -500
+                            balance_change = db_transaction.amount
+                        
+                        # Atomic balance update to prevent race conditions
+                        if balance_change != 0:
+                            db.query(models.Account).filter(models.Account.id == db_account.id).update({
+                                "balance": models.Account.balance + balance_change
+                            })
+            
+            db.commit()
+            db.refresh(db_transaction)
+            
+            # 3. Trigger Real-time Notification
+            try:
+                from backend.app.modules.notifications.services import NotificationService
+                # Fetch fresh account name for notification
+                db_account = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
+                if db_account:
+                    NotificationService.notify_transaction(
+                        db, 
+                        tenant_id, 
+                        db_transaction.amount, 
+                        db_transaction.description or db_transaction.recipient, 
+                        db_account.name,
+                        user_id=db_account.owner_id
+                    )
+            except Exception as e:
+                logger.error(f"Failed to trigger transaction notification: {e}")
+    
+            return db_transaction
 
     @staticmethod
     def get_transactions(
@@ -183,7 +157,8 @@ class TransactionService:
         if account_id:
             query = query.filter(models.Transaction.account_id == account_id)
         if start_date:
-            query = query.filter(models.Transaction.date >= start_date)
+            query = query.filter(models.Transaction.date >= ensure_utc(start_date))
+
         if end_date:
             query = query.filter(models.Transaction.date <= end_date)
         
@@ -255,10 +230,10 @@ class TransactionService:
         search_pattern = f"%{vendor_name}%"
         from sqlalchemy import or_, func, desc
         from dateutil.relativedelta import relativedelta
-        from backend.app.core.timezone import ensure_utc
-        from datetime import datetime
-        now = ensure_utc(datetime.utcnow())
+        from backend.app.core import timezone
+        now = timezone.utcnow()
         six_months_ago = now - relativedelta(months=6)
+
 
         query = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
@@ -351,7 +326,8 @@ class TransactionService:
                          .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
 
         if start_date:
-            query = query.filter(models.Transaction.date >= start_date)
+            query = query.filter(models.Transaction.date >= ensure_utc(start_date))
+
         if end_date:
             query = query.filter(models.Transaction.date <= end_date)
             
@@ -396,186 +372,214 @@ class TransactionService:
     @staticmethod
     def bulk_delete_transactions(db: Session, transaction_ids: List[str], tenant_id: str) -> int:
         if not transaction_ids: return 0
-        try:
-            # 1. Fetch transactions to be deleted (we need details for balance update)
-            txns = db.query(models.Transaction).filter(
-                models.Transaction.id.in_(transaction_ids),
-                models.Transaction.tenant_id == tenant_id
-            ).all()
-            
-            if not txns: return 0
-            
-            # 2. Group by account to minimize DB lookups
-            from collections import defaultdict
-            txns_by_account = defaultdict(list)
-            for t in txns:
-                txns_by_account[t.account_id].append(t)
+        with db_write_lock:
+            try:
+                # 1. Fetch transactions to be deleted (we need details for balance update)
+                txns = db.query(models.Transaction).filter(
+                    models.Transaction.id.in_(transaction_ids),
+                    models.Transaction.tenant_id == tenant_id
+                ).all()
                 
-            # 3. Update balances
-            for acc_id, account_txns in txns_by_account.items():
-                account = db.query(models.Account).filter(models.Account.id == acc_id).first()
-                if not account: continue
+                if not txns: return 0
                 
-                balance_change = 0
-                anchor_date = account.last_synced_at
+                # 2. Group by account to minimize DB lookups
+                from collections import defaultdict
+                txns_by_account = defaultdict(list)
+                for t in txns:
+                    txns_by_account[t.account_id].append(t)
+                    
+                # 3. Update balances
+                for acc_id, account_txns in txns_by_account.items():
+                    account = db.query(models.Account).filter(models.Account.id == acc_id).first()
+                    if not account: continue
+                    
+                    balance_change = 0
+                    from backend.app.core import timezone
+                    anchor_date = timezone.ensure_utc(account.last_synced_at)
+                    
+                    for t in account_txns:
+                        # Only revert balance if txn is NEWER than anchor.
+                        # If older/equal, it's baked into the anchor snapshot.
+                        txn_date = timezone.ensure_utc(t.date)
+                        if not anchor_date or txn_date > anchor_date:
+                            # Revert logic:
+                            # Create (Loan): bal = bal - amt  => Undo: bal = bal + amt
+                            # Create (Bank): bal = bal + amt  => Undo: bal = bal - amt
+                            if account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                                balance_change += t.amount
+                            else:
+                                balance_change -= t.amount
+    
+                    
+                    if balance_change != 0:
+                        # Atomic balance update to prevent race conditions
+                        db.query(models.Account).filter(models.Account.id == acc_id).update({
+                            "balance": models.Account.balance + balance_change
+                        })
                 
-                for t in account_txns:
-                    # Only revert balance if txn is NEWER than anchor.
-                    # If older/equal, it's baked into the anchor snapshot.
-                    if not anchor_date or t.date > anchor_date:
-                        # Revert logic:
-                        # Create (Loan): bal = bal - amt  => Undo: bal = bal + amt
-                        # Create (Bank): bal = bal + amt  => Undo: bal = bal - amt
-                        if account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                            balance_change += t.amount
-                        else:
-                            balance_change -= t.amount
+                # 4. Perform Delete
+                # Since we fetched objects, we could delete them directly or use bulk delete.
+                # Bulk delete is still efficient for the deletion part.
+                count = db.query(models.Transaction).filter(
+                    models.Transaction.id.in_(transaction_ids),
+                    models.Transaction.tenant_id == tenant_id
+                ).delete(synchronize_session=False)
                 
-                if balance_change != 0:
-                    current = account.balance or 0
-                    account.balance = current + balance_change
-                    db.add(account)
-            
-            # 4. Perform Delete
-            # Since we fetched objects, we could delete them directly or use bulk delete.
-            # Bulk delete is still efficient for the deletion part.
-            count = db.query(models.Transaction).filter(
-                models.Transaction.id.in_(transaction_ids),
-                models.Transaction.tenant_id == tenant_id
-            ).delete(synchronize_session=False)
-            
-            db.commit()
-            return count
-        except Exception as e:
-            db.rollback()
-            raise e
+                db.commit()
+                return count
+            except Exception as e:
+                db.rollback()
+                raise e
 
     @staticmethod
     def update_transaction(db: Session, txn_id: str, txn_update: schemas.TransactionUpdate, tenant_id: str) -> Optional[models.Transaction]:
-        db_txn = db.query(models.Transaction).filter(
-            models.Transaction.id == txn_id,
-            models.Transaction.tenant_id == tenant_id
-        ).first()
+        with db_write_lock:
+            db_txn = db.query(models.Transaction).filter(
+                models.Transaction.id == txn_id,
+                models.Transaction.tenant_id == tenant_id
+            ).first()
         
-        if not db_txn:
-            return None
-            
-        # Snapshot old state for balance adjustment
-        old_amount = db_txn.amount
-        old_date = db_txn.date
-        old_account_id = db_txn.account_id
-        
-        update_data = txn_update.model_dump(exclude_unset=True)
-        
-        # --- Transfer logic remains same ---
-        is_transfer_update = update_data.get('is_transfer')
-        to_account_id = update_data.get('to_account_id')
-        
-        if is_transfer_update is True:
-            db_txn.is_transfer = True
-            db_txn.exclude_from_reports = True
-            
-            if update_data.get('linked_transaction_id'):
-                if db_txn.linked_transaction_id:
-                     old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
-                     if old_linked:
-                        old_linked.linked_transaction_id = None
-                        db.add(old_linked)
-
-                target_id = update_data['linked_transaction_id']
-                target_txn = db.query(models.Transaction).filter(models.Transaction.id == target_id).first()
+            if not db_txn:
+                return None
                 
-                if target_txn:
-                    db_txn.linked_transaction_id = target_txn.id
-                    target_txn.linked_transaction_id = db_txn.id
-                    target_txn.is_transfer = True
-                    target_txn.category = "Transfer"
-                    target_txn.exclude_from_reports = True 
+            # Snapshot old state for balance adjustment
+            old_amount = db_txn.amount
+            old_date = db_txn.date
+            old_account_id = db_txn.account_id
+            
+            update_data = txn_update.model_dump(exclude_unset=True)
+            
+            # --- Transfer logic remains same ---
+            is_transfer_update = update_data.get('is_transfer')
+            to_account_id = update_data.get('to_account_id')
+            
+            if is_transfer_update is True:
+                db_txn.is_transfer = True
+                db_txn.exclude_from_reports = True
+                
+                if update_data.get('linked_transaction_id'):
+                    if db_txn.linked_transaction_id:
+                         old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                         if old_linked:
+                            old_linked.linked_transaction_id = None
+                            db.add(old_linked)
+    
+                    target_id = update_data['linked_transaction_id']
+                    target_txn = db.query(models.Transaction).filter(models.Transaction.id == target_id).first()
+                    
+                    if target_txn:
+                        db_txn.linked_transaction_id = target_txn.id
+                        target_txn.linked_transaction_id = db_txn.id
+                        target_txn.is_transfer = True
+                        target_txn.category = "Transfer"
+                        target_txn.exclude_from_reports = True 
+                        db.add(target_txn)
+    
+                elif to_account_id:
+                    if db_txn.linked_transaction_id:
+                         old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                         if old_linked: db.delete(old_linked)
+                    
+                    target_txn = models.Transaction(
+                        id=str(uuid.uuid4()),
+                        tenant_id=tenant_id,
+                        account_id=to_account_id,
+                        amount=-db_txn.amount if 'amount' not in update_data else -update_data['amount'],
+                        date=db_txn.date if 'date' not in update_data else update_data['date'],
+                        description=f"Transfer from {db_txn.account_id} (Linked)",
+                        recipient=db_txn.recipient,
+                        category="Transfer",
+                        type=TransactionType.CREDIT if (db_txn.amount < 0) else TransactionType.DEBIT,
+                        is_transfer=True,
+                        source=db_txn.source,
+                        linked_transaction_id=db_txn.id,
+                        exclude_from_reports=True
+                    )
                     db.add(target_txn)
-
-            elif to_account_id:
+                    db_txn.linked_transaction_id = target_txn.id
+                    db_txn.category = "Transfer"
+                    update_data['category'] = "Transfer"
+    
+            elif is_transfer_update is False:
+                db_txn.is_transfer = False
                 if db_txn.linked_transaction_id:
-                     old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
-                     if old_linked: db.delete(old_linked)
+                    linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                    if linked:
+                        linked.linked_transaction_id = None
+                        linked.is_transfer = False 
+                        db.add(linked)
+    
+                    db_txn.linked_transaction_id = None
+            
+            # Apply updates to db_txn
+            for key, value in update_data.items():
+                if key in ['is_transfer', 'to_account_id']: continue
+                if key == 'tags' and value is not None:
+                    setattr(db_txn, key, json.dumps(value))
+                elif key in ['linked_transaction_id', 'expense_group_id', 'loan_id'] and value == "":
+                    setattr(db_txn, key, None)
+                elif key == 'account_id' and value:
+                    db_txn.account_id = str(value)
+                else:
+                    setattr(db_txn, key, value)
+            
+            # Recalculate type based on final amount
+            db_txn.type = models.TransactionType.DEBIT if db_txn.amount < 0 else models.TransactionType.CREDIT
+
+            # Account for balance changes if amount, date, or account changed
+            from backend.app.core import timezone
+            has_important_change = (
+                'amount' in update_data or 
+                'date' in update_data or 
+                'account_id' in update_data
+            )
+            
+            if has_important_change:
+                # 1. Revert Old Balance Contribution
+                old_acc = db.query(models.Account).filter(models.Account.id == old_account_id).first()
+                if old_acc:
+                    old_anchor = timezone.ensure_utc(old_acc.last_synced_at)
+                    old_txn_date = timezone.ensure_utc(old_date)
+                    
+                    if not old_anchor or old_txn_date > old_anchor:
+                        old_revert_change = 0
+                        if old_acc.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                            old_revert_change = old_amount
+                        else:
+                            old_revert_change = -old_amount
+                        
+                        if old_revert_change != 0:
+                            db.query(models.Account).filter(models.Account.id == old_account_id).update({
+                                "balance": models.Account.balance + old_revert_change
+                            })
                 
-                target_txn = models.Transaction(
-                    id=str(uuid.uuid4()),
-                    tenant_id=tenant_id,
-                    account_id=to_account_id,
-                    amount=-db_txn.amount if 'amount' not in update_data else -update_data['amount'],
-                    date=db_txn.date if 'date' not in update_data else update_data['date'],
-                    description=f"Transfer from {db_txn.account_id} (Linked)",
-                    recipient=db_txn.recipient,
-                    category="Transfer",
-                    type=TransactionType.CREDIT if (db_txn.amount < 0) else TransactionType.DEBIT,
-                    is_transfer=True,
-                    source=db_txn.source,
-                    linked_transaction_id=db_txn.id,
-                    exclude_from_reports=True
-                )
-                db.add(target_txn)
-                db_txn.linked_transaction_id = target_txn.id
-                db_txn.category = "Transfer"
-                update_data['category'] = "Transfer"
-
-        elif is_transfer_update is False:
-            db_txn.is_transfer = False
-            if db_txn.linked_transaction_id:
-                linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
-                if linked:
-                    linked.linked_transaction_id = None
-                    linked.is_transfer = False 
-                    db.add(linked)
-
-                db_txn.linked_transaction_id = None
-        
-        # Apply updates to db_txn
-        for key, value in update_data.items():
-            if key in ['is_transfer', 'to_account_id']: continue
-            if key == 'tags' and value is not None:
-                setattr(db_txn, key, json.dumps(value))
-            elif key in ['linked_transaction_id', 'expense_group_id', 'loan_id'] and value == "":
-                setattr(db_txn, key, None)
-            elif key == 'account_id' and value:
-                db_txn.account_id = str(value)
-            else:
-                setattr(db_txn, key, value)
-        
-        # Recalculate type based on final amount
-        db_txn.type = models.TransactionType.DEBIT if db_txn.amount < 0 else models.TransactionType.CREDIT
-        
-        # --- Balance Adjustment Logic ---
-        new_amount = db_txn.amount
-        new_date = db_txn.date
-        new_account_id = db_txn.account_id
-        
-        if new_amount != old_amount or new_date != old_date or new_account_id != old_account_id:
-            # 1. Revert from Old Account
-            old_acc = db.query(models.Account).filter(models.Account.id == old_account_id).first()
-            if old_acc:
-                anchor_date = old_acc.last_synced_at
-                if not anchor_date or old_date > anchor_date:
-                    if old_acc.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                        old_acc.balance = (old_acc.balance or 0) + old_amount
-                    else:
-                        old_acc.balance = (old_acc.balance or 0) - old_amount
-                    db.add(old_acc)
-
-            # 2. Apply to New/Current Account
-            new_acc = db.query(models.Account).filter(models.Account.id == new_account_id).first()
-            if new_acc:
-                anchor_date = new_acc.last_synced_at
-                if not anchor_date or new_date > anchor_date:
-                    if new_acc.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                        new_acc.balance = (new_acc.balance or 0) - new_amount
-                    else:
-                        new_acc.balance = (new_acc.balance or 0) + new_amount
-                    db.add(new_acc)
-        # -------------------------------
+                # 2. Apply New Balance Contribution
+                new_account_id = db_txn.account_id
+                new_amount = db_txn.amount
+                new_date = db_txn.date
                 
-        db.commit()
-        db.refresh(db_txn)
-        return db_txn
+                new_acc_exists = db.query(models.Account).filter(models.Account.id == new_account_id).first()
+                if new_acc_exists:
+                    new_anchor = timezone.ensure_utc(new_acc_exists.last_synced_at)
+                    new_txn_date = timezone.ensure_utc(new_date)
+                    
+                    if not new_anchor or new_txn_date > new_anchor:
+                        new_balance_change = 0
+                        if new_acc_exists.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                            new_balance_change = -new_amount
+                        else:
+                            new_balance_change = new_amount
+                        
+                        if new_balance_change != 0:
+                            db.query(models.Account).filter(models.Account.id == new_account_id).update({
+                                "balance": models.Account.balance + new_balance_change
+                            })
+    
+            # -------------------------------
+                    
+            db.commit()
+            db.refresh(db_txn)
+            return db_txn
 
     @staticmethod
     def get_suggested_category(db: Session, tenant_id: str, description: Optional[str], recipient: Optional[str]) -> str:

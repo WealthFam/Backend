@@ -1,6 +1,11 @@
+import threading
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from backend.app.core.config import settings
+
+# Global lock for DuckDB writes to prevent "database is locked" errors
+# during concurrent mutations across different threads/tasks.
+db_write_lock = threading.Lock()
 
 # DuckDB is primarily a synchronous in-process database.
 # We will use the standard synchronous engine.

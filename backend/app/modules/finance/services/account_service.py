@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from backend.app.core.database import db_write_lock
 from backend.app.core import timezone
 from backend.app.modules.finance import models, schemas
 
@@ -12,7 +13,8 @@ logger = logging.getLogger(__name__)
 class AccountService:
     @staticmethod
     def create_account(db: Session, account: schemas.AccountCreate, tenant_id: str) -> models.Account:
-        data = account.model_dump()
+        with db_write_lock:
+            data = account.model_dump()
         if not data.get('tenant_id'):
             data['tenant_id'] = tenant_id
             
@@ -157,7 +159,8 @@ class AccountService:
     @staticmethod
     def override_balance(db: Session, account_id: str, balance: float, timestamp: datetime, tenant_id: str, 
                          credit_limit: Optional[float] = None, source: str = "MANUAL") -> models.Account:
-        db_account = db.query(models.Account).filter(
+        with db_write_lock:
+            db_account = db.query(models.Account).filter(
             models.Account.id == account_id,
             models.Account.tenant_id == tenant_id
         ).first()

@@ -18,11 +18,12 @@ class BudgetService:
         if not year: year = now.year
         if not month: month = now.month
         
-        start_of_period = datetime(year, month, 1)
+        start_of_period = timezone.ensure_utc(datetime(year, month, 1))
         if month == 12:
-            end_of_period = datetime(year + 1, 1, 1)
+            end_of_period = timezone.ensure_utc(datetime(year + 1, 1, 1))
         else:
-            end_of_period = datetime(year, month + 1, 1)
+            end_of_period = timezone.ensure_utc(datetime(year, month + 1, 1))
+
             
         # Spending
         # Separate expenses (negative) and income (positive)
@@ -123,11 +124,12 @@ class BudgetService:
         if not year: year = now.year
         if not month: month = now.month
         
-        start_of_period = datetime(year, month, 1)
+        start_of_period = timezone.ensure_utc(datetime(year, month, 1))
         if month == 12:
-            end_of_period = datetime(year + 1, 1, 1)
+            end_of_period = timezone.ensure_utc(datetime(year + 1, 1, 1))
         else:
-            end_of_period = datetime(year, month + 1, 1)
+            end_of_period = timezone.ensure_utc(datetime(year, month + 1, 1))
+
         
         # Fetch raw transaction aggregates
         spending_query = db.query(
@@ -280,17 +282,18 @@ class BudgetService:
         if not month: month = now.month
         
         # Current Month
-        start_of_current = datetime(year, month, 1)
+        start_of_current = timezone.ensure_utc(datetime(year, month, 1))
         if month == 12:
-            end_of_current = datetime(year + 1, 1, 1)
-            last_month_dt = datetime(year, 11, 1)
+            end_of_current = timezone.ensure_utc(datetime(year + 1, 1, 1))
+            last_month_dt = timezone.ensure_utc(datetime(year, 11, 1))
         else:
-            end_of_current = datetime(year, month + 1, 1)
+            end_of_current = timezone.ensure_utc(datetime(year, month + 1, 1))
             # Last Month Logic
             if month == 1:
-                last_month_dt = datetime(year - 1, 12, 1)
+                last_month_dt = timezone.ensure_utc(datetime(year - 1, 12, 1))
             else:
-                last_month_dt = datetime(year, month - 1, 1)
+                last_month_dt = timezone.ensure_utc(datetime(year, month - 1, 1))
+
 
         # Fetch Current Data
         overview = BudgetService.get_budget_overview(db, tenant_id, year, month, user_id)
@@ -300,7 +303,8 @@ class BudgetService:
         last_month_overview = BudgetService.get_budget_overview(db, tenant_id, last_month_dt.year, last_month_dt.month, user_id)
         
         # Fetch YTD Totals (Simple aggregation)
-        start_of_year = datetime(year, 1, 1)
+        start_of_year = timezone.ensure_utc(datetime(year, 1, 1))
+
         
         ytd_query = db.query(
             func.sum(models.Transaction.amount).label("total")

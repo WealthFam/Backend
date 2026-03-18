@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = "CHANGE_THIS_TO_A_SECURE_SECRET_IN_PRODUCTION"
     ALGORITHM: str = "HS256"
+    ALLOWED_ORIGINS: str = "*"
     
     model_config = ConfigDict(case_sensitive=True, env_file=".env", extra="ignore")
 

@@ -24,6 +24,21 @@ CREATE TABLE users (
 );
 
 CREATE INDEX ix_user_tenant ON users (tenant_id);
+ 
+CREATE TABLE user_tokens (
+	id VARCHAR NOT NULL, 
+	user_id VARCHAR NOT NULL, 
+	token_jti VARCHAR NOT NULL, 
+	expires_at TIMESTAMPTZ WITHOUT TIME ZONE NOT NULL, 
+	is_revoked BOOLEAN DEFAULT FALSE, 
+	created_at TIMESTAMPTZ WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES users (id), 
+	UNIQUE (token_jti)
+);
+ 
+CREATE INDEX ix_user_tokens_jti ON user_tokens (token_jti);
+
 
 -- 2. Finance Core
 CREATE TABLE accounts (

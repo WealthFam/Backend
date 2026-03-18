@@ -145,6 +145,21 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    try {
+      if (_accessToken != null) {
+        final url = Uri.parse('${_config.backendUrl}/api/v1/auth/logout');
+        await http.post(
+          url,
+          headers: {
+            'Authorization': 'Bearer $_accessToken',
+            'Content-Type': 'application/json',
+          },
+        ).timeout(const Duration(seconds: 5));
+      }
+    } catch (e) {
+      debugPrint('Logout API call failed (ignoring): $e');
+    }
+
     _isAuthenticated = false;
     _accessToken = null;
     await _storage.delete(key: 'access_token');
@@ -153,6 +168,8 @@ class AuthService extends ChangeNotifier {
     await _storage.delete(key: 'user_avatar');
     _userName = null;
     _userAvatar = null;
+    _isApproved = false;
+    stopHeartbeat();
     notifyListeners();
   }
 

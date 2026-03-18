@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 # Allow running from inside the 'parser' directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from parser.config import settings
 from parser.db.database import init_db
 from parser.core.scheduler import start_cleanup_job, stop_cleanup_job
 from parser.api import ingestion, config, analytics, system, patterns
@@ -34,13 +35,21 @@ app = FastAPI(
 )
 
 # Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",")] if settings.ALLOWED_ORIGINS else []
+
+cors_params = {
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+
+if "*" in origins:
+    cors_params["allow_origin_regex"] = ".*"
+else:
+    cors_params["allow_origins"] = origins
+
+app.add_middleware(CORSMiddleware, **cors_params)
+
 
 # Categorized Routers
 app.include_router(system.router)

@@ -21,6 +21,8 @@ def register_tenant(
     """
     return services.AuthService.create_tenant_and_user(db, tenant, user)
 
+from jose import jwt
+
 @router.post("/login", response_model=schemas.Token)
 def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -33,12 +35,57 @@ def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(
+    access_token, jti = security.create_access_token(
         data={"sub": user.email, "tenant_id": str(user.tenant_id)},
         expires_delta=access_token_expires
     )
+    
+    # Record token in DB
+    from backend.app.core import timezone
+    db_token = auth_models.UserToken(
+        user_id=user.id,
+        token_jti=jti,
+        expires_at=timezone.utcnow() + access_token_expires
+    )
+    db.add(db_token)
+    db.commit()
+    
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/logout")
+def logout(
+    token: str = Depends(security.OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")),
+    db: Session = Depends(get_db),
+    current_user: auth_models.User = Depends(get_current_user)
+):
+    """Revoke the current session."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        jti = payload.get("jti")
+        if jti:
+            db_token = db.query(auth_models.UserToken).filter(auth_models.UserToken.token_jti == jti).first()
+            if db_token:
+                db_token.is_revoked = True
+                db.commit()
+    except Exception:
+        pass # Already invalid or failed decode
+    return {"message": "Logged out successfully"}
+
+@router.post("/logout-all")
+def logout_all(
+    db: Session = Depends(get_db),
+    current_user: auth_models.User = Depends(get_current_user)
+):
+    """Revoke ALL sessions for the current user."""
+    db.query(auth_models.UserToken).filter(
+        auth_models.UserToken.user_id == current_user.id,
+        auth_models.UserToken.is_revoked == False
+    ).update({"is_revoked": True})
+    db.commit()
+    return {"message": "All sessions revoked successfully"}
+
 
 @router.get("/me", response_model=schemas.UserRead)
 def read_users_me(current_user: auth_models.User = Depends(get_current_user)):

@@ -7,6 +7,10 @@
                 style="max-width: 400px; width: 100%;" bg-color="surface"></v-text-field>
 
             <div class="d-flex align-center gap-3">
+                <v-btn color="error" variant="tonal" rounded="pill" size="small" @click="handleLogoutAll"
+                    class="font-weight-bold text-none px-4">
+                    Logout from All Devices
+                </v-btn>
                 <h3 class="text-subtitle-1 font-weight-bold">Mobile Devices</h3>
                 <v-chip color="success" size="small" variant="flat" class="font-weight-bold">
                     {{ devices.length }} Total
@@ -553,6 +557,22 @@ const handleBulkDeleteEvents = async () => {
 const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
     notify.success("Device ID copied!")
+}
+
+const handleLogoutAll = async () => {
+    try {
+        await financeApi.logoutAll();
+        notify.success("Successfully logged out from all devices");
+        
+        // Clear local session
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user');
+        
+        // Redirect to login
+        window.location.href = '/login';
+    } catch (e) {
+        notify.error("Failed to logout from all devices");
+    }
 }
 </script>
 
