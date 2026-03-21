@@ -4,10 +4,30 @@ import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 
 
+export interface Rule {
+    id: string
+    name: string
+    category: string
+    keywords: string[]
+    priority: number
+    is_transfer: boolean
+    to_account_id?: string
+    exclude_from_reports?: boolean
+}
+
+export interface RuleSuggestion {
+    name: string
+    category: string
+    keywords: string[]
+    count?: number
+    reason?: string
+    confidence_level?: string
+}
+
 export const useRulesStore = defineStore('rules', () => {
     // State
-    const rules = ref<any[]>([])
-    const suggestions = ref<any[]>([])
+    const rules = ref<Rule[]>([])
+    const suggestions = ref<RuleSuggestion[]>([])
     const loading = ref(false)
     const error = ref<string | null>(null)
     const searchQuery = ref('')
@@ -59,7 +79,7 @@ export const useRulesStore = defineStore('rules', () => {
         }
     }
 
-    async function createRule(data: any) {
+    async function createRule(data: Partial<Rule>) {
         try {
             await financeApi.createRule(data)
             notify.success("Rule created")
@@ -76,7 +96,7 @@ export const useRulesStore = defineStore('rules', () => {
         }
     }
 
-    async function updateRule(id: string, data: any) {
+    async function updateRule(id: string, data: Partial<Rule>) {
         try {
             await financeApi.updateRule(id, data)
             notify.success("Rule updated")
@@ -106,31 +126,8 @@ export const useRulesStore = defineStore('rules', () => {
         }
     }
 
-    async function ignoreSuggestion(suggestion: any) {
+    async function ignoreSuggestion(suggestion: RuleSuggestion) {
         try {
-            // Assuming suggestion has a pattern or we construct one to ignore
-            // The API expects { pattern: string } based on client.ts
-            // But client.ts line 86: ignoreSuggestion: (data: { pattern: string })
-            // Usually suggestion object from backend has keywords or pattern
-            // Let's assume we pass the suggestion object if it matches, or handle accordingly.
-            // Check Categories.vue implementation:
-            /*
-            async function ignoreSuggestion(s: any) {
-                 try {
-                     await financeApi.ignoreSuggestion({ pattern: s.keywords.join(',') }) // ? Categories.vue doesn't show implementation details for ignoreSuggestion call arguments clearly in template
-                     // In template: @click="ignoreSuggestion(s)"
-                     // let's create a specific ignore action
-                 }
-            */
-            // Looking at Categories.vue source:
-            // It doesn't show the implementation of ignoreSuggestion() in the script!
-            // Wait, I missed reading the full file?
-            // "The above content does NOT show the entire file contents."
-            // Ah, I missed the methods at the bottom.
-
-            // I will implement based on common sense and client.ts
-            // client.ts: ignoreSuggestion: (data: { pattern: string }) => apiClient.post('/finance/rules/suggestions/ignore', data)
-
             const pattern = suggestion.keywords ? suggestion.keywords.join(',') : suggestion.name
             await financeApi.ignoreSuggestion({ pattern })
 
@@ -143,11 +140,7 @@ export const useRulesStore = defineStore('rules', () => {
         }
     }
 
-    async function approveSuggestion(suggestion: any) {
-        // This usually involves creating a rule from the suggestion
-        // Categories.vue template: @click="approveSuggestion(s)"
-        // This likely opens the modal with pre-filled data or directly creates it.
-        // I will return the suggestion data so the UI can open the modal.
+    async function approveSuggestion(suggestion: RuleSuggestion) {
         return suggestion
     }
 
@@ -161,6 +154,25 @@ export const useRulesStore = defineStore('rules', () => {
             console.error("Failed to apply rule", e)
             notify.error("Failed to apply rule")
             return false
+        }
+    }
+
+    async function applyAllRules() {
+        loading.value = true
+        let totalAffected = 0
+        try {
+            for (const rule of rules.value) {
+                const res = await financeApi.applyRuleRetrospectively(rule.id, overrideExisting.value)
+                totalAffected += res.data.affected || 0
+            }
+            notify.success(`Bulk Apply Complete: Updated ${totalAffected} transactions across all rules.`)
+            return totalAffected
+        } catch (e: any) {
+            console.error("Failed bulk apply", e)
+            notify.error("Bulk application interrupted")
+            return false
+        } finally {
+            loading.value = false
         }
     }
 
@@ -234,6 +246,7 @@ export const useRulesStore = defineStore('rules', () => {
         ignoreSuggestion,
         approveSuggestion,
         applyRuleRetrospectively,
+        applyAllRules,
         fetchMatchPreview,
         matchingCount,
         matchingPreview,
