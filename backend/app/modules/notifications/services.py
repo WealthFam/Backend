@@ -125,10 +125,14 @@ class NotificationService:
         budgets = BudgetService.get_budgets(db, tenant_id, today.year, today.month)
         
         for b in budgets:
-            if b.category == "OVERALL" or b.amount_limit == 0:
+            # BudgetService.get_budgets returns a list of dictionaries, not objects
+            cat_name = b.get("category")
+            amount_limit = b.get("amount_limit") or 0
+            
+            if cat_name == "OVERALL" or amount_limit == 0:
                 continue
             
-            percentage = b.percentage
+            percentage = b.get("percentage") or 0
             milestone = None
             if percentage >= 120: milestone = 120
             elif percentage >= 100: milestone = 100
@@ -142,15 +146,15 @@ class NotificationService:
                 Alert.tenant_id == tenant_id,
                 Alert.category == "BUDGET_ALERT",
                 Alert.body.contains(f"{milestone}%"),
-                Alert.body.contains(f"for {b.category}"),
+                Alert.body.contains(f"for {cat_name}"),
                 Alert.created_at >= date(today.year, today.month, 1)
             ).first()
             
             if existing:
                 continue
                 
-            msg = f"Your spending in '{b.category}' is {percentage:.0f}% of your limit."
-            NotificationService.notify_budget_alert(db, tenant_id, b.category, msg)
+            msg = f"Your spending in '{cat_name}' is {percentage:.0f}% of your limit."
+            NotificationService.notify_budget_alert(db, tenant_id, cat_name, msg)
 
     @staticmethod
     def send_daily_summary(db: Session, tenant_id: str):

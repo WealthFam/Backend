@@ -10,7 +10,13 @@ from datetime import datetime
 from decimal import Decimal
 import logging
 
+import time
+
 logger = logging.getLogger(__name__)
+
+# Module-level circuit breaker state
+_last_quota_error = 0
+_COOLDOWN_SECONDS = 60
 
 class GeminiParser:
     def __init__(self, db: Session, tenant_id: str):
@@ -22,6 +28,10 @@ class GeminiParser:
         return self.db.query(AIConfig).filter(AIConfig.tenant_id == self.tenant_id).first()
 
     def parse(self, content: str, source: str, date_hint: Optional[Any] = None) -> Optional[Transaction]:
+        global _last_quota_error
+        if time.time() - _last_quota_error < _COOLDOWN_SECONDS:
+            return None
+
         if not self.config:
             return None
             
@@ -153,9 +163,11 @@ class GeminiParser:
             )
 
         except errors.ClientError as e:
+            global _last_quota_error
             status_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             if status_code == 429:
-                logger.error(f"AI Quota Exhausted (429): {e}")
+                _last_quota_error = time.time()
+                logger.warning(f"AI Quota Exhausted (429). Cooldown active.")
             else:
                 logger.error(f"AI Client Error ({status_code}): {e}")
             return None
@@ -165,6 +177,10 @@ class GeminiParser:
 
     def parse_with_pattern(self, content: str, source: str, date_hint: Optional[Any] = None) -> Optional[Dict[str, Any]]:
         """Extended parse that returns both transaction and suggested pattern."""
+        global _last_quota_error
+        if time.time() - _last_quota_error < _COOLDOWN_SECONDS:
+            return {"error": "quota_exhausted", "message": "Circuit breaker active due to recent 429"}
+
         if not self.config:
             return {"error": "AI Config not found"}
             
@@ -257,10 +273,12 @@ class GeminiParser:
                 
             return data
         except errors.ClientError as e:
+            global _last_quota_error
             status_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             if status_code == 429:
-                msg = "Gemini API quota exceeded. Please check your plan or retry later."
-                logger.error(f"AI Pattern Gen Quota Error: {msg}")
+                _last_quota_error = time.time()
+                msg = "Gemini API quota exceeded. Circuit breaker active."
+                logger.warning(f"AI Pattern Gen Quota Error: {msg}")
                 return {"error": "quota_exhausted", "message": msg}
             return {"error": str(e)}
         except Exception as e:
