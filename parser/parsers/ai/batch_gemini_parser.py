@@ -3,8 +3,8 @@ import logging
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from google import genai
-from google.generativeai import types
-from parser.db.models import AIConfiguration
+from google.genai import types, errors
+from parser.db.models import AIConfig
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +12,9 @@ class BatchGeminiParser:
     def __init__(self, db: Session, tenant_id: str):
         self.db = db
         self.tenant_id = tenant_id
-        self.config = self.db.query(AIConfiguration).filter(
-            AIConfiguration.tenant_id == self.tenant_id,
-            AIConfiguration.is_enabled == True
+        self.config = self.db.query(AIConfig).filter(
+            AIConfig.tenant_id == self.tenant_id,
+            AIConfig.is_enabled == True
         ).first()
 
     def parse_batch(self, items: List[Dict[str, str]], source: str) -> Dict[str, Any]:
