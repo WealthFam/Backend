@@ -341,10 +341,10 @@
                                         <template v-slot:prepend-inner>
                                             <Zap :size="16" class="text-primary mr-1 opacity-70" />
                                         </template>
-                                        <template v-slot:selection="{ item, index }">
+                                        <template v-slot:selection="{ item }">
                                             <v-chip size="small" color="primary" variant="flat"
                                                 class="font-mono font-weight-black elevation-1">
-                                                {{ item.title }}
+                                                {{ item.raw }}
                                             </v-chip>
                                         </template>
                                     </v-combobox>
@@ -618,10 +618,11 @@ import {
 } from 'lucide-vue-next'
 import { ref, onMounted } from 'vue'
 
-import { useRulesStore, type Rule } from '@/stores/finance/rules'
+import { useRulesStore, type Rule, type RuleSuggestion } from '@/stores/finance/rules'
 import { useCategoriesStore } from '@/stores/finance/categories'
 import { useFinanceStore } from '@/stores/finance'
 import { useNotificationStore } from '@/stores/notification'
+import { financeApi } from '@/api/client'
 
 const rulesStore = useRulesStore()
 const categoriesStore = useCategoriesStore()

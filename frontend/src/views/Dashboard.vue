@@ -42,12 +42,12 @@
                     <v-hover v-slot="{ isHovering, props }">
                         <v-card v-bind="props" class="premium-glass-card metric-card pa-6" :class="{ 'raised': isHovering }" rounded="xl" @click="router.push('/')">
                             <div class="d-flex justify-space-between mb-4">
-                                <v-avatar color="primary" variant="tonal" rounded="lg" size="48">
-                                    <Landmark :size="24" />
+                                <v-avatar class="premium-gradient-primary elevation-2" rounded="lg" size="48">
+                                    <Landmark :size="24" color="white" />
                                 </v-avatar>
                                 <Sparkline v-if="netWorthTrend.length > 1" :data="netWorthTrend" color="#6366f1" :height="40" width="80" fill />
                             </div>
-                            <div class="text-overline opacity-60 font-weight-black">Total Net Worth</div>
+                            <div class="text-overline opacity-60 font-weight-black letter-spacing-1">Total Net Worth</div>
                             <div class="text-h4 font-weight-black text-primary mb-1">{{ formatAmount(netWorth) }}</div>
                             <div class="d-flex align-center text-caption font-weight-bold" :class="netWorthChange >= 0 ? 'text-success' : 'text-error'">
                                 <TrendingUp v-if="netWorthChange >= 0" :size="14" class="mr-1" />
@@ -62,14 +62,18 @@
                     <v-hover v-slot="{ isHovering, props }">
                         <v-card v-bind="props" class="premium-glass-card metric-card pa-6" :class="{ 'raised': isHovering }" rounded="xl" @click="router.push('/transactions')">
                             <div class="d-flex justify-space-between mb-4">
-                                <v-avatar color="error" variant="tonal" rounded="lg" size="48">
-                                    <Wallet :size="24" />
+                                <v-avatar class="premium-gradient-error elevation-2" rounded="lg" size="48">
+                                    <Wallet :size="24" color="white" />
                                 </v-avatar>
                                 <Sparkline v-if="spendingTrend.length > 1" :data="spendingTrend" color="#e11d48" :height="40" width="80" fill />
                             </div>
-                            <div class="text-overline opacity-60 font-weight-black">Monthly Spending</div>
+                            <div class="text-overline opacity-60 font-weight-black letter-spacing-1">Monthly Spending</div>
                             <div class="text-h4 font-weight-black text-error mb-1">{{ formatAmount(metrics.monthly_spending) }}</div>
-                            <div class="text-caption font-weight-bold opacity-50">Budget: {{ formatAmount(metrics.budget_health?.limit || 0) }}</div>
+                            <div class="d-flex align-center text-caption font-weight-bold" :class="spendingChange <= 0 ? 'text-success' : 'text-error'">
+                                <TrendingDown v-if="spendingChange <= 0" :size="14" class="mr-1" />
+                                <TrendingUp v-else :size="14" class="mr-1" />
+                                {{ Math.abs(spendingChange || 0).toFixed(1) }}% vs last month
+                            </div>
                         </v-card>
                     </v-hover>
                 </v-col>
@@ -78,14 +82,14 @@
                     <v-hover v-slot="{ isHovering, props }">
                         <v-card v-bind="props" class="premium-glass-card metric-card pa-6" :class="{ 'raised': isHovering }" rounded="xl" @click="router.push('/mutual-funds')">
                             <div class="d-flex justify-space-between mb-4">
-                                <v-avatar color="success" variant="tonal" rounded="lg" size="48">
-                                    <Sparkles :size="24" />
+                                <v-avatar class="premium-gradient-success elevation-2" rounded="lg" size="48">
+                                    <Sparkles :size="24" color="white" />
                                 </v-avatar>
                                 <v-chip size="small" color="success" variant="flat" class="font-weight-black">
                                     {{ Number(mfPortfolio.xirr || 0).toFixed(1) }}% XIRR
                                 </v-chip>
                             </div>
-                            <div class="text-overline opacity-60 font-weight-black">Mutual Funds</div>
+                            <div class="text-overline opacity-60 font-weight-black letter-spacing-1">Mutual Funds</div>
                             <div class="text-h4 font-weight-black text-success mb-1">{{ formatAmount(mfPortfolio.current) }}</div>
                             <div class="text-caption font-weight-bold text-success">
                                 Profit: {{ formatAmount(mfPortfolio.pl) }} ({{ Number(mfPortfolio.plPercent || 0).toFixed(1) }}%)
@@ -98,14 +102,14 @@
                     <v-hover v-slot="{ isHovering, props }">
                         <v-card v-bind="props" class="premium-glass-card metric-card pa-6" :class="{ 'raised': isHovering }" rounded="xl" @click="router.push('/budgets')">
                             <div class="d-flex justify-space-between mb-4">
-                                <v-avatar color="warning" variant="tonal" rounded="lg" size="48">
-                                    <PieChart :size="24" />
+                                <v-avatar class="premium-gradient-warning elevation-2" rounded="lg" size="48">
+                                    <PieChart :size="24" color="white" />
                                 </v-avatar>
                                 <div class="text-h4 font-weight-black" :class="metrics.budget_health?.percentage > 90 ? 'text-error' : 'text-warning'">
                                     {{ Number(metrics.budget_health?.percentage || 0).toFixed(0) }}%
                                 </div>
                             </div>
-                            <div class="text-overline opacity-60 font-weight-black">Budget Health</div>
+                            <div class="text-overline opacity-60 font-weight-black letter-spacing-1">Budget Health</div>
                             <v-progress-linear 
                                 :model-value="Math.min(metrics.budget_health?.percentage || 0, 100)" 
                                 height="10" 
@@ -113,7 +117,10 @@
                                 class="mt-4 budget-progress-premium"
                                 :class="metrics.budget_health?.percentage > 90 ? 'health-danger' : 'health-warning'"
                             ></v-progress-linear>
-                            <div class="text-caption font-weight-bold opacity-50 mt-1">Remaining: {{ formatAmount(Math.max(0, (Number(metrics.budget_health?.limit || 0) - Number(metrics.budget_health?.spent || 0)))) }}</div>
+                            <div class="text-caption font-weight-bold opacity-50 mt-1 d-flex justify-space-between">
+                                <span>Remaining</span>
+                                <span>{{ formatAmount(Math.max(0, (Number(metrics.budget_health?.limit || 0) - Number(metrics.budget_health?.spent || 0)))) }}</span>
+                            </div>
                         </v-card>
                     </v-hover>
                 </v-col>
@@ -139,7 +146,7 @@
                                 <v-btn v-if="aiInsights" icon variant="text" size="small" color="primary" @click="forceRefreshAi" :loading="refreshingAi">
                                     <RefreshCw :size="16" />
                                 </v-btn>
-                                <v-icon v-if="!aiInsights" class="rotate-anim opacity-40">Loader2</v-icon>
+                                <Loader2 v-if="!aiInsights" :size="20" class="rotate-anim opacity-40" />
                             </div>
                         </div>
                         
@@ -302,7 +309,8 @@ import {
     TrendingUp,
     TrendingDown,
     RefreshCw,
-    Zap
+    Zap,
+    Loader2
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -398,6 +406,13 @@ const greetingEmoji = computed(() => {
     if (hour < 12) return '🌅'
     if (hour < 18) return '☀️'
     return '🌙'
+})
+
+const spendingChange = computed(() => {
+    if (!metrics.value?.last_month_spending || metrics.value.last_month_spending === 0) return 0
+    const current = metrics.value.monthly_spending || 0
+    const last = metrics.value.last_month_spending
+    return ((current - last) / last) * 100
 })
 
 // --- Actions ---
@@ -524,5 +539,42 @@ watch(() => auth.selectedMemberId, async () => {
 
 .health-danger :deep(.v-progress-linear__determinate) {
     background: linear-gradient(90deg, #ef4444 0%, #f87171 100%) !important;
+}
+
+/* Premium Gradients */
+.premium-gradient-primary {
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important;
+}
+
+.premium-gradient-error {
+    background: linear-gradient(135deg, #f43f5e 0%, #fb923c 100%) !important;
+}
+
+.premium-gradient-success {
+    background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%) !important;
+}
+
+.premium-gradient-warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%) !important;
+}
+
+.metric-card {
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.metric-card:hover::before {
+    opacity: 1;
 }
 </style>

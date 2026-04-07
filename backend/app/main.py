@@ -23,6 +23,7 @@ from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.ai_router import router as ai_router
 from backend.app.modules.ingestion.email_sync import EmailSyncService
 from backend.app.modules.ingestion.router import router as ingestion_router
+from backend.app.modules.notifications.routers.alerts import router as notifications_router
 from backend.app.modules.vault.router import router as vault_router
 
 def create_application() -> FastAPI:
@@ -60,6 +61,7 @@ def create_application() -> FastAPI:
     # Routers
     application.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
     application.include_router(finance_router, prefix=f"{settings.API_V1_STR}/finance", tags=["finance"])
+    application.include_router(notifications_router, prefix=f"{settings.API_V1_STR}/notifications", tags=["notifications"])
     application.include_router(ingestion_router, prefix=f"{settings.API_V1_STR}/ingestion", tags=["ingestion"])
     application.include_router(ai_router, prefix=f"{settings.API_V1_STR}/ingestion", tags=["ai"])
     application.include_router(vault_router, prefix=f"{settings.API_V1_STR}/finance/vault", tags=["Vault"])

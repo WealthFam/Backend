@@ -1,14 +1,17 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+
 import { financeApi } from '@/api/client'
-import { useStorePersistence } from '@/utils/persistence'
 import { useAuthStore } from '@/stores/auth'
+import { useActivityStore } from '@/stores/activity'
+import { useStorePersistence } from '@/utils/persistence'
 
 export const useDashboardStore = defineStore('dashboard', () => {
     const auth = useAuthStore()
+    const activityStore = useActivityStore()
     const memberId = computed(() => auth.selectedMemberId)
 
-    const metrics = ref<any>(null) // Metrics are complex, keeping as any for now but could be typed if needed
+    const metrics = ref<any>(null)
     const mfPortfolio = ref<{
         invested: number
         current: number
@@ -29,6 +32,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     const aiInsights = ref<any>(null)
     const loading = ref(false)
 
+    const recentNotifications = computed(() => activityStore.activities)
+
     // Apply Persistence
     useStorePersistence('dashboard_metrics', metrics, memberId)
     useStorePersistence('dashboard_portfolio', mfPortfolio, memberId)
@@ -40,25 +45,29 @@ export const useDashboardStore = defineStore('dashboard', () => {
         loading.value = true
         const uId = userId || auth.selectedMemberId || undefined
         try {
-            const [m, p, nwt, st] = await Promise.all([
+            const [m, pAnalytics, nwt, st] = await Promise.all([
                 financeApi.getMetrics(undefined, undefined, undefined, uId),
-                financeApi.getPortfolio(uId),
+                financeApi.getAnalytics(uId),
                 financeApi.getNetWorthTimeline(30, uId),
                 financeApi.getSpendingTrend(uId)
             ])
+            
+            // Activity fetch is now managed by activityStore or handled elsewhere
+            // but we can trigger it here if needed for initial load consistency
+            activityStore.fetchActivities(10)
+
             metrics.value = m.data
 
-            // Basic portfolio aggregation for summary
-            if (p.data && Array.isArray(p.data)) {
-                let invested = 0, current = 0
-                p.data.forEach((h: { invested_value?: number, current_value?: number }) => {
-                    invested += Number(h.invested_value || 0)
-                    current += Number(h.current_value || 0)
-                })
+            // Portfolio Analytics from dedicated endpoint
+            if (pAnalytics.data) {
+                const p = pAnalytics.data
                 mfPortfolio.value = {
-                    ...mfPortfolio.value,
-                    invested,
-                    current
+                    invested: Number(p.total_invested || 0),
+                    current: Number(p.current_value || 0),
+                    pl: Number(p.profit_loss || 0),
+                    plPercent: Number(p.profit_loss_percent || 0),
+                    xirr: Number(p.xirr || 0),
+                    loading: false
                 }
             }
 
@@ -67,7 +76,6 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
             // Fetch AI Insights if metrics are available
             if (metrics.value) {
-                // Background fetch for AI (no force refresh by default)
                 fetchAiInsights(false)
             }
         } catch (error) {
@@ -91,6 +99,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     return {
         metrics,
         mfPortfolio,
+        recentNotifications,
         netWorthTrend,
         spendingTrend,
         aiInsights,

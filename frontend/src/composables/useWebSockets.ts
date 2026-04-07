@@ -1,25 +1,17 @@
-import { ref, onMounted } from 'vue'
+import { onMounted, watch, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { mobileApi } from '@/api/client'
+import { useActivityStore } from '@/stores/activity'
 
-export interface Notification {
-    id: string
-    title: string
-    body: string
-    category: 'EXPENSE' | 'MILESTONE' | 'BUDGET_ALERT' | 'ACCOUNT' | 'INFO'
-    created_at: string
-    payload?: any
-}
-
-const notifications = ref<Notification[]>([])
-const isConnected = ref(false)
-const socket = ref<WebSocket | null>(null)
+let socket: WebSocket | null = null
+let reconnectTimer: any = null
 
 export function useWebSockets() {
     const auth = useAuthStore()
+    const activityStore = useActivityStore()
 
     const connect = () => {
-        if (!auth.user || !auth.user.tenant_id) return
+        if (!auth.token || !auth.user?.tenant_id) return
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         let host = window.location.host
@@ -34,59 +26,79 @@ export function useWebSockets() {
         const token = auth.token
 
         const wsUrl = `${protocol}//${host}/ws/${tenantId}?token=${token}`
-        socket.value = new WebSocket(wsUrl)
+        socket = new WebSocket(wsUrl)
 
-        socket.value.onopen = () => {
-            isConnected.value = true
-        }
-
-        socket.value.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data)
-                if (data.type === 'NOTIFICATION') {
-                    notifications.value = [data.payload, ...notifications.value].slice(0, 50)
-                }
-            } catch (e) {
-                console.error('Error parsing WebSocket message:', e)
+        socket.onopen = () => {
+            activityStore.setConnected(true)
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer)
+                reconnectTimer = null
             }
         }
 
-        socket.value.onclose = () => {
-            isConnected.value = false
-            setTimeout(connect, 5000)
+        socket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data)
+                // Always update lastEvent for reactivity across components
+                activityStore.setLastEvent(data)
+
+                if (data.type === 'NOTIFICATION') {
+                    activityStore.addActivity(data.payload)
+                }
+            } catch (e) {
+                console.error('[WebSockets] Error parsing message:', e)
+            }
         }
 
-        socket.value.onerror = (error) => {
-            console.error('WebSocket Error:', error)
-            socket.value?.close()
+        socket.onclose = () => {
+            activityStore.setConnected(false)
+            // Exponential backoff or simple retry
+            if (!reconnectTimer) {
+                reconnectTimer = setTimeout(() => {
+                    reconnectTimer = null
+                    connect()
+                }, 5000)
+            }
+        }
+
+        socket.onerror = (error) => {
+            console.error('[WebSockets] Error:', error)
+            socket?.close()
         }
     }
 
-    const fetchNotifications = async () => {
-        if (!auth.token) return
-        try {
-            const res = await mobileApi.getAlerts()
-            notifications.value = res.data
-        } catch (e) {
-            console.error('Error fetching initial notifications:', e)
+    const disconnect = () => {
+        if (socket) {
+            socket.close()
+            socket = null
+        }
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer)
+            reconnectTimer = null
         }
     }
 
     onMounted(() => {
-        if (!socket.value || socket.value.readyState !== WebSocket.OPEN) {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
             connect()
-            fetchNotifications()
+            activityStore.fetchActivities()
         }
     })
 
-    const clearNotifications = () => {
-        notifications.value = []
-    }
+    // Reconnect on auth change
+    watch(() => auth.token, (newToken) => {
+        if (newToken) {
+            connect()
+        } else {
+            disconnect()
+            activityStore.clearActivities()
+        }
+    })
 
     return {
-        notifications,
-        isConnected,
-        clearNotifications,
-        fetchNotifications
+        notifications: computed(() => activityStore.activities),
+        isConnected: computed(() => activityStore.isConnected),
+        clearNotifications: () => activityStore.clearActivities(),
+        fetchNotifications: (limit?: number) => activityStore.fetchActivities(limit)
     }
 }
