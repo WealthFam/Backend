@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 # Module-level circuit breaker state
 _last_quota_error = 0
+_last_ai_call = 0
 _COOLDOWN_SECONDS = 60
+_RATE_LIMIT_DELAY = 4.1
 
 class GeminiParser:
     def __init__(self, db: Session, tenant_id: str):
@@ -44,6 +46,12 @@ class GeminiParser:
         # New google-genai client
         client = genai.Client(api_key=self.config.api_key_enc)
         
+        global _last_ai_call
+        elapsed = time.time() - _last_ai_call
+        if elapsed < _RATE_LIMIT_DELAY:
+            time.sleep(_RATE_LIMIT_DELAY - elapsed)
+        _last_ai_call = time.time()
+
         config = types.GenerateContentConfig(
             temperature=0.1,
             top_p=1,
@@ -190,6 +198,13 @@ class GeminiParser:
              return {"error": "API Key missing"}
 
         client = genai.Client(api_key=self.config.api_key_enc)
+        
+        global _last_ai_call
+        elapsed = time.time() - _last_ai_call
+        if elapsed < _RATE_LIMIT_DELAY:
+            time.sleep(_RATE_LIMIT_DELAY - elapsed)
+        _last_ai_call = time.time()
+
         config = types.GenerateContentConfig(
             temperature=0.1,
             response_mime_type="application/json",

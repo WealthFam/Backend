@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from parser.config import settings
 from parser.db.database import init_db
 from parser.core.scheduler import start_cleanup_job, stop_cleanup_job
-from parser.api import ingestion, config, analytics, system, patterns
+from parser.api import ingestion, config, analytics, system, patterns, batch_ingestion
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,6 +54,7 @@ app.add_middleware(CORSMiddleware, **cors_params)
 # Categorized Routers
 app.include_router(system.router)
 app.include_router(ingestion.router)
+app.include_router(batch_ingestion.router)
 app.include_router(config.router)
 app.include_router(analytics.router)
 app.include_router(patterns.router)

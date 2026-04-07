@@ -18,6 +18,7 @@ class AIGuardrail:
         # Marketing & Subscriptions
         r"\bunsubscribe\b", r"\bview in browser\b", r"\bnewsletter\b",
         r"\bsale\b", r"\boffer valid\b", r"\bexclusive access\b", r"\bdiscount\b", r"\bcoupon\b",
+        r"\bshop now\b", r"\blimited time\b", r"\bdeals inside\b",
         # Personal / Conversational
         r"\bhow have you been\b", r"\bcheckout my\b", r"\bmiss you\b", r"\bhope you're doing well\b",
         # Surveys & Feedback
@@ -46,11 +47,11 @@ class AIGuardrail:
             logger.info("AIGuardrail: Dropped - Too short")
             return False
             
-        # Emails are often very long and conversational, if it's over 1500 chars 
-        # and we reach here, it's likely a newsletter/digest, not a transactional alert.
-        if source == "EMAIL" and len(content_lower) > 1500:
+        # Emails are often very long and conversational
+        if source == "EMAIL" and len(content_lower) > 800:
             # Only allow if it has a blazing obvious transaction table/receipt layout
-            if "transaction details" not in content_lower and "receipt" not in content_lower:
+            strong_markers = ["transaction details", "receipt", "order id", "utr number", "upi ref"]
+            if not any(marker in content_lower for marker in strong_markers):
                 logger.info("AIGuardrail: Dropped - Email too long without clear receipt markers")
                 return False
 

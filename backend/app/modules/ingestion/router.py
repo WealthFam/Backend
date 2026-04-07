@@ -2,7 +2,7 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime
 import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -294,6 +294,7 @@ def ingest_email(
 @router.post("/email/sync")
 def sync_email_inbox(
     payload: EmailSyncPayload,
+    background_tasks: BackgroundTasks,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -302,9 +303,10 @@ def sync_email_inbox(
     """
     search_crit = 'UNSEEN' if payload.unread_only else 'ALL'
     
-    result = EmailSyncService.sync_emails(
-        db=db,
+    background_tasks.add_task(
+        EmailSyncService.run_sync_task_in_background,
         tenant_id=str(current_user.tenant_id),
+        config_id="manual",
         imap_server=payload.imap_server,
         email_user=payload.email,
         email_pass=payload.password,
@@ -312,7 +314,7 @@ def sync_email_inbox(
         search_criterion=search_crit
     )
     
-    return result
+    return {"status": "started", "message": "Email synchronization tracking in background."}
 
 @router.get("/email/configs", response_model=List[EmailConfigRead])
 def list_email_configs(
@@ -444,6 +446,7 @@ def get_email_sync_logs(
 @router.post("/email/sync/{config_id}")
 def sync_specific_email(
     config_id: str,
+    background_tasks: BackgroundTasks,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -456,8 +459,8 @@ def sync_specific_email(
     
     criterion = 'ALL' 
     
-    result = EmailSyncService.sync_emails(
-        db=db,
+    background_tasks.add_task(
+        EmailSyncService.run_sync_task_in_background,
         tenant_id=str(current_user.tenant_id),
         config_id=config.id,
         imap_server=config.imap_server,
@@ -468,11 +471,11 @@ def sync_specific_email(
         since_date=config.last_sync_at
     )
     
-    if result.get("status") == "completed":
-        config.last_sync_at = timezone.utcnow()
-        db.commit()
+    # Update last_sync_at immediately
+    config.last_sync_at = timezone.utcnow()
+    db.commit()
         
-    return result
+    return {"status": "started", "message": "Email synchronization tracking in background."}
 
 @router.post("/csv/analyze")
 async def analyze_file(

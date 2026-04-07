@@ -85,6 +85,38 @@ class ExternalParserService:
             return None
 
     @staticmethod
+    def parse_email_batch(tenant_id: str, emails: list) -> Optional[Dict[str, Any]]:
+        """
+        Call the external parser microservice for Batched Email ingestion.
+        emails: [{"id": "...", "subject": "...", "body_text": "...", "sender": "...", "received_at": datetime}]
+        """
+        try:
+            url = f"{settings.PARSER_SERVICE_URL}/ingest/batch/"
+            payload = {"source": "EMAIL", "items": []}
+            
+            for e in emails:
+                item = {
+                    "id": str(e.get("id")),
+                    "content": e.get("body_text", ""),
+                    "subject": e.get("subject", ""),
+                    "sender": e.get("sender", "")
+                }
+                if e.get("received_at"):
+                    dt = e["received_at"]
+                    item["received_at"] = dt.isoformat() if isinstance(dt, datetime) else str(dt)
+                payload["items"].append(item)
+                
+            response = requests.post(url, json=payload, headers=ExternalParserService._get_auth_header(tenant_id), timeout=120)
+            
+            if response.status_code == 200:
+                return response.json()
+            logger.error(f"Batch parser returned {response.status_code}: {response.text}")
+            return None
+        except Exception as e:
+            logger.error(f"Error calling external parser batch: {e}")
+            return None
+
+    @staticmethod
     def sync_ai_config(tenant_id: str, api_key: str, model_name: str, is_enabled: bool):
         """
         Push AI configuration to the microservice.
