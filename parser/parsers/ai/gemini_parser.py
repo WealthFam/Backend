@@ -163,7 +163,6 @@ class GeminiParser:
             )
 
         except errors.ClientError as e:
-            global _last_quota_error
             status_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             if status_code == 429:
                 _last_quota_error = time.time()
@@ -273,7 +272,6 @@ class GeminiParser:
                 
             return data
         except errors.ClientError as e:
-            global _last_quota_error
             status_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             if status_code == 429:
                 _last_quota_error = time.time()

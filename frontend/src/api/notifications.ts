@@ -15,8 +15,8 @@ export interface AlertList {
 }
 
 export const notificationsApi = {
-  getAlerts: (limit: number = 20, skip: number = 0) => 
-    apiClient.get<AlertList>('/notifications', { params: { limit, skip } }),
-  markAsRead: (id: string) => 
+  getAlerts: (limit: number = 20, skip: number = 0) =>
+    apiClient.get<AlertList>('/notifications/', { params: { limit, skip } }),
+  markAsRead: (id: string) =>
     apiClient.post(`/notifications/${id}/read`)
 }
