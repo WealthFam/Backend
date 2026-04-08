@@ -1,7 +1,7 @@
 import calendar
 from decimal import Decimal
 from typing import Optional
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, text, or_
 from backend.app.modules.finance import models
@@ -32,13 +32,13 @@ class AnalyticsService:
         
         # Categorize Balances
         breakdown = {
-            "net_worth": 0,
-            "bank_balance": 0,
-            "cash_balance": 0,
-            "credit_debt": 0,
-            "investment_value": 0,
-            "total_credit_limit": 0,
-            "available_credit": 0,
+            "net_worth": Decimal(0),
+            "bank_balance": Decimal(0),
+            "cash_balance": Decimal(0),
+            "credit_debt": Decimal(0),
+            "investment_value": Decimal(0),
+            "total_credit_limit": Decimal(0),
+            "available_credit": Decimal(0),
             "overall_credit_utilization": 0
         }
         
@@ -209,14 +209,27 @@ class AnalyticsService:
         accounts_with_owners = db.query(models.Account).options(joinedload(models.Account.owner)).filter(models.Account.id.in_(account_ids)).all()
         account_map = {a.id: a for a in accounts_with_owners}
 
+        # Pre-fetch category map for efficiency
+        from backend.app.modules.finance.models import Category
+        category_objs = db.query(Category).filter(Category.tenant_id == tenant_id).all()
+        cat_map = {c.name: c for c in category_objs}
+
         enriched_txns = []
         for txn in recent_txns:
+            # Try exact match, then leaf name match for hierarchy (e.g. "Food › Dining" -> "Dining")
+            cat_obj = cat_map.get(txn.category)
+            if not cat_obj and txn.category and " › " in txn.category:
+                leaf_name = txn.category.split(" › ")[-1]
+                cat_obj = cat_map.get(leaf_name)
+                
             txn_dict = {
                 "id": txn.id,
                 "date": txn.date,
                 "description": txn.description,
                 "amount": Decimal(txn.amount),
                 "category": txn.category,
+                "category_icon": cat_obj.icon if cat_obj else "🏷️",
+                "category_color": cat_obj.color if cat_obj else "#9ca3af",
                 "account_id": str(txn.account_id),
                 "is_transfer": txn.is_transfer,
                 "exclude_from_reports": txn.exclude_from_reports,
@@ -281,14 +294,18 @@ class AnalyticsService:
                 "days_until_due": None
             }
             if intel["limit"] > 0:
-                current_debt = intel["balance"] if intel["balance"] > 0 else 0
+                # Debt is negative balance in this system
+                current_debt = abs(intel["balance"]) if intel["balance"] < 0 else 0
                 raw_util = (Decimal(current_debt) / Decimal(intel["limit"])) * 100
                 intel["utilization"] = float(max(Decimal(0), raw_util))
             
             # Billing Cycle Logic
             last_statement_date = None
+            prev_statement_date = None
             statement_balance = 0.0
-            unbilled_purchases = 0.0
+            unbilled_purchases_raw = 0.0
+            last_cycle_spend_raw = 0.0
+            current_cycle_payments_raw = 0.0
             minimum_due = 0.0
             
             if intel["billing_day"]:
@@ -312,27 +329,74 @@ class AnalyticsService:
                     except ValueError:
                          last_day = calendar.monthrange(prev_month_end.year, prev_month_end.month)[1]
                          last_statement_date = date(prev_month_end.year, prev_month_end.month, last_day)
+                
+                # Calculate Previous Statement Date (one month before last_statement_date)
+                if last_statement_date:
+                    first_of_ls_month = last_statement_date.replace(day=1)
+                    prev_month_end = first_of_ls_month - timedelta(days=1)
+                    try:
+                        prev_statement_date = date(prev_month_end.year, prev_month_end.month, billing_day)
+                    except ValueError:
+                         last_day = calendar.monthrange(prev_month_end.year, prev_month_end.month)[1]
+                         prev_statement_date = date(prev_month_end.year, prev_month_end.month, last_day)
             
             if last_statement_date:
                 intel["last_statement_date"] = last_statement_date.isoformat()
                 
+                # Precise boundaries for cycles
+                ls_midnight = datetime.combine(last_statement_date, time(23, 59, 59, 999999))
+                ps_midnight = None
+                if prev_statement_date:
+                    ps_midnight = datetime.combine(prev_statement_date, time(23, 59, 59, 999999))
+                
+                # Current Cycle Spend (Negative Txns AFTER last statement date)
                 unbilled_query = db.query(func.sum(models.Transaction.amount)).filter(
                     models.Transaction.account_id == card.id,
-                    models.Transaction.date > last_statement_date,
+                    models.Transaction.date > ls_midnight,
                     models.Transaction.amount < 0,
                     models.Transaction.exclude_from_reports == False
                 )
                 unbilled_raw = unbilled_query.scalar()
-                unbilled_purchases = Decimal(unbilled_raw) if unbilled_raw else Decimal(0)
+                unbilled_purchases_raw = Decimal(unbilled_raw) if unbilled_raw else Decimal(0)
+
+                # Current Cycle Payments (Positive Txns AFTER last statement date)
+                payments_query = db.query(func.sum(models.Transaction.amount)).filter(
+                    models.Transaction.account_id == card.id,
+                    models.Transaction.date > ls_midnight,
+                    models.Transaction.amount > 0,
+                    models.Transaction.exclude_from_reports == False
+                )
+                payments_raw = payments_query.scalar()
+                current_cycle_payments_raw = Decimal(payments_raw) if payments_raw else Decimal(0)
                 
-                statement_balance = intel["balance"] - unbilled_purchases
+                # Previous Cycle Spend (Between PSD and LSD)
+                if ps_midnight:
+                    last_cycle_query = db.query(func.sum(models.Transaction.amount)).filter(
+                        models.Transaction.account_id == card.id,
+                        models.Transaction.date > ps_midnight,
+                        models.Transaction.date <= ls_midnight,
+                        models.Transaction.amount < 0,
+                        models.Transaction.exclude_from_reports == False
+                    )
+                    last_cycle_raw = last_cycle_query.scalar()
+                    last_cycle_spend_raw = Decimal(last_cycle_raw) if last_cycle_raw else Decimal(0)
+                
+                # Formula: StatementBalance = CurrentBalance - RecentSpend(Negative) - RecentPayments(Positive)
+                statement_balance = intel["balance"] - unbilled_purchases_raw - current_cycle_payments_raw
 
                 if statement_balance < 0:
                     minimum_due = abs(statement_balance) * Decimal("0.05")
+                
+                # Debug logging
+                print(f"[DEBUG] Card: {card.name}, LSD: {last_statement_date}, PSD: {prev_statement_date}")
+                print(f"[DEBUG] Unbilled: {unbilled_purchases_raw}, Last Cycle: {last_cycle_spend_raw}")
                     
-            intel["statement_balance"] = statement_balance
-            intel["unbilled_spend"] = abs(unbilled_purchases)
-            intel["minimum_due"] = minimum_due
+            intel["statement_balance"] = abs(statement_balance)
+            intel["unbilled_spend"] = abs(unbilled_purchases_raw)
+            intel["last_cycle_spend"] = abs(last_cycle_spend_raw)
+            intel["current_cycle_payments"] = abs(current_cycle_payments_raw)
+            intel["minimum_due"] = abs(minimum_due)
+            intel["last_bill_date"] = last_statement_date.isoformat() if last_statement_date else None
 
             if intel["due_day"]:
                 try:
@@ -736,7 +800,7 @@ class AnalyticsService:
         trend = []
         today = now.date()
         current = start_date.date()
-        spend_map = {row.day: abs(float(row.total)) for row in spending}
+        spend_map = {str(row.day): abs(float(row.total)) for row in spending}
         
         while current <= today:
             trend.append({
@@ -1259,22 +1323,22 @@ class AnalyticsService:
         # Calculate breakdown
         member_wealth = []
         shared_wealth = {
-            "net_worth": 0,
-            "assets": 0,
-            "liabilities": 0,
+            "net_worth": Decimal(0),
+            "assets": Decimal(0),
+            "liabilities": Decimal(0),
             "account_count": 0
         }
         
-        total_assets = 0
-        total_liabilities = 0
+        total_assets = Decimal(0)
+        total_liabilities = Decimal(0)
         
         for user in family_members:
-            user_assets = 0
-            user_liabilities = 0
+            user_assets = Decimal(0)
+            user_liabilities = Decimal(0)
             user_accounts = [a for a in accounts if a.owner_id == str(user.id)]
             
             for acc in user_accounts:
-                bal = float(acc.balance or 0)
+                bal = Decimal(acc.balance or 0)
                 if acc.type in ['CREDIT_CARD', 'LOAN']:
                     user_liabilities += bal
                 else:
@@ -1360,7 +1424,7 @@ class AnalyticsService:
         cat_totals = {}
         for t in txns:
             cat_name = t.category or "Uncategorized"
-            cat_totals[cat_name] = cat_totals.get(cat_name, 0) + abs(float(t.amount))
+            cat_totals[cat_name] = cat_totals.get(cat_name, Decimal(0)) + abs(Decimal(t.amount or 0))
             
         # Roll up children to parents
         final_categories = []
@@ -1399,8 +1463,8 @@ class AnalyticsService:
         # Temporal Heatmap (Category vs Hour)
         # We only want the top categories for the heatmap grid
         active_cats = [c["name"] for c in final_categories if c["name"] != "Others"]
-        heatmap_grid = {cat: {h: 0 for h in range(24)} for cat in active_cats}
-        max_heat = 0
+        heatmap_grid = {cat: {h: Decimal(0) for h in range(24)} for cat in active_cats}
+        max_heat = Decimal(0)
         
         for t in txns:
             if t.category in heatmap_grid:
