@@ -166,6 +166,8 @@ export const financeApi = {
         apiClient.get('/finance/analytics/net-worth-timeline', { params: { days, user_id: userId } }),
     getSpendingTrend: (userId?: string) =>
         apiClient.get('/finance/analytics/spending-trend', { params: { user_id: userId } }),
+    getSpendingForecast: (startDate?: string, endDate?: string, userId?: string) =>
+        apiClient.get('/finance/analytics/spending-forecast', { params: { start_date: startDate, end_date: endDate, user_id: userId } }),
     getBudgetHistory: (months: number = 6, userId?: string) =>
         apiClient.get('/finance/analytics/budget-history', { params: { months, user_id: userId } }),
     getHeatmapData: (startDate?: string, endDate?: string, userId?: string) =>

@@ -510,4 +510,15 @@ class BalanceSnapshotRead(BalanceSnapshotBase):
     class Config:
         from_attributes = True
 
+class SpendingForecastDay(BaseModel):
+    date: str
+    is_forecast: bool
+    stacks: dict[str, Decimal] = {} # user_id/name -> amount
+
+class SpendingForecastResponse(BaseModel):
+    user_names: dict[str, str]
+    trend: List[SpendingForecastDay]
+    daily_burn_rate: Decimal
+    forecast_total: Decimal
+
 CategoryRead.model_rebuild()

@@ -4,6 +4,7 @@ import { localDateString, todayLocalString } from '@/utils/time'
 import { useNotificationStore } from '@/stores/notification'
 import { useTransactionStore } from '@/stores/finance/transactions'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { useExpenseGroupStore } from '@/stores/expenseGroups'
 import type { RouteLocationNormalized } from 'vue-router'
 
@@ -18,11 +19,13 @@ export function useTransactionState(
     const notify = useNotificationStore()
     const txnStore = useTransactionStore()
     const financeStore = useFinanceStore()
+    const auth = useAuthStore()
     const groupStore = useExpenseGroupStore()
 
     // Core State (MAPPED TO STORE)
     const transactions = computed(() => txnStore.transactions)
     const loading = computed(() => txnStore.loading)
+    const forecastData = ref<any>(null)
     const total = computed(() => txnStore.total)
     const metrics = computed(() => txnStore.metrics || {
         monthly_income: 0,
@@ -36,7 +39,8 @@ export function useTransactionState(
     const categoryFilter = ref('')
     const today = new Date()
     const startDate = ref<string>(localDateString(today.getFullYear(), today.getMonth(), 1))
-    const endDate = ref<string>(todayLocalString())
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    const endDate = ref<string>(localDateString(lastDayOfMonth.getFullYear(), lastDayOfMonth.getMonth(), lastDayOfMonth.getDate()))
     const selectedTimeRange = ref<string>('this-month')
 
     const timeRangeOptions = [
@@ -82,7 +86,10 @@ export function useTransactionState(
             await Promise.all([
                 financeStore.fetchAccounts(),
                 financeStore.fetchCategories(),
-                groupStore.fetchGroups()
+                groupStore.fetchGroups(),
+                financeApi.getSpendingForecast(startDate.value, endDate.value, auth.selectedMemberId || undefined).then(res => {
+                    forecastData.value = res.data
+                })
             ])
 
             // Set account from route query if available
@@ -141,14 +148,18 @@ export function useTransactionState(
             case 'this-week': {
                 const weekStart = new Date(today)
                 weekStart.setDate(today.getDate() - today.getDay())
+                const weekEnd = new Date(weekStart)
+                weekEnd.setDate(weekStart.getDate() + 6)
                 start = localDateString(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate())
-                end = localDateString(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+                end = localDateString(weekEnd.getFullYear(), weekEnd.getMonth(), weekEnd.getDate())
                 break
             }
-            case 'this-month':
+            case 'this-month': {
                 start = localDateString(today.getFullYear(), today.getMonth(), 1)
-                end = localDateString(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+                const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+                end = localDateString(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate())
                 break
+            }
             case 'last-month': {
                 const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
                 const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
@@ -244,6 +255,7 @@ export function useTransactionState(
         // State
         transactions,
         loading,
+        forecastData,
         total,
         metrics,
         selectedAccount,

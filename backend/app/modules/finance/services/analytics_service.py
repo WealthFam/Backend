@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 from datetime import datetime, date, timedelta, time
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, text, or_
+from sqlalchemy import func, text, or_, extract
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.transaction_service import TransactionService
 from backend.app.core import timezone
@@ -415,11 +415,23 @@ class AnalyticsService:
             credit_intelligence.append(intel)
 
 
+        # Calculate daily velocity
+        today_date = timezone.utcnow().date()
+        if start_date and start_date.date().month == today_date.month and start_date.date().year == today_date.year:
+            days_run = today_date.day
+        elif start_date and end_date:
+            days_run = max(1, (end_date.date() - start_date.date()).days + 1)
+        else:
+            days_run = today_date.day
+            
+        avg_daily = monthly_spending / Decimal(max(1, days_run))
+
         return {
             "breakdown": breakdown,
             "total_income": monthly_income,
             "monthly_total": monthly_spending,
             "monthly_spending": monthly_spending,
+            "avg_daily_spending": avg_daily,
             "last_month_spending": last_month_spending,
             "total_excluded": total_excluded,
             "excluded_income": excluded_income,
@@ -809,6 +821,138 @@ class AnalyticsService:
             current += timedelta(days=1)
             
         return trend
+
+    @staticmethod
+    def get_spending_forecast(db: Session, tenant_id: str, user_id: str = None, start_date: datetime = None, end_date: datetime = None):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+        
+        now = timezone.utcnow()
+        if not start_date:
+            start_date = timezone.ensure_utc(datetime(now.year, now.month, 1))
+        if not end_date:
+            last_day = calendar.monthrange(now.year, now.month)[1]
+            end_date = timezone.ensure_utc(datetime(now.year, now.month, last_day, 23, 59, 59))
+
+        # 1. Fetch historical spending stacked by user
+        query = db.query(
+            func.date(models.Transaction.date).label('day'),
+            models.Account.owner_id.label('user_id'),
+            func.sum(models.Transaction.amount).label('total')
+        ).join(models.Account, models.Transaction.account_id == models.Account.id)\
+         .filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= start_date,
+            models.Transaction.date <= end_date,
+            models.Transaction.date <= now, # Only historical for actuals
+            models.Transaction.amount < 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False
+        )
+        
+        if user_id:
+             query = query.filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+             
+        historical_raw = query.group_by(func.date(models.Transaction.date), models.Account.owner_id).all()
+        
+        # 2. Smart Prediction Logic (Seasonal/Cyclical)
+        # We look at patterns for each day of the month over the last ~4 months
+        four_months_ago = now - timedelta(days=120)
+        dom_query = db.query(
+            extract('day', models.Transaction.date).label('dom'),
+            func.sum(models.Transaction.amount).label('total')
+        ).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= four_months_ago,
+            models.Transaction.date < now.replace(day=1), # Complete months only
+            models.Transaction.amount < 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False
+        )
+        if user_id:
+             dom_query = dom_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                    .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        
+        dom_history = dom_query.group_by(extract('day', models.Transaction.date)).all()
+        # Calculate historical average for each day of the month
+        dom_prediction = {int(row.dom): abs(Decimal(row.total)) / Decimal(4) for row in dom_history}
+        
+        # Baseline burn rate for days with no history or as a fallback
+        thirty_days_ago = now - timedelta(days=30)
+        burn_query = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= thirty_days_ago,
+            models.Transaction.amount < 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False
+        )
+        if user_id:
+             burn_query = burn_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                    .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        
+        total_recent_burn = abs(Decimal(burn_query.scalar() or 0))
+        daily_burn_rate = total_recent_burn / Decimal(30)
+        
+        # 3. Get User metadata
+        from backend.app.modules.auth import models as auth_models
+        users = db.query(auth_models.User).filter(auth_models.User.tenant_id == tenant_id).all()
+        user_map = {u.id: u.full_name or u.email.split('@')[0] for u in users}
+        user_map[None] = "Shared/Other"
+        
+        # 4. Map historical data
+        data_map = {} # {date_str: {user_id: amount}}
+        for row in historical_raw:
+            day_str = str(row.day)
+            if day_str not in data_map: data_map[day_str] = {}
+            data_map[day_str][str(row.user_id) if row.user_id else "None"] = abs(float(row.total))
+            
+        # 5. Generate trend for requested range
+        trend = []
+        current = start_date.date()
+        today = now.date()
+        
+        # Fetch recurring transactions once
+        recs = db.query(models.RecurringTransaction).filter(
+            models.RecurringTransaction.tenant_id == tenant_id,
+            models.RecurringTransaction.is_active == True,
+            models.RecurringTransaction.type == 'DEBIT'
+        ).all()
+
+        while current <= end_date.date():
+            day_str = current.isoformat()
+            day_data = {
+                "date": day_str,
+                "is_forecast": current > today,
+                "stacks": data_map.get(day_str, {})
+            }
+            
+            if current > today:
+                # Add predicted spend: Blend (80% DOM-average, 20% recent velocity)
+                dom = current.day
+                dom_history_avg = dom_prediction.get(dom, daily_burn_rate)
+                final_predicted = (dom_history_avg * Decimal("0.8")) + (daily_burn_rate * Decimal("0.2"))
+                
+                day_data["stacks"]["Predicted"] = final_predicted
+                
+                # Check recurring bills for this specific date (hard override/addition)
+                rec_total = sum(abs(Decimal(str(r.amount))) for r in recs if r.next_run_date and r.next_run_date.date() == current)
+                if rec_total > 0:
+                    day_data["stacks"]["Upcoming Bills"] = rec_total
+
+            trend.append(day_data)
+            current += timedelta(days=1)
+            
+        # Sum up predicted values for the return
+        forecast_sum = sum(
+            Decimal(str(d["stacks"].get("Predicted", 0))) + Decimal(str(d["stacks"].get("Upcoming Bills", 0)))
+            for d in trend if d["is_forecast"]
+        )
+        return {
+            "user_names": user_map,
+            "trend": trend,
+            "daily_burn_rate": daily_burn_rate,
+            "forecast_total": forecast_sum
+        }
 
     @staticmethod
     def get_mobile_dashboard_trends(db: Session, tenant_id: str, target_year: int, target_month: int, user_id: str = None):

@@ -6,6 +6,7 @@ from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.finance.services.analytics_service import AnalyticsService
+from backend.app.modules.finance import schemas as finance_schemas
 
 router = APIRouter(prefix="/analytics")
 
@@ -158,3 +159,24 @@ def get_family_wealth(
     db: Session = Depends(get_db)
 ):
     return AnalyticsService.get_family_wealth(db, str(current_user.tenant_id))
+@router.get("/spending-forecast", response_model=finance_schemas.SpendingForecastResponse)
+def get_spending_forecast(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_id: str = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a day-by-day spending forecast including historical patterns and recurring bills.
+    Supports optional date range and user filtering.
+    """
+    s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
+    e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
+
+    return AnalyticsService.get_spending_forecast(
+        db, str(current_user.tenant_id), 
+        user_id=user_id,
+        start_date=s_date,
+        end_date=e_date
+    )
