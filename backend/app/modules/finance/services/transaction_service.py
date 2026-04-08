@@ -118,7 +118,8 @@ class TransactionService:
                         db_transaction.amount, 
                         db_transaction.description or db_transaction.recipient, 
                         db_account.name,
-                        user_id=db_account.owner_id
+                        user_id=db_account.owner_id,
+                        category_name=db_transaction.category
                     )
             except Exception as e:
                 logger.error(f"Failed to trigger transaction notification: {e}")

@@ -456,6 +456,8 @@ def run_auto_migrations(engine: Engine):
             );
             """))
 
+            safe_add_column("alerts", "icon", "VARCHAR")
+            
             # 28. AI Insight Cache
             connection.execute(text("""
             CREATE TABLE IF NOT EXISTS ai_insight_cache (

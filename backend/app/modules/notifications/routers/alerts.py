@@ -18,8 +18,10 @@ def get_alerts(
     Fetch historical notifications for the family dashboard.
     Enveloped format followed as per PRACTICES.md.
     """
+    from sqlalchemy import or_
     query = db.query(models.Alert).filter(
-        models.Alert.tenant_id == current_user.tenant_id
+        models.Alert.tenant_id == current_user.tenant_id,
+        or_(models.Alert.user_id == str(current_user.id), models.Alert.user_id == None)
     )
     
     total = query.count()

@@ -19,7 +19,10 @@ export const useActivityStore = defineStore('activity', () => {
         loading.value = true
         try {
             const res = await notificationsApi.getAlerts(limit)
-            activities.value = res.data.data
+            // Ensure we don't have duplicates even from the fetch
+            const newActivities = res.data.data
+            const uniqueActivities = [...newActivities].filter((v, i, a) => a.findIndex(t => t.id === v.id) === i)
+            activities.value = uniqueActivities
         } catch (e) {
             console.error('[ActivityStore] Failed to fetch activities', e)
         } finally {
@@ -28,6 +31,7 @@ export const useActivityStore = defineStore('activity', () => {
     }
 
     function addActivity(item: ActivityItem) {
+        if (!item || !item.id) return
         // Prevent duplicates and keep limit to 50
         const exists = activities.value.some(a => a.id === item.id)
         if (!exists) {

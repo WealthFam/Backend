@@ -15,6 +15,7 @@ class Alert(Base):
     title = Column(String, nullable=False)
     body = Column(String, nullable=False)
     category = Column(String, default="INFO") # INFO, EXPENSE, EMERGENCY
+    icon = Column(String, nullable=True)
     
     is_read = Column(Boolean, default=False)
     created_at = Column(UTCDateTime, default=timezone.utcnow)

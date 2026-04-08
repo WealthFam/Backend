@@ -161,13 +161,7 @@ class GeminiProvider:
                     except Exception as cache_err:
                         logger.error(f"Error parsing cached insights: {cache_err}")
 
-                return [{
-                    "id": "ai_quota",
-                    "type": "warning",
-                    "title": "AI Quota Exceeded",
-                    "content": "You've hit the usage limit. Showing default insights until quota refreshes.",
-                    "icon": "hourglass_empty"
-                }]
+                return None
             elif e.code in [400, 401, 403]:
                 logger.error(f"Gemini structured insights: Auth error {e.code}")
                 return [{
@@ -197,13 +191,7 @@ class GeminiProvider:
                 except Exception as cache_err:
                     logger.error(f"Error parsing cached insights: {cache_err}")
             
-            return [{
-                "id": "ai_quota",
-                "type": "warning",
-                "title": "AI Quota Exceeded",
-                "content": "You've hit the usage limit. Showing default insights until quota refreshes.",
-                "icon": "hourglass_empty"
-            }]
+            return None
         except (InvalidArgument, Unauthenticated):
             logger.error("Gemini structured insights: InvalidArgument or Unauthenticated")
             return [{

@@ -1,4 +1,4 @@
-import { onMounted, watch, computed } from 'vue'
+import { watch, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useActivityStore } from '@/stores/activity'
 
@@ -15,10 +15,10 @@ export function useWebSockets() {
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         let host = window.location.host
-        
-        if (host.includes('localhost') || host.includes('127.0.0.1')) {
-            host = 'localhost:8000'
-        } else if (window.location.port === '5173' || window.location.port === '3000') {
+
+        if (host.includes('localhost') || host.includes('127.0.0.1') ||
+            window.location.port === '5173' || window.location.port === '3000') {
+            // Use the same hostname but pointed at the backend port
             host = `${window.location.hostname}:8000`
         }
 
@@ -26,9 +26,16 @@ export function useWebSockets() {
         const token = auth.token
 
         const wsUrl = `${protocol}//${host}/ws/${tenantId}?token=${token}`
+        console.log(`[WebSockets] Connecting to ${wsUrl}`)
+
+        if (socket) {
+            socket.close()
+        }
+
         socket = new WebSocket(wsUrl)
 
         socket.onopen = () => {
+            console.log('[WebSockets] Connection established')
             activityStore.setConnected(true)
             if (reconnectTimer) {
                 clearTimeout(reconnectTimer)
@@ -78,22 +85,16 @@ export function useWebSockets() {
         }
     }
 
-    onMounted(() => {
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
+    // Reconnect on auth or tenant change to ensure we have the needed context
+    watch([() => auth.token, () => auth.user?.tenant_id], ([newToken, newTenant]) => {
+        if (newToken && newTenant) {
             connect()
             activityStore.fetchActivities()
-        }
-    })
-
-    // Reconnect on auth change
-    watch(() => auth.token, (newToken) => {
-        if (newToken) {
-            connect()
-        } else {
+        } else if (!newToken) {
             disconnect()
             activityStore.clearActivities()
         }
-    })
+    }, { immediate: true })
 
     return {
         notifications: computed(() => activityStore.activities),
