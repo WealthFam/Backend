@@ -387,9 +387,8 @@ class AnalyticsService:
                 if statement_balance < 0:
                     minimum_due = abs(statement_balance) * Decimal("0.05")
                 
-                # Debug logging
-                print(f"[DEBUG] Card: {card.name}, LSD: {last_statement_date}, PSD: {prev_statement_date}")
-                print(f"[DEBUG] Unbilled: {unbilled_purchases_raw}, Last Cycle: {last_cycle_spend_raw}")
+                # Standardized logic complete
+                pass
                     
             intel["statement_balance"] = abs(statement_balance)
             intel["unbilled_spend"] = abs(unbilled_purchases_raw)
