@@ -280,7 +280,7 @@
 
 <script setup lang="ts">
 import { todayLocalString } from '@/utils/time'
-import { ref, defineExpose, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useCurrency } from '@/composables/useCurrency'
@@ -368,7 +368,12 @@ async function saveRecurrence() {
 async function deleteRecurrence(id: string) {
     const isConfirmed = await confirmDialog.prompt("Stop this subscription?", "Stop Subscription", "Stop", "Keep")
     if (!isConfirmed) return;
-    financeApi.deleteRecurring(id).then(() => store.fetchRecurring(authStore.selectedMemberId || undefined))
+    try {
+        await financeApi.deleteRecurring(id)
+        await store.fetchRecurring(authStore.selectedMemberId || undefined)
+    } catch (e) {
+        console.error("Failed to delete recurring transaction", e)
+    }
 }
 
 const frequencyOptions = ['DAILY', 'WEEKLY', 'BI-WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY']
@@ -543,6 +548,7 @@ defineExpose({
 .line-clamp-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
