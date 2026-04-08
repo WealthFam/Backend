@@ -26,7 +26,7 @@ import {
     Search,
     RefreshCw,
     ShieldCheck,
-    Zap,
+    Zap
 } from 'lucide-vue-next'
 import { onUnmounted, computed, watch } from 'vue'
 import { useMutualFundStore } from '@/stores/finance/mutualFunds'
@@ -500,6 +500,7 @@ function handleMouseMove(e: MouseEvent) {
     letter-spacing: -0.05em;
     line-height: 1;
     background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, #6366f1 100%);
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
