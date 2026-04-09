@@ -115,8 +115,8 @@
                             activeSubTab: 'pending', accounts, categories,
                             triageTransactions, triagePagination, triageSearchQuery,
                             triageSourceFilter, triageSortKey, triageSortOrder,
-                            unparsedMessages, trainingPagination, trainingSortKey,
-                            trainingSortOrder,
+                            unparsedMessages, trainingPagination, trainingSearchQuery,
+                            trainingSortKey, trainingSortOrder,
                             // Confirmation States
                             showDiscardConfirm, showTrainingDiscardConfirm, createIgnoreRule,
                             triageIdToDiscard, trainingIdToDiscard,
@@ -129,6 +129,7 @@
                             @update:triageSortKey="triageSortKey = $event"
                             @update:triageSortOrder="triageSortOrder = $event"
                             @update:triagePagination="triagePagination = $event; fetchTriage()"
+                            @update:trainingSearchQuery="trainingSearchQuery = $event"
                             @update:trainingSortKey="trainingSortKey = $event"
                             @update:trainingSortOrder="trainingSortOrder = $event"
                             @update:trainingPagination="trainingPagination = $event; fetchTriage()"
@@ -142,7 +143,14 @@
                             @confirmBulkDiscard="handleBulkRejectTriage"
                             @confirmBulkTrainingDiscard="handleConfirmGlobalTrainingDismiss"
                             @refreshTriage="() => { fetchTriage(); fetchData(); }"
-                            @update:showLabelForm="showLabelForm = $event" @handleLabelSubmit="handleLabelSubmit" />
+                            @update:showLabelForm="showLabelForm = $event" @handleLabelSubmit="handleLabelSubmit"
+                            :training-sender-filter="trainingSenderFilter" :training-subject-filter="trainingSubjectFilter"
+                            :spam-filters="spamFilters" :show-spam-manager="showSpamManager"
+                            @update:trainingSenderFilter="trainingSenderFilter = $event"
+                            @update:trainingSubjectFilter="trainingSubjectFilter = $event"
+                            @update:showSpamManager="showSpamManager = $event"
+                            @markAsSpam="markAsSpam" @findSimilar="findSimilar"
+                            @removeSpamFilter="removeSpamFilter" @fetchSpamFilters="fetchSpamFilters" />
                     </v-window-item>
 
                     <v-window-item value="training">
@@ -150,8 +158,8 @@
                             activeSubTab: 'training', accounts, categories,
                             triageTransactions, triagePagination, triageSearchQuery,
                             triageSourceFilter, triageSortKey, triageSortOrder,
-                            unparsedMessages, trainingPagination, trainingSortKey,
-                            trainingSortOrder,
+                            unparsedMessages, trainingPagination, trainingSearchQuery,
+                            trainingSortKey, trainingSortOrder,
                             // Confirmation States
                             showDiscardConfirm, showTrainingDiscardConfirm, createIgnoreRule,
                             triageIdToDiscard, trainingIdToDiscard,
@@ -164,6 +172,7 @@
                             @update:triageSortKey="triageSortKey = $event"
                             @update:triageSortOrder="triageSortOrder = $event"
                             @update:triagePagination="triagePagination = $event; fetchTriage()"
+                            @update:trainingSearchQuery="trainingSearchQuery = $event"
                             @update:trainingSortKey="trainingSortKey = $event"
                             @update:trainingSortOrder="trainingSortOrder = $event"
                             @update:trainingPagination="trainingPagination = $event; fetchTriage()"
@@ -177,7 +186,14 @@
                             @confirmBulkDiscard="handleBulkRejectTriage"
                             @confirmBulkTrainingDiscard="handleConfirmGlobalTrainingDismiss"
                             @refreshTriage="() => { fetchTriage(); fetchData(); }"
-                            @update:showLabelForm="showLabelForm = $event" @handleLabelSubmit="handleLabelSubmit" />
+                            @update:showLabelForm="showLabelForm = $event" @handleLabelSubmit="handleLabelSubmit"
+                            :training-sender-filter="trainingSenderFilter" :training-subject-filter="trainingSubjectFilter"
+                            :spam-filters="spamFilters" :show-spam-manager="showSpamManager"
+                            @update:trainingSenderFilter="trainingSenderFilter = $event"
+                            @update:trainingSubjectFilter="trainingSubjectFilter = $event"
+                            @update:showSpamManager="showSpamManager = $event"
+                            @markAsSpam="markAsSpam" @findSimilar="findSimilar"
+                            @removeSpamFilter="removeSpamFilter" @fetchSpamFilters="fetchSpamFilters" />
                     </v-window-item>
 
                     <v-window-item value="heatmap">
@@ -359,8 +375,11 @@ const {
     selectedTriageIds,
     unparsedMessages,
     trainingPagination,
+    trainingSearchQuery,
     trainingSortKey,
     trainingSortOrder,
+    trainingSenderFilter,
+    trainingSubjectFilter,
     selectedTrainingIds,
     fetchTriage,
     approveTriage,
@@ -373,6 +392,13 @@ const {
     labelForm,
     handleLabelSubmit,
     selectedMessage,
+    // Spam
+    spamFilters,
+    showSpamManager,
+    markAsSpam,
+    fetchSpamFilters,
+    removeSpamFilter,
+    findSimilar,
     // Confirmation States
     showDiscardConfirm,
     showTrainingDiscardConfirm,

@@ -356,39 +356,72 @@
                 <!-- Training Toolbar -->
                 <v-card class="premium-glass-card mb-4 pa-3 no-hover" style="border-radius: 20px !important;">
                     <v-row align="center" no-gutters class="gap-3 px-2">
-                        <v-col cols="auto" class="d-flex align-center gap-3">
+                        <!-- Left: Selection Group -->
+                        <v-col cols="auto" class="d-flex align-center gap-2">
                             <v-checkbox-btn
                                 :model-value="selectedTrainingIds.length === unparsedMessages.length && unparsedMessages.length > 0"
-                                @update:model-value="toggleSelectAllTraining" color="warning" label="Select All"
-                                hide-details density="comfortable" class="ml-1"></v-checkbox-btn>
+                                @update:model-value="toggleSelectAllTraining" color="warning" label="All"
+                                hide-details density="comfortable" class="ml-1 font-weight-black"></v-checkbox-btn>
 
                             <v-fade-transition>
                                 <v-tooltip v-if="selectedTrainingIds.length > 0"
                                     :text="`Dismiss ${selectedTrainingIds.length} selected messages`" location="top"
                                     open-delay="400">
                                     <template v-slot:activator="{ props }">
-                                        <v-btn v-bind="props" color="error" variant="tonal" size="small"
-                                            @click="emit('bulkDismissTraining')" rounded="lg">
+                                        <v-btn v-bind="props" color="error" variant="tonal" size="small" height="40"
+                                            @click="emit('bulkDismissTraining')" rounded="lg" class="font-weight-black">
                                             <template v-slot:prepend>
                                                 <Trash2 :size="16" />
                                             </template>
-                                            Dismiss {{ selectedTrainingIds.length }}
+                                            Dismiss ({{ selectedTrainingIds.length }})
                                         </v-btn>
                                     </template>
                                 </v-tooltip>
                             </v-fade-transition>
                         </v-col>
 
-                        <v-spacer></v-spacer>
                         <v-divider vertical class="d-none d-md-block mx-1" />
 
+                        <!-- Center: Search Group -->
+                        <v-col cols="12" md="3" class="d-flex align-center">
+                            <v-text-field :model-value="trainingSearchQuery"
+                                @update:model-value="emit('update:trainingSearchQuery', $event)"
+                                placeholder="Search sender, subject..." hide-details density="comfortable"
+                                variant="outlined" rounded="lg" bg-color="surface" color="warning" clearable>
+                                <template v-slot:prepend-inner>
+                                    <Search :size="18" class="text-medium-emphasis mr-1" />
+                                </template>
+                            </v-text-field>
+                        </v-col>
+
+                        <v-spacer></v-spacer>
+
+                        <!-- Right: Filter & Sort Group -->
                         <v-col cols="12" md="auto" class="d-flex align-center gap-2">
+                            <v-fade-transition>
+                                <v-btn v-if="trainingSenderFilter" variant="tonal" color="primary" size="small" height="40" 
+                                    class="rounded-lg px-3 font-weight-black text-none" @click="emit('update:trainingSenderFilter', null)">
+                                    <ScanSearch :size="16" class="mr-2" />
+                                    Similar: {{ trainingSenderFilter }}
+                                    <X :size="14" class="ml-2 opacity-50" />
+                                </v-btn>
+                            </v-fade-transition>
+
+                            <v-tooltip text="Manage Spam Filters" location="top" open-delay="400">
+                                <template v-slot:activator="{ props }">
+                                    <v-btn v-bind="props" variant="tonal" color="error" size="small" height="40" width="40" class="rounded-lg" 
+                                        @click="emit('update:showSpamManager', true); emit('fetchSpamFilters')">
+                                        <ShieldOff :size="18" />
+                                    </v-btn>
+                                </template>
+                            </v-tooltip>
+
                             <v-autocomplete :model-value="trainingSortKey"
                                 @update:model-value="emit('update:trainingSortKey', $event)"
-                                :items="[{ title: 'Date', value: 'created_at' }, { title: 'Sender', value: 'sender' }]"
+                                :items="[{ title: 'By Date', value: 'created_at' }, { title: 'By Sender', value: 'sender' }]"
                                 item-title="title" item-value="value" hide-details density="comfortable"
                                 variant="outlined" label="Sort" style="width: 140px" rounded="lg"
-                                class="font-weight-bold" bg-color="surface"></v-autocomplete>
+                                class="font-weight-bold" bg-color="surface" color="warning"></v-autocomplete>
 
                             <v-tooltip :text="`Sort by ${trainingSortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
                                 location="top" open-delay="400">
@@ -402,9 +435,11 @@
                                     </v-btn>
                                 </template>
                             </v-tooltip>
+
                             <v-tooltip text="Refresh training data" location="top" open-delay="400">
                                 <template v-slot:activator="{ props }">
-                                    <v-btn v-bind="props" variant="text" size="small" @click="emit('refreshTriage')">
+                                    <v-btn v-bind="props" variant="text" size="small" height="40" width="40" class="rounded-lg"
+                                        @click="emit('refreshTriage')">
                                         <RefreshCcw :size="18" />
                                     </v-btn>
                                 </template>
@@ -464,6 +499,24 @@
                                             class="rounded-lg footer-action-btn"
                                             @click="emit('dismissTraining', msg.id)">
                                             <Trash2 :size="16" />
+                                        </v-btn>
+                                    </template>
+                                </v-tooltip>
+                                <v-tooltip text="Mark as spam (block future)" location="top" open-delay="400">
+                                    <template v-slot:activator="{ props }">
+                                        <v-btn v-bind="props" variant="tonal" color="error" size="small"
+                                            class="rounded-lg footer-action-btn"
+                                            @click="emit('markAsSpam', msg.id)">
+                                            <ShieldAlert :size="16" />
+                                        </v-btn>
+                                    </template>
+                                </v-tooltip>
+                                <v-tooltip text="Find similar messages from this sender" location="top" open-delay="400">
+                                    <template v-slot:activator="{ props }">
+                                        <v-btn v-bind="props" variant="tonal" color="primary" size="small"
+                                            class="rounded-lg footer-action-btn"
+                                            @click="emit('findSimilar', msg.sender)">
+                                            <ScanSearch :size="16" />
                                         </v-btn>
                                     </template>
                                 </v-tooltip>
@@ -730,6 +783,55 @@
         <TransactionTrainingModal :model-value="showLabelForm"
             @update:model-value="emit('update:showLabelForm', $event)" :selected-message="selectedMessage"
             :label-form="labelForm" :categories="categories" @submit="emit('handleLabelSubmit')" />
+
+        <!-- Spam Manager Modal -->
+        <v-dialog :model-value="showSpamManager" @update:model-value="emit('update:showSpamManager', $event)" max-width="700" transition="dialog-bottom-transition">
+            <v-card class="rounded-xl overflow-hidden">
+                <v-toolbar color="error" density="comfortable">
+                    <ShieldOff :size="20" class="ml-4 mr-2" />
+                    <v-toolbar-title class="text-subtitle-1 font-weight-bold">Spam Filter Management</v-toolbar-title>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="emit('update:showSpamManager', false)">
+                        <X :size="20" />
+                    </v-btn>
+                </v-toolbar>
+
+                <v-card-text class="pa-0" style="min-height: 400px; max-height: 70vh; overflow-y: auto;">
+                    <v-alert v-if="spamFilters.length === 0" type="info" variant="tonal" class="ma-4 rounded-lg">
+                        You haven't blocked any senders yet.
+                    </v-alert>
+
+                    <v-list v-else lines="two" class="bg-transparent">
+                        <v-list-item v-for="filter in spamFilters" :key="filter.id" class="border-b px-6">
+                            <template v-slot:prepend>
+                                <v-avatar color="error" variant="tonal" size="40">
+                                    <ShieldAlert :size="20" />
+                                </v-avatar>
+                            </template>
+                            
+                            <v-list-item-title class="font-weight-black">
+                                {{ filter.sender || 'Unknown Sender' }}
+                            </v-list-item-title>
+                            <v-list-item-subtitle class="text-caption opacity-70">
+                                <span v-if="filter.subject" class="d-block">Subject: {{ filter.subject }}</span>
+                                <span class="text-uppercase tracking-wider font-weight-bold d-inline-flex align-center gap-1">
+                                    <span class="opacity-50">Source:</span> {{ filter.source }}
+                                    <span class="mx-2 opacity-20">|</span>
+                                    <span class="opacity-50">Blocked:</span> <span class="text-error">{{ filter.count_blocked || 0 }} times</span>
+                                </span>
+                            </v-list-item-subtitle>
+
+                            <template v-slot:append>
+                                <v-btn variant="tonal" color="grey" size="small" rounded="lg" 
+                                    @click="emit('removeSpamFilter', filter.id)">
+                                    Unblock
+                                </v-btn>
+                            </template>
+                        </v-list-item>
+                    </v-list>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
     </div>
 </template>
 
@@ -760,7 +862,9 @@ import {
     RefreshCcw,
     ChevronLeft,
     ChevronRight,
-    ChevronDown
+    ChevronDown,
+    ShieldOff,
+    ScanSearch
 } from 'lucide-vue-next'
 export interface AccountItem {
     id: string
@@ -817,8 +921,13 @@ const props = defineProps<{
     triageSortOrder: 'asc' | 'desc'
     unparsedMessages: UnparsedMessage[]
     trainingPagination: { total: number; limit: number; skip: number }
+    trainingSearchQuery: string
     trainingSortKey: string
     trainingSortOrder: 'asc' | 'desc'
+    trainingSenderFilter: string | null
+    trainingSubjectFilter: string | null
+    spamFilters: any[]
+    showSpamManager: boolean
     // Confirmation States
     showDiscardConfirm: boolean
     showTrainingDiscardConfirm: boolean
@@ -842,12 +951,20 @@ const emit = defineEmits<{
     'update:trainingSortKey': [value: string]
     'update:trainingSortOrder': [value: 'asc' | 'desc']
     'update:trainingPagination': [value: { total: number; limit: number; skip: number }]
+    'update:trainingSearchQuery': [value: string]
+    'update:trainingSenderFilter': [value: string | null]
+    'update:trainingSubjectFilter': [value: string | null]
+    'update:showSpamManager': [value: boolean]
     'approveTriage': [txn: TriageTransaction]
     'rejectTriage': [id: string]
     'bulkRejectTriage': []
     'startLabeling': [msg: UnparsedMessage]
     'dismissTraining': [id: string]
     'bulkDismissTraining': []
+    'markAsSpam': [id: string]
+    'findSimilar': [sender: string]
+    'removeSpamFilter': [id: string]
+    'fetchSpamFilters': []
     'refreshTriage': []
     'update:showDiscardConfirm': [value: boolean]
     'update:showTrainingDiscardConfirm': [value: boolean]
