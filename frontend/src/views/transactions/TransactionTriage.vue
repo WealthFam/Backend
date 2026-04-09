@@ -345,7 +345,7 @@
 
             <!-- TRAINING TAB -->
             <v-window-item value="training">
-                <v-alert type="warning" variant="tonal" class="mb-6 rounded-xl" border="start" density="comfortable">
+                <v-alert type="info" variant="tonal" class="mb-6 rounded-xl" border="start" density="comfortable">
                     <template v-slot:prepend>
                         <Info :size="18" class="mr-2 text-info" />
                     </template>
@@ -360,7 +360,7 @@
                         <v-col cols="auto" class="d-flex align-center gap-2">
                             <v-checkbox-btn
                                 :model-value="selectedTrainingIds.length === unparsedMessages.length && unparsedMessages.length > 0"
-                                @update:model-value="toggleSelectAllTraining" color="warning" label="All"
+                                @update:model-value="toggleSelectAllTraining" color="primary" label="All"
                                 hide-details density="comfortable" class="ml-1 font-weight-black"></v-checkbox-btn>
 
                             <v-fade-transition>
@@ -387,7 +387,7 @@
                             <v-text-field :model-value="trainingSearchQuery"
                                 @update:model-value="emit('update:trainingSearchQuery', $event)"
                                 placeholder="Search sender, subject..." hide-details density="comfortable"
-                                variant="outlined" rounded="lg" bg-color="surface" color="warning" clearable>
+                                variant="outlined" rounded="lg" bg-color="surface" color="primary" clearable>
                                 <template v-slot:prepend-inner>
                                     <Search :size="18" class="text-medium-emphasis mr-1" />
                                 </template>
@@ -421,14 +421,14 @@
                                 :items="[{ title: 'By Date', value: 'created_at' }, { title: 'By Sender', value: 'sender' }]"
                                 item-title="title" item-value="value" hide-details density="comfortable"
                                 variant="outlined" label="Sort" style="width: 140px" rounded="lg"
-                                class="font-weight-bold" bg-color="surface" color="warning"></v-autocomplete>
+                                class="font-weight-bold" bg-color="surface" color="primary"></v-autocomplete>
 
                             <v-tooltip :text="`Sort by ${trainingSortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
                                 location="top" open-delay="400">
                                 <template v-slot:activator="{ props }">
                                     <v-btn v-bind="props"
                                         @click="emit('update:trainingSortOrder', trainingSortOrder === 'asc' ? 'desc' : 'asc')"
-                                        variant="tonal" size="small" height="40" width="40" color="warning"
+                                        variant="tonal" size="small" height="40" width="40" color="primary"
                                         class="rounded-lg">
                                         <ArrowUp v-if="trainingSortOrder === 'asc'" :size="18" />
                                         <ArrowDown v-else :size="18" />
@@ -452,12 +452,12 @@
                 <v-row>
                     <v-col v-for="msg in sortedTrainingMessages" :key="msg.id" cols="12" md="6" lg="6">
                         <v-card class="premium-glass-card training-card" variant="flat">
-                            <!-- Dynamic Accent Glow (Warning for Training) -->
-                            <div class="card-glow-accent training-glow"></div>
+                            <!-- Dynamic Accent Glow (Primary for Training) -->
+                            <div class="card-glow-accent triage-glow"></div>
 
                             <div class="card-modern-header px-4 pt-4 pb-2">
                                 <div class="d-flex align-center gap-3 overflow-hidden">
-                                    <v-checkbox-btn v-model="selectedTrainingIds" :value="msg.id" color="warning"
+                                    <v-checkbox-btn v-model="selectedTrainingIds" :value="msg.id" color="primary"
                                         density="comfortable" hide-details class="mt-n1"></v-checkbox-btn>
 
                                     <div class="flex-grow-1 min-width-0">
@@ -473,7 +473,7 @@
                                             <v-chip v-if="msg.latitude" size="x-small" color="primary" variant="tonal" class="rounded-pill font-weight-bold" density="compact">
                                                 <MapPin :size="10" class="mr-1" /> GPS
                                             </v-chip>
-                                            <v-chip color="warning" size="x-small" variant="flat" class="ml-auto">Needs
+                                            <v-chip color="primary" size="x-small" variant="flat" class="ml-auto uppercase px-1 px-sm-2">Needs
                                                 Training</v-chip>
                                         </div>
                                     </div>
@@ -524,7 +524,7 @@
                                 <v-tooltip text="Label this message as a transaction to train the system" location="top"
                                     open-delay="400">
                                     <template v-slot:activator="{ props }">
-                                        <v-btn v-bind="props" color="warning" variant="tonal" size="small"
+                                        <v-btn v-bind="props" color="primary" variant="tonal" size="small"
                                             class="rounded-lg footer-action-btn" @click="emit('startLabeling', msg)">
                                             <Sparkles :size="16" />
                                         </v-btn>
@@ -558,7 +558,7 @@
                             </template>
                             <v-list density="compact" class="rounded-lg border" elevation="2">
                                 <v-list-item v-for="size in [12, 24, 60]" :key="size"
-                                    @click="handleTrainingPaginationLimitChange(size)" :active="trainingPagination.limit === size" color="warning">
+                                    @click="handleTrainingPaginationLimitChange(size)" :active="trainingPagination.limit === size" color="primary">
                                     <v-list-item-title class="text-caption font-weight-bold">{{ size }}</v-list-item-title>
                                 </v-list-item>
                             </v-list>
@@ -702,35 +702,36 @@
 
         <!-- Discard Confirmation Dialog (Triage) -->
         <v-dialog :model-value="showDiscardConfirm" @update:model-value="emit('update:showDiscardConfirm', $event)"
-            max-width="450">
-            <v-card class="rounded-xl pa-4">
-                <v-card-text class="text-center">
-                    <div class="text-h3 mb-4">🗑️</div>
-                    <div class="text-h6 font-weight-bold mb-2">
-                        {{ triageIdToDiscard ? 'Discard Transaction?' : `Discard ${selectedTriageIds.length}
-                        Transactions?` }}
+            max-width="400">
+            <v-card class="rounded-xl border border-error">
+                <v-card-text class="pa-6 text-center">
+                    <v-avatar color="error" variant="tonal" size="56" class="mb-4">
+                        <Trash2 :size="28" />
+                    </v-avatar>
+                    <div class="text-h6 font-weight-black mb-2">
+                        {{ triageIdToDiscard ? 'Discard Transaction?' : `Discard ${selectedTriageIds.length} Transactions?` }}
                     </div>
                     <p class="text-body-2 text-medium-emphasis mb-6">
-                        This will remove the transaction(s) from your inbox. This action is permanent.
+                        This action will permanently remove the selected transaction(s) from your inbox.
                     </p>
 
                     <v-checkbox :model-value="createIgnoreRule"
                         @update:model-value="emit('update:createIgnoreRule', !!$event)"
-                        label="Ignore this pattern in future" color="primary" density="comfortable" hide-details
-                        class="mb-4"></v-checkbox>
+                        label="Ignore this pattern in future" color="error" density="compact" hide-details
+                        class="mb-6 font-weight-bold d-flex justify-center"></v-checkbox>
 
                     <div class="d-flex gap-3 justify-center">
-                        <v-tooltip text="Keep these transactions" location="top" open-delay="400">
+                        <v-tooltip text="Keep these transactions" location="bottom" open-delay="400">
                             <template v-slot:activator="{ props }">
-                                <v-btn v-bind="props" variant="text" @click="emit('update:showDiscardConfirm', false)"
-                                    rounded="lg">Cancel</v-btn>
+                                <v-btn v-bind="props" variant="tonal" @click="emit('update:showDiscardConfirm', false)"
+                                    rounded="lg" class="px-6 font-weight-bold text-none">Cancel</v-btn>
                             </template>
                         </v-tooltip>
-                        <v-tooltip text="Permanently remove selected items" location="top" open-delay="400">
+                        <v-tooltip text="Permanently remove selected items" location="bottom" open-delay="400">
                             <template v-slot:activator="{ props }">
-                                <v-btn v-bind="props" color="error" variant="elevated" rounded="lg" class="px-6"
+                                <v-btn v-bind="props" color="error" variant="elevated" rounded="lg" class="px-6 font-weight-bold text-none"
                                     @click="triageIdToDiscard ? emit('confirmDiscard') : emit('confirmBulkDiscard')">
-                                    Confirm Discard
+                                    Discard
                                 </v-btn>
                             </template>
                         </v-tooltip>
@@ -741,34 +742,35 @@
 
         <!-- Discard Confirmation Dialog (Training) -->
         <v-dialog :model-value="showTrainingDiscardConfirm"
-            @update:model-value="emit('update:showTrainingDiscardConfirm', $event)" max-width="450">
-            <v-card class="rounded-xl pa-4">
-                <v-card-text class="text-center">
-                    <div class="text-h3 mb-4">👋</div>
-                    <div class="text-h6 font-weight-bold mb-2">
-                        {{ trainingIdToDiscard ? 'Dismiss Message?' : `Dismiss ${selectedTrainingIds.length} Messages?`
-                        }}
+            @update:model-value="emit('update:showTrainingDiscardConfirm', $event)" max-width="400">
+            <v-card class="rounded-xl border border-error">
+                <v-card-text class="pa-6 text-center">
+                    <v-avatar color="error" variant="tonal" size="56" class="mb-4">
+                        <Trash2 :size="28" />
+                    </v-avatar>
+                    <div class="text-h6 font-weight-black mb-2">
+                        {{ trainingIdToDiscard ? 'Dismiss Message?' : `Dismiss ${selectedTrainingIds.length} Messages?` }}
                     </div>
                     <p class="text-body-2 text-medium-emphasis mb-6">
-                        Are you sure you want to dismiss these unparsed messages?
+                        This action will permanently remove these unparsed messages from training.
                     </p>
+                    
                     <v-checkbox :model-value="createIgnoreRule"
                         @update:model-value="emit('update:createIgnoreRule', !!$event)"
-                        label="Don't show this sender again" color="primary" density="comfortable" hide-details
-                        class="mb-4"></v-checkbox>
+                        label="Don't show this sender again" color="error" density="compact" hide-details
+                        class="mb-6 font-weight-bold d-flex justify-center"></v-checkbox>
 
                     <div class="d-flex gap-3 justify-center">
-                        <v-tooltip text="Keep these messages" location="top" open-delay="400">
+                        <v-tooltip text="Keep these messages" location="bottom" open-delay="400">
                             <template v-slot:activator="{ props }">
-                                <v-btn v-bind="props" variant="text"
-                                    @click="emit('update:showTrainingDiscardConfirm', false)"
-                                    rounded="lg">Cancel</v-btn>
+                                <v-btn v-bind="props" variant="tonal" @click="emit('update:showTrainingDiscardConfirm', false)"
+                                    rounded="lg" class="px-6 font-weight-bold text-none">Cancel</v-btn>
                             </template>
                         </v-tooltip>
-                        <v-tooltip text="Dismiss these messages and clear them from training" location="top"
+                        <v-tooltip text="Dismiss these messages and clear them from training" location="bottom"
                             open-delay="400">
                             <template v-slot:activator="{ props }">
-                                <v-btn v-bind="props" color="warning" variant="elevated" rounded="lg" class="px-6"
+                                <v-btn v-bind="props" color="error" variant="elevated" rounded="lg" class="px-6 font-weight-bold text-none"
                                     @click="trainingIdToDiscard ? emit('confirmTrainingDiscard') : emit('confirmBulkTrainingDiscard')">
                                     Dismiss
                                 </v-btn>
@@ -785,7 +787,7 @@
             :label-form="labelForm" :categories="categories" @submit="emit('handleLabelSubmit')" />
 
         <!-- Spam Manager Modal -->
-        <v-dialog :model-value="showSpamManager" @update:model-value="emit('update:showSpamManager', $event)" max-width="700" transition="dialog-bottom-transition">
+        <v-dialog :model-value="showSpamManager" @update:model-value="emit('update:showSpamManager', $event)" max-width="600" transition="dialog-bottom-transition">
             <v-card class="rounded-xl overflow-hidden">
                 <v-toolbar color="error" density="comfortable">
                     <ShieldOff :size="20" class="ml-4 mr-2" />

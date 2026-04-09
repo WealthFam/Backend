@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Bot, Brain, X, Calendar, Tag, EyeOff } from 'lucide-vue-next'
+import { Bot, Brain, X, Calendar, Tag, EyeOff, Info, BadgeIndianRupee, Landmark, Hash, Fingerprint, TrendingUp, ShieldCheck } from 'lucide-vue-next'
 
 const props = defineProps<{
     modelValue: boolean
@@ -34,127 +34,207 @@ const categoryOptions = computed(() => {
     }
     return list
 })
+const highlightedContent = computed(() => {
+    let content = props.selectedMessage?.raw_content || props.selectedMessage?.raw_message || ''
+    if (!content) return [{ text: 'No Payload', highlight: false }]
+
+    const highlights: { text: string; highlight: boolean; color?: string }[] = []
+    
+    // Values to find and highlight
+    const searchPairs = [
+        { val: props.labelForm.amount?.toString(), color: 'var(--v-theme-success)' },
+        { val: props.labelForm.recipient, color: 'var(--v-theme-primary)' },
+        { val: props.labelForm.ref_id, color: 'var(--v-theme-warning)' }
+    ].filter(p => p.val && p.val.length > 2)
+
+    if (searchPairs.length === 0) return [{ text: content, highlight: false }]
+
+    // Simple multi-match split logic
+    let temp = [{ text: content, highlight: false }]
+    
+    searchPairs.forEach(pair => {
+        const nextTemp: typeof temp = []
+        temp.forEach(chunk => {
+            if (chunk.highlight) {
+                nextTemp.push(chunk)
+                return
+            }
+            
+            const index = chunk.text.toLowerCase().indexOf(pair.val!.toLowerCase())
+            if (index !== -1) {
+                if (index > 0) nextTemp.push({ text: chunk.text.substring(0, index), highlight: false })
+                nextTemp.push({ text: chunk.text.substring(index, index + pair.val!.length), highlight: true, color: pair.color })
+                if (index + pair.val!.length < chunk.text.length) {
+                    nextTemp.push({ text: chunk.text.substring(index + pair.val!.length), highlight: false })
+                }
+            } else {
+                nextTemp.push(chunk)
+            }
+        })
+        temp = nextTemp
+    })
+
+    return temp
+})
 </script>
 
 <template>
     <v-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)" persistent
-        max-width="850">
-        <v-card class="glass-card overflow-hidden" rounded="xl">
-            <v-toolbar color="warning" density="compact">
+        max-width="720" transition="scale-transition">
+        <v-card class="premium-training-modal" rounded="xl">
+            <!-- Modal Background Glow -->
+            <div class="modal-bg-glow"></div>
+            <div class="modal-corner-accent top-left"></div>
+            <div class="modal-corner-accent bottom-right"></div>
+
+            <v-toolbar color="primary" class="px-2 training-toolbar" height="52">
                 <template v-slot:prepend>
-                    <Bot :size="18" class="ml-4" />
+                    <v-avatar color="white" size="26" class="ml-1 elevation-4 cognitive-pulse">
+                        <Brain :size="15" class="text-primary" />
+                    </v-avatar>
                 </template>
-                <v-toolbar-title class="text-subtitle-1 font-weight-bold">Train Transaction Parser</v-toolbar-title>
+                <div class="d-flex flex-column ml-2">
+                    <v-toolbar-title class="text-subtitle-2 font-weight-black tracking-tight leading-none">Neural Parser</v-toolbar-title>
+                    <span class="text-micro-nano opacity-70 font-weight-bold uppercase tracking-widest mt-n0.5">Training Session</span>
+                </div>
                 <v-spacer></v-spacer>
-                <v-btn variant="text" @click="emit('update:modelValue', false)">
-                    <X :size="20" />
+                <v-btn icon variant="tonal" density="compact" @click="emit('update:modelValue', false)" class="mr-1">
+                    <X :size="16" />
                 </v-btn>
             </v-toolbar>
 
-            <div class="labeling-layout pa-4">
-                <!-- Left: Raw Message -->
-                <div class="labeling-raw h-100">
-                    <div class="section-label mb-2">Message Content</div>
-                    <div class="raw-content-box flex-grow-1 mb-4">
-                        {{ selectedMessage?.raw_content || selectedMessage?.raw_message || 'N/A' }}
+            <div class="training-layout">
+                <!-- Left Column: Source & Intelligence -->
+                <div class="source-pane pa-3 d-flex flex-column">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <div class="d-flex align-center gap-1.5">
+                            <Fingerprint :size="13" class="text-primary" />
+                            <span class="text-micro font-weight-black uppercase">Forensic View</span>
+                        </div>
+                        <div class="status-dot online"></div>
                     </div>
-                    <div class="raw-meta">
-                        <div class="mb-1"><span class="font-weight-bold">Sender:</span> {{ selectedMessage?.sender }}
+
+                    <div class="raw-message-container flex-grow-1">
+                        <div class="message-header d-flex align-center justify-space-between px-2.5 py-1.5 border-b">
+                            <span class="text-micro-nano font-weight-black text-uppercase opacity-50 tracking-widest">Protocol</span>
+                            <span class="text-micro-nano font-weight-bold opacity-40">SYNCED</span>
                         </div>
-                        <div class="mb-1"><span class="font-weight-bold">Source:</span> {{ selectedMessage?.source }}
+                        <div class="message-body pa-2.5">
+                            <template v-for="(chunk, i) in highlightedContent" :key="i">
+                                <span v-if="chunk.highlight" class="data-highlight" :style="{ backgroundColor: chunk.color + '33', borderBottomColor: chunk.color }">
+                                    {{ chunk.text }}
+                                </span>
+                                <span v-else>{{ chunk.text }}</span>
+                            </template>
                         </div>
-                        <div><span class="font-weight-bold">Received:</span> {{
-                            selectedMessage?.created_at ? new Date(selectedMessage.created_at).toLocaleString() :
-                                'N/A' }}</div>
+                    </div>
+
+                    <div class="debugger-meta mt-2 pa-2 rounded-lg">
+                        <v-row dense>
+                            <v-col cols="6">
+                                <div class="meta-item-tech">
+                                    <div class="meta-label">ID_REF</div>
+                                    <div class="meta-val truncate">{{ selectedMessage?.id?.substring(0, 6) }}</div>
+                                </div>
+                            </v-col>
+                            <v-col cols="6">
+                                <div class="meta-item-tech">
+                                    <div class="meta-label">TIME</div>
+                                    <div class="meta-val">{{ selectedMessage?.created_at ? new Date(selectedMessage.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'N/A' }}</div>
+                                </div>
+                            </v-col>
+                        </v-row>
+                    </div>
+
+                    <div class="ai-hint-futuristic mt-3 pa-2.5 rounded-lg d-flex align-top gap-2.5">
+                        <div class="hint-icon-wrap">
+                            <Bot :size="14" class="text-primary" />
+                        </div>
+                        <p class="text-micro-nano text-medium-emphasis leading-tight mb-0">Detected action. Mapping vector.</p>
                     </div>
                 </div>
 
-                <!-- Right: Form -->
-                <div class="labeling-form">
-                    <div class="section-label mb-2">Extracted Information</div>
+                <!-- Right Column: Learning Form -->
+                <div class="form-pane pa-3 bg-surface-light">
+                    <div class="d-flex align-center gap-2 mb-3">
+                        <TrendingUp :size="15" class="text-primary" />
+                        <span class="text-caption font-weight-black opacity-60">Annotation Details</span>
+                    </div>
+
                     <v-row dense>
+                        <!-- Basic Info Row -->
                         <v-col cols="12" md="6">
-                            <v-text-field v-model="labelForm.date" label="Transaction Date" type="datetime-local"
-                                density="comfortable" variant="outlined" hide-details class="mb-3">
-                                <template v-slot:prepend-inner>
-                                    <Calendar :size="16" class="opacity-60" />
-                                </template>
+                            <v-text-field v-model="labelForm.date" label="Date" type="datetime-local"
+                                density="compact" variant="outlined" rounded="lg" class="modern-field mb-1 font-weight-bold">
                             </v-text-field>
                         </v-col>
                         <v-col cols="12" md="6">
-                            <v-autocomplete v-model="labelForm.type" label="Type" :items="['DEBIT', 'CREDIT']"
-                                density="comfortable" variant="outlined" hide-details class="mb-3"></v-autocomplete>
+                            <v-select v-model="labelForm.type" label="Flow" :items="['DEBIT', 'CREDIT']"
+                                density="compact" variant="outlined" rounded="lg" class="modern-field mb-1 font-weight-bold">
+                            </v-select>
                         </v-col>
 
                         <v-col cols="12">
-                            <v-text-field v-model="labelForm.recipient" label="Merchant / Recipient"
-                                placeholder="e.g. Amazon, Starbucks" density="comfortable" variant="outlined"
-                                hide-details class="mb-3"></v-text-field>
+                            <v-text-field v-model="labelForm.recipient" label="Merchant Entity"
+                                placeholder="Amazon, Uber, etc." density="compact" variant="outlined"
+                                rounded="lg" class="modern-field mb-1 font-weight-bold">
+                            </v-text-field>
                         </v-col>
 
                         <v-col cols="12" md="6">
-                            <v-text-field v-model.number="labelForm.amount" label="Amount" prefix="₹" type="number"
-                                density="comfortable" variant="outlined" hide-details class="mb-3"></v-text-field>
+                            <v-text-field v-model.number="labelForm.amount" label="Value" prefix="₹" type="number"
+                                density="compact" variant="outlined" rounded="lg" class="modern-field mb-1 font-weight-black text-subtitle-1">
+                            </v-text-field>
                         </v-col>
                         <v-col cols="12" md="6">
                             <v-autocomplete v-model="labelForm.category" label="Category" :items="categoryOptions"
-                                item-title="title" item-value="value" density="comfortable" variant="outlined"
-                                hide-details class="mb-3">
-                                <template v-slot:prepend-inner>
-                                    <Tag :size="16" class="opacity-60" />
-                                </template>
+                                item-title="title" item-value="value" density="compact" variant="outlined"
+                                rounded="lg" class="modern-field mb-1 font-weight-bold">
                             </v-autocomplete>
                         </v-col>
 
-                        <v-col cols="12" md="6">
-                            <v-text-field v-model="labelForm.account_mask" label="Account Mask"
-                                placeholder="Last 4 digits" density="comfortable" variant="outlined" hide-details
-                                class="mb-3"></v-text-field>
+                        <v-col cols="12" md="5">
+                            <v-text-field v-model="labelForm.account_mask" label="Account"
+                                placeholder="Last 4" density="compact" variant="outlined" rounded="lg"
+                                class="modern-field mb-1 font-weight-bold">
+                            </v-text-field>
                         </v-col>
-                        <v-col cols="12" md="6">
-                            <v-text-field v-model="labelForm.ref_id" label="Reference ID" placeholder="Txn ID"
-                                density="comfortable" variant="outlined" hide-details class="mb-3"></v-text-field>
+                        <v-col cols="12" md="7">
+                            <v-text-field v-model="labelForm.ref_id" label="Registry ID" placeholder="Txn ID"
+                                density="compact" variant="outlined" rounded="lg" class="modern-field mb-1 font-weight-bold">
+                            </v-text-field>
                         </v-col>
 
-                        <v-divider class="my-2 w-100"></v-divider>
+                        <!-- Advanced Section -->
+                        <v-col cols="12" class="mt-0.5">
+                            <v-divider class="mb-2"></v-divider>
+                            <div class="d-flex align-center justify-space-between mb-2 px-1">
+                                <span class="text-micro font-weight-black uppercase color-primary">Anchoring & Logic</span>
+                                <v-chip size="x-small" variant="tonal" color="primary" density="compact">v2</v-chip>
+                            </div>
+                        </v-col>
+
+                        <v-col cols="12" md="6">
+                            <v-text-field v-model.number="labelForm.balance" label="Balance"
+                                prefix="₹" type="number" density="compact"
+                                variant="outlined" rounded="lg" class="modern-field mb-0 font-weight-bold"></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-switch v-model="labelForm.generate_pattern" label="Create Rule"
+                                density="compact" color="success" hide-details inset class="font-weight-bold ml-1"></v-switch>
+                        </v-col>
+
                         <v-col cols="12">
-                            <p class="text-caption font-weight-bold text-warning mb-2">BALANCE ANCHORING (OPTIONAL)</p>
-                        </v-col>
-
-                        <v-col cols="12" md="6">
-                            <v-text-field v-model.number="labelForm.balance" label="Bank Balance"
-                                placeholder="Balance after txn" prefix="₹" type="number" density="comfortable"
-                                variant="outlined" hide-details class="mb-3"></v-text-field>
-                        </v-col>
-                        <v-col cols="12" md="6">
-                            <v-text-field v-model.number="labelForm.credit_limit" label="Credit Limit"
-                                placeholder="If card txn" prefix="₹" type="number" density="comfortable"
-                                variant="outlined" hide-details class="mb-3"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="12">
-                            <v-divider class="my-2"></v-divider>
-                        </v-col>
-
-                        <v-col cols="12" class="d-flex flex-column gap-1">
-                            <v-checkbox v-model="labelForm.generate_pattern" label="Create Auto-Categorization Rule"
-                                density="compact" color="primary" hide-details></v-checkbox>
-                            <v-checkbox v-model="labelForm.exclude_from_reports" label="Exclude from Reports"
-                                density="compact" color="warning" hide-details>
-                                <template v-slot:prepend>
-                                    <EyeOff :size="16" />
-                                </template>
-                            </v-checkbox>
+                            <v-checkbox v-model="labelForm.exclude_from_reports" label="Exclude from reports"
+                                density="compact" color="error" hide-details class="font-weight-bold mt-n2"></v-checkbox>
                         </v-col>
                     </v-row>
 
-                    <div class="d-flex justify-end gap-2 mt-4">
-                        <v-btn variant="text" @click="emit('update:modelValue', false)">Cancel</v-btn>
-                        <v-btn color="warning" @click="emit('submit')" class="px-6">
-                            <template v-slot:prepend>
-                                <Brain :size="18" />
-                            </template>
-                            Train & Approve
+                    <!-- Footer Actions -->
+                    <div class="actions-gradient mt-2 pt-2 d-flex justify-end gap-2 border-t">
+                        <v-btn variant="tonal" rounded="lg" height="36" @click="emit('update:modelValue', false)" class="px-3 text-none font-weight-bold text-caption">Cancel</v-btn>
+                        <v-btn color="primary" rounded="lg" height="36" @click="emit('submit')" class="px-5 text-none font-weight-black text-caption elevation-4 shine-effect">
+                            Finalize
                         </v-btn>
                     </div>
                 </div>
@@ -164,69 +244,245 @@ const categoryOptions = computed(() => {
 </template>
 
 <style scoped>
-.glass-card {
-    background: rgba(var(--v-theme-surface), 0.7);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(var(--v-border-color), 0.1);
-    border-radius: 24px;
+.premium-training-modal {
+    background: rgb(var(--v-theme-surface));
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.7) !important;
 }
 
-.labeling-layout {
+.modal-bg-glow {
+    position: absolute;
+    top: -10%;
+    left: -10%;
+    width: 60%;
+    height: 60%;
+    background: radial-gradient(circle, rgba(var(--v-theme-primary), 0.12) 0%, transparent 70%);
+    filter: blur(60px);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.modal-corner-accent {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    opacity: 0.05;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.modal-corner-accent.top-left {
+    top: 0;
+    left: 0;
+    border-top: 2px solid rgb(var(--v-theme-primary));
+    border-left: 2px solid rgb(var(--v-theme-primary));
+}
+
+.modal-corner-accent.bottom-right {
+    bottom: 0;
+    right: 0;
+    border-bottom: 2px solid rgb(var(--v-theme-primary));
+    border-right: 2px solid rgb(var(--v-theme-primary));
+}
+
+.training-toolbar {
+    background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    z-index: 1;
+}
+
+.cognitive-pulse {
+    animation: cognitive-glow 4s infinite ease-in-out;
+}
+
+@keyframes cognitive-glow {
+    0%, 100% { box-shadow: 0 0 0px rgba(var(--v-theme-primary), 0); }
+    50% { box-shadow: 0 0 20px rgba(var(--v-theme-primary), 0.5); }
+}
+
+.training-layout {
     display: grid;
-    grid-template-columns: 1fr 1.2fr;
-    gap: 1rem;
-    padding: 1rem;
+    grid-template-columns: 350px 1fr;
+    min-height: 580px;
+    z-index: 1;
+    position: relative;
 }
 
-.labeling-raw {
-    background: #f9fafb;
-    border-radius: 0.75rem;
-    padding: 0.75rem;
-    border: 1px solid #e5e7eb;
+.source-pane {
+    background: rgba(var(--v-theme-surface), 0.5);
+    border-right: 1px solid rgba(var(--v-border-color), 0.1);
+}
+
+.raw-message-container {
+    background: #020617;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
 
-.raw-content-box {
-    background: white;
-    padding: 0.875rem;
-    border-radius: 0.5rem;
-    font-family: monospace;
-    font-size: 0.75rem;
-    white-space: pre-wrap;
-    border: 1px solid #f3f4f6;
+.message-header {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    align-self: center;
+}
+
+.status-dot.online {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+}
+
+.message-body {
     flex-grow: 1;
     overflow-y: auto;
-    max-height: 300px;
-    color: #111827;
-}
-
-.raw-meta {
-    margin-top: 1rem;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.75rem;
-    color: #6b7280;
+    line-height: 1.8;
+    color: #e2e8f0;
+    scrollbar-width: thin;
 }
 
-.section-label {
-    font-size: 0.65rem;
+.data-highlight {
+    padding: 2px 4px;
+    border-radius: 4px;
+    border-bottom: 2px solid transparent;
+    color: #ffffff;
+    font-weight: 800;
+    transition: all 0.3s ease;
+}
+
+.debugger-meta {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(var(--v-theme-primary), 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.meta-item-tech {
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.meta-label {
+    font-size: 0.6rem;
+    font-weight: 900;
+    color: rgb(var(--v-theme-primary));
     text-transform: uppercase;
-    color: #6b7280;
-    margin-bottom: 0.5rem;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.12em;
+    opacity: 0.9;
 }
 
-.labeling-form .form-group {
-    margin-bottom: 0.75rem;
+.meta-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: #f8fafc;
+    font-weight: 600;
 }
 
-.labeling-form .form-label {
-    font-size: 0.75rem;
-    margin-bottom: 2px;
+.ai-hint-futuristic {
+    background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.12) 0%, rgba(var(--v-theme-primary), 0.02) 100%);
+    border-left: 3px solid rgb(var(--v-theme-primary));
 }
 
-.labeling-form .form-grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
+.hint-icon-wrap {
+    background: rgba(var(--v-theme-primary), 0.15);
+    padding: 8px;
+    border-radius: 10px;
+}
+
+.form-pane {
+    background: #ffffff;
+}
+
+:deep(.modern-field) .v-field--outlined {
+    background: #fdfdfd !important;
+    transition: all 0.3s ease;
+}
+
+:deep(.modern-field) .v-field__label {
+    color: rgba(0, 0, 0, 0.7) !important;
+    font-weight: 600 !important;
+}
+
+:deep(.modern-field) .v-field--focused {
+    box-shadow: 0 4px 24px -4px rgba(var(--v-theme-primary), 0.2) !important;
+}
+
+.shine-effect {
+    position: relative;
+    overflow: hidden;
+}
+
+.shine-effect::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent 45%, rgba(255, 255, 255, 0.3) 50%, transparent 55%);
+    animation: shine 4s infinite;
+}
+
+@keyframes shine {
+    0% { transform: translateX(-100%) translateY(-100%); }
+    100% { transform: translateX(100%) translateY(100%); }
+}
+
+.opacity-80 {
+    opacity: 0.9 !important;
+}
+
+.opacity-60 {
+    opacity: 1 !important;
+}
+
+.opacity-50 {
+    opacity: 0.8 !important;
+}
+
+.opacity-40 {
+    opacity: 0.7 !important;
+}
+
+.text-button {
+    color: rgb(var(--v-theme-primary)) !important;
+    letter-spacing: 0.05em !important;
+}
+
+:deep(.modern-field) .v-field__label {
+    color: #000000 !important;
+    opacity: 0.8 !important;
+    font-weight: 700 !important;
+}
+
+.meta-label {
+    font-size: 0.6rem;
+    font-weight: 900;
+    color: #38bdf8; /* Brighter light blue for dark background */
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+
+.meta-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: #ffffff;
+    font-weight: 700;
+}
+
+@media (max-width: 900px) {
+    .training-layout {
+        grid-template-columns: 1fr;
+    }
 }
 </style>

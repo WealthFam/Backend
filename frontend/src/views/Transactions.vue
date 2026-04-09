@@ -46,7 +46,7 @@
                                     <div class="d-flex align-center gap-2">
                                         <Target :size="16" />
                                         <span>Training</span>
-                                        <v-chip v-if="trainingPagination.total > 0" size="x-small" color="warning"
+                                        <v-chip v-if="trainingPagination.total > 0" size="x-small" color="primary"
                                             class="ml-1 font-weight-black">
                                             {{ trainingPagination.total }}
                                         </v-chip>
