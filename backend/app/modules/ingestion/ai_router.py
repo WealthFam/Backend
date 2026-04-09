@@ -191,3 +191,31 @@ def delete_merchant_alias(
     from backend.app.modules.ingestion.parser_service import ExternalParserService
     success = ExternalParserService.delete_alias(str(current_user.tenant_id), alias_id)
     return {"status": "success" if success else "failed"}
+
+@router.post("/training/{message_id}/auto-parse")
+def auto_parse_training_message(
+    message_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from backend.app.modules.ingestion.ai_service import AIService
+    
+    msg = db.query(ingestion_models.UnparsedMessage).filter(
+        ingestion_models.UnparsedMessage.id == message_id,
+        ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
+    ).first()
+    
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+        
+    try:
+        content = msg.raw_content or ""
+        result = AIService.auto_parse_transaction(db, str(current_user.tenant_id), content)
+        
+        if not result:
+            raise HTTPException(status_code=400, detail="AI parsing failed or AI is disabled.")
+            
+        return result
+    except Exception as e:
+        logger.error(f"Error in auto-parsing endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
