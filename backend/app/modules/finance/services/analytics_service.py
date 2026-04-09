@@ -1,11 +1,13 @@
 import calendar
+from decimal import Decimal
 from typing import Optional
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, text, or_
+from sqlalchemy import func, text, or_, extract
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.transaction_service import TransactionService
 from backend.app.core import timezone
+from backend.app.modules.auth import models as auth_models
 
 class AnalyticsService:
     @staticmethod
@@ -31,27 +33,27 @@ class AnalyticsService:
         
         # Categorize Balances
         breakdown = {
-            "net_worth": 0,
-            "bank_balance": 0,
-            "cash_balance": 0,
-            "credit_debt": 0,
-            "investment_value": 0,
-            "total_credit_limit": 0,
-            "available_credit": 0,
+            "net_worth": Decimal(0),
+            "bank_balance": Decimal(0),
+            "cash_balance": Decimal(0),
+            "credit_debt": Decimal(0),
+            "investment_value": Decimal(0),
+            "total_credit_limit": Decimal(0),
+            "available_credit": Decimal(0),
             "overall_credit_utilization": 0
         }
         
         for acc in accounts:
-            bal = float(acc.balance or 0)
+            bal = Decimal(acc.balance or 0)
             if acc.type == 'CREDIT_CARD':
                 # For CC, positive balance means debt (liability).
                 # If balance is 200, debt is 200.
-                debt_amount = bal if bal > 0 else 0 
+                debt_amount = bal if bal > 0 else Decimal(0) 
                 
                 breakdown["credit_debt"] += debt_amount
                 breakdown["net_worth"] -= bal
                 
-                limit = float(acc.credit_limit or 0)
+                limit = Decimal(acc.credit_limit or 0)
                 breakdown["total_credit_limit"] += limit
                 
                 breakdown["available_credit"] += (limit - bal)
@@ -72,7 +74,7 @@ class AnalyticsService:
         # Calculate overall credit utilization
         if breakdown["total_credit_limit"] > 0:
             raw_overall_util = (breakdown["credit_debt"] / breakdown["total_credit_limit"]) * 100
-            breakdown["overall_credit_utilization"] = max(0, raw_overall_util)
+            breakdown["overall_credit_utilization"] = float(max(Decimal(0), raw_overall_util))
 
         # Monthly Spending (or Filtered Spending)
         # Default to current month if no dates provided
@@ -109,7 +111,36 @@ class AnalyticsService:
             monthly_spending_query = monthly_spending_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
                                                            .filter(models.Account.type.notin_(["INVESTMENT", "CREDIT"]))
         
-        monthly_spending = abs(float(monthly_spending_query.scalar() or 0))
+        monthly_spending = abs(Decimal(monthly_spending_query.scalar() or 0))
+
+        # 2. Last Month Spending (Apples-to-apples comparison)
+        # Default to current month if no dates provided
+        now = timezone.utcnow()
+        if not start_date:
+            cur_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            cur_start = start_date
+
+        last_month_start = (cur_start - timedelta(days=1)).replace(day=1)
+        # To make it fair, we only count up to the same day of the month
+        days_in_month = (now - cur_start).days + 1
+        last_month_comparison_point = last_month_start + timedelta(days=days_in_month - 1)
+        
+        last_month_query = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.amount < 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False,
+            models.Transaction.date >= last_month_start,
+            models.Transaction.date <= last_month_comparison_point
+        )
+        if account_id: last_month_query = last_month_query.filter(models.Transaction.account_id == account_id)
+        if user_id:
+            last_month_query = last_month_query.join(
+                models.Account, models.Transaction.account_id == models.Account.id
+            ).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        
+        last_month_spending = abs(Decimal(last_month_query.scalar() or 0))
 
         # 2a. Monthly Income
         monthly_income_query = db.query(func.sum(models.Transaction.amount)).filter(
@@ -130,7 +161,7 @@ class AnalyticsService:
             ).filter(
                 or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
             )
-        monthly_income = float(monthly_income_query.scalar() or 0)
+        monthly_income = Decimal(monthly_income_query.scalar() or 0)
         
         # 2b. Total Excluded for the period
         def get_excluded_sum(is_income: bool):
@@ -147,7 +178,7 @@ class AnalyticsService:
             if user_id:
                 q = q.join(models.Account, models.Transaction.account_id == models.Account.id)\
                      .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
-            return abs(float(q.scalar() or 0))
+            return abs(Decimal(q.scalar() or 0))
 
         total_excluded = get_excluded_sum(False) # Expenses
         excluded_income = get_excluded_sum(True) # Incomes
@@ -155,14 +186,14 @@ class AnalyticsService:
         # Overall Budget Health
         all_budgets = db.query(models.Budget).filter(models.Budget.tenant_id == tenant_id).all()
         overall = next((b for b in all_budgets if b.category == 'OVERALL'), None)
-        total_budget_limit = float(overall.amount_limit) if overall else 0
+        total_budget_limit = Decimal(overall.amount_limit) if overall else Decimal(0)
         if not overall and all_budgets:
-            total_budget_limit = sum(float(b.amount_limit) for b in all_budgets)
+            total_budget_limit = sum(Decimal(b.amount_limit) for b in all_budgets)
             
         budget_health = {
             "limit": total_budget_limit,
-            "spent": float(monthly_spending),
-            "percentage": (float(monthly_spending) / total_budget_limit * 100) if total_budget_limit > 0 else 0
+            "spent": monthly_spending,
+            "percentage": float((monthly_spending / total_budget_limit * 100)) if total_budget_limit > 0 else 0.0
         }
         
         # Recent Transactions (bounded by month if dates provided)
@@ -179,14 +210,27 @@ class AnalyticsService:
         accounts_with_owners = db.query(models.Account).options(joinedload(models.Account.owner)).filter(models.Account.id.in_(account_ids)).all()
         account_map = {a.id: a for a in accounts_with_owners}
 
+        # Pre-fetch category map for efficiency
+        from backend.app.modules.finance.models import Category
+        category_objs = db.query(Category).filter(Category.tenant_id == tenant_id).all()
+        cat_map = {c.name: c for c in category_objs}
+
         enriched_txns = []
         for txn in recent_txns:
+            # Try exact match, then leaf name match for hierarchy (e.g. "Food › Dining" -> "Dining")
+            cat_obj = cat_map.get(txn.category)
+            if not cat_obj and txn.category and " › " in txn.category:
+                leaf_name = txn.category.split(" › ")[-1]
+                cat_obj = cat_map.get(leaf_name)
+                
             txn_dict = {
                 "id": txn.id,
                 "date": txn.date,
                 "description": txn.description,
-                "amount": float(txn.amount),
+                "amount": Decimal(txn.amount),
                 "category": txn.category,
+                "category_icon": cat_obj.icon if cat_obj else "🏷️",
+                "category_color": cat_obj.color if cat_obj else "#9ca3af",
                 "account_id": str(txn.account_id),
                 "is_transfer": txn.is_transfer,
                 "exclude_from_reports": txn.exclude_from_reports,
@@ -228,7 +272,7 @@ class AnalyticsService:
         if top_cat_query:
             top_spending_category = {
                 "name": top_cat_query[0],
-                "amount": abs(float(top_cat_query[1]))
+                "amount": abs(Decimal(top_cat_query[1]))
             }
         
         # Credit Intelligence
@@ -243,7 +287,7 @@ class AnalyticsService:
             intel = {
                 "id": card.id,
                 "name": card.name,
-                "balance": float(card.balance or 0),
+                "balance": Decimal(card.balance or 0),
                 "limit": limit,
                 "utilization": 0,
                 "billing_day": int(card.billing_day) if card.billing_day else None,
@@ -251,14 +295,18 @@ class AnalyticsService:
                 "days_until_due": None
             }
             if intel["limit"] > 0:
-                current_debt = intel["balance"] if intel["balance"] > 0 else 0
-                raw_util = (current_debt / intel["limit"]) * 100
-                intel["utilization"] = max(0, raw_util)
+                # Debt is negative balance in this system
+                current_debt = abs(intel["balance"]) if intel["balance"] < 0 else 0
+                raw_util = (Decimal(current_debt) / Decimal(intel["limit"])) * 100
+                intel["utilization"] = float(max(Decimal(0), raw_util))
             
             # Billing Cycle Logic
             last_statement_date = None
+            prev_statement_date = None
             statement_balance = 0.0
-            unbilled_purchases = 0.0
+            unbilled_purchases_raw = 0.0
+            last_cycle_spend_raw = 0.0
+            current_cycle_payments_raw = 0.0
             minimum_due = 0.0
             
             if intel["billing_day"]:
@@ -282,27 +330,73 @@ class AnalyticsService:
                     except ValueError:
                          last_day = calendar.monthrange(prev_month_end.year, prev_month_end.month)[1]
                          last_statement_date = date(prev_month_end.year, prev_month_end.month, last_day)
+                
+                # Calculate Previous Statement Date (one month before last_statement_date)
+                if last_statement_date:
+                    first_of_ls_month = last_statement_date.replace(day=1)
+                    prev_month_end = first_of_ls_month - timedelta(days=1)
+                    try:
+                        prev_statement_date = date(prev_month_end.year, prev_month_end.month, billing_day)
+                    except ValueError:
+                         last_day = calendar.monthrange(prev_month_end.year, prev_month_end.month)[1]
+                         prev_statement_date = date(prev_month_end.year, prev_month_end.month, last_day)
             
             if last_statement_date:
                 intel["last_statement_date"] = last_statement_date.isoformat()
                 
+                # Precise boundaries for cycles
+                ls_midnight = datetime.combine(last_statement_date, time(23, 59, 59, 999999))
+                ps_midnight = None
+                if prev_statement_date:
+                    ps_midnight = datetime.combine(prev_statement_date, time(23, 59, 59, 999999))
+                
+                # Current Cycle Spend (Negative Txns AFTER last statement date)
                 unbilled_query = db.query(func.sum(models.Transaction.amount)).filter(
                     models.Transaction.account_id == card.id,
-                    models.Transaction.date > last_statement_date,
+                    models.Transaction.date > ls_midnight,
                     models.Transaction.amount < 0,
                     models.Transaction.exclude_from_reports == False
                 )
                 unbilled_raw = unbilled_query.scalar()
-                unbilled_purchases = float(unbilled_raw) if unbilled_raw else 0.0
+                unbilled_purchases_raw = Decimal(unbilled_raw) if unbilled_raw else Decimal(0)
+
+                # Current Cycle Payments (Positive Txns AFTER last statement date)
+                payments_query = db.query(func.sum(models.Transaction.amount)).filter(
+                    models.Transaction.account_id == card.id,
+                    models.Transaction.date > ls_midnight,
+                    models.Transaction.amount > 0,
+                    models.Transaction.exclude_from_reports == False
+                )
+                payments_raw = payments_query.scalar()
+                current_cycle_payments_raw = Decimal(payments_raw) if payments_raw else Decimal(0)
                 
-                statement_balance = intel["balance"] - unbilled_purchases
+                # Previous Cycle Spend (Between PSD and LSD)
+                if ps_midnight:
+                    last_cycle_query = db.query(func.sum(models.Transaction.amount)).filter(
+                        models.Transaction.account_id == card.id,
+                        models.Transaction.date > ps_midnight,
+                        models.Transaction.date <= ls_midnight,
+                        models.Transaction.amount < 0,
+                        models.Transaction.exclude_from_reports == False
+                    )
+                    last_cycle_raw = last_cycle_query.scalar()
+                    last_cycle_spend_raw = Decimal(last_cycle_raw) if last_cycle_raw else Decimal(0)
+                
+                # Formula: StatementBalance = CurrentBalance - RecentSpend(Negative) - RecentPayments(Positive)
+                statement_balance = intel["balance"] - unbilled_purchases_raw - current_cycle_payments_raw
 
                 if statement_balance < 0:
-                    minimum_due = abs(statement_balance) * 0.05
+                    minimum_due = abs(statement_balance) * Decimal("0.05")
+                
+                # Standardized logic complete
+                pass
                     
-            intel["statement_balance"] = statement_balance
-            intel["unbilled_spend"] = abs(unbilled_purchases)
-            intel["minimum_due"] = minimum_due
+            intel["statement_balance"] = abs(statement_balance)
+            intel["unbilled_spend"] = abs(unbilled_purchases_raw)
+            intel["last_cycle_spend"] = abs(last_cycle_spend_raw)
+            intel["current_cycle_payments"] = abs(current_cycle_payments_raw)
+            intel["minimum_due"] = abs(minimum_due)
+            intel["last_bill_date"] = last_statement_date.isoformat() if last_statement_date else None
 
             if intel["due_day"]:
                 try:
@@ -322,11 +416,24 @@ class AnalyticsService:
             credit_intelligence.append(intel)
 
 
+        # Calculate daily velocity
+        today_date = timezone.utcnow().date()
+        if start_date and start_date.date().month == today_date.month and start_date.date().year == today_date.year:
+            days_run = today_date.day
+        elif start_date and end_date:
+            days_run = max(1, (end_date.date() - start_date.date()).days + 1)
+        else:
+            days_run = today_date.day
+            
+        avg_daily = monthly_spending / Decimal(max(1, days_run))
+
         return {
             "breakdown": breakdown,
-            "monthly_income": monthly_income,
+            "total_income": monthly_income,
             "monthly_total": monthly_spending,
-            "monthly_spending": monthly_spending,  # Keep for backward compatibility
+            "monthly_spending": monthly_spending,
+            "avg_daily_spending": avg_daily,
+            "last_month_spending": last_month_spending,
             "total_excluded": total_excluded,
             "excluded_income": excluded_income,
             "budget_health": budget_health,
@@ -392,7 +499,7 @@ class AnalyticsService:
                 if user_id:
                     q = q.join(Account, Transaction.account_id == Account.id)\
                          .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
-                return abs(float(q.scalar() or 0))
+                return abs(Decimal(q.scalar() or 0))
 
             today_total = get_daily_sum(today_start, now)
             yesterday_total = get_daily_sum(yesterday_start, yesterday_end)
@@ -705,7 +812,7 @@ class AnalyticsService:
         trend = []
         today = now.date()
         current = start_date.date()
-        spend_map = {row.day: abs(float(row.total)) for row in spending}
+        spend_map = {str(row.day): abs(float(row.total)) for row in spending}
         
         while current <= today:
             trend.append({
@@ -715,6 +822,138 @@ class AnalyticsService:
             current += timedelta(days=1)
             
         return trend
+
+    @staticmethod
+    def get_spending_forecast(db: Session, tenant_id: str, user_id: str = None, start_date: datetime = None, end_date: datetime = None):
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+        
+        now = timezone.utcnow()
+        if not start_date:
+            start_date = timezone.ensure_utc(datetime(now.year, now.month, 1))
+        if not end_date:
+            last_day = calendar.monthrange(now.year, now.month)[1]
+            end_date = timezone.ensure_utc(datetime(now.year, now.month, last_day, 23, 59, 59))
+
+        # 1. Fetch historical spending stacked by user
+        query = db.query(
+            func.date(models.Transaction.date).label('day'),
+            models.Account.owner_id.label('user_id'),
+            func.sum(models.Transaction.amount).label('total')
+        ).join(models.Account, models.Transaction.account_id == models.Account.id)\
+         .filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= start_date,
+            models.Transaction.date <= end_date,
+            models.Transaction.date <= now, # Only historical for actuals
+            models.Transaction.amount < 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False
+        )
+        
+        if user_id:
+             query = query.filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+             
+        historical_raw = query.group_by(func.date(models.Transaction.date), models.Account.owner_id).all()
+        
+        # 2. Smart Prediction Logic (Seasonal/Cyclical)
+        # We look at patterns for each day of the month over the last ~4 months
+        four_months_ago = now - timedelta(days=120)
+        dom_query = db.query(
+            extract('day', models.Transaction.date).label('dom'),
+            func.sum(models.Transaction.amount).label('total')
+        ).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= four_months_ago,
+            models.Transaction.date < now.replace(day=1), # Complete months only
+            models.Transaction.amount < 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False
+        )
+        if user_id:
+             dom_query = dom_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                    .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        
+        dom_history = dom_query.group_by(extract('day', models.Transaction.date)).all()
+        # Calculate historical average for each day of the month
+        dom_prediction = {int(row.dom): abs(Decimal(row.total)) / Decimal(4) for row in dom_history}
+        
+        # Baseline burn rate for days with no history or as a fallback
+        thirty_days_ago = now - timedelta(days=30)
+        burn_query = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= thirty_days_ago,
+            models.Transaction.amount < 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False
+        )
+        if user_id:
+             burn_query = burn_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                    .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        
+        total_recent_burn = abs(Decimal(burn_query.scalar() or 0))
+        daily_burn_rate = total_recent_burn / Decimal(30)
+        
+        # 3. Get User metadata
+        users = db.query(auth_models.User).filter(auth_models.User.tenant_id == tenant_id).all()
+        user_map = {str(u.id): u.full_name or u.email.split('@')[0] for u in users}
+        user_map["None"] = "Shared/Other"
+        
+        # 4. Map historical data
+        data_map = {} # {date_str: {user_id: amount}}
+        for row in historical_raw:
+            day_str = str(row.day)
+            if day_str not in data_map: data_map[day_str] = {}
+            # Use Decimal for all monetary values as per standards
+            data_map[day_str][str(row.user_id) if row.user_id else "None"] = abs(Decimal(str(row.total)))
+            
+        # 5. Generate trend for requested range
+        trend = []
+        current = start_date.date()
+        today = now.date()
+        
+        # Fetch recurring transactions once
+        recs = db.query(models.RecurringTransaction).filter(
+            models.RecurringTransaction.tenant_id == tenant_id,
+            models.RecurringTransaction.is_active == True,
+            models.RecurringTransaction.type == 'DEBIT'
+        ).all()
+
+        while current <= end_date.date():
+            day_str = current.isoformat()
+            day_data = {
+                "date": day_str,
+                "is_forecast": current > today,
+                "stacks": data_map.get(day_str, {})
+            }
+            
+            if current > today:
+                # Add predicted spend: Blend (80% DOM-average, 20% recent velocity)
+                dom = current.day
+                dom_history_avg = dom_prediction.get(dom, daily_burn_rate)
+                final_predicted = (dom_history_avg * Decimal("0.8")) + (daily_burn_rate * Decimal("0.2"))
+                
+                day_data["stacks"]["Predicted"] = final_predicted
+                
+                # Check recurring bills for this specific date (hard override/addition)
+                rec_total = sum(abs(Decimal(str(r.amount))) for r in recs if r.next_run_date and r.next_run_date.date() == current)
+                if rec_total > 0:
+                    day_data["stacks"]["Upcoming Bills"] = rec_total
+
+            trend.append(day_data)
+            current += timedelta(days=1)
+            
+        # Sum up predicted values for the return
+        forecast_sum = sum(
+            Decimal(str(d["stacks"].get("Predicted", 0))) + Decimal(str(d["stacks"].get("Upcoming Bills", 0)))
+            for d in trend if d["is_forecast"]
+        )
+        return {
+            "user_names": user_map,
+            "trend": trend,
+            "daily_burn_rate": daily_burn_rate,
+            "forecast_total": forecast_sum
+        }
 
     @staticmethod
     def get_mobile_dashboard_trends(db: Session, tenant_id: str, target_year: int, target_month: int, user_id: str = None):
@@ -776,7 +1015,7 @@ class AnalyticsService:
             trend_query = trend_query.join(Account, Transaction.account_id == Account.id)\
                                      .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
         
-        row_map = {str(row.day): abs(float(row.total)) for row in trend_query.group_by(func.date(Transaction.date)).all()}
+        row_map = {str(row.day): abs(Decimal(row.total)) for row in trend_query.group_by(func.date(Transaction.date)).all()}
         
         # Calculate iteration limit
         days_to_show = last_day
@@ -856,16 +1095,16 @@ class AnalyticsService:
                 else:
                     break
             
-            rollup[root_name] = rollup.get(root_name, 0) + amount
+            rollup[root_name] = rollup.get(root_name, Decimal(0)) + amount
 
         # 5. Format for response (Top 5 + Others)
-        distribution = [{"name": k, "value": round(v, 2)} for k, v in rollup.items()]
+        distribution = [{"name": k, "value": float(round(v, 2))} for k, v in rollup.items()]
         distribution.sort(key=lambda x: x["value"], reverse=True)
         
         if len(distribution) > 5:
             top_5 = distribution[:5]
-            others_val = sum(d["value"] for d in distribution[5:])
-            top_5.append({"name": "Others", "value": round(others_val, 2)})
+            others_val = sum(Decimal(str(d["value"])) for d in distribution[5:])
+            top_5.append({"name": "Others", "value": float(round(others_val, 2))})
             distribution = top_5
 
         return {"category_distribution": distribution}
@@ -888,7 +1127,7 @@ class AnalyticsService:
         
         liquid_accounts = liquid_accounts_query.all()
         
-        current_balance = float(sum(acc.balance or 0 for acc in liquid_accounts))
+        current_balance = sum(Decimal(acc.balance or 0) for acc in liquid_accounts)
         
         # Get Recurring Transactions
         recs_query = db.query(models.RecurringTransaction).filter(
@@ -912,9 +1151,9 @@ class AnalyticsService:
             recent_txns_query = recent_txns_query.filter(models.Transaction.account_id == account_id)
         recent_txns = recent_txns_query.all()
         
-        total_recent = abs(sum(float(t.amount) for t in recent_txns))
+        total_recent = abs(sum(Decimal(t.amount) for t in recent_txns))
         # Daily burn rate based on history
-        daily_burn = total_recent / 30.0 if total_recent > 0 else 0
+        daily_burn = total_recent / Decimal(30) if total_recent > 0 else Decimal(0)
         
         forecast = []
         today = timezone.utcnow().date()
@@ -933,7 +1172,7 @@ class AnalyticsService:
                 # For this forecast, we look ahead at next_run and if it lands on this date, we apply.
                 # In a more advanced version, we'd Project all occurrences in the window.
                 if r.next_run_date.date() == target_date:
-                    amt = float(r.amount)
+                    amt = Decimal(r.amount)
                     if r.type == 'DEBIT':
                         running_bal -= amt
                     else:
@@ -941,7 +1180,7 @@ class AnalyticsService:
             
             forecast.append({
                 "date": target_date.isoformat(),
-                "balance": round(running_bal, 2)
+                "balance": float(round(running_bal, 2))
             })
             
         return forecast
@@ -1052,7 +1291,7 @@ class AnalyticsService:
             m_date = row.month_start.date() if hasattr(row.month_start, 'date') else row.month_start
             if m_date not in stats_map:
                 stats_map[m_date] = {}
-            stats_map[m_date][row.category] = abs(float(row.total))
+            stats_map[m_date][row.category] = abs(Decimal(row.total))
             
         # Handle 'OVERALL' special case if it exists in categories
         if 'OVERALL' in categories:
@@ -1080,7 +1319,7 @@ class AnalyticsService:
                 m_date = row.month_start.date() if hasattr(row.month_start, 'date') else row.month_start
                 if m_date not in stats_map:
                     stats_map[m_date] = {}
-                stats_map[m_date]['OVERALL'] = abs(float(row.total))
+                stats_map[m_date]['OVERALL'] = abs(Decimal(row.total))
 
         history = []
         for i in range(months):
@@ -1105,7 +1344,7 @@ class AnalyticsService:
                 entry["data"].append({
                     "category": b.category,
                     "limit": float(b.amount_limit),
-                    "spent": month_data.get(b.category, 0.0)
+                    "spent": float(month_data.get(b.category, Decimal(0)))
                 })
             
             history.append(entry)
@@ -1150,7 +1389,7 @@ class AnalyticsService:
             {
                 "latitude": float(row.latitude),
                 "longitude": float(row.longitude),
-                "amount": abs(float(row.amount)),
+                "amount": float(abs(Decimal(row.amount))),
                 "category": row.category,
                 "description": row.description
             }
@@ -1213,7 +1452,7 @@ class AnalyticsService:
         results = query.group_by(models.Transaction.recipient).order_by(func.sum(models.Transaction.amount).asc()).all()
         
         return [
-            {"merchant": row.merchant or "Unknown", "amount": abs(float(row.total))}
+            {"merchant": row.merchant or "Unknown", "amount": float(abs(Decimal(row.total)))}
             for row in results
         ]
     @staticmethod
@@ -1228,22 +1467,22 @@ class AnalyticsService:
         # Calculate breakdown
         member_wealth = []
         shared_wealth = {
-            "net_worth": 0,
-            "assets": 0,
-            "liabilities": 0,
+            "net_worth": Decimal(0),
+            "assets": Decimal(0),
+            "liabilities": Decimal(0),
             "account_count": 0
         }
         
-        total_assets = 0
-        total_liabilities = 0
+        total_assets = Decimal(0)
+        total_liabilities = Decimal(0)
         
         for user in family_members:
-            user_assets = 0
-            user_liabilities = 0
+            user_assets = Decimal(0)
+            user_liabilities = Decimal(0)
             user_accounts = [a for a in accounts if a.owner_id == str(user.id)]
             
             for acc in user_accounts:
-                bal = float(acc.balance or 0)
+                bal = Decimal(acc.balance or 0)
                 if acc.type in ['CREDIT_CARD', 'LOAN']:
                     user_liabilities += bal
                 else:
@@ -1265,7 +1504,7 @@ class AnalyticsService:
         # Shared accounts (owner_id is None)
         shared_accounts = [a for a in accounts if a.owner_id is None]
         for acc in shared_accounts:
-            bal = float(acc.balance or 0)
+            bal = Decimal(acc.balance or 0)
             if acc.type in ['CREDIT_CARD', 'LOAN']:
                 shared_wealth["liabilities"] += bal
             else:
@@ -1278,11 +1517,14 @@ class AnalyticsService:
         total_liabilities += shared_wealth["liabilities"]
         
         return {
-            "total_net_worth": total_assets - total_liabilities,
-            "total_assets": total_assets,
-            "total_liabilities": total_liabilities,
-            "members": member_wealth,
-            "shared": shared_wealth
+            "total_net_worth": float(total_assets - total_liabilities),
+            "total_assets": float(total_assets),
+            "total_liabilities": float(total_liabilities),
+            "members": [
+                {**m, "net_worth": float(m["net_worth"]), "assets": float(m["assets"]), "liabilities": float(m["liabilities"])}
+                for m in member_wealth
+            ],
+            "shared": {**shared_wealth, "net_worth": float(shared_wealth["net_worth"]), "assets": float(shared_wealth["assets"]), "liabilities": float(shared_wealth["liabilities"])}
         }
 
     @staticmethod
@@ -1326,37 +1568,37 @@ class AnalyticsService:
         cat_totals = {}
         for t in txns:
             cat_name = t.category or "Uncategorized"
-            cat_totals[cat_name] = cat_totals.get(cat_name, 0) + abs(float(t.amount))
+            cat_totals[cat_name] = cat_totals.get(cat_name, Decimal(0)) + abs(Decimal(t.amount or 0))
             
         # Roll up children to parents
         final_categories = []
         parents = [c for c in db_categories if not c.parent_id]
         
         for p in parents:
-            total = cat_totals.get(p.name, 0)
+            total = cat_totals.get(p.name, Decimal(0))
             children = [c for c in db_categories if c.parent_id == p.id]
             for c in children:
-                total += cat_totals.get(c.name, 0)
+                total += cat_totals.get(c.name, Decimal(0))
             
             if total > 0:
-                final_categories.append({"name": p.name, "value": round(total, 2)})
+                final_categories.append({"name": p.name, "value": float(round(total, 2))})
         
         # Top 5 + Others
         final_categories.sort(key=lambda x: x["value"], reverse=True)
         if len(final_categories) > 5:
             top_5 = final_categories[:5]
-            others_val = sum(c["value"] for c in final_categories[5:])
-            top_5.append({"name": "Others", "value": round(others_val, 2)})
+            others_val = sum(Decimal(str(c["value"])) for c in final_categories[5:])
+            top_5.append({"name": "Others", "value": float(round(others_val, 2))})
             final_categories = top_5
 
         # Merchant Breakdown
         merc_totals = {}
         for t in txns:
             m_name = t.recipient or "Unknown"
-            merc_totals[m_name] = merc_totals.get(m_name, 0) + abs(float(t.amount))
+            merc_totals[m_name] = merc_totals.get(m_name, Decimal(0)) + abs(Decimal(t.amount))
             
         final_merchants = [
-            {"name": m, "value": round(v, 2)} 
+            {"name": m, "value": float(round(v, 2))} 
             for m, v in merc_totals.items()
         ]
         final_merchants.sort(key=lambda x: x["value"], reverse=True)
@@ -1365,13 +1607,13 @@ class AnalyticsService:
         # Temporal Heatmap (Category vs Hour)
         # We only want the top categories for the heatmap grid
         active_cats = [c["name"] for c in final_categories if c["name"] != "Others"]
-        heatmap_grid = {cat: {h: 0 for h in range(24)} for cat in active_cats}
-        max_heat = 0
+        heatmap_grid = {cat: {h: Decimal(0) for h in range(24)} for cat in active_cats}
+        max_heat = Decimal(0)
         
         for t in txns:
             if t.category in heatmap_grid:
                 hour = t.date.hour
-                heatmap_grid[t.category][hour] += abs(float(t.amount))
+                heatmap_grid[t.category][hour] += abs(Decimal(t.amount))
                 if heatmap_grid[t.category][hour] > max_heat:
                     max_heat = heatmap_grid[t.category][hour]
 
@@ -1390,15 +1632,15 @@ class AnalyticsService:
                                .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
         
         ex_txns = ex_query.all()
-        excluded_income = sum(float(t.amount) for t in ex_txns if t.amount > 0)
-        excluded_expense = sum(abs(float(t.amount)) for t in ex_txns if t.amount < 0)
+        excluded_income = sum(Decimal(t.amount) for t in ex_txns if t.amount > 0)
+        excluded_expense = sum(abs(Decimal(t.amount)) for t in ex_txns if t.amount < 0)
         
         ex_cat_map = {}
         for t in ex_txns:
             cname = t.category or "Shielded"
-            ex_cat_map[cname] = ex_cat_map.get(cname, 0) + abs(float(t.amount))
+            ex_cat_map[cname] = ex_cat_map.get(cname, Decimal(0)) + abs(Decimal(t.amount))
             
-        final_ex_cats = [{"name": k, "value": round(v, 2)} for k, v in ex_cat_map.items()]
+        final_ex_cats = [{"name": k, "value": float(round(v, 2))} for k, v in ex_cat_map.items()]
 
         # Trend Data (Daily)
         trend_filters = [
@@ -1439,9 +1681,9 @@ class AnalyticsService:
                                      .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
             
         trend_results = trend_query.group_by(func.date(Transaction.date)).order_by(func.date(Transaction.date)).all()
-        final_trend = [{"date": str(r.day), "amount": abs(float(r.total))} for r in trend_results]
+        final_trend = [{"date": str(r.day), "amount": float(abs(Decimal(r.total)))} for r in trend_results]
 
-        expense_total = sum(abs(float(t.amount)) for t in txns)
+        expense_total = sum(abs(Decimal(t.amount)) for t in txns)
         income_query = db.query(func.sum(Transaction.amount)).filter(
             Transaction.tenant_id == tenant_id,
             Transaction.amount > 0,
@@ -1455,7 +1697,7 @@ class AnalyticsService:
             income_query = income_query.join(Account, Transaction.account_id == Account.id)\
                                        .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
         
-        income_total = float(income_query.scalar() or 0)
+        income_total = Decimal(income_query.scalar() or 0)
 
         # Account & Type Distributions (for AI Context)
         acc_map = {}
@@ -1463,11 +1705,11 @@ class AnalyticsService:
         for t in txns:
             aname = t.account.name if t.account else "Unknown"
             atype = t.account.type if t.account else "OTHER"
-            acc_map[aname] = acc_map.get(aname, 0) + abs(float(t.amount))
-            type_map[atype] = type_map.get(atype, 0) + abs(float(t.amount))
+            acc_map[aname] = acc_map.get(aname, Decimal(0)) + abs(Decimal(t.amount))
+            type_map[atype] = type_map.get(atype, Decimal(0)) + abs(Decimal(t.amount))
             
-        final_accs = [{"name": k, "value": round(v, 2)} for k, v in acc_map.items()]
-        final_types = [{"name": k, "value": round(v, 2)} for k, v in type_map.items()]
+        final_accs = [{"name": k, "value": float(round(v, 2))} for k, v in acc_map.items()]
+        final_types = [{"name": k, "value": float(round(v, 2))} for k, v in type_map.items()]
 
         return {
             "categories": final_categories,
@@ -1475,16 +1717,16 @@ class AnalyticsService:
             "accounts": final_accs,
             "types": final_types,
             "heatmap": {
-                "grid": heatmap_grid,
+                "grid": {cat: {h: float(val) for h, val in hours.items()} for cat, hours in heatmap_grid.items()},
                 "categories": active_cats,
                 "hours": list(range(24)),
-                "max": round(max_heat, 2)
+                "max": float(round(max_heat, 2))
             },
-            "expense_total": round(expense_total, 2),
-            "income": round(income_total, 2),
-            "net": round(income_total - expense_total, 2),
-            "excludedExpense": round(excluded_expense, 2),
-            "excludedIncome": round(excluded_income, 2),
+            "expense_total": float(round(expense_total, 2)),
+            "income": float(round(income_total, 2)),
+            "net": float(round(income_total - expense_total, 2)),
+            "excludedExpense": float(round(excluded_expense, 2)),
+            "excludedIncome": float(round(excluded_income, 2)),
             "excludedCategories": final_ex_cats,
             "trend": final_trend
         }

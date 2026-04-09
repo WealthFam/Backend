@@ -75,7 +75,7 @@
 
                     <!-- RECURRING TAB -->
                     <v-window-item :value="1">
-                        <RecurringTab ref="recurringTabRef" />
+                        <RecurringTab />
                     </v-window-item>
 
                     <!-- FAMILY CIRCLE TAB -->
@@ -101,17 +101,32 @@ import { Wallet, ChevronDown } from 'lucide-vue-next'
 const store = useFinanceStore()
 const authStore = useAuthStore()
 
+import { useRoute } from 'vue-router'
+const route = useRoute()
+
 const activeTab = ref(0)
 const selectedAccount = ref('')
-const recurringTabRef = ref<InstanceType<typeof RecurringTab> | null>(null)
 
 onMounted(() => {
     store.fetchAll(authStore.selectedMemberId || undefined)
+
+    // Handle deep linking to tabs
+    if (route.query.tab) {
+        const tab = parseInt(route.query.tab as string)
+        if (!isNaN(tab)) activeTab.value = tab
+    }
 })
 
 watch(() => authStore.selectedMemberId, () => {
     selectedAccount.value = ''
     store.fetchAll(authStore.selectedMemberId || undefined)
+})
+
+watch(() => route.query.tab, (newTab) => {
+    if (newTab !== undefined) {
+        const tab = parseInt(newTab as string)
+        if (!isNaN(tab)) activeTab.value = tab
+    }
 })
 
 const accountOptions = computed(() => {

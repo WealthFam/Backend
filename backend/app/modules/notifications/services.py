@@ -8,13 +8,14 @@ from backend.app.modules.notifications.schemas import AlertSchema
 
 class NotificationService:
     @staticmethod
-    def create_alert(db: Session, tenant_id: str, title: str, body: str, user_id: str = None, category: str = "INFO"):
+    def create_alert(db: Session, tenant_id: str, title: str, body: str, user_id: str = None, category: str = "INFO", icon: str = None):
         alert = Alert(
             tenant_id=tenant_id,
             user_id=user_id,
             title=title,
             body=body,
-            category=category
+            category=category,
+            icon=icon
         )
         db.add(alert)
         db.commit()
@@ -38,28 +39,25 @@ class NotificationService:
         return alert
 
     @staticmethod
-    def broadcast_alert(db: Session, tenant_id: str, title: str, body: str, category: str = "INFO"):
-        from backend.app.modules.auth.models import User, UserRole
-        
-        # Find All Adults in Tenant
-        recipients = db.query(User).filter(
-            User.tenant_id == tenant_id,
-            User.role != UserRole.CHILD.value if hasattr(UserRole.CHILD, 'value') else User.role != UserRole.CHILD
-        ).all()
-
-        for recipient in recipients:
-            NotificationService.create_alert(
-                db, 
-                tenant_id, 
-                title, 
-                body, 
-                user_id=str(recipient.id), 
-                category=category
-            )
+    def broadcast_alert(db: Session, tenant_id: str, title: str, body: str, category: str = "INFO", icon: str = None):
+        """
+        Creates a SINGLE shared alert for the entire tenant (user_id=None).
+        This alert will be visible to all family members in their Pulse.
+        """
+        return NotificationService.create_alert(
+            db, 
+            tenant_id, 
+            title, 
+            body, 
+            user_id=None, 
+            category=category,
+            icon=icon
+        )
 
     @staticmethod
-    def notify_transaction(db: Session, tenant_id: str, amount: float, description: str, account_name: str, user_id: str = None):
+    def notify_transaction(db: Session, tenant_id: str, amount: float, description: str, account_name: str, user_id: str = None, category_name: str = None):
         from backend.app.modules.auth.models import User
+        from backend.app.modules.finance.models import Category
 
         symbol = "₹"
         abs_amount = abs(amount)
@@ -71,10 +69,17 @@ class NotificationService:
             if spender:
                 spender_name = spender.full_name or spender.email.split('@')[0]
 
-        title = f"💸 {type_str} {symbol}{abs_amount:,.0f}"
+        # Try to find category icon
+        icon = "💸" if amount < 0 else "💰"
+        if category_name:
+            cat = db.query(Category).filter(Category.tenant_id == tenant_id, Category.name == category_name).first()
+            if cat and cat.icon:
+                icon = cat.icon
+
+        title = f"{icon} {type_str} {symbol}{abs_amount:,.0f}"
         body = f"{description}\nvia {account_name} by {spender_name}"
         
-        return NotificationService.broadcast_alert(db, tenant_id, title, body, category="EXPENSE")
+        return NotificationService.broadcast_alert(db, tenant_id, title, body, category="EXPENSE", icon=icon)
 
     @staticmethod
     def notify_triage(db: Session, tenant_id: str, amount: float, description: str, account_name: str):
@@ -125,10 +130,14 @@ class NotificationService:
         budgets = BudgetService.get_budgets(db, tenant_id, today.year, today.month)
         
         for b in budgets:
-            if b.category == "OVERALL" or b.amount_limit == 0:
+            # BudgetService.get_budgets returns a list of dictionaries, not objects
+            cat_name = b.get("category")
+            amount_limit = b.get("amount_limit") or 0
+            
+            if cat_name == "OVERALL" or amount_limit == 0:
                 continue
             
-            percentage = b.percentage
+            percentage = b.get("percentage") or 0
             milestone = None
             if percentage >= 120: milestone = 120
             elif percentage >= 100: milestone = 100
@@ -142,15 +151,15 @@ class NotificationService:
                 Alert.tenant_id == tenant_id,
                 Alert.category == "BUDGET_ALERT",
                 Alert.body.contains(f"{milestone}%"),
-                Alert.body.contains(f"for {b.category}"),
+                Alert.body.contains(f"for {cat_name}"),
                 Alert.created_at >= date(today.year, today.month, 1)
             ).first()
             
             if existing:
                 continue
                 
-            msg = f"Your spending in '{b.category}' is {percentage:.0f}% of your limit."
-            NotificationService.notify_budget_alert(db, tenant_id, b.category, msg)
+            msg = f"Your spending in '{cat_name}' is {percentage:.0f}% of your limit."
+            NotificationService.notify_budget_alert(db, tenant_id, cat_name, msg)
 
     @staticmethod
     def send_daily_summary(db: Session, tenant_id: str):

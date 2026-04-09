@@ -44,42 +44,14 @@ import { MapPin } from 'lucide-vue-next'
 if (typeof window !== 'undefined') window.L = L
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.heat'
-import { financeApi } from '@/api/client'
-import { useAuthStore } from '@/stores/auth'
-
-interface HeatmapDataPoint {
-    latitude: number
-    longitude: number
-    amount: number
-    category?: string
-    description?: string
-    recipient?: string
-}
+import { useHeatmapData } from '@/composables/useHeatmapData'
 
 const props = defineProps<{
     startDate: string
     endDate: string
 }>()
 
-const data = ref<HeatmapDataPoint[]>([])
-const loading = ref(false)
-const auth = useAuthStore()
-
-async function fetchHeatmap() {
-    loading.value = true
-    try {
-        const res = await financeApi.getHeatmapData(props.startDate, props.endDate, auth.selectedMemberId || undefined)
-        data.value = res.data
-    } catch (e) {
-        console.error('Failed to fetch heatmap', e)
-    } finally {
-        loading.value = false
-    }
-}
-
-watch([() => props.startDate, () => props.endDate, () => auth.selectedMemberId], () => {
-    fetchHeatmap()
-})
+const { data, fetchHeatmap } = useHeatmapData(() => props.startDate, () => props.endDate)
 
 onMounted(() => {
     fetchHeatmap()
@@ -154,7 +126,8 @@ const updateHeatmap = () => {
     // Prepare heatmap data: [lat, lng, intensity]
     const heatPoints = data.value.map(p => {
         // Boost intensity calculation for deeper colors
-        const intensity = Math.min(Math.abs(p.amount) / 500, 1.2)
+        // Boost intensity calculation for deeper colors - ensure minimum visibility
+        const intensity = Math.max(0.4, Math.min(Math.abs(p.amount) / 500, 1.2))
 
         // Add marker for each point
         if (markerLayer) {
@@ -214,9 +187,15 @@ const updateHeatmap = () => {
     }
 }
 
-watch(data, () => {
-    updateHeatmap()
-}, { deep: true })
+watch(data, (newData) => {
+    if (newData && newData.length > 0) {
+        if (!map) {
+            initMap()
+        } else {
+            updateHeatmap()
+        }
+    }
+}, { deep: true, immediate: true })
 
 onUnmounted(() => {
     if (map) {

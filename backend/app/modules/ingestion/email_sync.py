@@ -13,6 +13,37 @@ from backend.app.modules.ingestion.services import IngestionService
 
 class EmailSyncService:
     @staticmethod
+    def run_sync_task_in_background(
+        tenant_id: str, 
+        config_id: str, 
+        imap_server: str, 
+        email_user: str, 
+        email_pass: str,
+        folder: str = "INBOX",
+        search_criterion: str = 'UNSEEN',
+        since_date: Optional[datetime] = None
+    ):
+        from backend.app.core.database import SessionLocal
+        import logging
+        db = SessionLocal()
+        try:
+            EmailSyncService.sync_emails(
+                db=db,
+                tenant_id=tenant_id,
+                config_id=config_id,
+                imap_server=imap_server,
+                email_user=email_user,
+                email_pass=email_pass,
+                folder=folder,
+                search_criterion=search_criterion,
+                since_date=since_date
+            )
+        except Exception as e:
+            logging.error(f"Background Sync Error: {e}")
+        finally:
+            db.close()
+
+    @staticmethod
     def sync_emails(
         db: Session, 
         tenant_id: str, 
@@ -63,6 +94,8 @@ class EmailSyncService:
 
             email_ids = messages[0].split()
             stats["total_fetched"] = len(email_ids)
+
+            batch_queue = []
 
             for e_id in email_ids:
                 try:
@@ -156,102 +189,122 @@ class EmailSyncService:
                                 stats["errors"].append(f"Skipped noise: {subject[:30]}...")
                                 continue
 
-                            # Parse via External Microservice
-                            from backend.app.modules.ingestion.parser_service import ExternalParserService
-                            from backend.app.modules.ingestion.base import ParsedTransaction
-
+                            # Enqueue for batch analysis
                             sender_id = msg.get("From")
-                            parser_response = ExternalParserService.parse_email(tenant_id, subject, body, sender_id)
+                            batch_queue.append({
+                                "id": e_id.decode() if isinstance(e_id, bytes) else str(e_id),
+                                "subject": subject,
+                                "body_text": body,
+                                "sender": sender_id,
+                                "received_at": email_date
+                            })
                             
-                            status = parser_response.get("status") if parser_response else "offline"
-                            
-                            if parser_response and status in ["processed", "success", "duplicate_submission"]:
-                                if status == "duplicate_submission":
-                                    continue
-
-                                results = parser_response.get("results", [])
-                                if not results:
-                                    stats["failed"] += 1
-                                    stats["errors"].append(f"No transactions found in email: {subject[:30]}")
-                                    continue
-                                    
-                                for item in results:
-                                    t = item.get("transaction")
-                                    if not t: continue
-                                    
-                                    # Robust Date Parsing
-                                    raw_date = t.get("date") or ""
-                                    try:
-                                        parsed_date = timezone.ensure_utc(datetime.fromisoformat(raw_date.replace("Z", "+00:00")))
-                                    except:
-                                        parsed_date = timezone.ensure_utc(email_date) if email_date else timezone.utcnow()
-
-                                    # Map to ParsedTransaction
-                                    parsed = ParsedTransaction(
-                                        amount=t.get("amount"),
-                                        date=parsed_date,
-                                        description=t.get("description") or subject,
-                                        type=t.get("type"),
-                                        account_mask=t.get("account", {}).get("mask"),
-                                        recipient=t.get("recipient") or t.get("merchant", {}).get("cleaned"),
-                                        category=t.get("category"),
-                                        ref_id=t.get("ref_id"),
-                                        balance=t.get("balance"),
-                                        credit_limit=t.get("credit_limit"),
-                                        raw_message=t.get("raw_message") or body,
-                                        source="EMAIL",
-                                        is_ai_parsed=item.get("metadata", {}).get("parser_used") == "AI"
-                                    )
-                                    
-                                    result = IngestionService.process_transaction(db, tenant_id, parsed)
-                                    status = result.get("status")
-                                    
-                                    if status in ["success", "triaged"]:
-                                        stats["processed"] += 1
-                                    elif result.get("deduplicated"):
-                                        pass
-                                    else:
-                                        stats["failed"] += 1
-                                        reason = result.get('message') or result.get('reason') or "Unknown Error"
-                                        err_msg = f"Ingestion failed for '{subject[:30]}...': {reason}"
-                                        stats["errors"].append(err_msg)
-                            else:
-                                stats["failed"] += 1
-                                err_msg = f"External parser failed for: {subject[:30]}..."
-                                stats["errors"].append(err_msg)
-                                
-                                # --- INTERACTIVE TRAINING CAPTURE ---
-                                # Check for transaction-related keywords with more precision
-                                # We skip emails that matched the QUICK FILTER above (noise_keywords)
-                                keywords = ["bill", "mutual fund", "paid", "upi", "spent", "debited", "vpa", "txn", "transaction", "amount"]
-                                combined_text = (subject + " " + body).lower()
-                                
-                                # Use a regex to check for currency-like patterns
-                                has_money = bool(re.search(r'(?i)(?:Rs\.?|INR|₹)\s*[\d,]+', combined_text))
-                                
-                                # Re-run noise check here just in case (though it should have been caught in QUICK FILTER)
-                                is_noise = any(nk in combined_text for nk in noise_keywords)
-                                
-                                if not is_noise and (any(k in combined_text for k in keywords) or has_money):
-                                    IngestionService.capture_unparsed(
-                                        db=db,
-                                        tenant_id=tenant_id,
-                                        source="EMAIL",
-                                        raw_content=f"Subject: {subject}\nBody: {body}",
-                                        subject=subject,
-                                        sender=msg.get("From")
-                                    )
-                                
-                                # Print body snippet for debugging
-                                if any(k in combined_text for k in ["txn", "upi", "hdfc", "spent", "debited", "transaction"]):
-                                    clean_body = body.replace("\n", " ").strip()
-
                 except Exception as e:
-                    stats["errors"].append(f"Error processing message {e_id}: {str(e)}")
+                    stats["errors"].append(f"Error extracting message {e_id}: {str(e)}")
                     stats["failed"] += 1
 
             mail.close()
             mail.logout()
+
+            # --- PROCESS ACCUMULATED BATCH ---
+            if batch_queue:
+                # Deferred internal imports to prevent circular dependency at module initialisation
+                from backend.app.modules.ingestion.parser_service import ExternalParserService
+                from backend.app.modules.ingestion.base import ParsedTransaction
+                
+                chunk_size = 50
+                for i in range(0, len(batch_queue), chunk_size):
+                    chunk = batch_queue[i:i+chunk_size]
+                    
+                    parser_response = ExternalParserService.parse_email_batch(tenant_id, chunk)
+                    if not parser_response:
+                        stats["failed"] += len(chunk)
+                        stats["errors"].append(f"External Batch parser completely failed for {len(chunk)} emails.")
+                        continue
+                        
+                    results_map = parser_response.get("results", {})
+                    
+                    for item in chunk:
+                        e_id = item["id"]
+                        subject = item["subject"]
+                        body = item["body_text"]
+                        email_date = item["received_at"]
+                        sender_id = item["sender"]
+                        
+                        res = results_map.get(e_id)
+                        status = res.get("status") if res else "offline"
+                        
+                        if res and status in ["processed", "success", "duplicate_submission"]:
+                            if status == "duplicate_submission":
+                                continue
+                            
+                            logs = res.get("logs", [])
+                            if any("quota_exhausted" in log for log in logs) or any("API Key missing" in log for log in logs):
+                                stats["errors"].append("Rate Limit or API Key error detected inside batch.")
+                                # We continue since the batch is already resolved, no need to break
+
+                            results = res.get("results", [])
+                            if not results:
+                                stats["failed"] += 1
+                                stats["errors"].append(f"No transactions found in email: {subject[:30]}")
+                                continue
+                                
+                            for parsed_item in results:
+                                t = parsed_item.get("transaction")
+                                if not t: continue
+                                
+                                # Date Parsing
+                                raw_date = t.get("date") or ""
+                                try:
+                                    parsed_date = timezone.ensure_utc(datetime.fromisoformat(raw_date.replace("Z", "+00:00")))
+                                except:
+                                    parsed_date = timezone.ensure_utc(email_date) if email_date else timezone.utcnow()
+
+                                parsed = ParsedTransaction(
+                                    amount=t.get("amount"),
+                                    date=parsed_date,
+                                    description=t.get("description") or subject,
+                                    type=t.get("type"),
+                                    account_mask=t.get("account", {}).get("mask"),
+                                    recipient=t.get("recipient") or t.get("merchant", {}).get("cleaned"),
+                                    category=t.get("category"),
+                                    ref_id=t.get("ref_id"),
+                                    balance=t.get("balance"),
+                                    credit_limit=t.get("credit_limit"),
+                                    raw_message=t.get("raw_message") or body,
+                                    source="EMAIL",
+                                    is_ai_parsed=parsed_item.get("metadata", {}).get("parser_used") == "AI Batch"
+                                )
+                                
+                                proc_result = IngestionService.process_transaction(db, tenant_id, parsed)
+                                p_status = proc_result.get("status")
+                                
+                                if p_status in ["success", "triaged"]:
+                                    stats["processed"] += 1
+                                elif proc_result.get("deduplicated"):
+                                    pass
+                                else:
+                                    stats["failed"] += 1
+                                    reason = proc_result.get('message') or proc_result.get('reason') or "Unknown Error"
+                                    stats["errors"].append(f"Ingestion failed for '{subject[:30]}...': {reason}")
+                        else:
+                            stats["failed"] += 1
+                            stats["errors"].append(f"Parser failed to extract: {subject[:30]}...")
+                            
+                            keywords = ["bill", "mutual fund", "paid", "upi", "spent", "debited", "vpa", "txn", "transaction", "amount"]
+                            combined_text = (subject + " " + body).lower()
+                            has_money = bool(re.search(r'(?i)(?:Rs\.?|INR|₹)\s*[\d,]+', combined_text))
+                            
+                            # The Quick Filter handled explicit noise checking earlier
+                            if (any(k in combined_text for k in keywords) or has_money):
+                                IngestionService.capture_unparsed(
+                                    db=db,
+                                    tenant_id=tenant_id,
+                                    source="EMAIL",
+                                    raw_content=f"Subject: {subject}\nBody: {body}",
+                                    subject=subject,
+                                    sender=sender_id
+                                )
 
             # Update Log Success
             if log_entry:

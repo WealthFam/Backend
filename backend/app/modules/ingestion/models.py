@@ -61,7 +61,6 @@ class PendingTransaction(Base):
     balance_is_synced = Column(Boolean, default=False, nullable=False) # True if account balance was updated at ingestion
     latitude = Column(Numeric(10, 8), nullable=True)
     longitude = Column(Numeric(11, 8), nullable=True)
-    location_name = Column(String, nullable=True)
     expense_group_id = Column(String, nullable=True) # No FK to keep ingestion decoupled
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
@@ -92,6 +91,8 @@ class UnparsedMessage(Base):
     content_hash = Column(String, nullable=True, index=True)
     subject = Column(String, nullable=True)
     sender = Column(String, nullable=True)
+    latitude = Column(Numeric(10, 8), nullable=True)
+    longitude = Column(Numeric(11, 8), nullable=True)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class ParsingPattern(Base):
@@ -164,3 +165,14 @@ class AIInsightCache(Base):
     content = Column(String, nullable=False) # Storing the JSON response as string
     created_at = Column(UTCDateTime, default=timezone.utcnow)
     updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
+
+class SpamFilter(Base):
+    __tablename__ = "spam_filters"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    sender = Column(String, nullable=True, index=True)
+    subject = Column(String, nullable=True, index=True)
+    source = Column(String, nullable=True) # SMS, EMAIL, ALL
+    count_blocked = Column(Numeric(10, 0), default=0) # Track how many were caught
+    created_at = Column(UTCDateTime, default=timezone.utcnow)

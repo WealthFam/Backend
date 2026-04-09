@@ -161,13 +161,7 @@ class GeminiProvider:
                     except Exception as cache_err:
                         logger.error(f"Error parsing cached insights: {cache_err}")
 
-                return [{
-                    "id": "ai_quota",
-                    "type": "warning",
-                    "title": "AI Quota Exceeded",
-                    "content": "You've hit the usage limit. Showing default insights until quota refreshes.",
-                    "icon": "hourglass_empty"
-                }]
+                return None
             elif e.code in [400, 401, 403]:
                 logger.error(f"Gemini structured insights: Auth error {e.code}")
                 return [{
@@ -197,13 +191,7 @@ class GeminiProvider:
                 except Exception as cache_err:
                     logger.error(f"Error parsing cached insights: {cache_err}")
             
-            return [{
-                "id": "ai_quota",
-                "type": "warning",
-                "title": "AI Quota Exceeded",
-                "content": "You've hit the usage limit. Showing default insights until quota refreshes.",
-                "icon": "hourglass_empty"
-            }]
+            return None
         except (InvalidArgument, Unauthenticated):
             logger.error("Gemini structured insights: InvalidArgument or Unauthenticated")
             return [{
@@ -317,6 +305,43 @@ class GeminiProvider:
                 return json.loads(text[start:end])
         except Exception as e:
             logger.error(f"Gemini batch_clean_merchant_names error: {e}")
+            return None
+
+    def auto_parse_transaction(self, config: ingestion_models.AIConfiguration, content: str) -> Optional[Dict[str, Any]]:
+        if not config.api_key or not content:
+            return None
+        
+        client = genai.Client(api_key=config.api_key)
+        model_id = config.model_name or "gemini-1.5-flash"
+        if not model_id.startswith("models/"):
+            model_id = f"models/{model_id}"
+        
+        # Get custom prompt if available, else use default
+        prompts = json.loads(config.prompts_json or "{}")
+        base_prompt = prompts.get("parsing", (
+            "Extract transaction details from the following message. "
+            "Return exactly one JSON object with: "
+            "amount (number), date (ISO 8601 string), recipient (string), account_mask (last 4 digits), ref_id (string or null), type (DEBIT/CREDIT)."
+        ))
+        
+        try:
+            logger.info(f"Gemini auto-parsing transaction with model: {model_id}")
+            response = client.models.generate_content(
+                model=model_id,
+                contents=f"{base_prompt}\n\nRAW MESSAGE:\n{content}\n\nRESPONSE FORMAT: Single JSON Object."
+            )
+            if not response or not response.text:
+                return None
+            
+            text = response.text
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            if start != -1 and end != 0:
+                return json.loads(text[start:end])
+        except ClientError:
+            raise
+        except Exception as e:
+            logger.error(f"Gemini auto_parse_transaction error: {e}")
             return None
 
 class AIService:
@@ -464,6 +489,22 @@ class AIService:
         data_str = json.dumps(loans_data, indent=2, default=str)
         
         return provider.generate_loans_overview_advice(config, data_str)
+
+    @classmethod
+    def auto_parse_transaction(cls, db: Session, tenant_id: str, content: str) -> Optional[Dict[str, Any]]:
+        config = db.query(ingestion_models.AIConfiguration).filter(
+            ingestion_models.AIConfiguration.tenant_id == tenant_id,
+            ingestion_models.AIConfiguration.is_enabled == True
+        ).first()
+
+        if not config:
+            return None
+
+        provider = cls._providers.get(config.provider.lower())
+        if not provider or not hasattr(provider, 'auto_parse_transaction'):
+            return None
+
+        return provider.auto_parse_transaction(config, content)
 
     @classmethod
     def clean_merchant_names(cls, db: Session, tenant_id: str, descriptions: List[str]) -> Dict[str, str]:

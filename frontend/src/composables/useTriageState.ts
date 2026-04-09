@@ -30,10 +30,17 @@ export function useTriageState(
     // Training State
     const unparsedMessages = ref<any[]>([])
     const trainingPagination = ref({ total: 0, limit: 12, skip: 0 })
+    const trainingSearchQuery = ref('')
     const trainingSortKey = ref('created_at')
     const trainingSortOrder = ref<'asc' | 'desc'>('desc')
+    const trainingSenderFilter = ref<string | null>(null)
+    const trainingSubjectFilter = ref<string | null>(null)
     const selectedTrainingIds = ref<string[]>([])
     const expandedTrainingIds = ref<Set<string>>(new Set())
+
+    // Spam Filter State
+    const spamFilters = ref<any[]>([])
+    const showSpamManager = ref(false)
 
     // Modal States
     const showDiscardConfirm = ref(false)
@@ -96,7 +103,12 @@ export function useTriageState(
                 } as any),
                 financeApi.getTraining({
                     limit: trainingPagination.value.limit,
-                    skip: trainingPagination.value.skip
+                    skip: trainingPagination.value.skip,
+                    sender_filter: trainingSenderFilter.value || undefined,
+                    subject_filter: trainingSubjectFilter.value || undefined,
+                    search: trainingSearchQuery.value || undefined,
+                    sort_by: trainingSortKey.value,
+                    sort_order: trainingSortOrder.value
                 })
             ])
 
@@ -352,7 +364,7 @@ export function useTriageState(
      * Toggle select all training
      */
     function toggleSelectAllTraining() {
-        if (selectedTriageIds.value.length === unparsedMessages.value.length) {
+        if (selectedTrainingIds.value.length === unparsedMessages.value.length) {
             selectedTrainingIds.value = []
         } else {
             selectedTrainingIds.value = unparsedMessages.value.map(m => m.id)
@@ -370,9 +382,61 @@ export function useTriageState(
         }
     }
 
+    /**
+     * Mark message as spam (permanent block)
+     */
+    async function markAsSpam(id: string) {
+        try {
+            await financeApi.markAsSpam(id)
+            notify.success('Marked as spam. Future messages from this sender will be blocked.')
+            fetchTriage()
+        } catch (e) {
+            notify.error('Failed to mark as spam')
+        }
+    }
+
+    /**
+     * Fetch spam filters
+     */
+    async function fetchSpamFilters() {
+        try {
+            const res = await financeApi.getSpamFilters()
+            spamFilters.value = res // Client now returns response.data.data
+        } catch (e) {
+            console.error('Failed to fetch spam filters')
+        }
+    }
+
+    /**
+     * Remove a spam filter
+     */
+    async function removeSpamFilter(id: string) {
+        try {
+            await financeApi.deleteSpamFilter(id)
+            notify.success('Spam filter removed')
+            fetchSpamFilters()
+        } catch (e) {
+            notify.error('Failed to remove filter')
+        }
+    }
+
+    /**
+     * Find similar messages (filter by sender)
+     */
+    function findSimilar(sender: string) {
+        trainingSenderFilter.value = sender
+        trainingPagination.value.skip = 0
+        fetchTriage()
+    }
+
     // Watchers
     watch([triageSortKey, triageSortOrder], () => {
         triagePagination.value.skip = 0
+        fetchTriage()
+    })
+
+    watch([trainingSortKey, trainingSortOrder, trainingSenderFilter, trainingSubjectFilter], () => {
+        trainingPagination.value.skip = 0
         fetchTriage()
     })
 
@@ -392,6 +456,14 @@ export function useTriageState(
         }, 400)
     })
 
+    watch(trainingSearchQuery, () => {
+        if (searchDebounce) clearTimeout(searchDebounce)
+        searchDebounce = setTimeout(() => {
+            trainingPagination.value.skip = 0
+            fetchTriage()
+        }, 400)
+    })
+
     return {
         // State
         triageTransactions,
@@ -403,10 +475,15 @@ export function useTriageState(
         selectedTriageIds,
         unparsedMessages,
         trainingPagination,
+        trainingSearchQuery,
         trainingSortKey,
         trainingSortOrder,
+        trainingSenderFilter,
+        trainingSubjectFilter,
         selectedTrainingIds,
         expandedTrainingIds,
+        spamFilters,
+        showSpamManager,
         showDiscardConfirm,
         showTrainingDiscardConfirm,
         createIgnoreRule,
@@ -433,6 +510,10 @@ export function useTriageState(
         handleConfirmGlobalTrainingDismiss,
         toggleSelectAllTriage,
         toggleSelectAllTraining,
-        toggleTrainingExpand
+        toggleTrainingExpand,
+        markAsSpam,
+        fetchSpamFilters,
+        removeSpamFilter,
+        findSimilar
     }
 }

@@ -1,5 +1,5 @@
 <template>
-  <v-card class="premium-glass-card wealth-compass pa-6 overflow-hidden" rounded="xl" elevation="1">
+  <v-card class="m3-card wealth-compass pa-6 overflow-hidden h-100 d-flex flex-column" rounded="xl" elevation="1">
     <div class="d-flex justify-space-between align-center mb-6">
       <h2 class="text-h6 font-weight-black d-flex align-center">
         <Compass :size="20" class="text-primary mr-2" />
@@ -10,17 +10,12 @@
       </v-chip>
     </div>
 
-    <v-row>
+    <v-row class="flex-grow-1 align-center">
       <!-- Savings Rate -->
       <v-col cols="6" sm="3">
         <div class="compass-stat-item text-center">
-          <v-progress-circular
-            :model-value="savingsRate"
-            :size="70"
-            :width="8"
-            color="success"
-            class="mb-3 compass-progress"
-          >
+          <v-progress-circular :model-value="savingsRate" :size="70" :width="8" color="success"
+            class="mb-3 compass-progress">
             <span class="text-caption font-weight-black">{{ savingsRate }}%</span>
           </v-progress-circular>
           <div class="text-overline font-weight-black opacity-60">Savings Rate</div>
@@ -30,13 +25,8 @@
       <!-- Investment Growth -->
       <v-col cols="6" sm="3">
         <div class="compass-stat-item text-center">
-          <v-progress-circular
-            :model-value="minMax(investmentGrowth, 0, 100)"
-            :size="70"
-            :width="8"
-            color="primary"
-            class="mb-3 compass-progress"
-          >
+          <v-progress-circular :model-value="minMax(investmentGrowth, 0, 100)" :size="70" :width="8" color="primary"
+            class="mb-3 compass-progress">
             <span class="text-caption font-weight-black">{{ investmentGrowth }}%</span>
           </v-progress-circular>
           <div class="text-overline font-weight-black opacity-60">Portfolio</div>
@@ -46,13 +36,8 @@
       <!-- Debt Utility -->
       <v-col cols="6" sm="3">
         <div class="compass-stat-item text-center">
-          <v-progress-circular
-            :model-value="100 - creditUtilization"
-            :size="70"
-            :width="8"
-            color="warning"
-            class="mb-3 compass-progress"
-          >
+          <v-progress-circular :model-value="100 - creditUtilization" :size="70" :width="8" color="warning"
+            class="mb-3 compass-progress">
             <span class="text-caption font-weight-black">{{ (100 - creditUtilization).toFixed(0) }}%</span>
           </v-progress-circular>
           <div class="text-overline font-weight-black opacity-60">Credit Health</div>
@@ -62,13 +47,8 @@
       <!-- Budget Discipline -->
       <v-col cols="6" sm="3">
         <div class="compass-stat-item text-center">
-          <v-progress-circular
-            :model-value="budgetEfficiency"
-            :size="70"
-            :width="8"
-            color="info"
-            class="mb-3 compass-progress"
-          >
+          <v-progress-circular :model-value="budgetEfficiency" :size="70" :width="8" color="info"
+            class="mb-3 compass-progress">
             <span class="text-caption font-weight-black">{{ budgetEfficiency }}%</span>
           </v-progress-circular>
           <div class="text-overline font-weight-black opacity-60">Budgeting</div>
@@ -146,11 +126,5 @@ function minMax(val: number, min: number, max: number) {
   color: rgb(var(--v-theme-primary));
   z-index: 0;
   pointer-events: none;
-}
-
-.premium-glass-card {
-  background: rgba(var(--v-theme-surface), 0.6) !important;
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(var(--v-border-color), 0.1) !important;
 }
 </style>

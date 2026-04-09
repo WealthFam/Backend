@@ -19,11 +19,22 @@
                     <div class="glass-card border rounded-pill d-flex align-center pa-1 shadow-sm"
                         style="background: rgba(var(--v-theme-surface), 0.5)">
                         <v-btn variant="text" size="small" rounded="pill" color="primary"
+                            class="text-none font-weight-black px-4" @click="rulesStore.applyAllRules"
+                            :loading="rulesStore.loading">
+                            <template v-slot:prepend>
+                                <Zap :size="14" />
+                            </template>
+                            Bulk Apply
+                            <v-tooltip activator="parent" location="top">Run all rules against transaction history</v-tooltip>
+                        </v-btn>
+                        <v-divider vertical class="mx-1 my-1 opacity-10" />
+                        <v-btn variant="text" size="small" rounded="pill" color="primary"
                             class="text-none font-weight-black px-4" @click="rulesStore.exportRules">
                             <template v-slot:prepend>
                                 <Download :size="14" />
                             </template>
                             Export
+                            <v-tooltip activator="parent" location="top">Export rules to JSON</v-tooltip>
                         </v-btn>
                         <v-divider vertical class="mx-1 my-1 opacity-10" />
                         <v-btn variant="text" size="small" rounded="pill" color="primary"
@@ -32,6 +43,7 @@
                                 <Upload :size="14" />
                             </template>
                             Import
+                            <v-tooltip activator="parent" location="top">Import rules from JSON</v-tooltip>
                             <input type="file" ref="ruleFileInput" class="d-none" accept=".json"
                                 @change="handleRuleImport" />
                         </v-btn>
@@ -202,6 +214,10 @@
                                     class="font-weight-black border elevation-1" label>
                                     {{ categoriesStore.getCategoryDisplay(rule.category) }}
                                 </v-chip>
+                                <v-chip v-if="rule.is_transfer" density="compact" size="small" variant="flat"
+                                    color="secondary" class="font-weight-black border elevation-1 ml-1" label>
+                                    <Shuffle :size="10" class="mr-1" /> Transfer
+                                </v-chip>
                             </div>
                         </div>
 
@@ -226,21 +242,41 @@
 
                     <!-- Bottom Actions -->
                     <div class="px-4 py-3 d-flex align-center justify-space-between bg-transparent">
-                        <v-btn variant="tonal" color="primary" class="rounded-lg font-weight-black text-none"
-                            height="32" @click="handleApplyRuleRetrospectively(rule.id)">
-                            <template v-slot:prepend>
-                                <Zap :size="14" />
-                            </template>
-                            Apply
-                        </v-btn>
                         <div class="d-flex ga-1">
+                            <v-btn variant="tonal" color="primary" class="rounded-lg font-weight-black text-none"
+                                height="32" @click="handleApplyRuleRetrospectively(rule.id)">
+                                <template v-slot:prepend>
+                                    <Zap :size="14" />
+                                </template>
+                                Apply
+                                <v-tooltip activator="parent" location="top">Apply this rule to history</v-tooltip>
+                            </v-btn>
+                            <v-btn variant="text" size="small" color="medium-emphasis" class="rounded-lg border-thin"
+                                style="min-width: 32px; width: 32px;" @click="updatePriority(rule, 1)">
+                                <ArrowUp :size="14" />
+                                <v-tooltip activator="parent" location="top">Increase Priority</v-tooltip>
+                            </v-btn>
+                            <v-btn variant="text" size="small" color="medium-emphasis" class="rounded-lg border-thin"
+                                style="min-width: 32px; width: 32px;" @click="updatePriority(rule, -1)">
+                                <ArrowDown :size="14" />
+                                <v-tooltip activator="parent" location="top">Decrease Priority</v-tooltip>
+                            </v-btn>
+                        </div>
+                        <div class="d-flex ga-1">
+                            <v-btn icon variant="text" size="small" color="primary"
+                                class="rounded-lg border-thin" @click="duplicateRule(rule)">
+                                <Copy :size="16" />
+                                <v-tooltip activator="parent" location="top">Duplicate Rule</v-tooltip>
+                            </v-btn>
                             <v-btn icon variant="text" size="small" color="medium-emphasis"
                                 class="rounded-lg border-thin" @click="openEditRuleModal(rule)">
                                 <Pencil :size="16" />
+                                <v-tooltip activator="parent" location="top">Edit Rule</v-tooltip>
                             </v-btn>
                             <v-btn icon variant="text" size="small" color="error" class="rounded-lg border-thin"
                                 @click="deleteRule(rule.id)">
                                 <Trash2 :size="16" />
+                                <v-tooltip activator="parent" location="top">Delete Rule</v-tooltip>
                             </v-btn>
                         </div>
                     </div>
@@ -288,23 +324,108 @@
                             <!-- Configuration Section -->
                             <v-card variant="flat" rounded="xl" class="bg-background border-thin pa-4">
                                 <div class="d-flex flex-column ga-4">
-                                    <v-select v-model="newRule.category" label="Target Category" variant="solo-filled"
+                                    <v-autocomplete v-model="newRule.category" label="Target Category" variant="solo-filled"
                                         flat rounded="lg" hide-details density="compact"
                                         :items="categoriesStore.categories.map(c => ({ title: `${c.icon || '🏷️'} ${c.name}`, value: c.name }))"
-                                        placeholder="Select Category" required class="font-weight-bold"
+                                        placeholder="Select Category" :required="!newRule.is_transfer" class="font-weight-bold"
                                         bg-color="surface">
                                         <template v-slot:prepend-inner>
                                             <Folder :size="16" class="text-primary mr-1 opacity-70" />
                                         </template>
-                                    </v-select>
+                                    </v-autocomplete>
 
-                                    <v-textarea v-model="newRule.keywords" label="Trigger Keywords (Comma separated)"
-                                        variant="solo-filled" flat rounded="lg" hide-details density="compact"
-                                        placeholder="swiggy, zomato, food delivery" rows="3" class="font-weight-bold"
-                                        bg-color="surface" />
+                                    <v-combobox v-model="newRule.keywords" label="Trigger Keywords" multiple chips
+                                        closable-chips variant="solo-filled" flat rounded="lg" hide-details
+                                        density="compact" placeholder="Press enter to add keywords"
+                                        class="font-weight-bold" bg-color="surface">
+                                        <template v-slot:prepend-inner>
+                                            <Zap :size="16" class="text-primary mr-1 opacity-70" />
+                                        </template>
+                                        <template v-slot:selection="{ item }">
+                                            <v-chip size="small" color="primary" variant="flat"
+                                                class="font-mono font-weight-black elevation-1">
+                                                {{ item.raw }}
+                                            </v-chip>
+                                        </template>
+                                    </v-combobox>
+
                                     <div
                                         class="text-tiny font-weight-black opacity-50 text-uppercase letter-spacing-1 mt-n2 px-1">
                                         Matches any description containing these terms.
+                                    </div>
+                                </div>
+                            </v-card>
+                            <!-- Advanced Logic Section -->
+                            <v-card variant="flat" rounded="xl" class="bg-background border-thin pa-4">
+                                <div class="d-flex flex-column ga-4">
+                                    <div class="d-flex align-center justify-space-between">
+                                        <div class="text-subtitle-2 font-weight-black text-primary d-flex align-center ga-2">
+                                            Test Precision
+                                            <v-chip size="x-small" color="primary" variant="tonal" class="font-weight-black">ALPHA</v-chip>
+                                        </div>
+                                        <v-btn variant="tonal" size="small" rounded="pill" color="primary"
+                                            class="text-none font-weight-black" @click="testCurrentLogic"
+                                            :disabled="!newRule.keywords.length">
+                                            <template v-slot:prepend>
+                                                <Zap :size="14" />
+                                            </template>
+                                            Test Logic
+                                        </v-btn>
+                                    </div>
+
+                                    <v-expand-transition>
+                                        <div v-if="testingLogic" class="py-2">
+                                            <v-progress-linear indeterminate color="primary" height="2" rounded />
+                                        </div>
+                                        <div v-else-if="testResultCount !== null" class="bg-surface pa-3 rounded-lg border-thin">
+                                            <div class="d-flex align-center justify-space-between mb-2">
+                                                <span class="text-tiny font-weight-black opacity-50 uppercase">Match Results</span>
+                                                <v-chip size="x-small" :color="testResultCount > 0 ? 'success' : 'warning'" variant="flat">
+                                                    {{ testResultCount }} matches
+                                                </v-chip>
+                                            </div>
+                                            <div v-if="testResultCount > 0" class="text-tiny font-weight-medium opacity-70">
+                                                This rule will categorize {{ testResultCount }} transactions.
+                                            </div>
+                                            <div v-else class="text-tiny font-weight-medium text-warning">
+                                                No transactions found with these keywords.
+                                            </div>
+                                        </div>
+                                    </v-expand-transition>
+
+                                    <v-divider class="my-1 opacity-5" />
+
+                                    <div class="d-flex align-center justify-space-between">
+                                        <div class="text-subtitle-2 font-weight-black">Is Transfer?</div>
+                                        <v-switch v-model="newRule.is_transfer" color="secondary" inset hide-details
+                                            density="compact" />
+                                    </div>
+
+                                    <v-expand-transition>
+                                        <div v-if="newRule.is_transfer">
+                                            <v-autocomplete v-model="newRule.to_account_id" label="Destination Account"
+                                                variant="solo-filled" flat rounded="lg" hide-details density="compact"
+                                                :items="financeStore.accounts.map(a => ({ title: a.name, value: a.id }))"
+                                                placeholder="Select Destination" required class="font-weight-bold"
+                                                bg-color="surface">
+                                                <template v-slot:prepend-inner>
+                                                    <CreditCard :size="16" class="text-secondary mr-1 opacity-70" />
+                                                </template>
+                                            </v-autocomplete>
+                                        </div>
+                                    </v-expand-transition>
+
+                                    <div class="d-flex align-center ga-3">
+                                        <div class="text-subtitle-2 font-weight-black shrink-0">Priority</div>
+                                        <v-slider v-model="newRule.priority" :min="0" :max="100" :step="1" hide-details
+                                            color="primary" class="flex-grow-1">
+                                            <template v-slot:append>
+                                                <div class="text-caption font-weight-black bg-surface px-2 py-1 rounded border-thin"
+                                                    style="min-width: 40px; text-align: center;">
+                                                    {{ newRule.priority }}
+                                                </div>
+                                            </template>
+                                        </v-slider>
                                     </div>
                                 </div>
                             </v-card>
@@ -473,10 +594,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRulesStore } from '@/stores/finance/rules'
-import { useCategoriesStore } from '@/stores/finance/categories'
-import { useNotificationStore } from '@/stores/notification'
 import {
     Search,
     Plus,
@@ -492,11 +609,24 @@ import {
     FileText,
     Download,
     Upload,
-    Folder
+    Folder,
+    ArrowUp,
+    ArrowDown,
+    CreditCard,
+    Shuffle,
+    Copy
 } from 'lucide-vue-next'
+import { ref, onMounted } from 'vue'
+
+import { useRulesStore, type Rule, type RuleSuggestion } from '@/stores/finance/rules'
+import { useCategoriesStore } from '@/stores/finance/categories'
+import { useFinanceStore } from '@/stores/finance'
+import { useNotificationStore } from '@/stores/notification'
+import { financeApi } from '@/api/client'
 
 const rulesStore = useRulesStore()
 const categoriesStore = useCategoriesStore()
+const financeStore = useFinanceStore()
 const notify = useNotificationStore()
 
 // Local UI State (Modals)
@@ -512,7 +642,10 @@ const editingRuleId = ref<string | null>(null)
 const newRule = ref({
     name: '',
     category: '',
-    keywords: '',
+    keywords: [] as string[],
+    priority: 10,
+    is_transfer: false,
+    to_account_id: '',
     exclude_from_reports: false
 })
 
@@ -527,36 +660,99 @@ onMounted(() => {
 function openAddRuleModal() {
     isEditingRule.value = false
     editingRuleId.value = null
-    newRule.value = { name: '', category: '', keywords: '', exclude_from_reports: false }
-    showRuleModal.value = true
-}
-
-function openEditRuleModal(rule: any) {
-    isEditingRule.value = true
-    editingRuleId.value = rule.id
+    testResultCount.value = null
     newRule.value = {
-        name: rule.name,
-        category: rule.category,
-        keywords: rule.keywords.join(', '),
-        exclude_from_reports: rule.exclude_from_reports || false
-    }
-    showRuleModal.value = true
-}
-
-function openSuggestionModal(s: any) {
-    isEditingRule.value = false
-    editingRuleId.value = null
-    newRule.value = {
-        name: s.name,
-        category: s.category,
-        keywords: s.keywords.join(', '),
+        name: '',
+        category: '',
+        keywords: [],
+        priority: 10,
+        is_transfer: false,
+        to_account_id: '',
         exclude_from_reports: false
     }
     showRuleModal.value = true
 }
 
+function duplicateRule(rule: Rule) {
+    isEditingRule.value = false
+    editingRuleId.value = null
+    testResultCount.value = null
+    newRule.value = {
+        name: `${rule.name} (Copy)`,
+        category: rule.category,
+        keywords: [...rule.keywords],
+        priority: rule.priority,
+        is_transfer: rule.is_transfer,
+        to_account_id: rule.to_account_id || '',
+        exclude_from_reports: rule.exclude_from_reports || false
+    }
+    showRuleModal.value = true
+}
+
+function openEditRuleModal(rule: Rule) {
+    isEditingRule.value = true
+    editingRuleId.value = rule.id
+    testResultCount.value = null
+    newRule.value = {
+        name: rule.name,
+        category: rule.category,
+        keywords: Array.isArray(rule.keywords) ? [...rule.keywords] : (rule.keywords as string).split(','),
+        priority: rule.priority || 10,
+        is_transfer: rule.is_transfer || false,
+        to_account_id: rule.to_account_id || '',
+        exclude_from_reports: rule.exclude_from_reports || false
+    }
+    showRuleModal.value = true
+}
+
+function openSuggestionModal(s: RuleSuggestion) {
+    isEditingRule.value = false
+    editingRuleId.value = null
+    testResultCount.value = null
+    newRule.value = {
+        name: s.name,
+        category: s.category,
+        keywords: Array.isArray(s.keywords) ? [...s.keywords] : (s.keywords as any).split(','),
+        priority: 10,
+        is_transfer: false,
+        to_account_id: '',
+        exclude_from_reports: false
+    }
+    showRuleModal.value = true
+}
+
+const testingLogic = ref(false)
+const testResultCount = ref<number | null>(null)
+
+async function testCurrentLogic() {
+    if (!newRule.value.keywords.length) return
+    testingLogic.value = true
+    try {
+        const onlyUncategorized = !rulesStore.overrideExisting
+        const res = await financeApi.getMatchCount(newRule.value.keywords, onlyUncategorized)
+        testResultCount.value = res.data.count
+    } catch (e) {
+        console.error("Test failed", e)
+    } finally {
+        testingLogic.value = false
+    }
+}
+
 async function saveRule() {
-    if (!newRule.value.name || !newRule.value.category || !newRule.value.keywords) return
+    if (!newRule.value.name || (!newRule.value.category && !newRule.value.is_transfer) || !newRule.value.keywords.length) return
+
+    // Conflict detection
+    const keywordList = Array.isArray(newRule.value.keywords) ? newRule.value.keywords : []
+    const matchingRules = rulesStore.rules.filter(r => 
+        r.id !== editingRuleId.value && 
+        r.category !== newRule.value.category &&
+        r.keywords.some((kw: string) => keywordList.includes(kw))
+    )
+
+    if (matchingRules.length > 0) {
+        const confirmMsg = `Keywords overlap with rules in: ${matchingRules.map(r => r.category).join(', ')}. Continue?`
+        if (!confirm(confirmMsg)) return
+    }
 
     if (newRule.value.exclude_from_reports) {
         showExcludeConfirm.value = true
@@ -567,11 +763,13 @@ async function saveRule() {
 }
 
 async function confirmSaveRule() {
-    const keywordList = newRule.value.keywords.split(',').map(k => k.trim())
+    const keywordList = Array.isArray(newRule.value.keywords)
+        ? newRule.value.keywords.map(k => k.trim())
+        : (newRule.value.keywords as string).split(',').map(k => k.trim())
+
     const payload = {
         ...newRule.value,
-        keywords: keywordList,
-        priority: 10
+        keywords: keywordList
     }
 
     let success = false
@@ -590,8 +788,25 @@ async function confirmSaveRule() {
     if (success) {
         showRuleModal.value = false
         showExcludeConfirm.value = false
-        newRule.value = { name: '', category: '', keywords: '', exclude_from_reports: false }
+        newRule.value = {
+            name: '',
+            category: '',
+            keywords: [],
+            priority: 10,
+            is_transfer: false,
+            to_account_id: '',
+            exclude_from_reports: false
+        }
     }
+}
+
+async function updatePriority(rule: Rule, delta: number) {
+    const newPriority = (rule.priority || 0) + delta
+    const payload = {
+        ...rule,
+        priority: newPriority
+    }
+    await rulesStore.updateRule(rule.id, payload)
 }
 
 function deleteRule(id: string) {

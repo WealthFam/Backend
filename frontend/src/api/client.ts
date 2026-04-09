@@ -20,7 +20,7 @@ apiClient.interceptors.request.use(
     async (config) => {
         const token = localStorage.getItem('access_token')
         if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token} `
+            config.headers.Authorization = `Bearer ${token}`
         }
         return config
     },
@@ -166,6 +166,8 @@ export const financeApi = {
         apiClient.get('/finance/analytics/net-worth-timeline', { params: { days, user_id: userId } }),
     getSpendingTrend: (userId?: string) =>
         apiClient.get('/finance/analytics/spending-trend', { params: { user_id: userId } }),
+    getSpendingForecast: (startDate?: string, endDate?: string, userId?: string) =>
+        apiClient.get('/finance/analytics/spending-forecast', { params: { start_date: startDate, end_date: endDate, user_id: userId } }),
     getBudgetHistory: (months: number = 6, userId?: string) =>
         apiClient.get('/finance/analytics/budget-history', { params: { months, user_id: userId } }),
     getHeatmapData: (startDate?: string, endDate?: string, userId?: string) =>
@@ -258,10 +260,16 @@ export const financeApi = {
     approveTriage: (id: string, data: { category?: string, is_transfer?: boolean, to_account_id?: string, create_rule?: boolean, exclude_from_reports?: boolean }) => apiClient.post(`/ingestion/triage/${id}/approve`, data),
     rejectTriage: (id: string, createIgnoreRule: boolean = false) => apiClient.delete(`/ingestion/triage/${id}`, { params: { create_ignore_rule: createIgnoreRule } }),
     bulkRejectTriage: (ids: string[], createIgnoreRules: boolean = false) => apiClient.post('/ingestion/triage/bulk-reject', { pending_ids: ids, create_ignore_rules: createIgnoreRules }),
-    getTraining: (params?: { limit?: number, skip?: number }) => apiClient.get('/ingestion/training', { params }),
+    getTraining: (params?: any) => apiClient.get('/ingestion/training', { params }),
     labelMessage: (id: string, data: any) => apiClient.post(`/ingestion/training/${id}/label`, data),
-    dismissTrainingMessage: (id: string, createIgnoreRule: boolean = false) => apiClient.delete(`/ingestion/training/${id}`, { params: { create_ignore_rule: createIgnoreRule } }),
-    bulkDismissTraining: (ids: string[], createIgnoreRules: boolean = false) => apiClient.post('/ingestion/training/bulk-dismiss', { message_ids: ids, create_ignore_rules: createIgnoreRules }),
+    dismissTrainingMessage: (id: string, createRule: boolean = false) => apiClient.post(`/ingestion/training/${id}/dismiss`, { create_rule: createRule }),
+    bulkDismissTraining: (ids: string[], createRule: boolean = false) => apiClient.post('/ingestion/training/bulk-dismiss', { ids, create_rule: createRule }),
+    markAsSpam: (id: string) => apiClient.post(`/ingestion/training/${id}/mark-as-spam`),
+    getSpamFilters: async (params?: { limit?: number, skip?: number }) => {
+        const response = await apiClient.get('/ingestion/training/spam', { params })
+        return response.data.data // Extract array from envelope
+    },
+    deleteSpamFilter: (id: string) => apiClient.delete(`/ingestion/training/spam/${id}`),
     syncAiToParser: () => apiClient.post('/ingestion/ai/sync-to-parser'),
     getIngestionEvents: (params?: { limit?: number, skip?: number, device_id?: string }) => apiClient.get('/ingestion/events', { params }),
     bulkDeleteEvents: (ids: string[]) => apiClient.post('/ingestion/events/bulk-delete', { event_ids: ids }),
@@ -380,7 +388,8 @@ export const aiApi = {
     generateSummaryInsights: (summary_data: any) => apiClient.post('/ingestion/ai/generate-insights', { summary_data }, { skipNotification: true }),
     getAliases: () => apiClient.get('/ingestion/ai/aliases'),
     createAlias: (pattern: string, alias: string) => apiClient.post('/ingestion/ai/aliases', { pattern, alias }),
-    deleteAlias: (id: string) => apiClient.delete(`/ingestion/ai/aliases/${id}`)
+    deleteAlias: (id: string) => apiClient.delete(`/ingestion/ai/aliases/${id}`),
+    autoParseTrainingMessage: (id: string) => apiClient.post(`/ingestion/ai/training/${id}/auto-parse`)
 }
 
 export const mobileApi = {

@@ -1,179 +1,3 @@
-<script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import MainLayout from '@/layouts/MainLayout.vue'
-import { useRoute } from 'vue-router'
-
-import ImportModal from '@/components/ImportModal.vue'
-import SmartPromptModal from '@/components/SmartPromptModal.vue'
-
-import SpendingHeatmap from '@/components/SpendingHeatmap.vue'
-import TransactionList from './transactions/TransactionList.vue'
-import TransactionTriage from './transactions/TransactionTriage.vue'
-import TransactionModal from './transactions/TransactionModal.vue'
-import VendorInsightsModal from '@/components/transactions/VendorInsightsModal.vue'
-import {
-    LayoutList,
-    Inbox,
-    Map as MapIcon
-} from 'lucide-vue-next'
-
-
-// Composables
-
-import { useTransactionState } from '@/composables/useTransactionState'
-import { useTriageState } from '@/composables/useTriageState'
-import { useTransactionModals } from '@/composables/useTransactionModals'
-import { useAuthStore } from '@/stores/auth'
-import { useFinanceStore } from '@/stores/finance'
-import { useBudgetStore } from '@/stores/finance/budgets'
-import { useExpenseGroupStore } from '@/stores/expenseGroups'
-
-// Global State
-const route = useRoute()
-const financeStore = useFinanceStore()
-const budgetStore = useBudgetStore()
-const groupStore = useExpenseGroupStore()
-
-// Master Data (shared across composables, backed by stores)
-const accounts = computed(() => financeStore.accounts)
-const categories = computed(() => financeStore.categories)
-const budgets = computed(() => budgetStore.budgets)
-const expenseGroups = computed(() => groupStore.groups)
-
-// UI State
-const showImportModal = ref(false)
-const activeTab = ref<'list' | 'analytics' | 'triage' | 'heatmap'>('list')
-const activeTriageSubTab = ref<'pending' | 'training'>('pending')
-
-
-
-// Smart Categorization Modal (shared between composables)
-const showSmartPrompt = ref(false)
-const smartPromptData = ref({
-    txnId: '',
-    category: '',
-    pattern: '',
-    count: 0,
-    createRule: true,
-    applyToSimilar: true,
-    excludeFromReports: false
-})
-
-const showVendorModal = ref(false)
-const selectedVendorForInsights = ref('')
-
-function openVendorInsights(name: string) {
-    selectedVendorForInsights.value = name
-    showVendorModal.value = true
-}
-
-
-
-// Initialize Transaction State Composable
-const {
-    transactions,
-    loading,
-    total,
-    metrics,
-    selectedAccount,
-    searchQuery,
-    categoryFilter,
-    startDate,
-    endDate,
-    selectedTimeRange,
-
-    page,
-    pageSize,
-    txnSortKey,
-    txnSortOrder,
-    selectedIds,
-    showDeleteConfirm,
-    fetchData,
-    fetchModalData, // [NEW] Lazy load budgets/loans
-    handleTimeRangeChange,
-    toggleTxnSort,
-    refreshAccounts,
-    confirmDelete
-} = useTransactionState(route, accounts)
-
-const {
-    triageTransactions,
-    triagePagination,
-    triageSearchQuery,
-    triageSourceFilter,
-    triageSortKey,
-    triageSortOrder,
-    selectedTriageIds,
-    unparsedMessages,
-    trainingPagination,
-    trainingSortKey,
-    trainingSortOrder,
-    selectedTrainingIds,
-    fetchTriage,
-    approveTriage,
-    rejectTriage,
-    handleBulkRejectTriage,
-    startLabeling,
-    dismissTraining,
-    handleBulkDismissTraining,
-    showLabelForm,
-    labelForm,
-    handleLabelSubmit,
-    selectedMessage,
-    // Confirmation States
-    showDiscardConfirm,
-    showTrainingDiscardConfirm,
-    createIgnoreRule,
-    triageIdToDiscard,
-    trainingIdToDiscard,
-    // Methods
-    confirmDiscard,
-    confirmTrainingDiscard,
-    handleConfirmGlobalTrainingDismiss
-} = useTriageState(accounts, categories, showSmartPrompt, smartPromptData, fetchData)
-
-// Initialize Modals Composable
-const {
-    showModal,
-    isEditing,
-    potentialMatches,
-    isSearchingMatches,
-    matchesSearched,
-    form,
-    openEditModal,
-    handleSubmit,
-    handleSmartCategorize,
-    findMatches,
-    selectMatch
-} = useTransactionModals(selectedAccount, accounts, budgets, transactions, fetchData, showSmartPrompt,
-    smartPromptData, refreshAccounts)
-
-
-// Search debounce
-let searchDebounce: any = null
-watch(searchQuery, () => {
-    if (searchDebounce) clearTimeout(searchDebounce)
-    searchDebounce = setTimeout(() => {
-        page.value = 1
-        fetchData()
-    }, 400)
-})
-
-// Watch for global member filter changes
-const auth = useAuthStore()
-watch(() => auth.selectedMemberId, () => {
-    // Reset page and re-fetch. Stores handle their own member-specific caching/resets.
-    page.value = 1
-    fetchData()
-    fetchTriage()
-})
-
-onMounted(() => {
-    fetchData()
-    fetchTriage() // Pre-fetch count
-})
-</script>
-
 <template>
     <MainLayout>
         <v-container fluid class="page-container dashboard-page">
@@ -208,13 +32,23 @@ onMounted(() => {
                                         <span>List</span>
                                     </div>
                                 </v-tab>
-                                <v-tab value="triage" class="premium-tab" rounded="xl" @click="fetchTriage">
+                                <v-tab value="pending" class="premium-tab" rounded="xl" @click="fetchTriage">
                                     <div class="d-flex align-center gap-2">
                                         <Inbox :size="16" />
-                                        <span>Triage</span>
+                                        <span>Inbox</span>
                                         <v-chip v-if="triagePagination.total > 0" size="x-small" color="primary"
                                             class="ml-1 font-weight-black">
-                                            {{ triageTransactions.length }}
+                                            {{ triagePagination.total }}
+                                        </v-chip>
+                                    </div>
+                                </v-tab>
+                                <v-tab value="training" class="premium-tab" rounded="xl" @click="fetchTriage">
+                                    <div class="d-flex align-center gap-2">
+                                        <Target :size="16" />
+                                        <span>Training</span>
+                                        <v-chip v-if="trainingPagination.total > 0" size="x-small" color="primary"
+                                            class="ml-1 font-weight-black">
+                                            {{ trainingPagination.total }}
                                         </v-chip>
                                     </div>
                                 </v-tab>
@@ -232,11 +66,35 @@ onMounted(() => {
                 <!-- CONTENT AREA -->
                 <v-window v-model="activeTab" class="overflow-visible">
                     <v-window-item value="list">
+                        <!-- QUICK CHART ROW -->
+                        <v-card v-if="forecastData && forecastData.trend.length > 0"
+                            class="glass-card mb-6 overflow-hidden" rounded="xl">
+                            <div class="pa-5 pb-0">
+                                <div class="d-flex align-center justify-space-between">
+                                    <h3 class="text-subtitle-1 font-weight-black d-flex align-center gap-2">
+                                        <Activity :size="20" class="text-primary" />
+                                        Spending Velocity & Forecast
+                                    </h3>
+                                    <div
+                                        class="text-tiny font-weight-black bg-primary-lighten-5 px-3 py-1 rounded-pill text-primary">
+                                        AVG ₹{{ Math.round(metrics.avg_daily_spending || 0) }}/DAY
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-if="forecastData" ref="chartContainer" class="py-8"
+                                style="height: 180px; width: 100%;">
+                                <SpendingForecastChart :trend="forecastData.trend" :user-names="forecastData.user_names"
+                                    :height="120" :width="chartWidth" />
+                            </div>
+                        </v-card>
+
                         <TransactionList v-bind="{
                             transactions, accounts, categories, expenseGroups,
                             loading, total, selectedAccount, categoryFilter,
                             searchQuery, startDate, endDate, selectedTimeRange,
-                            page, pageSize, txnSortKey, txnSortOrder, metrics
+                            page, pageSize, txnSortKey, txnSortOrder, metrics,
+                            dailyTrend: forecastData?.trend
                         }" v-model:selectedIds="selectedIds"
                             @update:selectedAccount="selectedAccount = $event; page = 1; fetchData()"
                             @update:categoryFilter="categoryFilter = $event; page = 1; fetchData()"
@@ -248,18 +106,17 @@ onMounted(() => {
                             @update:pageSize="pageSize = $event; page = 1; fetchData()" @sortChange="toggleTxnSort"
                             @editTxn="(t) => { fetchModalData(); openEditModal(t) }"
                             @deleteSelected="showDeleteConfirm = true" @importCsv="showImportModal = true"
-                            @fetchData="fetchData"
-                            @showVendorInsights="openVendorInsights"
+                            @fetchData="fetchData" @showVendorInsights="openVendorInsights"
                             @resetFilters="selectedTimeRange = 'all'; startDate = ''; endDate = ''; searchQuery = ''; categoryFilter = ''; fetchData()" />
                     </v-window-item>
 
-                    <v-window-item value="triage">
+                    <v-window-item value="pending">
                         <TransactionTriage v-bind="{
-                            activeSubTab: activeTriageSubTab, accounts, categories,
+                            activeSubTab: 'pending', accounts, categories,
                             triageTransactions, triagePagination, triageSearchQuery,
                             triageSourceFilter, triageSortKey, triageSortOrder,
-                            unparsedMessages, trainingPagination, trainingSortKey,
-                            trainingSortOrder,
+                            unparsedMessages, trainingPagination, trainingSearchQuery,
+                            trainingSortKey, trainingSortOrder,
                             // Confirmation States
                             showDiscardConfirm, showTrainingDiscardConfirm, createIgnoreRule,
                             triageIdToDiscard, trainingIdToDiscard,
@@ -272,6 +129,7 @@ onMounted(() => {
                             @update:triageSortKey="triageSortKey = $event"
                             @update:triageSortOrder="triageSortOrder = $event"
                             @update:triagePagination="triagePagination = $event; fetchTriage()"
+                            @update:trainingSearchQuery="trainingSearchQuery = $event"
                             @update:trainingSortKey="trainingSortKey = $event"
                             @update:trainingSortOrder="trainingSortOrder = $event"
                             @update:trainingPagination="trainingPagination = $event; fetchTriage()"
@@ -285,7 +143,57 @@ onMounted(() => {
                             @confirmBulkDiscard="handleBulkRejectTriage"
                             @confirmBulkTrainingDiscard="handleConfirmGlobalTrainingDismiss"
                             @refreshTriage="() => { fetchTriage(); fetchData(); }"
-                            @update:showLabelForm="showLabelForm = $event" @handleLabelSubmit="handleLabelSubmit" />
+                            @update:showLabelForm="showLabelForm = $event" @handleLabelSubmit="handleLabelSubmit"
+                            :training-sender-filter="trainingSenderFilter" :training-subject-filter="trainingSubjectFilter"
+                            :spam-filters="spamFilters" :show-spam-manager="showSpamManager"
+                            @update:trainingSenderFilter="trainingSenderFilter = $event"
+                            @update:trainingSubjectFilter="trainingSubjectFilter = $event"
+                            @update:showSpamManager="showSpamManager = $event"
+                            @markAsSpam="markAsSpam" @findSimilar="findSimilar"
+                            @removeSpamFilter="removeSpamFilter" @fetchSpamFilters="fetchSpamFilters" />
+                    </v-window-item>
+
+                    <v-window-item value="training">
+                        <TransactionTriage v-bind="{
+                            activeSubTab: 'training', accounts, categories,
+                            triageTransactions, triagePagination, triageSearchQuery,
+                            triageSourceFilter, triageSortKey, triageSortOrder,
+                            unparsedMessages, trainingPagination, trainingSearchQuery,
+                            trainingSortKey, trainingSortOrder,
+                            // Confirmation States
+                            showDiscardConfirm, showTrainingDiscardConfirm, createIgnoreRule,
+                            triageIdToDiscard, trainingIdToDiscard,
+                            showLabelForm, selectedMessage, labelForm
+                        }" v-model:selectedTriageIds="selectedTriageIds"
+                            v-model:selectedTrainingIds="selectedTrainingIds"
+                            @update:activeSubTab="activeTriageSubTab = $event"
+                            @update:triageSearchQuery="triageSearchQuery = $event"
+                            @update:triageSourceFilter="triageSourceFilter = $event as any"
+                            @update:triageSortKey="triageSortKey = $event"
+                            @update:triageSortOrder="triageSortOrder = $event"
+                            @update:triagePagination="triagePagination = $event; fetchTriage()"
+                            @update:trainingSearchQuery="trainingSearchQuery = $event"
+                            @update:trainingSortKey="trainingSortKey = $event"
+                            @update:trainingSortOrder="trainingSortOrder = $event"
+                            @update:trainingPagination="trainingPagination = $event; fetchTriage()"
+                            @update:showDiscardConfirm="showDiscardConfirm = $event"
+                            @update:showTrainingDiscardConfirm="showTrainingDiscardConfirm = $event"
+                            @update:createIgnoreRule="createIgnoreRule = $event" @approveTriage="approveTriage"
+                            @rejectTriage="rejectTriage" @bulkRejectTriage="handleBulkRejectTriage"
+                            @startLabeling="startLabeling" @dismissTraining="dismissTraining"
+                            @bulkDismissTraining="handleBulkDismissTraining" @confirmDiscard="confirmDiscard"
+                            @confirmTrainingDiscard="confirmTrainingDiscard"
+                            @confirmBulkDiscard="handleBulkRejectTriage"
+                            @confirmBulkTrainingDiscard="handleConfirmGlobalTrainingDismiss"
+                            @refreshTriage="() => { fetchTriage(); fetchData(); }"
+                            @update:showLabelForm="showLabelForm = $event" @handleLabelSubmit="handleLabelSubmit"
+                            :training-sender-filter="trainingSenderFilter" :training-subject-filter="trainingSubjectFilter"
+                            :spam-filters="spamFilters" :show-spam-manager="showSpamManager"
+                            @update:trainingSenderFilter="trainingSenderFilter = $event"
+                            @update:trainingSubjectFilter="trainingSubjectFilter = $event"
+                            @update:showSpamManager="showSpamManager = $event"
+                            @markAsSpam="markAsSpam" @findSimilar="findSimilar"
+                            @removeSpamFilter="removeSpamFilter" @fetchSpamFilters="fetchSpamFilters" />
                     </v-window-item>
 
                     <v-window-item value="heatmap">
@@ -338,6 +246,212 @@ onMounted(() => {
         </v-dialog>
     </MainLayout>
 </template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, watch } from 'vue'
+import MainLayout from '@/layouts/MainLayout.vue'
+import { useRoute } from 'vue-router'
+
+import ImportModal from '@/components/ImportModal.vue'
+import SmartPromptModal from '@/components/SmartPromptModal.vue'
+
+import SpendingHeatmap from '@/components/SpendingHeatmap.vue'
+import TransactionList from './transactions/TransactionList.vue'
+import TransactionTriage from './transactions/TransactionTriage.vue'
+import TransactionModal from './transactions/TransactionModal.vue'
+import VendorInsightsModal from '@/components/transactions/VendorInsightsModal.vue'
+import {
+    LayoutList,
+    Inbox,
+    Map as MapIcon,
+    Activity,
+    Target
+} from 'lucide-vue-next'
+import SpendingForecastChart from '@/components/SpendingForecastChart.vue'
+
+
+// Composables
+
+import { useTransactionState } from '@/composables/useTransactionState'
+import { useTriageState } from '@/composables/useTriageState'
+import { useTransactionModals } from '@/composables/useTransactionModals'
+import { useAuthStore } from '@/stores/auth'
+import { useFinanceStore } from '@/stores/finance'
+import { useBudgetStore } from '@/stores/finance/budgets'
+import { useExpenseGroupStore } from '@/stores/expenseGroups'
+
+// Global State
+const route = useRoute()
+const financeStore = useFinanceStore()
+const budgetStore = useBudgetStore()
+const groupStore = useExpenseGroupStore()
+
+// Master Data (shared across composables, backed by stores)
+const accounts = computed(() => financeStore.accounts)
+const categories = computed(() => financeStore.categories)
+const budgets = computed(() => budgetStore.budgets)
+const expenseGroups = computed(() => groupStore.groups)
+
+// UI State
+const showImportModal = ref(false)
+const activeTab = ref<'list' | 'analytics' | 'pending' | 'training' | 'heatmap'>('list')
+const activeTriageSubTab = ref<'pending' | 'training'>('pending')
+
+
+
+// Smart Categorization Modal (shared between composables)
+const showSmartPrompt = ref(false)
+const smartPromptData = ref({
+    txnId: '',
+    category: '',
+    pattern: '',
+    count: 0,
+    createRule: true,
+    applyToSimilar: true,
+    excludeFromReports: false
+})
+
+const showVendorModal = ref(false)
+const selectedVendorForInsights = ref('')
+
+function openVendorInsights(name: string) {
+    selectedVendorForInsights.value = name
+    showVendorModal.value = true
+}
+
+
+
+// Initialize Transaction State Composable
+const {
+    transactions,
+    loading,
+    forecastData,
+    total,
+    metrics,
+    selectedAccount,
+    searchQuery,
+    categoryFilter,
+    startDate,
+    endDate,
+    selectedTimeRange,
+
+    page,
+    pageSize,
+    txnSortKey,
+    txnSortOrder,
+    selectedIds,
+    showDeleteConfirm,
+    fetchData,
+    fetchModalData, // [NEW] Lazy load budgets/loans
+    handleTimeRangeChange,
+    toggleTxnSort,
+    refreshAccounts,
+    confirmDelete
+} = useTransactionState(route, accounts)
+
+// Chart Responsiveness
+const chartContainer = ref<HTMLElement | null>(null)
+const chartWidth = ref(1200)
+
+watch(chartContainer, (el) => {
+    if (el) {
+        chartWidth.value = el.clientWidth
+        const observer = new ResizeObserver((entries) => {
+            if (entries[0]) {
+                chartWidth.value = entries[0].contentRect.width
+            }
+        })
+        observer.observe(el)
+    }
+})
+
+const {
+    triageTransactions,
+    triagePagination,
+    triageSearchQuery,
+    triageSourceFilter,
+    triageSortKey,
+    triageSortOrder,
+    selectedTriageIds,
+    unparsedMessages,
+    trainingPagination,
+    trainingSearchQuery,
+    trainingSortKey,
+    trainingSortOrder,
+    trainingSenderFilter,
+    trainingSubjectFilter,
+    selectedTrainingIds,
+    fetchTriage,
+    approveTriage,
+    rejectTriage,
+    handleBulkRejectTriage,
+    startLabeling,
+    dismissTraining,
+    handleBulkDismissTraining,
+    showLabelForm,
+    labelForm,
+    handleLabelSubmit,
+    selectedMessage,
+    // Spam
+    spamFilters,
+    showSpamManager,
+    markAsSpam,
+    fetchSpamFilters,
+    removeSpamFilter,
+    findSimilar,
+    // Confirmation States
+    showDiscardConfirm,
+    showTrainingDiscardConfirm,
+    createIgnoreRule,
+    triageIdToDiscard,
+    trainingIdToDiscard,
+    // Methods
+    confirmDiscard,
+    confirmTrainingDiscard,
+    handleConfirmGlobalTrainingDismiss
+} = useTriageState(accounts, categories, showSmartPrompt, smartPromptData, fetchData)
+
+// Initialize Modals Composable
+const {
+    showModal,
+    isEditing,
+    potentialMatches,
+    isSearchingMatches,
+    matchesSearched,
+    form,
+    openEditModal,
+    handleSubmit,
+    handleSmartCategorize,
+    findMatches,
+    selectMatch
+} = useTransactionModals(selectedAccount, accounts, budgets, transactions, fetchData, showSmartPrompt,
+    smartPromptData, refreshAccounts)
+
+
+// Search debounce
+let searchDebounce: ReturnType<typeof setTimeout> | null = null
+watch(searchQuery, () => {
+    if (searchDebounce) clearTimeout(searchDebounce)
+    searchDebounce = setTimeout(() => {
+        page.value = 1
+        fetchData()
+    }, 400)
+})
+
+// Watch for global member filter changes
+const auth = useAuthStore()
+watch(() => auth.selectedMemberId, () => {
+    // Reset page and re-fetch. Stores handle their own member-specific caching/resets.
+    page.value = 1
+    fetchData()
+    fetchTriage()
+})
+
+onMounted(() => {
+    fetchData()
+    fetchTriage() // Pre-fetch count
+})
+</script>
 
 <style scoped>
 .dashboard-page {

@@ -23,6 +23,7 @@ from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.ai_router import router as ai_router
 from backend.app.modules.ingestion.email_sync import EmailSyncService
 from backend.app.modules.ingestion.router import router as ingestion_router
+from backend.app.modules.notifications.routers.alerts import router as notifications_router
 from backend.app.modules.vault.router import router as vault_router
 
 def create_application() -> FastAPI:
@@ -60,6 +61,7 @@ def create_application() -> FastAPI:
     # Routers
     application.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
     application.include_router(finance_router, prefix=f"{settings.API_V1_STR}/finance", tags=["finance"])
+    application.include_router(notifications_router, prefix=f"{settings.API_V1_STR}/notifications", tags=["notifications"])
     application.include_router(ingestion_router, prefix=f"{settings.API_V1_STR}/ingestion", tags=["ingestion"])
     application.include_router(ai_router, prefix=f"{settings.API_V1_STR}/ingestion", tags=["ai"])
     application.include_router(vault_router, prefix=f"{settings.API_V1_STR}/finance/vault", tags=["Vault"])
@@ -173,15 +175,18 @@ async def websocket_endpoint(websocket: WebSocket, tenant_id: str, token: str = 
     WebSocket endpoint for real-time notifications.
     Token is passed as a query param for authentication.
     """
-    logger.info(f"Incoming WS connection attempt: tenant_id={tenant_id}, token_length={len(token) if token else 0}")
+    logger.info(f"--- WebSocket Connection Attempt ---")
+    logger.info(f"Tenant: {tenant_id}")
+    logger.info(f"Token length: {len(token) if token else 0}")
+    
     try:
         # Authenticate user from token
         with SessionLocal() as db:
             user = get_current_user_from_token(db, token)
         
         if not user:
-            logger.warning(f"WebSocket auth failed: Invalid or expired token for tenant {tenant_id}.")
-            await websocket.close(code=4008) # Policy Violation / Auth Failed
+            logger.warning(f"WebSocket auth failed: Invalid or expired token.")
+            await websocket.close(code=4008)
             return
             
         if str(user.tenant_id) != tenant_id:

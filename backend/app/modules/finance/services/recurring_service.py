@@ -110,9 +110,11 @@ class RecurringService:
                     # It already exists, so we mark it as processed to advance the schedule
                     item.last_run_date = timezone.utcnow()
                 else:
-                    print(f"Error creating recurring transaction {item.id}: {e}")
+                    import logging
+                    logging.error(f"Error creating recurring transaction {item.id}: {e}")
             except Exception as e:
-                print(f"Unexpected error in recurring txn {item.id}: {e}")
+                import logging
+                logging.error(f"Unexpected error in recurring txn {item.id}: {e}")
                 # Don't crash the whole batch
                 pass
             

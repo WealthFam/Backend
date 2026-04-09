@@ -55,6 +55,9 @@ class TransactionService:
             data = transaction.model_dump()
             data['tenant_id'] = tenant_id
             
+            # Remove fields that exist in schema but not in the Transaction model
+            data.pop('to_account_id', None)
+            
             # Use UUID if not provided (though models usually handle this, explicit is safer for deduplication sync)
             if not data.get('id'):
                 import uuid
@@ -62,7 +65,6 @@ class TransactionService:
     
             # Content Hash for weak deduplication
             if not data.get('content_hash'):
-                from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
                 data['content_hash'] = TransactionDeduplicator.generate_hash(
                     tenant_id, str(data['account_id']), data['date'], data['amount'], 
                     data['description'], data['recipient']
@@ -118,7 +120,8 @@ class TransactionService:
                         db_transaction.amount, 
                         db_transaction.description or db_transaction.recipient, 
                         db_account.name,
-                        user_id=db_account.owner_id
+                        user_id=db_account.owner_id,
+                        category_name=db_transaction.category
                     )
             except Exception as e:
                 logger.error(f"Failed to trigger transaction notification: {e}")
@@ -713,8 +716,7 @@ class TransactionService:
             tags=[],
             exclude_from_reports=final_exclude,
             latitude=pending.latitude,
-            longitude=pending.longitude,
-            location_name=pending.location_name
+            longitude=pending.longitude
         )
         
         if txn_create.is_transfer and txn_create.to_account_id:

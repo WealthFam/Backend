@@ -1,5 +1,5 @@
 <template>
-    <v-card class="premium-glass-card activity-pulse pa-6 h-100" rounded="xl" elevation="1">
+    <v-card class="m3-card activity-pulse pa-6 h-100" rounded="xl" elevation="1">
         <div class="d-flex justify-space-between align-center mb-6">
             <h2 class="text-h6 font-weight-black d-flex align-center">
                 <Zap :size="20" class="text-primary mr-2" />
@@ -30,7 +30,7 @@
                 <div class="d-flex ga-4 align-start">
                     <v-avatar :color="getCategoryColor(item.category)" variant="tonal" rounded="lg" size="40"
                         class="flex-shrink-0">
-                        <span class="text-h6">{{ getIcon(item.category) }}</span>
+                        <span class="text-h6">{{ item.icon || getIcon(item.category) }}</span>
                     </v-avatar>
                     <div class="flex-grow-1 overflow-hidden">
                         <div class="d-flex justify-space-between align-center mb-1">
@@ -163,6 +163,7 @@ function getCategoryColor(category: string) {
 .line-clamp-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }

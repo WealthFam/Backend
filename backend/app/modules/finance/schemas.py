@@ -1,8 +1,11 @@
-from pydantic import BaseModel
-from typing import Optional, List, Union
+import json
 from datetime import datetime
 from decimal import Decimal
+from typing import List, Optional, Union
 from uuid import UUID
+
+from pydantic import BaseModel, field_validator
+
 from backend.app.modules.finance.models import AccountType, TransactionType
 
 class AccountBase(BaseModel):
@@ -64,11 +67,20 @@ class TransactionBase(BaseModel):
     linked_transaction_id: Optional[str] = None
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
-    location_name: Optional[str] = None
     exclude_from_reports: bool = False
     is_emi: bool = False
     loan_id: Optional[str] = None
     expense_group_id: Optional[str] = None
+
+    @field_validator('tags', mode='before')
+    @classmethod
+    def parse_tags(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except:
+                return []
+        return v or []
 
 class TransactionCreate(TransactionBase):
     account_id: UUID
@@ -328,7 +340,6 @@ class RecurringTransactionBase(BaseModel):
     exclude_from_reports: bool = False
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
-    location_name: Optional[str] = None
 
 class RecurringTransactionCreate(RecurringTransactionBase):
     pass
@@ -509,5 +520,16 @@ class BalanceSnapshotRead(BalanceSnapshotBase):
 
     class Config:
         from_attributes = True
+
+class SpendingForecastDay(BaseModel):
+    date: str
+    is_forecast: bool
+    stacks: dict[str, Decimal] = {} # user_id/name -> amount
+
+class SpendingForecastResponse(BaseModel):
+    user_names: dict[str, str]
+    trend: List[SpendingForecastDay]
+    daily_burn_rate: Decimal
+    forecast_total: Decimal
 
 CategoryRead.model_rebuild()

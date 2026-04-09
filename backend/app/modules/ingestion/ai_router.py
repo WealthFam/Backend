@@ -12,6 +12,31 @@ from google.genai.errors import ClientError
 
 logger = logging.getLogger(__name__)
 
+def handle_ai_error(e: Exception):
+    if isinstance(e, ClientError):
+        logger.error(f"Gemini API Error: {e}")
+        status = e.code if hasattr(e, 'code') else 500
+        
+        detail = "AI intelligence is currently unavailable. Please check your settings."
+        err_str = str(e).upper()
+        
+        if status == 429 or "RESOURCE_EXHAUSTED" in err_str:
+            detail = "Quota limit reached for your Gemini API key. Please try again in a few minutes or switch models."
+        elif status == 401 or "UNAUTHENTICATED" in err_str or "API_KEY_INVALID" in err_str:
+            detail = "Authentication failed. Your API key might be invalid or expired."
+        elif status == 404 or "NOT_FOUND" in err_str:
+            detail = "The requested model was not found in your Google project."
+        elif status == 400 or "INVALID_ARGUMENT" in err_str:
+            detail = "The request or data is invalid for the current AI model."
+            
+        return HTTPException(status_code=status, detail=detail)
+    
+    if isinstance(e, HTTPException):
+        return e
+        
+    logger.error(f"Unexpected AI error: {e}")
+    return HTTPException(status_code=500, detail="Intelligence service encountered an unexpected error.")
+
 router = APIRouter(prefix="/ai", tags=["AI Settings"])
 
 class AISettingsUpdate(BaseModel):
@@ -142,26 +167,8 @@ def generate_insights(
     try:
         insights = AIService.generate_summary_insights(db, str(current_user.tenant_id), summary_data)
         return {"insights": insights}
-    except ClientError as e:
-        logger.error(f"Gemini API Error in router: {e}")
-        status = e.code if hasattr(e, 'code') else 500
-        
-        detail = "AI intelligence is currently unavailable. Please check your settings."
-        err_str = str(e).upper()
-        
-        if status == 429 or "RESOURCE_EXHAUSTED" in err_str:
-            detail = "Quota limit reached for your Gemini API key. Please try again in a few minutes or switch models."
-        elif status == 401 or "UNAUTHENTICATED" in err_str or "API_KEY_INVALID" in err_str:
-            detail = "Authentication failed. Your API key might be invalid or expired."
-        elif status == 404 or "NOT_FOUND" in err_str:
-            detail = "The requested model was not found in your Google project."
-        elif status == 400 or "INVALID_ARGUMENT" in err_str:
-            detail = "The data requested is too large for the current AI model capacity."
-            
-        raise HTTPException(status_code=status, detail=detail)
     except Exception as e:
-        logger.error(f"Unexpected AI error: {e}")
-        raise HTTPException(status_code=500, detail="Intelligence service encountered an unexpected error.")
+        raise handle_ai_error(e)
 
 @router.get("/aliases")
 def get_merchant_aliases(
@@ -191,3 +198,30 @@ def delete_merchant_alias(
     from backend.app.modules.ingestion.parser_service import ExternalParserService
     success = ExternalParserService.delete_alias(str(current_user.tenant_id), alias_id)
     return {"status": "success" if success else "failed"}
+
+@router.post("/training/{message_id}/auto-parse")
+def auto_parse_training_message(
+    message_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from backend.app.modules.ingestion.ai_service import AIService
+    
+    msg = db.query(ingestion_models.UnparsedMessage).filter(
+        ingestion_models.UnparsedMessage.id == message_id,
+        ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
+    ).first()
+    
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+        
+    try:
+        content = msg.raw_content or ""
+        result = AIService.auto_parse_transaction(db, str(current_user.tenant_id), content)
+        
+        if not result:
+            raise HTTPException(status_code=400, detail="AI parsing failed or AI is disabled.")
+            
+        return result
+    except Exception as e:
+        raise handle_ai_error(e)
