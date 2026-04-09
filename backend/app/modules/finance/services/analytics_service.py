@@ -7,6 +7,7 @@ from sqlalchemy import func, text, or_, extract
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.transaction_service import TransactionService
 from backend.app.core import timezone
+from backend.app.modules.auth import models as auth_models
 
 class AnalyticsService:
     @staticmethod
@@ -894,17 +895,17 @@ class AnalyticsService:
         daily_burn_rate = total_recent_burn / Decimal(30)
         
         # 3. Get User metadata
-        from backend.app.modules.auth import models as auth_models
         users = db.query(auth_models.User).filter(auth_models.User.tenant_id == tenant_id).all()
-        user_map = {u.id: u.full_name or u.email.split('@')[0] for u in users}
-        user_map[None] = "Shared/Other"
+        user_map = {str(u.id): u.full_name or u.email.split('@')[0] for u in users}
+        user_map["None"] = "Shared/Other"
         
         # 4. Map historical data
         data_map = {} # {date_str: {user_id: amount}}
         for row in historical_raw:
             day_str = str(row.day)
             if day_str not in data_map: data_map[day_str] = {}
-            data_map[day_str][str(row.user_id) if row.user_id else "None"] = abs(float(row.total))
+            # Use Decimal for all monetary values as per standards
+            data_map[day_str][str(row.user_id) if row.user_id else "None"] = abs(Decimal(str(row.total)))
             
         # 5. Generate trend for requested range
         trend = []

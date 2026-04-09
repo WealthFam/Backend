@@ -82,11 +82,15 @@ const props = defineProps({
 
 const axisPadding = 60
 const chartInnerWidth = computed(() => props.width - (axisPadding * 2))
-const barWidth = computed(() => (chartInnerWidth.value / props.trend.length) * 0.7)
-const gap = computed(() => (chartInnerWidth.value / props.trend.length) * 0.3)
+const barWidth = computed(() => (chartInnerWidth.value / (props.trend.length || 1)) * 0.7)
+const gap = computed(() => (chartInnerWidth.value / (props.trend.length || 1)) * 0.3)
 const maxVal = computed(() => {
-    const totals = props.trend.map(d => Object.values(d.stacks).reduce((a: number, b: unknown) => a + (b as number), 0))
-    return Math.max(...totals, 100)
+    const totals = (props.trend || []).map(d => Object.values(d.stacks || {}).reduce((a: number, b: unknown) => {
+        const val = Number(b)
+        return a + (isNaN(val) ? 0 : val)
+    }, 0))
+    const peak = Math.max(...totals, 100)
+    return isNaN(peak) ? 100 : peak
 })
 
 const hoveredBar = ref<any>(null)
@@ -115,7 +119,8 @@ function formatYLabel(val: number) {
     return Math.round(val).toString()
 }
 
-function sortedStacks(stacks: Record<string, number>) {
+function sortedStacks(stacks: Record<string, number | string>) {
+    if (!stacks) return {}
     return Object.fromEntries(Object.entries(stacks).sort())
 }
 
@@ -126,15 +131,20 @@ function getY(day: any, key: string) {
     const targetIdx = keys.indexOf(key)
 
     for (let i = 0; i < targetIdx; i++) {
-        offset += (stacks[keys[i]] as number)
+        const sVal = Number(stacks[keys[i]])
+        offset += isNaN(sVal) ? 0 : sVal
     }
 
-    const val = stacks[key] as number
-    return props.height - ((offset + val) / maxVal.value) * props.height
+    const val = Number(stacks[key]) || 0
+    const totalVal = offset + val
+    const safeMax = maxVal.value || 100
+    return props.height - (totalVal / safeMax) * props.height
 }
 
-function getHeight(val: number) {
-    return (val / maxVal.value) * props.height
+function getHeight(val: number | string) {
+    const v = Number(val) || 0
+    const safeMax = maxVal.value || 100
+    return (v / safeMax) * props.height
 }
 
 function getStackColor(key: string) {
@@ -158,7 +168,10 @@ function formatDate(dateStr: string) {
 }
 
 function onHover(day: any, idx: number) {
-    const total = Object.values(day.stacks).reduce((a: number, b: unknown) => a + (b as number), 0)
+    const total = Object.values(day.stacks || {}).reduce((a: number, b: unknown) => {
+        const val = Number(b)
+        return a + (isNaN(val) ? 0 : val)
+    }, 0)
     hoveredBar.value = { ...day, total }
 
     // Calculate tooltip X
