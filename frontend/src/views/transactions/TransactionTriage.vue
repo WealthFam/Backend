@@ -1,301 +1,5 @@
-<script setup lang="ts">
-import { computed, ref, reactive } from 'vue'
-import MerchantAliasModal from '@/components/MerchantAliasModal.vue'
-import TransactionTrainingModal from './TransactionTrainingModal.vue'
-import { useCurrency } from '@/composables/useCurrency'
-import {
-    Inbox,
-    Search,
-    ArrowUpNarrowWide,
-    ArrowDownNarrowWide,
-    ArrowLeftRight,
-    ArrowUp,
-    ArrowDown,
-    Trash2,
-    RotateCw,
-    Landmark,
-    ShieldAlert,
-    MapPin,
-    Info,
-    Check,
-    Sparkles,
-    X,
-    Target,
-    Zap,
-    CheckCircle2,
-    ShieldCheck,
-    RefreshCcw
-} from 'lucide-vue-next'
-// Props
-const props = defineProps<{
-    activeSubTab: 'pending' | 'training'
-    accounts: any[]
-    categories: any[]
-    triageTransactions: any[]
-    triagePagination: { total: number; limit: number; skip: number }
-    triageSearchQuery: string
-    triageSourceFilter: string
-    triageSortKey: string
-    triageSortOrder: 'asc' | 'desc'
-    unparsedMessages: any[]
-    trainingPagination: { total: number; limit: number; skip: number }
-    trainingSortKey: string
-    trainingSortOrder: 'asc' | 'desc'
-    // Confirmation States
-    showDiscardConfirm: boolean
-    showTrainingDiscardConfirm: boolean
-    createIgnoreRule: boolean
-    triageIdToDiscard: string | null
-    trainingIdToDiscard: string | null
-    // Training Modal Props
-    showLabelForm: boolean
-    selectedMessage: any
-    labelForm: any
-}>()
-
-// Emits
-const emit = defineEmits<{
-    'update:activeSubTab': [value: 'pending' | 'training']
-    'update:triageSearchQuery': [value: string]
-    'update:triageSourceFilter': [value: string]
-    'update:triageSortKey': [value: string]
-    'update:triageSortOrder': [value: 'asc' | 'desc']
-    'update:triagePagination': [value: { total: number; limit: number; skip: number }]
-    'update:trainingSortKey': [value: string]
-    'update:trainingSortOrder': [value: 'asc' | 'desc']
-    'update:trainingPagination': [value: { total: number; limit: number; skip: number }]
-    'approveTriage': [txn: any]
-    'rejectTriage': [id: string]
-    'bulkRejectTriage': []
-    'startLabeling': [msg: any]
-    'dismissTraining': [id: string]
-    'bulkDismissTraining': []
-    'refreshTriage': []
-    'update:showDiscardConfirm': [value: boolean]
-    'update:showTrainingDiscardConfirm': [value: boolean]
-    'update:createIgnoreRule': [value: boolean]
-    'confirmDiscard': []
-    'confirmTrainingDiscard': []
-    'confirmBulkDiscard': []
-    'confirmBulkTrainingDiscard': []
-    'update:showLabelForm': [value: boolean]
-    'handleLabelSubmit': []
-}>()
-
-// Local State
-const selectedTriageIds = defineModel<string[]>('selectedTriageIds', { default: [] })
-const selectedTrainingIds = defineModel<string[]>('selectedTrainingIds', { default: [] })
-// Computed Interface for Tabs
-const activeTab = computed({
-    get: () => props.activeSubTab,
-    set: (val) => emit('update:activeSubTab', val)
-})
-
-const accountOptions = computed(() => {
-    return props.accounts.map(a => ({ title: a.name, value: a.id }))
-})
-
-const categoryOptions = computed(() => {
-    const list: any[] = []
-    const flatten = (cats: any[], depth = 0) => {
-        cats.forEach(c => {
-            const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : ''
-            list.push({
-                title: `${prefix}${c.icon || '🏷️'} ${c.name}`,
-                value: c.name
-            })
-            if (c.subcategories && c.subcategories.length > 0) {
-                flatten(c.subcategories, depth + 1)
-            }
-        })
-    }
-    flatten(props.categories)
-    if (!list.find(o => o.value === 'Uncategorized')) {
-        list.push({ title: '🏷️ Uncategorized', value: 'Uncategorized' })
-    }
-    return list
-})
-
-const filteredTriageTransactions = computed(() => {
-    let filtered = props.triageTransactions
-
-    if (props.triageSearchQuery) {
-        const q = props.triageSearchQuery.toLowerCase()
-        filtered = filtered.filter(t =>
-            (t.recipient && t.recipient.toLowerCase().includes(q)) ||
-            (t.description && t.description.toLowerCase().includes(q)) ||
-            (t.external_id && t.external_id.toLowerCase().includes(q)) ||
-            (t.amount && String(t.amount).includes(q))
-        )
-    }
-
-    if (props.triageSourceFilter && props.triageSourceFilter !== 'ALL') {
-        filtered = filtered.filter(t => t.source === props.triageSourceFilter)
-    }
-
-    return filtered
-})
-
-const triageCurrentPage = computed({
-    get: () => Math.floor(props.triagePagination.skip / props.triagePagination.limit) + 1,
-    set: (val) => emit('update:triagePagination', { ...props.triagePagination, skip: (val - 1) * props.triagePagination.limit })
-})
-
-const trainingCurrentPage = computed({
-    get: () => Math.floor(props.trainingPagination.skip / props.trainingPagination.limit) + 1,
-    set: (val) => emit('update:trainingPagination', { ...props.trainingPagination, skip: (val - 1) * props.trainingPagination.limit })
-})
-
-const sortedTrainingMessages = computed(() => {
-    let messages = [...props.unparsedMessages]
-    const key = props.trainingSortKey as any
-    messages.sort((a, b) => {
-        const valA = a[key]
-        const valB = b[key]
-        if (valA < valB) return props.trainingSortOrder === 'asc' ? -1 : 1
-        if (valA > valB) return props.trainingSortOrder === 'asc' ? 1 : -1
-        return 0
-    })
-    return messages
-})
-
-// Methods
-function getAccountName(id: string) {
-    const acc = props.accounts.find(a => a.id === id)
-    return acc ? acc.name : 'Unknown Account'
-}
-
-function formatDate(dateStr: string) {
-    if (!dateStr) return { day: 'N/A', meta: '' }
-
-    const d = new Date(dateStr)
-    if (isNaN(d.getTime())) {
-        return { day: '?', meta: dateStr.split('T')[0] || dateStr }
-    }
-
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-
-    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-
-    if (d.toDateString() === today.toDateString()) {
-        return { day: 'Today', meta: time }
-    }
-    if (d.toDateString() === yesterday.toDateString()) {
-        return { day: 'Yesterday', meta: time }
-    }
-
-    const currentYear = today.getFullYear()
-    const txnYear = d.getFullYear()
-
-    let formatOptions: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
-    if (txnYear !== currentYear) {
-        formatOptions.year = 'numeric'
-    }
-
-    const monthDay = d.toLocaleDateString('en-US', formatOptions)
-    return {
-        day: monthDay,
-        meta: time
-    }
-}
-
-function toggleSelectAllTriage() {
-    if (selectedTriageIds.value.length === filteredTriageTransactions.value.length && filteredTriageTransactions.value.length > 0) {
-        selectedTriageIds.value = []
-    } else {
-        selectedTriageIds.value = filteredTriageTransactions.value.map(t => t.id)
-    }
-}
-
-function toggleSelectAllTraining() {
-    if (selectedTrainingIds.value.length === props.unparsedMessages.length && props.unparsedMessages.length > 0) {
-        selectedTrainingIds.value = []
-    } else {
-        selectedTrainingIds.value = props.unparsedMessages.map(m => m.id)
-    }
-}
-
-
-
-function handleTriagePaginationLimitChange(newLimit: number) {
-    emit('update:triagePagination', { ...props.triagePagination, limit: newLimit, skip: 0 })
-}
-
-function handleTrainingPaginationLimitChange(newLimit: number) {
-    emit('update:trainingPagination', { ...props.trainingPagination, limit: newLimit, skip: 0 })
-}
-
-const showAliasModal = ref(false)
-const aliasForm = reactive({
-    pattern: '',
-    alias: '',
-    update_past: false
-})
-
-function openAliasModal(txn: any) {
-    aliasForm.pattern = txn.description || txn.recipient || ''
-    aliasForm.alias = txn.recipient || ''
-    showAliasModal.value = true
-}
-
-// --- Triage Details Modal ---
-const triageDetailsDialog = ref(false)
-const selectedTriageTxn = ref<any>(null)
-
-function openTriageDetails(txn: any) {
-    selectedTriageTxn.value = JSON.parse(JSON.stringify(txn)) // Deep copy
-    triageDetailsDialog.value = true
-}
-
-function saveTriageDetails() {
-    if (!selectedTriageTxn.value) return
-    // Find the original transaction in the list and update it
-    const index = props.triageTransactions.findIndex(t => t.id === selectedTriageTxn.value.id)
-    if (index !== -1) {
-        // Since we shouldn't mutate props directly, we rely on the fact that 
-        // the parent state is likely being updated or we can emit an update if necessary.
-        // However, in this specific triage view, 'approveTriage' is the main action.
-        // We can update the local reactive reference if one existed, but here we'll just
-        // let the user close and confirm.
-        // If we want the edit to persist on the card BEFORE confirm:
-        Object.assign(props.triageTransactions[index], selectedTriageTxn.value)
-    }
-    triageDetailsDialog.value = false
-}
-
-const { formatAmount } = useCurrency()
-</script>
-
 <template>
     <div class="triage-view animate-in">
-        <!-- Vuetify Tabs -->
-        <v-tabs v-model="activeTab" color="primary" align-tabs="start" class="mb-6 rounded-lg bg-surface-light">
-            <v-tooltip text="Review and categorize auto-detected transactions" location="bottom" open-delay="400">
-                <template v-slot:activator="{ props }">
-                    <v-tab v-bind="props" value="pending">
-                        <Inbox :size="18" class="mr-2" />
-                        Pending Inbox
-                        <v-chip size="x-small" color="primary" class="ml-2" variant="flat">
-                            {{ triagePagination.total }}
-                        </v-chip>
-                    </v-tab>
-                </template>
-            </v-tooltip>
-            <v-tooltip text="Label unparsed messages to train the detection engine" location="bottom" open-delay="400">
-                <template v-slot:activator="{ props }">
-                    <v-tab v-bind="props" value="training">
-                        <Target :size="18" class="mr-2" />
-                        Training Area
-                        <v-chip size="x-small" color="warning" class="ml-2" variant="flat">
-                            {{ trainingPagination.total }}
-                        </v-chip>
-                    </v-tab>
-                </template>
-            </v-tooltip>
-        </v-tabs>
-
         <v-window v-model="activeTab">
             <!-- PENDING TAB -->
             <v-window-item value="pending">
@@ -338,12 +42,12 @@ const { formatAmount } = useCurrency()
                         <v-divider vertical class="d-none d-lg-block mx-1" />
 
                         <v-col cols="12" md="auto" class="d-flex align-center gap-2">
-                            <v-select :model-value="triageSortKey"
+                            <v-autocomplete :model-value="triageSortKey"
                                 @update:model-value="emit('update:triageSortKey', $event)"
                                 :items="[{ title: 'Date', value: 'date' }, { title: 'Amount', value: 'amount' }, { title: 'Description', value: 'description' }]"
                                 item-title="title" item-value="value" hide-details density="comfortable"
                                 variant="outlined" label="Sort" style="width: 140px" rounded="lg"
-                                class="font-weight-bold" bg-color="surface"></v-select>
+                                class="font-weight-bold" bg-color="surface"></v-autocomplete>
 
                             <v-tooltip :text="`Sort by ${triageSortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
                                 location="top" open-delay="400">
@@ -398,7 +102,7 @@ const { formatAmount } = useCurrency()
                 <v-row>
                     <v-col v-for="txn in filteredTriageTransactions" :key="txn.id" cols="12" md="6" lg="4">
                         <v-card class="premium-glass-card"
-                            :class="{ 'is-selected': selectedTriageIds.includes(txn.id), 'is-debit': txn.amount < 0, 'is-credit': txn.amount >= 0 }">
+                            :class="{ 'is-selected': selectedTriageIds.includes(txn.id), 'is-debit': Number(txn.amount) < 0, 'is-credit': Number(txn.amount) >= 0 }">
 
                             <!-- Dynamic Accent Glow -->
                             <div class="card-glow-accent"></div>
@@ -425,12 +129,12 @@ const { formatAmount } = useCurrency()
                             <div class="amount-hero-section px-4 py-4 d-flex align-center justify-center">
                                 <div class="text-center">
                                     <div class="modern-amount-display amount-hero-text"
-                                        :class="txn.amount < 0 ? 'text-error' : 'text-success'">
-                                        {{ formatAmount(Math.abs(txn.amount)) }}
+                                        :class="Number(txn.amount) < 0 ? 'text-error' : 'text-success'">
+                                        {{ formatAmount(Math.abs(Number(txn.amount))) }}
                                     </div>
                                     <div
                                         class="text-caption font-weight-black opacity-40 text-uppercase tracking-widest mt-n1">
-                                        {{ txn.amount < 0 ? 'Debit' : 'Credit' }} </div>
+                                        {{ Number(txn.amount) < 0 ? 'Debit' : 'Credit' }} </div>
                                     </div>
                                 </div>
 
@@ -526,11 +230,11 @@ const { formatAmount } = useCurrency()
                                             <div class="d-flex align-center gap-2">
                                                 <span class="text-caption font-weight-black opacity-60 flex-shrink-0"
                                                     style="width: 70px">To</span>
-                                                <v-select v-model="txn.to_account_id"
+                                                <v-autocomplete v-model="txn.to_account_id"
                                                     :items="accountOptions.filter(a => a.value !== txn.account_id)"
                                                     item-title="title" item-value="value" placeholder="Target Account"
                                                     variant="outlined" density="comfortable" rounded="lg" hide-details
-                                                    class="flex-grow-1"></v-select>
+                                                    class="flex-grow-1"></v-autocomplete>
                                             </div>
                                         </div>
                                     </v-expand-transition>
@@ -595,26 +299,43 @@ const { formatAmount } = useCurrency()
                     <p class="text-subtitle-1 text-medium-emphasis mt-2">No new transactions waiting for review.</p>
                 </div>
 
-                <v-row v-if="triagePagination.total > 0" class="mt-4 align-center">
-                    <v-col cols="12" md="4" class="text-caption text-medium-emphasis">
-                        Showing {{ triagePagination.skip + 1 }}-{{ Math.min(triagePagination.skip +
-                            triagePagination.limit,
-                            triagePagination.total) }} of {{ triagePagination.total }}
-                    </v-col>
-                    <v-col cols="12" md="4" class="d-flex justify-center">
-                        <v-pagination v-model="triageCurrentPage"
-                            :length="Math.ceil(triagePagination.total / triagePagination.limit)" :total-visible="5"
-                            density="comfortable" active-color="primary" variant="text"
-                            class="modern-pagination"></v-pagination>
-                    </v-col>
-                    <v-col cols="12" md="4" class="d-flex justify-end align-center gap-2">
-                        <span class="text-caption mr-2">Rows per page:</span>
-                        <v-select :model-value="triagePagination.limit"
-                            @update:model-value="handleTriagePaginationLimitChange($event)" :items="[12, 24, 60]"
-                            density="comfortable" variant="plain" hide-details class="rounded-lg rows-per-page-select"
-                            style="width: 75px"></v-select>
-                    </v-col>
-                </v-row>
+                <v-divider class="border-opacity-10"></v-divider>
+                <div v-if="triagePagination.total > 0" class="d-flex align-center justify-end py-3 px-4 triage-footer">
+                    <div class="d-flex align-center mr-8">
+                        <span class="text-caption text-medium-emphasis mr-2">Rows per page:</span>
+                        <v-menu>
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" variant="text" size="small" density="compact"
+                                    class="text-caption font-weight-black px-1 no-hover-effect">
+                                    {{ triagePagination.limit }}
+                                    <ChevronDown :size="14" class="ml-1 opacity-60" />
+                                </v-btn>
+                            </template>
+                            <v-list density="compact" class="rounded-lg border" elevation="2">
+                                <v-list-item v-for="size in [12, 24, 60]" :key="size"
+                                    @click="handleTriagePaginationLimitChange(size)" :active="triagePagination.limit === size" color="primary">
+                                    <v-list-item-title class="text-caption font-weight-bold">{{ size }}</v-list-item-title>
+                                </v-list-item>
+                            </v-list>
+                        </v-menu>
+                    </div>
+                    
+                    <div class="text-caption font-weight-bold text-medium-emphasis mr-6">
+                        {{ triagePagination.skip + 1 }}-{{ Math.min(triagePagination.skip + triagePagination.limit, triagePagination.total) }} of {{ triagePagination.total }}
+                    </div>
+
+                    <div class="d-flex align-center gap-1">
+                        <v-btn icon variant="text" size="small" :disabled="triagePagination.skip === 0" 
+                            @click="triageCurrentPage--">
+                            <ChevronLeft :size="18" />
+                        </v-btn>
+                        <v-btn icon variant="text" size="small" 
+                            :disabled="triagePagination.skip + triagePagination.limit >= triagePagination.total"
+                            @click="triageCurrentPage++">
+                            <ChevronRight :size="18" />
+                        </v-btn>
+                    </div>
+                </div>
             </v-window-item>
 
             <!-- TRAINING TAB -->
@@ -657,12 +378,12 @@ const { formatAmount } = useCurrency()
                         <v-divider vertical class="d-none d-md-block mx-1" />
 
                         <v-col cols="12" md="auto" class="d-flex align-center gap-2">
-                            <v-select :model-value="trainingSortKey"
+                            <v-autocomplete :model-value="trainingSortKey"
                                 @update:model-value="emit('update:trainingSortKey', $event)"
                                 :items="[{ title: 'Date', value: 'created_at' }, { title: 'Sender', value: 'sender' }]"
                                 item-title="title" item-value="value" hide-details density="comfortable"
                                 variant="outlined" label="Sort" style="width: 140px" rounded="lg"
-                                class="font-weight-bold" bg-color="surface"></v-select>
+                                class="font-weight-bold" bg-color="surface"></v-autocomplete>
 
                             <v-tooltip :text="`Sort by ${trainingSortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
                                 location="top" open-delay="400">
@@ -762,26 +483,43 @@ const { formatAmount } = useCurrency()
                     <p class="text-subtitle-1 text-medium-emphasis mt-2">No unparsed messages waiting for training.</p>
                 </div>
 
-                <v-row v-if="trainingPagination.total > 0" class="mt-4 align-center">
-                    <v-col cols="12" md="4" class="text-caption text-medium-emphasis">
-                        Showing {{ trainingPagination.skip + 1 }}-{{ Math.min(trainingPagination.skip +
-                            trainingPagination.limit,
-                            trainingPagination.total) }} of {{ trainingPagination.total }}
-                    </v-col>
-                    <v-col cols="12" md="4" class="d-flex justify-center">
-                        <v-pagination v-model="trainingCurrentPage"
-                            :length="Math.ceil(trainingPagination.total / trainingPagination.limit)" :total-visible="5"
-                            density="comfortable" active-color="warning" variant="text"
-                            class="modern-pagination"></v-pagination>
-                    </v-col>
-                    <v-col cols="12" md="4" class="d-flex justify-end align-center gap-2">
-                        <span class="text-caption mr-2">Rows per page:</span>
-                        <v-select :model-value="trainingPagination.limit"
-                            @update:model-value="handleTrainingPaginationLimitChange($event)" :items="[12, 24, 60]"
-                            density="comfortable" variant="plain" hide-details
-                            class="d-inline-block rows-per-page-select" style="width: 70px"></v-select>
-                    </v-col>
-                </v-row>
+                <v-divider class="border-opacity-10"></v-divider>
+                <div v-if="trainingPagination.total > 0" class="d-flex align-center justify-end py-3 px-4 triage-footer">
+                    <div class="d-flex align-center mr-8">
+                        <span class="text-caption text-medium-emphasis mr-2">Rows per page:</span>
+                        <v-menu>
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" variant="text" size="small" density="compact"
+                                    class="text-caption font-weight-black px-1 no-hover-effect">
+                                    {{ trainingPagination.limit }}
+                                    <ChevronDown :size="14" class="ml-1 opacity-60" />
+                                </v-btn>
+                            </template>
+                            <v-list density="compact" class="rounded-lg border" elevation="2">
+                                <v-list-item v-for="size in [12, 24, 60]" :key="size"
+                                    @click="handleTrainingPaginationLimitChange(size)" :active="trainingPagination.limit === size" color="warning">
+                                    <v-list-item-title class="text-caption font-weight-bold">{{ size }}</v-list-item-title>
+                                </v-list-item>
+                            </v-list>
+                        </v-menu>
+                    </div>
+                    
+                    <div class="text-caption font-weight-bold text-medium-emphasis mr-6">
+                        {{ trainingPagination.skip + 1 }}-{{ Math.min(trainingPagination.skip + trainingPagination.limit, trainingPagination.total) }} of {{ trainingPagination.total }}
+                    </div>
+
+                    <div class="d-flex align-center gap-1">
+                        <v-btn icon variant="text" size="small" :disabled="trainingPagination.skip === 0" 
+                            @click="trainingCurrentPage--">
+                            <ChevronLeft :size="18" />
+                        </v-btn>
+                        <v-btn icon variant="text" size="small" 
+                            :disabled="trainingPagination.skip + trainingPagination.limit >= trainingPagination.total"
+                            @click="trainingCurrentPage++">
+                            <ChevronRight :size="18" />
+                        </v-btn>
+                    </div>
+                </div>
             </v-window-item>
         </v-window>
 
@@ -812,10 +550,10 @@ const { formatAmount } = useCurrency()
                         </div>
                         <div class="text-right">
                             <div class="text-h5 font-weight-black"
-                                :class="selectedTriageTxn.amount < 0 ? 'text-error' : 'text-success'">
-                                {{ formatAmount(Math.abs(selectedTriageTxn.amount)) }}
+                                :class="Number(selectedTriageTxn?.amount || 0) < 0 ? 'text-error' : 'text-success'">
+                                {{ formatAmount(Math.abs(Number(selectedTriageTxn?.amount || 0))) }}
                             </div>
-                            <div class="text-caption text-medium-emphasis">{{ selectedTriageTxn.amount < 0 ? 'DEBIT'
+                            <div class="text-caption text-medium-emphasis">{{ Number(selectedTriageTxn?.amount || 0) < 0 ? 'DEBIT'
                                 : 'CREDIT' }}</div>
                             </div>
                         </div>
@@ -825,13 +563,13 @@ const { formatAmount } = useCurrency()
                         <v-row>
                             <v-col cols="12">
                                 <v-label class="text-caption font-weight-bold mb-2">Account</v-label>
-                                <v-select v-model="selectedTriageTxn.account_id" :items="accountOptions"
+                                <v-autocomplete v-model="selectedTriageTxn.account_id" :items="accountOptions"
                                     item-title="title" item-value="value" density="comfortable" variant="outlined"
                                     hide-details>
                                     <template v-slot:prepend-inner>
                                         <Landmark :size="18" class="opacity-60" />
                                     </template>
-                                </v-select>
+                                </v-autocomplete>
                             </v-col>
 
                             <v-col cols="12">
@@ -844,13 +582,13 @@ const { formatAmount } = useCurrency()
                                 </v-autocomplete>
                             </v-col>
 
-                            <v-col v-if="selectedTriageTxn.is_transfer" cols="12">
+                            <v-col v-if="selectedTriageTxn?.is_transfer" cols="12">
                                 <v-label class="text-caption font-weight-bold mb-2">
-                                    {{ selectedTriageTxn.amount < 0 ? 'Transfer To' : 'Transfer From' }} </v-label>
-                                        <v-select v-model="selectedTriageTxn.to_account_id"
-                                            :items="accountOptions.filter(a => a.value !== selectedTriageTxn.account_id)"
+                                    {{ Number(selectedTriageTxn?.amount || 0) < 0 ? 'Transfer To' : 'Transfer From' }} </v-label>
+                                        <v-autocomplete v-model="selectedTriageTxn.to_account_id"
+                                            :items="accountOptions.filter(a => a.value !== (selectedTriageTxn?.account_id || ''))"
                                             item-title="title" item-value="value" density="comfortable"
-                                            variant="outlined" hide-details></v-select>
+                                            variant="outlined" hide-details></v-autocomplete>
                             </v-col>
                         </v-row>
 
@@ -988,6 +726,312 @@ const { formatAmount } = useCurrency()
     </div>
 </template>
 
+<script setup lang="ts">
+import { computed, ref, reactive } from 'vue'
+import MerchantAliasModal from '@/components/MerchantAliasModal.vue'
+import TransactionTrainingModal from './TransactionTrainingModal.vue'
+import { useCurrency } from '@/composables/useCurrency'
+import {
+    Search,
+    ArrowUpNarrowWide,
+    ArrowDownNarrowWide,
+    ArrowLeftRight,
+    ArrowUp,
+    ArrowDown,
+    Trash2,
+    RotateCw,
+    Landmark,
+    ShieldAlert,
+    MapPin,
+    Info,
+    Check,
+    Sparkles,
+    X,
+    Zap,
+    CheckCircle2,
+    ShieldCheck,
+    RefreshCcw,
+    ChevronLeft,
+    ChevronRight,
+    ChevronDown
+} from 'lucide-vue-next'
+export interface AccountItem {
+    id: string
+    name: string
+    [key: string]: any
+}
+
+export interface CategoryItem {
+    id: string
+    name: string
+    icon?: string
+    color?: string
+    subcategories?: CategoryItem[]
+    [key: string]: any
+}
+
+export interface TriageTransaction {
+    id: string
+    date: string
+    amount: number | string
+    recipient?: string
+    description?: string
+    source?: string
+    external_id?: string
+    account_id: string
+    raw_message?: string
+    is_transfer?: boolean
+    exclude_from_reports?: boolean
+    category?: string
+    to_account_id?: string
+    [key: string]: any
+}
+
+export interface UnparsedMessage {
+    id: string
+    created_at: string
+    sender?: string
+    source?: string
+    subject?: string
+    raw_content?: string
+    [key: string]: any
+}
+
+// Props
+const props = defineProps<{
+    activeSubTab: 'pending' | 'training'
+    accounts: AccountItem[]
+    categories: CategoryItem[]
+    triageTransactions: TriageTransaction[]
+    triagePagination: { total: number; limit: number; skip: number }
+    triageSearchQuery: string
+    triageSourceFilter: string
+    triageSortKey: string
+    triageSortOrder: 'asc' | 'desc'
+    unparsedMessages: UnparsedMessage[]
+    trainingPagination: { total: number; limit: number; skip: number }
+    trainingSortKey: string
+    trainingSortOrder: 'asc' | 'desc'
+    // Confirmation States
+    showDiscardConfirm: boolean
+    showTrainingDiscardConfirm: boolean
+    createIgnoreRule: boolean
+    triageIdToDiscard: string | null
+    trainingIdToDiscard: string | null
+    // Training Modal Props
+    showLabelForm: boolean
+    selectedMessage: any
+    labelForm: any
+}>()
+
+// Emits
+const emit = defineEmits<{
+    'update:activeSubTab': [value: 'pending' | 'training']
+    'update:triageSearchQuery': [value: string]
+    'update:triageSourceFilter': [value: string]
+    'update:triageSortKey': [value: string]
+    'update:triageSortOrder': [value: 'asc' | 'desc']
+    'update:triagePagination': [value: { total: number; limit: number; skip: number }]
+    'update:trainingSortKey': [value: string]
+    'update:trainingSortOrder': [value: 'asc' | 'desc']
+    'update:trainingPagination': [value: { total: number; limit: number; skip: number }]
+    'approveTriage': [txn: TriageTransaction]
+    'rejectTriage': [id: string]
+    'bulkRejectTriage': []
+    'startLabeling': [msg: UnparsedMessage]
+    'dismissTraining': [id: string]
+    'bulkDismissTraining': []
+    'refreshTriage': []
+    'update:showDiscardConfirm': [value: boolean]
+    'update:showTrainingDiscardConfirm': [value: boolean]
+    'update:createIgnoreRule': [value: boolean]
+    'confirmDiscard': []
+    'confirmTrainingDiscard': []
+    'confirmBulkDiscard': []
+    'confirmBulkTrainingDiscard': []
+    'update:showLabelForm': [value: boolean]
+    'handleLabelSubmit': []
+}>()
+
+// Local State
+const selectedTriageIds = defineModel<string[]>('selectedTriageIds', { default: [] })
+const selectedTrainingIds = defineModel<string[]>('selectedTrainingIds', { default: [] })
+// Computed Interface for Tabs
+const activeTab = computed({
+    get: () => props.activeSubTab,
+    set: (val) => emit('update:activeSubTab', val)
+})
+
+const accountOptions = computed(() => {
+    return props.accounts.map(a => ({ title: a.name, value: a.id }))
+})
+
+const categoryOptions = computed(() => {
+    const list: { title: string; value: string }[] = []
+    const flatten = (cats: CategoryItem[], depth = 0) => {
+        cats.forEach(c => {
+            const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : ''
+            list.push({
+                title: `${prefix}${c.icon || '🏷️'} ${c.name}`,
+                value: c.name
+            })
+            if (c.subcategories && c.subcategories.length > 0) {
+                flatten(c.subcategories, depth + 1)
+            }
+        })
+    }
+    flatten(props.categories)
+    if (!list.find(o => o.value === 'Uncategorized')) {
+        list.push({ title: '🏷️ Uncategorized', value: 'Uncategorized' })
+    }
+    return list
+})
+
+const filteredTriageTransactions = computed(() => {
+    let filtered = props.triageTransactions
+
+    if (props.triageSearchQuery) {
+        const q = props.triageSearchQuery.toLowerCase()
+        filtered = filtered.filter(t =>
+            (t.recipient && t.recipient.toLowerCase().includes(q)) ||
+            (t.description && t.description.toLowerCase().includes(q)) ||
+            (t.external_id && t.external_id.toLowerCase().includes(q)) ||
+            (t.amount && String(t.amount).includes(q))
+        )
+    }
+
+    if (props.triageSourceFilter && props.triageSourceFilter !== 'ALL') {
+        filtered = filtered.filter(t => t.source === props.triageSourceFilter)
+    }
+
+    return filtered
+})
+
+const triageCurrentPage = computed({
+    get: () => Math.floor(props.triagePagination.skip / props.triagePagination.limit) + 1,
+    set: (val) => emit('update:triagePagination', { ...props.triagePagination, skip: (val - 1) * props.triagePagination.limit })
+})
+
+const trainingCurrentPage = computed({
+    get: () => Math.floor(props.trainingPagination.skip / props.trainingPagination.limit) + 1,
+    set: (val) => emit('update:trainingPagination', { ...props.trainingPagination, skip: (val - 1) * props.trainingPagination.limit })
+})
+
+const sortedTrainingMessages = computed(() => {
+    let messages = [...props.unparsedMessages]
+    const key = props.trainingSortKey as any
+    messages.sort((a, b) => {
+        const valA = a[key]
+        const valB = b[key]
+        if (valA < valB) return props.trainingSortOrder === 'asc' ? -1 : 1
+        if (valA > valB) return props.trainingSortOrder === 'asc' ? 1 : -1
+        return 0
+    })
+    return messages
+})
+
+// Methods
+function getAccountName(id: string) {
+    const acc = props.accounts.find(a => a.id === id)
+    return acc ? acc.name : 'Unknown Account'
+}
+
+function formatDate(dateStr: string) {
+    if (!dateStr) return { day: 'N/A', meta: '' }
+
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) {
+        return { day: '?', meta: dateStr.split('T')[0] || dateStr }
+    }
+
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+
+    if (d.toDateString() === today.toDateString()) {
+        return { day: 'Today', meta: time }
+    }
+    if (d.toDateString() === yesterday.toDateString()) {
+        return { day: 'Yesterday', meta: time }
+    }
+
+    const currentYear = today.getFullYear()
+    const txnYear = d.getFullYear()
+
+    let formatOptions: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+    if (txnYear !== currentYear) {
+        formatOptions.year = 'numeric'
+    }
+
+    const monthDay = d.toLocaleDateString('en-US', formatOptions)
+    return {
+        day: monthDay,
+        meta: time
+    }
+}
+
+function toggleSelectAllTriage() {
+    if (selectedTriageIds.value.length === filteredTriageTransactions.value.length && filteredTriageTransactions.value.length > 0) {
+        selectedTriageIds.value = []
+    } else {
+        selectedTriageIds.value = filteredTriageTransactions.value.map(t => t.id)
+    }
+}
+
+function toggleSelectAllTraining() {
+    if (selectedTrainingIds.value.length === props.unparsedMessages.length && props.unparsedMessages.length > 0) {
+        selectedTrainingIds.value = []
+    } else {
+        selectedTrainingIds.value = props.unparsedMessages.map(m => m.id)
+    }
+}
+
+
+
+function handleTriagePaginationLimitChange(newLimit: number) {
+    emit('update:triagePagination', { ...props.triagePagination, limit: newLimit, skip: 0 })
+}
+
+function handleTrainingPaginationLimitChange(newLimit: number) {
+    emit('update:trainingPagination', { ...props.trainingPagination, limit: newLimit, skip: 0 })
+}
+
+const showAliasModal = ref(false)
+const aliasForm = reactive({
+    pattern: '',
+    alias: '',
+    update_past: false
+})
+
+function openAliasModal(txn: TriageTransaction) {
+    aliasForm.pattern = txn.description || txn.recipient || ''
+    aliasForm.alias = txn.recipient || ''
+    showAliasModal.value = true
+}
+
+// --- Triage Details Modal ---
+const triageDetailsDialog = ref(false)
+const selectedTriageTxn = ref<TriageTransaction | null>(null)
+
+function openTriageDetails(txn: TriageTransaction) {
+    selectedTriageTxn.value = JSON.parse(JSON.stringify(txn)) // Deep copy
+    triageDetailsDialog.value = true
+}
+
+function saveTriageDetails() {
+    if (!selectedTriageTxn.value) return
+    const index = props.triageTransactions.findIndex(t => t.id === selectedTriageTxn.value?.id)
+    if (index !== -1) {
+        Object.assign(props.triageTransactions[index], selectedTriageTxn.value)
+    }
+    triageDetailsDialog.value = false
+}
+
+const { formatAmount } = useCurrency()
+</script>
+
 <style scoped>
 .premium-glass-card {
     background: rgba(var(--v-theme-surface), 0.7) !important;
@@ -1115,9 +1159,12 @@ const { formatAmount } = useCurrency()
     color: rgb(var(--v-theme-primary)) !important;
 }
 
-.modern-pagination :deep(.v-pagination__item) {
-    border-radius: 12px !important;
-    font-weight: 800;
+.no-hover-effect:hover {
+    background: rgba(var(--v-theme-on-surface), 0.05) !important;
+}
+
+.triage-footer {
+    background: rgba(var(--v-theme-on-surface), 0.01);
 }
 
 .animate-in {

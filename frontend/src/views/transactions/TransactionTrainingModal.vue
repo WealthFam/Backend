@@ -82,8 +82,8 @@ const categoryOptions = computed(() => {
                             </v-text-field>
                         </v-col>
                         <v-col cols="12" md="6">
-                            <v-select v-model="labelForm.type" label="Type" :items="['DEBIT', 'CREDIT']"
-                                density="comfortable" variant="outlined" hide-details class="mb-3"></v-select>
+                            <v-autocomplete v-model="labelForm.type" label="Type" :items="['DEBIT', 'CREDIT']"
+                                density="comfortable" variant="outlined" hide-details class="mb-3"></v-autocomplete>
                         </v-col>
 
                         <v-col cols="12">

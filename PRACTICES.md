@@ -204,6 +204,7 @@
 - **Iconography:** Use a **consistent icon set** (e.g., Material Design Icons) across the entire application. Do not mix outlined, filled, and sharp styles unless it's a semantic distinction.
 - **Tooltips:** **Always** provide tooltips for icon-only buttons, complex labels, and any interactive element where the action is not immediately obvious from text alone.
 - **Unified Button Styles:** Use the central design system (Vuetify) for buttons. Ensure consistent padding, border-radius, elevation, and hover states. Variants (Primary, Secondary, Outlined, Ghost, Danger) must be used consistently for their specific semantic purposes.
+- **Pagination Consistency:** All paginated views (tables, grids, lists) **must** use a unified footer design mirroring the Material Data Table style. This includes a "Rows per page" autocomplete, an "X-Y of Z" state label, and prev/next navigation controls. Custom grid views must manually implement this footer style to maintain visual parity with standard tables.
 
 ---
 

@@ -1,366 +1,3 @@
-<script setup lang="ts">
-import { computed, ref, reactive } from 'vue'
-import MerchantAliasModal from '@/components/MerchantAliasModal.vue'
-import { useCurrency } from '@/composables/useCurrency'
-import {
-    Search,
-    Trash2,
-    Upload,
-    Plus,
-    MapPin,
-    Pencil,
-    MoreVertical,
-    FileText,
-    TrendingUp,
-    TrendingDown,
-    Wallet
-} from 'lucide-vue-next'
-
-const { formatAmount } = useCurrency()
-
-// Props
-const props = defineProps<{
-    transactions: any[]
-    accounts: any[]
-    categories: any[]
-    expenseGroups: any[]
-    total: number
-    loading: boolean
-    selectedAccount: string
-    categoryFilter: string
-    searchQuery: string
-    startDate: string
-    endDate: string
-    selectedTimeRange: string
-    page: number
-    pageSize: number
-    txnSortOrder: 'asc' | 'desc'
-    metrics: {
-        monthly_income: number
-        monthly_spending: number
-        breakdown: {
-            net_worth: number
-        }
-    }
-    txnSortKey: string
-}>()
-
-// Emits
-const emit = defineEmits<{
-    'update:selectedAccount': [value: string]
-    'update:categoryFilter': [value: string]
-    'update:searchQuery': [value: string]
-    'update:startDate': [value: string]
-    'update:endDate': [value: string]
-    'update:selectedTimeRange': [value: string]
-    'update:page': [value: number]
-    'update:pageSize': [value: number]
-    'sortChange': [key: string]
-    'editTxn': [txn: any]
-    'deleteSelected': []
-    'importCsv': [],
-    'fetchData': [],
-    'resetFilters': [],
-    'showVendorInsights': [vendorName: string]
-}>()
-
-// --- Merchant Alias Logic (Encapsulated) ---
-const showAliasModal = ref(false)
-const aliasForm = reactive({
-    pattern: '',
-    alias: ''
-})
-
-function openAliasModal(txn: any) {
-    aliasForm.pattern = txn.description || txn.recipient || ''
-    aliasForm.alias = txn.recipient || ''
-    showAliasModal.value = true
-}
-
-// Local State
-const selectedIds = defineModel<Set<string>>('selectedIds', { default: () => new Set() })
-
-// Headers for v-data-table
-const headers = [
-    { title: 'Date', key: 'date', sortable: true, width: '110px' },
-    { title: 'Recipient / Source', key: 'recipient', sortable: true, width: '250px' },
-    { title: 'Description', key: 'description', sortable: false },
-    { title: 'Amount', key: 'amount', sortable: true, align: 'end' as const, width: '130px' },
-    { title: '', key: 'actions', sortable: false, align: 'center' as const, width: '60px' },
-]
-
-// Adaptation for v-data-table selection (array based) vs parent's Set based
-const tableSelection = computed({
-    get: () => Array.from(selectedIds.value),
-    set: (newSelection: any[]) => {
-        selectedIds.value = new Set(newSelection)
-    }
-})
-
-// Computed
-const accountOptions = computed(() => {
-    return [{ title: 'All Accounts', value: '' }, ...props.accounts.map(a => ({ title: a.name, value: a.id }))]
-})
-
-const flatCategories = computed(() => {
-    const list: any[] = []
-    const flatten = (cats: any[]) => {
-        cats.forEach(c => {
-            list.push(c)
-            if (c.subcategories && c.subcategories.length > 0) {
-                flatten(c.subcategories)
-            }
-        })
-    }
-    flatten(props.categories)
-    return list
-})
-
-const categoryOptions = computed(() => {
-    const options = flatCategories.value.map(c => {
-        // Find depth for indentation
-        let depth = 0
-        let current = c
-        while (current.parent_id) {
-            depth++
-            const parent = flatCategories.value.find(p => p.id === current.parent_id)
-            if (!parent) break
-            current = parent
-        }
-
-        const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : ''
-        return {
-            title: `${prefix}${c.icon || '🏷️'} ${c.name}`,
-            value: c.name
-        }
-    })
-
-    if (!options.find(o => o.value === 'Uncategorized')) {
-        options.push({ title: '🏷️ Uncategorized', value: 'Uncategorized' })
-    }
-    return options
-})
-
-const timeRangeOptions = [
-    { title: 'All Time', value: 'all' },
-    { title: 'Today', value: 'today' },
-    { title: 'This Week', value: 'this-week' },
-    { title: 'This Month', value: 'this-month' },
-    { title: 'Last Month', value: 'last-month' },
-    { title: 'Custom Range', value: 'custom' }
-]
-
-// Methods
-function handleOptionsUpdate(options: any) {
-    if (options.sortBy && options.sortBy.length > 0) {
-        const field = options.sortBy[0].key
-        if (field !== props.txnSortKey) {
-            emit('sortChange', field)
-        }
-    }
-    if (options.page !== props.page) {
-        emit('update:page', options.page)
-    }
-    if (options.itemsPerPage !== props.pageSize) {
-        emit('update:pageSize', options.itemsPerPage)
-    }
-}
-
-function toggleSelection(id: string) {
-    const newSet = new Set(selectedIds.value)
-    if (newSet.has(id)) {
-        newSet.delete(id)
-    } else {
-        newSet.add(id)
-    }
-    selectedIds.value = newSet
-}
-
-function formatDate(dateStr: string) {
-    if (!dateStr) return { day: 'N/A', meta: '' }
-
-    const d = new Date(dateStr)
-    if (isNaN(d.getTime())) {
-        return { day: '?', meta: dateStr.split('T')[0] || dateStr }
-    }
-
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-
-    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-
-    if (d.toDateString() === today.toDateString()) {
-        return { day: 'Today', meta: time }
-    }
-    if (d.toDateString() === yesterday.toDateString()) {
-        return { day: 'Yesterday', meta: time }
-    }
-
-    const currentYear = today.getFullYear()
-    const txnYear = d.getFullYear()
-
-    let formatOptions: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
-    if (txnYear !== currentYear) {
-        formatOptions.year = 'numeric'
-    }
-
-    const monthDay = d.toLocaleDateString('en-US', formatOptions)
-    return {
-        day: monthDay,
-        meta: time
-    }
-}
-
-function getAccountName(id: string) {
-    const acc = props.accounts.find(a => a.id === id)
-    return acc ? acc.name : 'Unknown Account'
-}
-
-function getCategoryDisplay(name: string) {
-    if (!name || name === 'Uncategorized') return { icon: '🏷️', text: 'Uncategorized', color: '#9ca3af' }
-
-    const cat = flatCategories.value.find(c => c.name === name)
-    if (cat) {
-        let text = cat.name
-        // Try to find parent name from flat list
-        const parent = cat.parent_id ? flatCategories.value.find(p => p.id === cat.parent_id) : null
-        if (parent) {
-            text = `${parent.name} › ${cat.name}`
-        }
-        return { icon: cat.icon || '🏷️', text: text, color: cat.color || '#3B82F6' }
-    }
-
-    return { icon: '🏷️', text: name, color: '#9ca3af' }
-}
-
-function getExpenseGroupName(id: string) {
-    if (!id) return null
-    const group = props.expenseGroups.find(g => g.id === id)
-    return group ? group.name : null
-}
-
-function handleTimeRangeChange(val: string) {
-    emit('update:selectedTimeRange', val)
-}
-
-function handleReset() {
-    emit('resetFilters')
-}
-</script>
-
-<style scoped>
-.transaction-list-container {
-    animation: slide-up 0.4s ease-out;
-}
-
-@keyframes slide-up {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* .premium-glass-card is now global */
-.gap-2 {
-    gap: 8px;
-}
-
-
-
-
-
-.gap-2 {
-    gap: 8px;
-}
-
-.gap-3 {
-    gap: 12px;
-}
-
-.gap-4 {
-    gap: 16px;
-}
-
-.date-cell {
-    line-height: 1.2;
-}
-
-.source-icon-mini {
-    font-size: 0.9rem;
-}
-
-.premium-table {
-    background: transparent !important;
-}
-
-:deep(.v-data-table-header__content) {
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-size: 0.7rem;
-    opacity: 0.6;
-}
-
-:deep(.v-data-table__tr:hover) {
-    background: rgba(var(--v-theme-primary), 0.03) !important;
-}
-
-.hover-underline:hover {
-    text-decoration: underline !important;
-    color: rgb(var(--v-theme-primary)) !important;
-}
-
-.opacity-70 {
-    opacity: 0.7;
-}
-
-.opacity-60 {
-    opacity: 0.6;
-}
-
-.opacity-50 {
-    opacity: 0.5;
-}
-
-.text-content {
-    color: rgb(var(--v-theme-on-surface));
-}
-
-.animate-in {
-    animation: fade-in 0.3s ease-out;
-}
-
-@keyframes fade-in {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-.hidden-txn-row {
-    opacity: 0.6;
-    filter: blur(0.8px) grayscale(0.5);
-    transition: all 0.3s ease;
-}
-
-.hidden-txn-row:hover {
-    opacity: 1;
-    filter: none;
-    background: rgba(var(--v-theme-surface), 0.8) !important;
-}
-</style>
-
 <template>
     <div class="transaction-list-container">
         <!-- Filter Bar -->
@@ -369,7 +6,7 @@ function handleReset() {
                 <v-col cols="12" lg="auto">
                     <div class="d-flex align-center">
                         <span class="text-caption font-weight-bold text-uppercase opacity-70 mr-3">Account:</span>
-                        <v-select :model-value="selectedAccount"
+                        <v-autocomplete :model-value="selectedAccount"
                             @update:model-value="emit('update:selectedAccount', $event)" :items="accountOptions"
                             item-title="title" item-value="value" placeholder="All Accounts" density="comfortable"
                             hide-details variant="outlined" class="account-select-premium font-weight-bold" rounded="lg"
@@ -380,7 +17,7 @@ function handleReset() {
                 <v-col cols="12" sm="6" md="3" lg="auto">
                     <div class="d-flex align-center">
                         <span class="text-caption font-weight-bold text-uppercase opacity-70 mr-3">Time:</span>
-                        <v-select :model-value="selectedTimeRange" @update:model-value="handleTimeRangeChange"
+                        <v-autocomplete :model-value="selectedTimeRange" @update:model-value="handleTimeRangeChange"
                             :items="timeRangeOptions" item-title="title" item-value="value" density="comfortable"
                             hide-details variant="outlined" class="time-range-select-premium font-weight-bold"
                             rounded="lg" bg-color="surface" />
@@ -415,7 +52,7 @@ function handleReset() {
                 </v-col>
 
                 <v-col cols="12" sm="6" md="3" lg="auto">
-                    <v-select :model-value="categoryFilter"
+                    <v-autocomplete :model-value="categoryFilter"
                         @update:model-value="emit('update:categoryFilter', $event); emit('fetchData')"
                         :items="[{ title: 'All Categories', value: '' }, ...categoryOptions]" item-title="title"
                         item-value="value" placeholder="Category" density="comfortable" hide-details variant="outlined"
@@ -535,18 +172,18 @@ function handleReset() {
                 <!-- Recipient Column -->
                 <template #[`item.recipient`]="{ item }">
                     <div class="d-flex align-center gap-3 py-2">
-                        <v-tooltip :text="getCategoryDisplay(item.category).text" location="top">
+                        <v-tooltip :text="getCategoryDisplay(item.category || '').text" location="top">
                             <template v-slot:activator="{ props }">
                                 <v-avatar v-bind="props" size="36"
-                                    :color="getCategoryDisplay(item.category).color + '20'" rounded="lg">
-                                    <span class="text-h6 pb-1">{{ getCategoryDisplay(item.category).icon }}</span>
+                                    :color="getCategoryDisplay(item.category || '').color + '20'" rounded="lg">
+                                    <span class="text-h6 pb-1">{{ getCategoryDisplay(item.category || '').icon }}</span>
                                 </v-avatar>
                             </template>
                         </v-tooltip>
                         <div>
                             <div class="text-subtitle-2 font-weight-bold text-truncate" style="max-width: 200px;">
                                 <router-link v-if="item.recipient"
-                                    :to="`/merchants/${encodeURIComponent(item.recipient)}`"
+                                    :to="`/merchants/${encodeURIComponent(item.recipient || '')}`"
                                     class="text-decoration-none text-content hover-underline">
                                     {{ item.recipient }}
                                 </router-link>
@@ -560,7 +197,7 @@ function handleReset() {
                                 </div>
                                 <v-tooltip text="Quick Insights" location="top">
                                     <template v-slot:activator="{ props }">
-                                        <v-btn v-if="item.recipient" v-bind="props" icon variant="text" size="x-small" density="compact" class="ml-1" color="primary" @click.stop="emit('showVendorInsights', item.recipient)">
+                                        <v-btn v-if="item.recipient" v-bind="props" icon variant="text" size="x-small" density="compact" class="ml-1" color="primary" @click.stop="emit('showVendorInsights', item.recipient || '')">
                                             <v-icon size="small" icon="$info"></v-icon>
                                         </v-btn>
                                     </template>
@@ -708,6 +345,299 @@ function handleReset() {
             :initial-alias="aliasForm.alias" @saved="() => { emit('fetchData') }" />
     </div>
 </template>
+
+<script setup lang="ts">
+import { computed, ref, reactive } from 'vue'
+import MerchantAliasModal from '@/components/MerchantAliasModal.vue'
+import { useCurrency } from '@/composables/useCurrency'
+import {
+    Search,
+    Trash2,
+    Upload,
+    Plus,
+    MapPin,
+    Pencil,
+    MoreVertical,
+    FileText,
+    TrendingUp,
+    TrendingDown,
+    Wallet
+} from 'lucide-vue-next'
+
+const { formatAmount } = useCurrency()
+
+export interface AccountItem {
+    id: string
+    name: string
+    type?: string
+    [key: string]: any
+}
+
+export interface CategoryItem {
+    id: string
+    name: string
+    icon?: string
+    color?: string
+    parent_id?: string
+    subcategories?: CategoryItem[]
+    [key: string]: any
+}
+
+export interface ExpenseGroup {
+    id: string
+    name: string
+    [key: string]: any
+}
+
+export interface TransactionItem {
+    id: string
+    date: string
+    amount: number | string
+    recipient?: string
+    description?: string
+    category?: string
+    account_id: string
+    source?: string
+    is_ai_parsed?: boolean
+    is_transfer?: boolean
+    exclude_from_reports?: boolean
+    is_emi?: boolean
+    expense_group_id?: string
+    latitude?: number
+    location_name?: string
+    [key: string]: any
+}
+
+// Props
+const props = defineProps<{
+    transactions: TransactionItem[]
+    accounts: AccountItem[]
+    categories: CategoryItem[]
+    expenseGroups: ExpenseGroup[]
+    total: number
+    loading: boolean
+    selectedAccount: string
+    categoryFilter: string
+    searchQuery: string
+    startDate: string
+    endDate: string
+    selectedTimeRange: string
+    page: number
+    pageSize: number
+    txnSortOrder: 'asc' | 'desc'
+    metrics: {
+        monthly_income: number
+        monthly_spending: number
+        breakdown: {
+            net_worth: number
+        }
+    }
+    txnSortKey: string
+}>()
+
+// Emits
+const emit = defineEmits<{
+    'update:selectedAccount': [value: string]
+    'update:categoryFilter': [value: string]
+    'update:searchQuery': [value: string]
+    'update:startDate': [value: string]
+    'update:endDate': [value: string]
+    'update:selectedTimeRange': [value: string]
+    'update:page': [value: number]
+    'update:pageSize': [value: number]
+    'sortChange': [key: string]
+    'editTxn': [txn: TransactionItem | null]
+    'deleteSelected': []
+    'importCsv': [],
+    'fetchData': [],
+    'resetFilters': [],
+    'showVendorInsights': [vendorName: string]
+}>()
+
+// --- Merchant Alias Logic (Encapsulated) ---
+const showAliasModal = ref(false)
+const aliasForm = reactive({
+    pattern: '',
+    alias: ''
+})
+
+function openAliasModal(txn: TransactionItem) {
+    aliasForm.pattern = txn.description || txn.recipient || ''
+    aliasForm.alias = txn.recipient || ''
+    showAliasModal.value = true
+}
+
+// Local State
+const selectedIds = defineModel<Set<string>>('selectedIds', { default: () => new Set() })
+
+// Headers for v-data-table
+const headers = [
+    { title: 'Date', key: 'date', sortable: true, width: '110px' },
+    { title: 'Recipient / Source', key: 'recipient', sortable: true, width: '250px' },
+    { title: 'Description', key: 'description', sortable: false },
+    { title: 'Amount', key: 'amount', sortable: true, align: 'end' as const, width: '130px' },
+    { title: '', key: 'actions', sortable: false, align: 'center' as const, width: '60px' },
+]
+
+// Adaptation for v-data-table selection (array based) vs parent's Set based
+const tableSelection = computed({
+    get: () => Array.from(selectedIds.value),
+    set: (newSelection: any[]) => {
+        selectedIds.value = new Set(newSelection)
+    }
+})
+
+// Computed
+const accountOptions = computed(() => {
+    return [{ title: 'All Accounts', value: '' }, ...props.accounts.map(a => ({ title: a.name, value: a.id }))]
+})
+
+const flatCategories = computed(() => {
+    const list: CategoryItem[] = []
+    const flatten = (cats: CategoryItem[]) => {
+        cats.forEach(c => {
+            list.push(c)
+            if (c.subcategories && c.subcategories.length > 0) {
+                flatten(c.subcategories)
+            }
+        })
+    }
+    flatten(props.categories)
+    return list
+})
+
+const categoryOptions = computed(() => {
+    const options = flatCategories.value.map(c => {
+        // Find depth for indentation
+        let depth = 0
+        let current = c
+        while (current.parent_id) {
+            depth++
+            const parent = flatCategories.value.find(p => p.id === current.parent_id)
+            if (!parent) break
+            current = parent
+        }
+
+        const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : ''
+        return {
+            title: `${prefix}${c.icon || '🏷️'} ${c.name}`,
+            value: c.name
+        }
+    })
+
+    if (!options.find(o => o.value === 'Uncategorized')) {
+        options.push({ title: '🏷️ Uncategorized', value: 'Uncategorized' })
+    }
+    return options
+})
+
+const timeRangeOptions = [
+    { title: 'All Time', value: 'all' },
+    { title: 'Today', value: 'today' },
+    { title: 'This Week', value: 'this-week' },
+    { title: 'This Month', value: 'this-month' },
+    { title: 'Last Month', value: 'last-month' },
+    { title: 'Custom Range', value: 'custom' }
+]
+
+// Methods
+function handleOptionsUpdate(options: any) {
+    if (options.sortBy && options.sortBy.length > 0) {
+        const field = options.sortBy[0].key
+        if (field !== props.txnSortKey) {
+            emit('sortChange', field)
+        }
+    }
+    if (options.page !== props.page) {
+        emit('update:page', options.page)
+    }
+    if (options.itemsPerPage !== props.pageSize) {
+        emit('update:pageSize', options.itemsPerPage)
+    }
+}
+
+function toggleSelection(id: string) {
+    const newSet = new Set(selectedIds.value)
+    if (newSet.has(id)) {
+        newSet.delete(id)
+    } else {
+        newSet.add(id)
+    }
+    selectedIds.value = newSet
+}
+
+function formatDate(dateStr: string) {
+    if (!dateStr) return { day: 'N/A', meta: '' }
+
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) {
+        return { day: '?', meta: dateStr.split('T')[0] || dateStr }
+    }
+
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+
+    if (d.toDateString() === today.toDateString()) {
+        return { day: 'Today', meta: time }
+    }
+    if (d.toDateString() === yesterday.toDateString()) {
+        return { day: 'Yesterday', meta: time }
+    }
+
+    const currentYear = today.getFullYear()
+    const txnYear = d.getFullYear()
+
+    let formatOptions: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+    if (txnYear !== currentYear) {
+        formatOptions.year = 'numeric'
+    }
+
+    const monthDay = d.toLocaleDateString('en-US', formatOptions)
+    return {
+        day: monthDay,
+        meta: time
+    }
+}
+
+function getAccountName(id: string) {
+    const acc = props.accounts.find(a => a.id === id)
+    return acc ? acc.name : 'Unknown Account'
+}
+
+function getCategoryDisplay(name: string) {
+    if (!name || name === 'Uncategorized') return { icon: '🏷️', text: 'Uncategorized', color: '#9ca3af' }
+
+    const cat = flatCategories.value.find(c => c.name === name)
+    if (cat) {
+        let text = cat.name
+        // Try to find parent name from flat list
+        const parent = cat.parent_id ? flatCategories.value.find(p => p.id === cat.parent_id) : null
+        if (parent) {
+            text = `${parent.name} › ${cat.name}`
+        }
+        return { icon: cat.icon || '🏷️', text: text, color: cat.color || '#3B82F6' }
+    }
+
+    return { icon: '🏷️', text: name, color: '#9ca3af' }
+}
+
+function getExpenseGroupName(id: string) {
+    if (!id) return null
+    const group = props.expenseGroups.find(g => g.id === id)
+    return group ? group.name : null
+}
+
+function handleTimeRangeChange(val: string) {
+    emit('update:selectedTimeRange', val)
+}
+
+function handleReset() {
+    emit('resetFilters')
+}
+</script>
 
 <style scoped>
 /* Skeleton Loader Overrides */

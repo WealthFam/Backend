@@ -374,7 +374,7 @@ function getIconColor(item: any) {
                                 </v-col>
 
                                 <v-col cols="4" md="3" class="mb-1">
-                                    <v-select v-model="localForm.type" :items="['DEBIT', 'CREDIT']" label="Type"
+                                    <v-autocomplete v-model="localForm.type" :items="['DEBIT', 'CREDIT']" label="Type"
                                         variant="outlined" density="comfortable" rounded="lg"
                                         class="premium-modal-input font-weight-bold" hide-details>
                                         <template v-slot:selection="{ item }">
@@ -391,7 +391,7 @@ function getIconColor(item: any) {
                                                 </template>
                                             </v-list-item>
                                         </template>
-                                    </v-select>
+                                    </v-autocomplete>
                                 </v-col>
 
                                 <v-col cols="8" md="5" class="mb-1">
@@ -430,7 +430,7 @@ function getIconColor(item: any) {
 
                             <v-row dense>
                                 <v-col cols="12" md="6" class="mb-1">
-                                    <v-select v-model="localForm.account_id" :items="accountOptions" label="Account"
+                                    <v-autocomplete v-model="localForm.account_id" :items="accountOptions" label="Account"
                                         item-title="title" item-value="value" variant="outlined" density="comfortable"
                                         rounded="lg" class="premium-modal-input font-weight-bold" hide-details
                                         prepend-inner-icon="Landmark" />
@@ -445,7 +445,7 @@ function getIconColor(item: any) {
                                 </v-col>
 
                                 <v-col cols="12" class="mb-1">
-                                    <v-select v-model="localForm.expense_group_id" :items="expenseGroupOptions"
+                                    <v-autocomplete v-model="localForm.expense_group_id" :items="expenseGroupOptions"
                                         label="Life Event / Group" item-title="title" item-value="value"
                                         placeholder="Add to a project or life event (Optional)" variant="outlined"
                                         density="comfortable" rounded="lg" class="premium-modal-input font-weight-bold"
@@ -504,7 +504,7 @@ function getIconColor(item: any) {
 
                                         <v-row dense>
                                             <v-col cols="12" md="8">
-                                                <v-select v-model="localForm.to_account_id" :items="accountOptions"
+                                                <v-autocomplete v-model="localForm.to_account_id" :items="accountOptions"
                                                     item-title="title" item-value="value" label="Destination Account"
                                                     placeholder="Select account" variant="outlined"
                                                     density="comfortable" rounded="lg"

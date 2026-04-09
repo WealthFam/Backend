@@ -248,7 +248,7 @@
                 <!-- Trend Column -->
                 <template #[`item.trend`]="{ item }">
                     <Sparkline v-if="item.sparkline && item.sparkline.length" :data="item.sparkline"
-                        :color="item.profit_loss >= 0 ? '#10b981' : '#ef4444'" :height="30" width="100" />
+                        :color="item.profit_loss >= 0 ? '#10b981' : '#ef4444'" :height="30" :width="100" />
                 </template>
 
                 <!-- Returns Column -->
@@ -357,7 +357,7 @@
                                                     <Sparkline v-if="child.sparkline && child.sparkline.length"
                                                         :data="child.sparkline"
                                                         :color="child.profit_loss >= 0 ? '#10b981' : '#ef4444'"
-                                                        :height="12" width="70" stroke-width="3" />
+                                                        :height="12" :width="70" stroke-width="3" />
                                                 </div>
                                                 <div class="text-right">
                                                     <div class="text-[8px] text-medium-emphasis font-weight-bold">UNITS
