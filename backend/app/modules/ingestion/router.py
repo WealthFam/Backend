@@ -1038,124 +1038,111 @@ def delete_alias(
     return {"status": "deleted"}
 
 
-class LabelPayload(BaseModel):
-    amount: float
-    date: datetime
-    account_mask: str
-    recipient: Optional[str]
-    category: Optional[str] = "Uncategorized"
-    ref_id: Optional[str]
-    balance: Optional[float] = None
-    credit_limit: Optional[float] = None
-    type: str = "DEBIT" # DEBIT or CREDIT
-    generate_pattern: bool = True
-    exclude_from_reports: bool = False
-
 @router.post("/training/{message_id}/label")
 def label_message(
     message_id: str,
-    payload: LabelPayload,
+    payload: ingestion_schemas.TrainingLabelRequest,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    msg = db.query(ingestion_models.UnparsedMessage).filter(
-        ingestion_models.UnparsedMessage.id == message_id,
-        ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
-    ).first()
-    
-    if not msg:
-        raise HTTPException(status_code=404, detail="Message not found")
+    with db_write_lock:
+        msg = db.query(ingestion_models.UnparsedMessage).filter(
+            ingestion_models.UnparsedMessage.id == message_id,
+            ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
+        ).first()
         
-    # Promote to PendingTransaction
-    account = IngestionService.match_account(db, str(current_user.tenant_id), payload.account_mask)
-    if not account:
-        # Create auto-account if mask provided
-        account = finance_models.Account(
-            tenant_id=str(current_user.tenant_id),
-            name=f"Detected: (XX{payload.account_mask[-4:]})",
-            type=finance_models.AccountType.BANK,
-            account_mask=payload.account_mask[-4:],
-            is_verified=False,
-            balance=0.0
-        )
-        db.add(account)
-        db.commit()
-        db.refresh(account)
-
-    effective_ref = payload.ref_id
-    if not effective_ref:
-        date_str = payload.date.strftime("%Y%m%d%H%M%S")
-        effective_ref = f"MAN-{date_str}-{payload.account_mask}-{payload.amount:.2f}"
-
-    # Determine effective amount based on type
-    effective_amount = payload.amount
-    if payload.type == "DEBIT":
-        effective_amount = -abs(payload.amount)
-    else:
-        effective_amount = abs(payload.amount)
-
-    # If balance/limit provided in label, anchor it
-    if payload.balance is not None:
-        # Check if this is the "New Reality" (newer or same as current anchor)
-        is_newer = True
-        if account.last_synced_at and payload.date < account.last_synced_at:
-            is_newer = False
+        if not msg:
+            raise HTTPException(status_code=404, detail="Message not found")
             
-        if is_newer:
-            account.balance = payload.balance
-            account.last_synced_balance = payload.balance
-            account.last_synced_at = payload.date
-            if payload.credit_limit is not None:
-                account.credit_limit = payload.credit_limit
-                account.last_synced_limit = payload.credit_limit
-        
-        # Always create snapshot as it stores ground truth for the specific point in time
-        db.add(finance_models.BalanceSnapshot(
-            account_id=str(account.id),
-            tenant_id=str(current_user.tenant_id),
-            balance=payload.balance,
-            timestamp=payload.date,
-            source="MANUAL_TRAINING"
-        ))
-
-    pending = ingestion_models.PendingTransaction(
-        tenant_id=str(current_user.tenant_id),
-        account_id=str(account.id),
-        amount=effective_amount,
-        date=payload.date,
-        description=f"Learned: {payload.recipient or 'Unknown'}",
-        recipient=payload.recipient,
-        category=payload.category or "Uncategorized",
-        source=msg.source,
-        raw_message=msg.raw_content,
-        external_id=effective_ref,
-        balance_is_synced=(payload.balance is not None),
-        exclude_from_reports=payload.exclude_from_reports
-    )
-    db.add(pending)
-    
-    # Pattern Generation Logic
-    # Pattern Generation Logic
-    if payload.generate_pattern:
-        try:
-            pattern_str, mapping_json = PatternGenerator.generate_regex_and_config(msg.raw_content, payload.dict(), txn_type=payload.type)
-            
-            # Send to External Parser Service
-            from backend.app.modules.ingestion.parser_service import ExternalParserService
-            import json
-            
-            ExternalParserService.create_pattern(
+        # Promote to PendingTransaction
+        account = IngestionService.match_account(db, str(current_user.tenant_id), payload.account_mask)
+        if not account:
+            # Create auto-account if mask provided
+            account = finance_models.Account(
                 tenant_id=str(current_user.tenant_id),
-                source=msg.source,
-                regex_pattern=pattern_str,
-                mapping=json.loads(mapping_json)
+                name=f"Detected: (XX{payload.account_mask[-4:]})",
+                type=finance_models.AccountType.BANK,
+                account_mask=payload.account_mask[-4:],
+                is_verified=False,
+                balance=0.0
             )
-            # Legacy local save removed to enforce single source of truth
-        except Exception as e:
-            logger.exception("Error creating pattern:")
+            db.add(account)
+            db.commit()
+            db.refresh(account)
+
+        effective_ref = payload.ref_id
+        if not effective_ref:
+            date_str = payload.date.strftime("%Y%m%d%H%M%S")
+            effective_ref = f"MAN-{date_str}-{payload.account_mask}-{payload.amount:.2f}"
+
+        # Determine effective amount based on type
+        effective_amount = payload.amount
+        if payload.type == "DEBIT":
+            effective_amount = -abs(payload.amount)
+        else:
+            effective_amount = abs(payload.amount)
+
+        # If balance/limit provided in label, anchor it
+        if payload.balance is not None:
+            # Check if this is the "New Reality" (newer or same as current anchor)
+            is_newer = True
+            if account.last_synced_at and payload.date < account.last_synced_at:
+                is_newer = False
+                
+            if is_newer:
+                account.balance = payload.balance
+                account.last_synced_balance = payload.balance
+                account.last_synced_at = payload.date
+                if payload.credit_limit is not None:
+                    account.credit_limit = payload.credit_limit
+                    account.last_synced_limit = payload.credit_limit
+            
+            # Always create snapshot
+            db.add(finance_models.BalanceSnapshot(
+                account_id=str(account.id),
+                tenant_id=str(current_user.tenant_id),
+                balance=payload.balance,
+                timestamp=payload.date,
+                source="MANUAL_TRAINING"
+            ))
+
+        pending = ingestion_models.PendingTransaction(
+            tenant_id=str(current_user.tenant_id),
+            account_id=str(account.id),
+            amount=effective_amount,
+            date=payload.date,
+            description=f"Learned: {payload.recipient or 'Unknown'}",
+            recipient=payload.recipient,
+            category=payload.category or "Uncategorized",
+            source=msg.source,
+            raw_message=msg.raw_content,
+            external_id=effective_ref,
+            balance_is_synced=(payload.balance is not None),
+            exclude_from_reports=payload.exclude_from_reports
+        )
+        db.add(pending)
         
-    db.delete(msg)
-    db.commit()
+        # Pattern Generation Logic
+        if payload.generate_pattern:
+            try:
+                from backend.app.modules.ingestion.pattern_service import PatternGenerator
+                pattern_str, mapping_json = PatternGenerator.generate_regex_and_config(msg.raw_content, payload.dict(), txn_type=payload.type)
+                
+                # Send to External Parser Service
+                from backend.app.modules.ingestion.parser_service import ExternalParserService
+                import json
+                
+                ExternalParserService.create_pattern(
+                    tenant_id=str(current_user.tenant_id),
+                    source=msg.source,
+                    regex_pattern=pattern_str,
+                    mapping=json.loads(mapping_json)
+                )
+            except Exception as e:
+                logger.exception("Error creating pattern:")
+            
+        db.delete(msg)
+        db.commit()
     
     return {"status": "labeled", "pending_id": pending.id}
 

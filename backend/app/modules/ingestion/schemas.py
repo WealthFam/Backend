@@ -103,3 +103,16 @@ class IngestionEventRead(IngestionBase):
     message: Optional[str] = None
     data_json: Optional[str] = None
     created_at: datetime
+
+class TrainingLabelRequest(IngestionBase):
+    amount: Decimal
+    date: datetime
+    account_mask: str
+    recipient: Optional[str] = None
+    category: Optional[str] = "Uncategorized"
+    ref_id: Optional[str] = None
+    balance: Optional[Decimal] = None
+    credit_limit: Optional[Decimal] = None
+    type: str = "DEBIT" # DEBIT or CREDIT
+    generate_pattern: bool = True
+    exclude_from_reports: bool = False
