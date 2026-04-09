@@ -200,6 +200,7 @@
 - **Glassmorphism:** Use subtle glass/blur effects for cards, sidebars, and overlays to create a sense of depth and modern elegance.
 - **Micro-animations:** Every button, card, and interactive element **must** have hover and active states (scale, shadow, or color shifts). Use subtle transitions for entering/leaving elements.
 - **Premium Aesthetics:** Use vibrant, harmonious color palettes (avoid default primary/secondary). Leverage smooth gradients for headers and primary CTAs. Ensure a consistent "Premium" feel across all views.
+- **Semantic Color Consistency:** Maintain semantic parity for functionally related modules. Features belonging to the same logical lifecycle (e.g., Ingestion -> Triage -> Training) must share a unified color palette (typically the `primary` theme). Do not oscillate between distinct semantic colors (like `primary` and `warning`) for adjacent tabs or steps within a single workflow unless indicating a high-stakes state change (e.g., Error, Critical Alert).
 - **Searchable Dropdowns:** **All** dropdowns/select components must be searchable. Users should never have to scroll through a long list manually.
 - **Iconography:** Use a **consistent icon set** (e.g., Material Design Icons) across the entire application. Do not mix outlined, filled, and sharp styles unless it's a semantic distinction.
 - **Tooltips:** **Always** provide tooltips for icon-only buttons, complex labels, and any interactive element where the action is not immediately obvious from text alone.
