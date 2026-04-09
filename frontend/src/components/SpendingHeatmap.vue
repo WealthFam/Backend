@@ -126,7 +126,8 @@ const updateHeatmap = () => {
     // Prepare heatmap data: [lat, lng, intensity]
     const heatPoints = data.value.map(p => {
         // Boost intensity calculation for deeper colors
-        const intensity = Math.min(Math.abs(p.amount) / 500, 1.2)
+        // Boost intensity calculation for deeper colors - ensure minimum visibility
+        const intensity = Math.max(0.4, Math.min(Math.abs(p.amount) / 500, 1.2))
 
         // Add marker for each point
         if (markerLayer) {
@@ -186,9 +187,15 @@ const updateHeatmap = () => {
     }
 }
 
-watch(data, () => {
-    updateHeatmap()
-}, { deep: true })
+watch(data, (newData) => {
+    if (newData && newData.length > 0) {
+        if (!map) {
+            initMap()
+        } else {
+            updateHeatmap()
+        }
+    }
+}, { deep: true, immediate: true })
 
 onUnmounted(() => {
     if (map) {

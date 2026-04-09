@@ -117,8 +117,13 @@
                                             :title="txn.recipient || txn.description">
                                             {{ txn.recipient || txn.description }}
                                         </div>
-                                        <div class="text-caption opacity-60 font-weight-bold text-truncate">
-                                            {{ formatDate(txn.date).day }} • {{ txn.source }}
+                                        <div class="d-flex align-center flex-wrap gap-2 text-caption opacity-60 font-weight-bold">
+                                            <span>{{ formatDate(txn.date).day }}</span>
+                                            <span class="opacity-50">•</span>
+                                            <span>{{ txn.source }}</span>
+                                            <v-chip v-if="txn.latitude" size="x-small" color="primary" variant="tonal" class="rounded-pill font-weight-bold ml-1" density="compact">
+                                                <MapPin :size="10" class="mr-1" /> GPS
+                                            </v-chip>
                                         </div>
                                     </div>
 
@@ -430,6 +435,9 @@
                                             <span class="opacity-30">•</span>
                                             <span class="text-uppercase tracking-wider font-weight-black opacity-50">{{
                                                 msg.source }}</span>
+                                            <v-chip v-if="msg.latitude" size="x-small" color="primary" variant="tonal" class="rounded-pill font-weight-bold" density="compact">
+                                                <MapPin :size="10" class="mr-1" /> {{ msg.location || 'GPS' }}
+                                            </v-chip>
                                             <v-chip color="warning" size="x-small" variant="flat" class="ml-auto">Needs
                                                 Training</v-chip>
                                         </div>
@@ -691,7 +699,6 @@
                     <p class="text-body-2 text-medium-emphasis mb-6">
                         Are you sure you want to dismiss these unparsed messages?
                     </p>
-
                     <v-checkbox :model-value="createIgnoreRule"
                         @update:model-value="emit('update:createIgnoreRule', !!$event)"
                         label="Don't show this sender again" color="primary" density="comfortable" hide-details
