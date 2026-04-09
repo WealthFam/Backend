@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, B
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from backend.app.core.database import get_db
+from backend.app.core.database import get_db, db_write_lock
 from backend.app.core import timezone
+from backend.app.modules.ingestion import schemas as ingestion_schemas
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,65 +29,12 @@ from backend.app.modules.ingestion.email_sync import EmailSyncService
 router = APIRouter(tags=["Ingestion"])
 
 
-class SmsPayload(BaseModel):
-    sender: str
-    message: str
-    device_id: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    received_at: Optional[datetime] = None
+# Schemas moved to ingestion.schemas
 
-class EmailPayload(BaseModel):
-    subject: str
-    body: str
-    sender: Optional[str] = "Manual Input"
-    received_at: Optional[datetime] = None
-
-class EmailSyncPayload(BaseModel):
-    imap_server: str = "imap.gmail.com"
-    email: str
-    password: str # App Password recommended
-    folder: str = "INBOX"
-    unread_only: bool = True
-
-class EmailConfigCreate(BaseModel):
-    email: str
-    password: str
-    imap_server: str = "imap.gmail.com"
-    folder: str = "INBOX"
-    auto_sync_enabled: bool = False
-    user_id: Optional[str] = None
-
-class EmailConfigUpdate(BaseModel):
-    email: Optional[str] = None
-    password: Optional[str] = None
-    imap_server: Optional[str] = None
-    folder: Optional[str] = None
-    auto_sync_enabled: Optional[bool] = None
-    user_id: Optional[str] = None
-    reset_sync_history: Optional[bool] = False
-    last_sync_at: Optional[datetime] = None
-
-class EmailSyncLogRead(BaseModel):
-    id: str
-    started_at: datetime
-    completed_at: Optional[datetime]
-    status: str
-    items_processed: float
-    message: Optional[str]
-    
-    class Config:
-        from_attributes = True
-
-class EmailConfigRead(EmailConfigCreate):
-    id: str
-    is_active: bool
-    auto_sync_enabled: bool = False
-    last_sync_at: Optional[datetime] = None
-
+# Schemas moved to ingestion.schemas
 @router.post("/sms")
 def ingest_sms(
-    payload: SmsPayload,
+    payload: ingestion_schemas.SmsPayload,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -229,7 +178,7 @@ def ingest_sms(
 
 @router.post("/email")
 def ingest_email(
-    payload: EmailPayload,
+    payload: ingestion_schemas.EmailPayload,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -301,7 +250,7 @@ def ingest_email(
 
 @router.post("/email/sync")
 def sync_email_inbox(
-    payload: EmailSyncPayload,
+    payload: ingestion_schemas.EmailSyncPayload,
     background_tasks: BackgroundTasks,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -324,7 +273,8 @@ def sync_email_inbox(
     
     return {"status": "started", "message": "Email synchronization tracking in background."}
 
-@router.get("/email/configs", response_model=List[EmailConfigRead])
+@router.get("/email/configs", response_model=List[ingestion_schemas.EmailConfigRead])
+
 def list_email_configs(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -333,9 +283,9 @@ def list_email_configs(
         ingestion_models.EmailConfiguration.tenant_id == str(current_user.tenant_id)
     ).all()
 
-@router.post("/email/configs", response_model=EmailConfigRead)
+@router.post("/email/configs", response_model=ingestion_schemas.EmailConfigRead)
 def create_email_config(
-    payload: EmailConfigCreate,
+    payload: ingestion_schemas.EmailConfigCreate,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -348,10 +298,10 @@ def create_email_config(
     db.refresh(config)
     return config
 
-@router.put("/email/configs/{config_id}", response_model=EmailConfigRead)
+@router.put("/email/configs/{config_id}", response_model=ingestion_schemas.EmailConfigRead)
 def update_email_config(
     config_id: str,
-    payload: EmailConfigUpdate,
+    payload: ingestion_schemas.EmailConfigUpdate,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -433,7 +383,8 @@ def list_email_logs(
         "skip": skip
     }
 
-@router.get("/email/configs/{config_id}/logs", response_model=List[EmailSyncLogRead])
+@router.get("/email/configs/{config_id}/logs", response_model=List[ingestion_schemas.EmailSyncLogRead])
+
 def get_email_sync_logs(
     config_id: str,
     current_user: auth_models.User = Depends(get_current_user),
@@ -808,6 +759,9 @@ def get_unparsed_messages(
     source_filter: Optional[str] = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
+    sender_filter: Optional[str] = None,
+    subject_filter: Optional[str] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: auth_models.User = Depends(get_current_user)
 ):
@@ -817,6 +771,22 @@ def get_unparsed_messages(
 
     if source_filter:
         query = query.filter(ingestion_models.UnparsedMessage.source == source_filter)
+    
+    if sender_filter:
+        query = query.filter(ingestion_models.UnparsedMessage.sender == sender_filter)
+    
+    if subject_filter:
+        query = query.filter(ingestion_models.UnparsedMessage.subject == subject_filter)
+
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                ingestion_models.UnparsedMessage.sender.ilike(search_term),
+                ingestion_models.UnparsedMessage.subject.ilike(search_term),
+                ingestion_models.UnparsedMessage.raw_content.ilike(search_term)
+            )
+        )
 
     total = query.count()
 
@@ -838,21 +808,75 @@ def get_unparsed_messages(
         "limit": limit,
         "skip": skip
     }
+
+@router.post("/training/{msg_id}/mark-as-spam")
+def mark_training_as_spam(
+    msg_id: str,
+    db: Session = Depends(get_db),
+    current_user: auth_models.User = Depends(get_current_user)
+):
+    with db_write_lock:
+        msg = db.query(ingestion_models.UnparsedMessage).filter(
+            ingestion_models.UnparsedMessage.id == msg_id,
+            ingestion_models.UnparsedMessage.tenant_id == current_user.tenant_id
+        ).first()
+        
+        if not msg:
+            raise HTTPException(status_code=404, detail="Message not found")
+        
+        # Create Filter
+        new_filter = ingestion_models.SpamFilter(
+            tenant_id=str(current_user.tenant_id),
+            sender=msg.sender,
+            subject=msg.subject,
+            source=msg.source
+        )
+        db.add(new_filter)
+        db.delete(msg)
+        db.commit()
+    
+    return {"status": "success", "message": "Marked as spam and blocked for future"}
+
+@router.get("/training/spam", response_model=ingestion_schemas.SpamFilterListResponse)
+def list_spam_filters(
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: auth_models.User = Depends(get_current_user)
+):
+    query = db.query(ingestion_models.SpamFilter).filter(
+        ingestion_models.SpamFilter.tenant_id == current_user.tenant_id
+    )
+    total = query.count()
+    filters = query.offset(skip).limit(limit).all()
+    return {
+        "data": filters,
+        "total": total
+    }
+
+@router.delete("/training/spam/{filter_id}")
+def delete_spam_filter(
+    filter_id: str,
+    db: Session = Depends(get_db),
+    current_user: auth_models.User = Depends(get_current_user)
+):
+    with db_write_lock:
+        f = db.query(ingestion_models.SpamFilter).filter(
+            ingestion_models.SpamFilter.id == filter_id,
+            ingestion_models.SpamFilter.tenant_id == current_user.tenant_id
+        ).first()
+        
+        if not f:
+            raise HTTPException(status_code=404, detail="Filter not found")
+        
+        db.delete(f)
+        db.commit()
+    
+    return {"status": "success"}
 # --- Merchant Alias Management ---
 
-class AliasCreate(BaseModel):
-    pattern: str
-    alias: str
-    update_past_transactions: bool = False
+# Alias schemas moved to ingestion.schemas
 
-class AliasRead(BaseModel):
-    id: str
-    pattern: str
-    alias: str
-    created_at: Optional[datetime] = None
-
-class AliasPreviewRequest(BaseModel):
-    pattern: str
 
 @router.get("/aliases", response_model=List[Dict[str, Any]])
 def list_aliases(
@@ -866,7 +890,7 @@ def list_aliases(
 
 @router.post("/aliases")
 def create_alias(
-    payload: AliasCreate,
+    payload: ingestion_schemas.AliasCreate,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -972,7 +996,7 @@ def update_alias(
 
 @router.post("/aliases/preview")
 def preview_alias_impact(
-    payload: AliasPreviewRequest,
+    payload: ingestion_schemas.AliasPreviewRequest,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1135,77 +1159,75 @@ def label_message(
     
     return {"status": "labeled", "pending_id": pending.id}
 
-@router.delete("/training/{message_id}")
+@router.post("/training/{message_id}/dismiss")
 def dismiss_training_message(
     message_id: str,
-    create_ignore_rule: bool = False,
-    ignore_pattern: Optional[str] = None,
+    payload: ingestion_schemas.TrainingMessageDismiss,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    msg = db.query(ingestion_models.UnparsedMessage).filter(
-        ingestion_models.UnparsedMessage.id == message_id,
-        ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
-    ).first()
-    
-    if not msg:
-        raise HTTPException(status_code=404, detail="Message not found")
-        
-    if create_ignore_rule:
-        pattern = ignore_pattern or msg.subject or msg.raw_content[:30]
-        if pattern:
-             existing = db.query(ingestion_models.IgnoredPattern).filter(
-                ingestion_models.IgnoredPattern.tenant_id == str(current_user.tenant_id),
-                ingestion_models.IgnoredPattern.pattern == pattern
-            ).first()
-             if not existing:
-                new_ignore = ingestion_models.IgnoredPattern(
-                    tenant_id=str(current_user.tenant_id),
-                    pattern=pattern,
-                    source=msg.source
-                )
-                db.add(new_ignore)
-
-    db.delete(msg)
-    db.commit()
-    return {"status": "dismissed"}
-
-class BulkTrainingRequest(BaseModel):
-    message_ids: List[str]
-    create_ignore_rules: bool = False
-    # For bulk, we don't easily support custom patterns per item here, 
-    # so we'll just use the subjects/prefixes of the selected items.
-
-@router.post("/training/bulk-dismiss")
-def bulk_dismiss_training(
-    payload: BulkTrainingRequest,
-    current_user: auth_models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    if payload.create_ignore_rules:
-        msgs = db.query(ingestion_models.UnparsedMessage).filter(
-            ingestion_models.UnparsedMessage.id.in_(payload.message_ids),
+    with db_write_lock:
+        msg = db.query(ingestion_models.UnparsedMessage).filter(
+            ingestion_models.UnparsedMessage.id == message_id,
             ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
-        ).all()
-        for m in msgs:
-            pattern = m.subject or m.raw_content[:30]
+        ).first()
+        
+        if not msg:
+            raise HTTPException(status_code=404, detail="Message not found")
+            
+        if payload.create_rule:
+            pattern = msg.subject or msg.raw_content[:30]
             if pattern:
-                existing = db.query(ingestion_models.IgnoredPattern).filter(
+                 existing = db.query(ingestion_models.IgnoredPattern).filter(
                     ingestion_models.IgnoredPattern.tenant_id == str(current_user.tenant_id),
                     ingestion_models.IgnoredPattern.pattern == pattern
                 ).first()
-                if not existing:
-                    db.add(ingestion_models.IgnoredPattern(
+                 if not existing:
+                    new_ignore = ingestion_models.IgnoredPattern(
                         tenant_id=str(current_user.tenant_id),
                         pattern=pattern,
-                        source=m.source
-                    ))
+                        source=msg.source
+                    )
+                    db.add(new_ignore)
+        
+        db.delete(msg)
+        db.commit()
+    
+    return {"status": "dismissed"}
 
-    count = db.query(ingestion_models.UnparsedMessage).filter(
-        ingestion_models.UnparsedMessage.id.in_(payload.message_ids),
-        ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
-    ).delete(synchronize_session=False)
-    db.commit()
+
+@router.post("/training/bulk-dismiss")
+def bulk_dismiss_training(
+    payload: ingestion_schemas.TrainingBulkDismiss,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    with db_write_lock:
+        if payload.create_rule:
+            msgs = db.query(ingestion_models.UnparsedMessage).filter(
+                ingestion_models.UnparsedMessage.id.in_(payload.ids),
+                ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
+            ).all()
+            for m in msgs:
+                pattern = m.subject or m.raw_content[:30]
+                if pattern:
+                    existing = db.query(ingestion_models.IgnoredPattern).filter(
+                        ingestion_models.IgnoredPattern.tenant_id == str(current_user.tenant_id),
+                        ingestion_models.IgnoredPattern.pattern == pattern
+                    ).first()
+                    if not existing:
+                        db.add(ingestion_models.IgnoredPattern(
+                            tenant_id=str(current_user.tenant_id),
+                            pattern=pattern,
+                            source=m.source
+                        ))
+
+        count = db.query(ingestion_models.UnparsedMessage).filter(
+            ingestion_models.UnparsedMessage.id.in_(payload.ids),
+            ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
+        ).delete(synchronize_session=False)
+        db.commit()
+    
     return {"status": "deleted", "count": count}
 
 @router.post("/ai/sync-to-parser")
@@ -1240,17 +1262,8 @@ def sync_ai_to_parser(
 
 # --- Auditing / Events ---
 
-class IngestionEventRead(BaseModel):
-    id: str
-    device_id: Optional[str]
-    event_type: str
-    status: str
-    message: Optional[str]
-    data_json: Optional[str]
-    created_at: datetime
+# Event schemas moved to ingestion.schemas
 
-    class Config:
-        from_attributes = True
 
 @router.get("/events")
 def list_ingestion_events(
@@ -1276,12 +1289,9 @@ def list_ingestion_events(
         "skip": skip
     }
 
-class BulkDeleteEventsRequest(BaseModel):
-    event_ids: List[str]
-
 @router.post("/events/bulk-delete")
 def bulk_delete_events(
-    payload: BulkDeleteEventsRequest,
+    payload: ingestion_schemas.BulkDeleteEventsRequest,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
