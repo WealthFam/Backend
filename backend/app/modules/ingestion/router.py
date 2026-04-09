@@ -143,7 +143,15 @@ def ingest_sms(
 
     if not parser_response or status not in ["processed", "success", "duplicate_submission"]:
         # Capture as unparsed for training
-        IngestionService.capture_unparsed(db, str(current_user.tenant_id), "SMS", payload.message, sender=payload.sender)
+        IngestionService.capture_unparsed(
+            db, 
+            str(current_user.tenant_id), 
+            "SMS", 
+            payload.message, 
+            sender=payload.sender,
+            latitude=payload.latitude,
+            longitude=payload.longitude
+        )
         
         IngestionService.log_event(
             db, str(current_user.tenant_id), "sms_ingestion", "warning",
@@ -688,6 +696,8 @@ class PendingTransactionRead(BaseModel):
     is_transfer: bool = False
     to_account_id: Optional[str] = None
     exclude_from_reports: bool = False
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     created_at: datetime
 
     class Config:
@@ -784,6 +794,8 @@ class UnparsedMessageRead(BaseModel):
     raw_content: str
     subject: Optional[str]
     sender: Optional[str]
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     created_at: datetime
 
     class Config:

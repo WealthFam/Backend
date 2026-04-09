@@ -34,7 +34,6 @@ def run_auto_migrations(engine: Engine):
             # 1. Add columns to existing tables since CREATE TABLE IF NOT EXISTS won't add them
             safe_add_column("pending_transactions", "latitude", "DECIMAL(10, 8)")
             safe_add_column("pending_transactions", "longitude", "DECIMAL(11, 8)")
-            safe_add_column("pending_transactions", "location_name", "VARCHAR")
             safe_add_column("pending_transactions", "created_at", "TIMESTAMPTZ")
             safe_add_column("pending_transactions", "is_transfer", "BOOLEAN DEFAULT FALSE")
             safe_add_column("pending_transactions", "to_account_id", "VARCHAR")
@@ -42,7 +41,6 @@ def run_auto_migrations(engine: Engine):
             # 1b. Add columns to CONFIRMED transactions table (for auto-ingest)
             safe_add_column("transactions", "latitude", "DECIMAL(10, 8)")
             safe_add_column("transactions", "longitude", "DECIMAL(11, 8)")
-            safe_add_column("transactions", "location_name", "VARCHAR")
             safe_add_column("transactions", "is_transfer", "BOOLEAN DEFAULT FALSE")
             safe_add_column("transactions", "linked_transaction_id", "VARCHAR")
 
@@ -88,6 +86,9 @@ def run_auto_migrations(engine: Engine):
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))
+            
+            safe_add_column("unparsed_messages", "latitude", "DECIMAL(10, 8)")
+            safe_add_column("unparsed_messages", "longitude", "DECIMAL(11, 8)")
             
             # 4. Add ingestion_events table
             connection.execute(text("""
@@ -165,7 +166,6 @@ def run_auto_migrations(engine: Engine):
             safe_add_column("recurring_transactions", "exclude_from_reports", "BOOLEAN DEFAULT FALSE")
             safe_add_column("recurring_transactions", "latitude", "DECIMAL(10, 8)")
             safe_add_column("recurring_transactions", "longitude", "DECIMAL(11, 8)")
-            safe_add_column("recurring_transactions", "location_name", "VARCHAR")
             safe_add_column("category_rules", "exclude_from_reports", "BOOLEAN DEFAULT FALSE")
             
             # 11. Loans Table

@@ -1,11 +1,13 @@
-import json
-from sqlalchemy.orm import Session
-from backend.app.core.database import db_write_lock
 import hashlib
+import json
 from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from backend.app.core.database import db_write_lock
 from backend.app.modules.finance import models as finance_models
-from backend.app.modules.finance.services.transaction_service import TransactionService
 from backend.app.modules.finance import schemas as finance_schemas
+from backend.app.modules.finance.services.transaction_service import TransactionService
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.base import ParsedTransaction
 from backend.app.modules.ingestion.transfer_detector import TransferDetector
@@ -210,7 +212,6 @@ class IngestionService:
                 tags=[],
                 latitude=extra_data.get("latitude") if extra_data else None,
                 longitude=extra_data.get("longitude") if extra_data else None,
-                location_name=None, 
                 content_hash=message_hash,
                 is_transfer=is_transfer,
                 to_account_id=to_account_id,
@@ -258,8 +259,7 @@ class IngestionService:
                 exclude_from_reports=is_transfer,
                 balance_is_synced=balance_synced,
                 latitude=extra_data.get("latitude") if extra_data else None,
-                longitude=extra_data.get("longitude") if extra_data else None,
-                location_name=None 
+                longitude=extra_data.get("longitude") if extra_data else None
             )
             db.add(pending)
             db.commit()
@@ -276,7 +276,7 @@ class IngestionService:
             return {"status": "triage", "message": "Low confidence, entry moved to triage."}
 
     @staticmethod
-    def capture_unparsed(db: Session, tenant_id: str, source: str, raw_content: str, subject: Optional[str] = None, sender: Optional[str] = None):
+    def capture_unparsed(db: Session, tenant_id: str, source: str, raw_content: str, subject: Optional[str] = None, sender: Optional[str] = None, latitude: Optional[float] = None, longitude: Optional[float] = None):
         with db_write_lock:
             """
             Save a message that looks like a transaction but failed all parsers.
@@ -305,7 +305,9 @@ class IngestionService:
             raw_content=raw_content,
             content_hash=msg_hash,
             subject=subject,
-            sender=sender
+            sender=sender,
+            latitude=latitude,
+            longitude=longitude
         )
         db.add(msg)
         db.commit()

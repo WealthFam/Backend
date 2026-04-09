@@ -61,7 +61,6 @@ class PendingTransaction(Base):
     balance_is_synced = Column(Boolean, default=False, nullable=False) # True if account balance was updated at ingestion
     latitude = Column(Numeric(10, 8), nullable=True)
     longitude = Column(Numeric(11, 8), nullable=True)
-    location_name = Column(String, nullable=True)
     expense_group_id = Column(String, nullable=True) # No FK to keep ingestion decoupled
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
@@ -92,6 +91,8 @@ class UnparsedMessage(Base):
     content_hash = Column(String, nullable=True, index=True)
     subject = Column(String, nullable=True)
     sender = Column(String, nullable=True)
+    latitude = Column(Numeric(10, 8), nullable=True)
+    longitude = Column(Numeric(11, 8), nullable=True)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class ParsingPattern(Base):

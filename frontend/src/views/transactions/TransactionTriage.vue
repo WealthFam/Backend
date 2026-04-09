@@ -436,7 +436,7 @@
                                             <span class="text-uppercase tracking-wider font-weight-black opacity-50">{{
                                                 msg.source }}</span>
                                             <v-chip v-if="msg.latitude" size="x-small" color="primary" variant="tonal" class="rounded-pill font-weight-bold" density="compact">
-                                                <MapPin :size="10" class="mr-1" /> {{ msg.location || 'GPS' }}
+                                                <MapPin :size="10" class="mr-1" /> GPS
                                             </v-chip>
                                             <v-chip color="warning" size="x-small" variant="flat" class="ml-auto">Needs
                                                 Training</v-chip>

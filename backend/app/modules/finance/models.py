@@ -86,7 +86,6 @@ class Transaction(Base):
     source = Column(String, default="MANUAL", nullable=False) # MANUAL, CSV, EXCEL, etc.
     latitude = Column(Numeric(10, 8), nullable=True)
     longitude = Column(Numeric(11, 8), nullable=True)
-    location_name = Column(String, nullable=True)
     expense_group_id = Column(String, ForeignKey("expense_groups.id"), nullable=True)
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
     is_emi = Column(Boolean, default=False, nullable=False)
@@ -229,8 +228,6 @@ class RecurringTransaction(Base):
     
     latitude = Column(Numeric(10, 7), nullable=True)
     longitude = Column(Numeric(10, 7), nullable=True)
-    location_name = Column(String, nullable=True)
-
     last_run_date = Column(UTCDateTime, nullable=True) # To track when it last ran
     created_at = Column(UTCDateTime, default=timezone.utcnow)
 
