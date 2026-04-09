@@ -388,7 +388,8 @@ export const aiApi = {
     generateSummaryInsights: (summary_data: any) => apiClient.post('/ingestion/ai/generate-insights', { summary_data }, { skipNotification: true }),
     getAliases: () => apiClient.get('/ingestion/ai/aliases'),
     createAlias: (pattern: string, alias: string) => apiClient.post('/ingestion/ai/aliases', { pattern, alias }),
-    deleteAlias: (id: string) => apiClient.delete(`/ingestion/ai/aliases/${id}`)
+    deleteAlias: (id: string) => apiClient.delete(`/ingestion/ai/aliases/${id}`),
+    autoParseTrainingMessage: (id: string) => apiClient.post(`/ingestion/ai/training/${id}/auto-parse`)
 }
 
 export const mobileApi = {

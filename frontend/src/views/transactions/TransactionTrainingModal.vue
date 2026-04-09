@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Bot, Brain, X, Calendar, Tag, EyeOff, Info, BadgeIndianRupee, Landmark, Hash, Fingerprint, TrendingUp, ShieldCheck } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { Bot, Brain, X, Calendar, Tag, EyeOff, Info, BadgeIndianRupee, Landmark, Hash, Fingerprint, TrendingUp, ShieldCheck, Sparkles, Loader2 } from 'lucide-vue-next'
+import { aiApi } from '@/api/client'
+import { useNotificationStore } from '@/stores/notification'
 
 const props = defineProps<{
     modelValue: boolean
@@ -76,6 +78,42 @@ const highlightedContent = computed(() => {
 
     return temp
 })
+
+const notify = useNotificationStore()
+const isAutoParsing = ref(false)
+
+const handleAutoParse = async () => {
+    if (!props.selectedMessage?.id) return
+    isAutoParsing.value = true
+    try {
+        const res = await aiApi.autoParseTrainingMessage(props.selectedMessage.id)
+        const data = res.data
+        if (data) {
+            // Apply data to form
+            if (data.amount !== undefined) props.labelForm.amount = data.amount
+            if (data.recipient) props.labelForm.recipient = data.recipient
+            if (data.date) {
+                try {
+                    const d = new Date(data.date)
+                    if (!isNaN(d.getTime())) {
+                        props.labelForm.date = d.toISOString().substring(0, 16)
+                    }
+                } catch (e) {
+                    props.labelForm.date = data.date
+                }
+            }
+            if (data.account_mask) props.labelForm.account_mask = data.account_mask
+            if (data.ref_id) props.labelForm.ref_id = data.ref_id
+            if (data.type) props.labelForm.type = data.type
+            
+            notify.success('AI Forensic extraction complete')
+        }
+    } catch (e) {
+        // Error notification handled by interceptor or api
+    } finally {
+        isAutoParsing.value = false
+    }
+}
 </script>
 
 <template>
@@ -156,9 +194,19 @@ const highlightedContent = computed(() => {
 
                 <!-- Right Column: Learning Form -->
                 <div class="form-pane pa-3 bg-surface-light">
-                    <div class="d-flex align-center gap-2 mb-3">
-                        <TrendingUp :size="15" class="text-primary" />
-                        <span class="text-caption font-weight-black opacity-60">Annotation Details</span>
+                    <div class="d-flex align-center justify-space-between mb-3">
+                        <div class="d-flex align-center gap-2">
+                            <TrendingUp :size="15" class="text-primary" />
+                            <span class="text-caption font-weight-black opacity-60">Annotation Details</span>
+                        </div>
+                        <v-btn variant="tonal" density="compact" color="primary" rounded="lg" 
+                            class="px-2 text-micro-nano font-weight-black" :loading="isAutoParsing"
+                            @click="handleAutoParse">
+                            <template v-slot:prepend>
+                                <Sparkles :size="12" class="mr-1" />
+                            </template>
+                            AI AUTO-PARSE
+                        </v-btn>
                     </div>
 
                     <v-row dense>
