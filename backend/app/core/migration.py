@@ -485,6 +485,22 @@ def run_auto_migrations(engine: Engine):
             """))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_user_tokens_jti ON user_tokens (token_jti)"))
 
+            # 30. Spam Filtering for Training
+            connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS spam_filters (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                sender VARCHAR,
+                subject VARCHAR,
+                source VARCHAR,
+                count_blocked NUMERIC(10, 0) DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+            );
+            """))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_spam_filters_sender ON spam_filters (sender)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_spam_filters_subject ON spam_filters (subject)"))
+
             # Explicitly commit the transaction!
             connection.commit()
 

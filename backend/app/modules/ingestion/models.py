@@ -165,3 +165,14 @@ class AIInsightCache(Base):
     content = Column(String, nullable=False) # Storing the JSON response as string
     created_at = Column(UTCDateTime, default=timezone.utcnow)
     updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
+
+class SpamFilter(Base):
+    __tablename__ = "spam_filters"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    sender = Column(String, nullable=True, index=True)
+    subject = Column(String, nullable=True, index=True)
+    source = Column(String, nullable=True) # SMS, EMAIL, ALL
+    count_blocked = Column(Numeric(10, 0), default=0) # Track how many were caught
+    created_at = Column(UTCDateTime, default=timezone.utcnow)

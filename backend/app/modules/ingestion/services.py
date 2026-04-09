@@ -291,6 +291,21 @@ class IngestionService:
         for ip in ignored_patterns:
             if ip.pattern.lower() in check_text:
                 return # Skip noise
+            
+        # Spam Filter Check
+        spam_filters = db.query(ingestion_models.SpamFilter).filter(
+            ingestion_models.SpamFilter.tenant_id == tenant_id
+        ).all()
+        for sf in spam_filters:
+            # Match by sender AND subject if both are set in the filter
+            # If only one is set, it matches if that one matches
+            sender_match = (not sf.sender or sf.sender == sender)
+            subject_match = (not sf.subject or sf.subject == subject)
+            if sender_match and subject_match:
+                # Caught!
+                sf.count_blocked = (sf.count_blocked or 0) + 1
+                db.commit() # Save the counter update
+                return 
 
         # Check if already exists to avoid spam
         existing = db.query(ingestion_models.UnparsedMessage).filter(
