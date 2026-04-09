@@ -338,6 +338,8 @@ class GeminiProvider:
             end = text.rfind('}') + 1
             if start != -1 and end != 0:
                 return json.loads(text[start:end])
+        except ClientError:
+            raise
         except Exception as e:
             logger.error(f"Gemini auto_parse_transaction error: {e}")
             return None
