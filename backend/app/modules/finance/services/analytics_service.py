@@ -1078,7 +1078,7 @@ class AnalyticsService:
         cat_totals = {}
         for t in txns:
             cat_name = t.category or "Uncategorized"
-            cat_totals[cat_name] = cat_totals.get(cat_name, 0) + abs(float(t.amount))
+            cat_totals[cat_name] = cat_totals.get(cat_name, Decimal(0)) + abs(Decimal(str(t.amount)))
             
         # 4. Roll up to Top-Level Categories
         rollup = {}
