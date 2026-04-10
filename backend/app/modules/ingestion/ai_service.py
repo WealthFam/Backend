@@ -321,7 +321,7 @@ class GeminiProvider:
         base_prompt = prompts.get("parsing", (
             "Extract transaction details from the following message. "
             "Return exactly one JSON object with: "
-            "amount (number), date (ISO 8601 string), recipient (string), account_mask (last 4 digits), ref_id (string or null), type (DEBIT/CREDIT)."
+            "amount (number), date (ISO 8601 string), recipient (string), category (string), account_mask (last 4 digits), ref_id (string or null), type (DEBIT/CREDIT)."
         ))
         
         try:
