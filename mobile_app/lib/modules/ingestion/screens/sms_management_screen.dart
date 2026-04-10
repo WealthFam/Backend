@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:telephony/telephony.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/ingestion/services/sms_service.dart';
-import 'package:mobile_app/modules/ingestion/screens/sms_debug_logs_screen.dart';
 import 'package:mobile_app/core/widgets/app_shell.dart';
 import 'package:intl/intl.dart';
 
@@ -220,15 +219,6 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
       appBar: AppBar(
         leading: const DrawerMenuButton(),
         title: const Text('SMS Management'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.bug_report, color: theme.colorScheme.onSurface),
-            tooltip: 'View Debug Payloads',
-            onPressed: () {
-               Navigator.push(context, MaterialPageRoute(builder: (_) => const SmsDebugLogsScreen()));
-            },
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -237,49 +227,6 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildStatusCard(
-                  context,
-                  icon: Icons.sync,
-                  color: AppTheme.primary,
-                  title: 'Auto-Sync Active',
-                  subtitle: 'Listening for SMS...',
-                  trailing: Switch(
-                    value: smsService.isSyncEnabled, 
-                    onChanged: (v) => smsService.toggleSync(v),
-                  ), 
-                ),
-                const SizedBox(height: 16),
-                _buildStatusCard(
-                  context,
-                  icon: Icons.all_inclusive,
-                  color: theme.colorScheme.secondary,
-                  title: 'Persistent Sync',
-                  subtitle: 'Keep app alive for better reliability',
-                  trailing: Switch(
-                    value: smsService.isForegroundServiceEnabled,
-                    onChanged: (v) async {
-                      try {
-                        await smsService.toggleForegroundService(v);
-                        if (mounted) {
-                           ScaffoldMessenger.of(context).showSnackBar(
-                             SnackBar(content: Text(v ? 'Background Sync Started' : 'Background Sync Stopped'))
-                           );
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                           ScaffoldMessenger.of(context).showSnackBar(
-                             SnackBar(
-                               content: Text('Operation Failed: $e'), 
-                               backgroundColor: AppTheme.danger,
-                               duration: const Duration(seconds: 10),
-                             )
-                           );
-                        }
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
                 Container(
                   height: 48,
                   decoration: BoxDecoration(
@@ -533,62 +480,4 @@ class _SmsManagementScreenState extends State<SmsManagementScreen> {
     );
   }
 
-  Widget _buildStatusCard(BuildContext context, {
-    required IconData icon, 
-    required Color color, 
-    required String title, 
-    required String subtitle,
-    Widget? trailing,
-  }) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                Text(subtitle, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 14)),
-              ],
-            ),
-          ),
-          if (trailing != null) trailing,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSecurityToggle(BuildContext context, {
-    required String title,
-    required String subtitle,
-    required bool value,
-    required Function(bool) onChanged,
-  }) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
-        activeThumbColor: AppTheme.primary,
-      ),
-    );
-  }
 }

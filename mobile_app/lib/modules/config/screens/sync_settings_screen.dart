@@ -5,6 +5,8 @@ import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/auth/services/security_service.dart';
+import 'package:mobile_app/modules/ingestion/services/sms_service.dart';
+import 'package:mobile_app/modules/ingestion/screens/sms_debug_logs_screen.dart';
 import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 import 'package:mobile_app/core/widgets/app_shell.dart';
 
@@ -123,6 +125,10 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
               const SizedBox(height: 24),
               _buildSectionTitle('SECURITY & PRIVACY'),
               _buildSecurityCard(security, config, context.watch<DashboardService>()),
+              
+              const SizedBox(height: 24),
+              _buildSectionTitle('SMS & BACKGROUND SYNC'),
+              _buildSmsSyncCard(context.watch<SmsService>()),
               
               const SizedBox(height: 24),
               _buildSectionTitle('DEVICE INFO'),
@@ -269,6 +275,55 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmsSyncCard(SmsService smsService) {
+    return Card(
+      child: Column(
+        children: [
+          _buildSwitchTile(
+            title: 'Auto-Sync Active',
+            subtitle: 'Listening for financial SMS',
+            value: smsService.isSyncEnabled,
+            onChanged: (v) => smsService.toggleSync(v),
+            icon: Icons.sync,
+          ),
+          const Divider(height: 1),
+          _buildSwitchTile(
+            title: 'Persistent Sync',
+            subtitle: 'Recommended for background sync',
+            value: smsService.isForegroundServiceEnabled,
+            onChanged: (v) async {
+              try {
+                await smsService.toggleForegroundService(v);
+                if (mounted) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     SnackBar(content: Text(v ? 'Background Sync Started' : 'Background Sync Stopped'))
+                   );
+                }
+              } catch (e) {
+                if (mounted) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     SnackBar(content: Text('Failed: $e'), backgroundColor: AppTheme.danger)
+                   );
+                }
+              }
+            },
+            icon: Icons.all_inclusive,
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined, size: 20),
+            title: const Text('View Sync Logs', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            subtitle: const Text('Debug incoming SMS payloads', style: TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const SmsDebugLogsScreen()));
+            },
           ),
         ],
       ),
