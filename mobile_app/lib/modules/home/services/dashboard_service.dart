@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/models/dashboard_data.dart';
+import 'package:mobile_app/modules/home/models/unparsed_message.dart';
+import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
@@ -206,6 +208,7 @@ class DashboardService extends ChangeNotifier {
         budget: budget,
         recentTransactions: txns,
         pendingTriageCount: data['pending_triage_count'],
+        pendingTrainingCount: data['pending_training_count'] ?? 0,
         familyMembersCount: data['family_members_count'],
       ));
     }
@@ -265,6 +268,83 @@ class DashboardService extends ChangeNotifier {
       
       _updateData((d) => d.copyWith(investmentSummary: investmentSummary));
     }
+  }
+
+  Future<List<UnparsedMessage>> fetchTrainingQueue() async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/training');
+    final response = await http.get(url, headers: _getHeaders());
+    
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+      final List items = data['data'] ?? [];
+      return items.map((i) => UnparsedMessage.fromJson(i)).toList();
+    }
+    throw Exception('Failed to fetch training queue');
+  }
+
+  Future<void> finalizeTraining({
+    required String messageId,
+    required DateTime date,
+    required String description,
+    required double amount,
+    required String category,
+    required String accountMask,
+    bool createRule = true,
+  }) async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/training/$messageId/label');
+    final response = await http.post(
+      url,
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'date': date.toUtc().toIso8601String(),
+        'recipient': description,
+        'amount': amount,
+        'category': category,
+        'account_mask': accountMask,
+        'generate_pattern': createRule,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to finalize training: ${response.body}');
+    }
+    
+    refresh();
+  }
+
+  Future<List<dynamic>> fetchAccounts() async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/mobile/accounts');
+    final response = await http.get(url, headers: _getHeaders());
+    if (response.statusCode == 200) {
+      return jsonDecode(utf8.decode(response.bodyBytes))['data'];
+    }
+    return [];
+  }
+
+  Future<void> dismissTraining(String messageId) async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/training/$messageId/dismiss');
+    final response = await http.post(
+      url, 
+      headers: _getHeaders(),
+      body: jsonEncode({'create_rule': false})
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to dismiss training');
+    }
+    
+    refresh();
+  }
+
+  Future<Map<String, dynamic>> aiForensicParse(String content) async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/mobile/ai/forensic-parse')
+        .replace(queryParameters: {'content': content});
+    
+    final response = await http.get(url, headers: _getHeaders());
+    if (response.statusCode == 200) {
+      return jsonDecode(utf8.decode(response.bodyBytes));
+    }
+    throw Exception('AI Forensic failed');
   }
 
   void _updateData(DashboardData Function(DashboardData) updater) {

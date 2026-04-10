@@ -1,4 +1,12 @@
+double _toDouble(dynamic value) {
+  if (value == null) return 0.0;
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? 0.0;
+  return 0.0;
+}
+
 class FundHolding {
+
   final String schemeCode;
   final String schemeName;
   final double units;
@@ -25,13 +33,13 @@ class FundHolding {
     return FundHolding(
       schemeCode: json['scheme_code'],
       schemeName: json['scheme_name'],
-      units: (json['units'] as num).toDouble(),
-      currentValue: (json['current_value'] as num).toDouble(),
-      investedValue: (json['invested_value'] as num).toDouble(),
-      profitLoss: (json['profit_loss'] as num).toDouble(),
+      units: _toDouble(json['units']),
+      currentValue: _toDouble(json['current_value']),
+      investedValue: _toDouble(json['invested_value']),
+      profitLoss: _toDouble(json['profit_loss']),
       lastUpdated: json['last_updated'] ?? '',
-      dayChange: (json['day_change'] as num?)?.toDouble() ?? 0.0,
-      dayChangePercentage: (json['day_change_percentage'] as num?)?.toDouble() ?? 0.0,
+      dayChange: _toDouble(json['day_change']),
+      dayChangePercentage: _toDouble(json['day_change_percentage']),
     );
   }
 }
@@ -55,11 +63,11 @@ class PortfolioSummary {
 
   factory PortfolioSummary.fromJson(Map<String, dynamic> json) {
     return PortfolioSummary(
-      totalInvested: (json['total_invested'] as num).toDouble(),
-      totalCurrent: (json['total_current'] as num).toDouble(),
-      totalPl: (json['total_pl'] as num).toDouble(),
-      dayChange: (json['day_change'] as num?)?.toDouble() ?? 0.0,
-      dayChangePercentage: (json['day_change_percentage'] as num?)?.toDouble() ?? 0.0,
+      totalInvested: _toDouble(json['total_invested']),
+      totalCurrent: _toDouble(json['total_current']),
+      totalPl: _toDouble(json['total_pl']),
+      dayChange: _toDouble(json['day_change']),
+      dayChangePercentage: _toDouble(json['day_change_percentage']),
       holdings: (json['holdings'] as List)
           .map((i) => FundHolding.fromJson(i))
           .toList(),

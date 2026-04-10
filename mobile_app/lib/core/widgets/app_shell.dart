@@ -4,13 +4,16 @@ import 'package:mobile_app/core/theme/app_theme.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/screens/analytics_screen.dart';
 import 'package:mobile_app/modules/home/screens/mutual_funds_screen.dart';
-import 'package:mobile_app/modules/home/screens/categories_management_screen.dart';
-import 'package:mobile_app/modules/home/screens/goals_screen.dart';
 import 'package:mobile_app/modules/home/screens/expense_groups_screen.dart';
 import 'package:mobile_app/modules/vault/screens/vault_screen.dart';
 import 'package:mobile_app/modules/config/screens/sync_settings_screen.dart';
-import 'package:mobile_app/modules/ingestion/screens/sms_management_screen.dart';
+import 'package:mobile_app/modules/home/screens/categories_management_screen.dart';
+import 'package:mobile_app/modules/ingestion/screens/transaction_review_screen.dart';
+import 'package:mobile_app/modules/ingestion/screens/neural_training_screen.dart';
+import 'package:mobile_app/modules/config/screens/config_screen.dart';
+import 'package:mobile_app/modules/home/screens/goals_screen.dart';
 import 'package:mobile_app/modules/home/services/dashboard_service.dart';
+import 'package:mobile_app/modules/ingestion/screens/sms_management_screen.dart';
 
 /// Key kept for HomeScreen compatibility.
 final GlobalKey<ScaffoldState> appShellScaffoldKey = GlobalKey<ScaffoldState>();

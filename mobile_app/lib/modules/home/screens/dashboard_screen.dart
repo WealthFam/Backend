@@ -8,7 +8,8 @@ import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/models/dashboard_data.dart';
 import 'package:mobile_app/modules/home/screens/analytics_screen.dart';
 import 'package:mobile_app/modules/home/screens/mutual_funds_screen.dart';
-import 'package:mobile_app/modules/ingestion/screens/triage_screen.dart';
+import 'package:mobile_app/modules/ingestion/screens/transaction_review_screen.dart';
+import 'package:mobile_app/modules/ingestion/screens/neural_training_screen.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/modules/home/models/transaction_category.dart';
 import 'package:mobile_app/core/services/socket_service.dart';
@@ -140,11 +141,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ),
-                if (dashboard.data != null) ...[
+                  if (dashboard.data != null) ...[
                   SliverToBoxAdapter(child: _buildInvestmentsEntry(context, dashboard.data!.investmentSummary, formatAmount)),
-                  if (dashboard.data!.pendingTriageCount > 0)
+                  if (dashboard.data!.pendingTriageCount > 0 || dashboard.data!.pendingTrainingCount > 0)
                     SliverToBoxAdapter(
-                      child: _buildTriageBanner(context, dashboard.data!.pendingTriageCount),
+                      child: _buildTriageBanner(
+                        context, 
+                        dashboard.data!.pendingTriageCount, 
+                        dashboard.data!.pendingTrainingCount
+                      ),
                     ),
                   SliverToBoxAdapter(child: _buildBudgetSection(context, dashboard.data!.budget, formatAmount)),
                   SliverToBoxAdapter(
@@ -266,47 +271,191 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 140, // Fixed height for consistency with trend
-        padding: const EdgeInsets.all(16),
+        height: 140, 
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: colors.last.withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
+              color: colors.last.withOpacity(0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
             )
           ],
         ),
         child: Stack(
           children: [
-            // Background Icon
+            // Background Ghost Icon
             Positioned(
-              right: -5,
-              bottom: -5,
-              child: Icon(icon, color: Colors.white.withOpacity(0.1), size: 60),
+              right: -10,
+              bottom: -10,
+              child: Icon(icon, color: Colors.white.withOpacity(0.12), size: 80),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, color: Colors.white.withOpacity(0.8), size: 16),
-                const SizedBox(height: 12),
-                Text(title, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 18),
+                ),
+                const Spacer(),
+                Text(
+                  title, 
+                  style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12, fontWeight: FontWeight.w500)
+                ),
                 const SizedBox(height: 4),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
                     amount,
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5),
                   ),
                 ),
-                if (trend != null) trend,
+                if (trend != null) ...[
+                  const SizedBox(height: 8),
+                  trend,
+                ],
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBudgetCard(BuildContext context, BudgetSummary budget) {
+    if (budget.limit <= 0) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final dashboard = DashboardService.of(context);
+    final currencyFormat = NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0);
+    String format(double amount) => currencyFormat.format(amount / dashboard.maskingFactor);
+
+    final isOver = budget.percentage > 100;
+    final color = isOver ? AppTheme.danger : (budget.percentage > 80 ? AppTheme.warning : AppTheme.success);
+    
+    // Feature: Calculate Pace
+    final summary = dashboard.data?.summary;
+    final prorated = summary?.proratedBudget ?? 0.0;
+    final isOverProrated = budget.spent > prorated && prorated > 0;
+    
+    final healthLabel = isOverProrated ? 'Over Pace' : 'On Track';
+    final healthColor = isOverProrated ? AppTheme.danger : AppTheme.success;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 40,
+            offset: const Offset(0, 15),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Family Budget', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                  Text(
+                    'Monthly Limit: ${format(budget.limit)}',
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: healthColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  healthLabel,
+                  style: TextStyle(color: healthColor, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final paceX = (prorated / budget.limit).clamp(0.0, 1.0) * constraints.maxWidth;
+              
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(100),
+                    child: LinearProgressIndicator(
+                      value: (budget.percentage / 100).clamp(0.0, 1.0),
+                      backgroundColor: theme.dividerColor.withOpacity(0.05),
+                      color: color,
+                      minHeight: 14,
+                    ),
+                  ),
+                  // Pace Indicator (The "Should Be" Line)
+                  if (prorated > 0)
+                    Positioned(
+                      left: paceX,
+                      top: -4,
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 3,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withOpacity(0.4),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 10, 
+                    height: 10, 
+                    decoration: BoxDecoration(color: color, shape: BoxShape.circle)
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Spent: ${format(budget.spent)}', 
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)
+                  ),
+                ],
+              ),
+              Text(
+                'Est. Pace: ${format(prorated)}',
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12, fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -606,7 +755,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${txn.category} • ${txn.accountName ?? 'Account'} • ${txn.formattedDate}',
+              '${txn.source ?? txn.category} • ${txn.accountName ?? 'Account'} • ${txn.formattedDate}',
               style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -682,50 +831,75 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
 
-  Widget _buildTriageBanner(BuildContext context, int count) {
-    final theme = Theme.of(context);
+  Widget _buildTriageBanner(BuildContext context, int triageCount, int trainingCount) {
+    if (triageCount == 0 && trainingCount == 0) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const TriageScreen()));
-        },
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppTheme.warning.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.warning.withOpacity(0.5)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.warning.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.info_outline, color: AppTheme.warning, size: 20),
+      child: Column(
+        children: [
+          if (triageCount > 0)
+            _buildActionBanner(
+              context,
+              title: 'Review $triageCount Transactions',
+              subtitle: 'Verify low-confidence items',
+              icon: Icons.fact_check_outlined,
+              color: AppTheme.warning,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransactionReviewScreen())),
+            ),
+          if (triageCount > 0 && trainingCount > 0) const SizedBox(height: 12),
+          if (trainingCount > 0)
+            _buildActionBanner(
+              context,
+              title: '$trainingCount Forensic Training Items',
+              subtitle: 'Teach the system new patterns',
+              icon: Icons.auto_awesome,
+              color: AppTheme.primary,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NeuralTrainingScreen())),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionBanner(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+                  Text(subtitle, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11)),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$count Transactions to Review',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    Text(
-                      'Tap to triage unverified items',
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.warning),
-            ],
-          ),
+            ),
+            Icon(Icons.arrow_forward_ios, size: 12, color: color.withOpacity(0.5)),
+          ],
         ),
       ),
     );
