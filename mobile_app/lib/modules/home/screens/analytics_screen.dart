@@ -13,6 +13,7 @@ import 'package:mobile_app/modules/home/models/transaction_category.dart';
 import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/core/widgets/app_shell.dart';
+import 'package:decimal/decimal.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   final bool showTodayOnly;
@@ -160,8 +161,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final theme = Theme.of(context);
     final currencyFormat = NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0);
 
-    String formatAmount(double amount) {
-      return currencyFormat.format(amount / dashboard.maskingFactor);
+    String formatAmount(Decimal amount) {
+      return currencyFormat.format(amount.toDouble() / dashboard.maskingFactor);
     }
 
     return Scaffold(
@@ -384,21 +385,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildPremiumHeader(BuildContext context, DashboardService dashboard, Function(double) format) {
+  Widget _buildPremiumHeader(BuildContext context, DashboardService dashboard, Function(Decimal) format) {
     if (dashboard.data == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final data = dashboard.data!;
     final summary = data.summary;
     
     // Calculate Today vs Yesterday Trend
-    final dailyTrend = summary.yesterdayTotal > 0 
-        ? ((summary.todayTotal - summary.yesterdayTotal) / summary.yesterdayTotal * 100)
+    final dailyTrend = summary.yesterdayTotal > Decimal.zero 
+        ? ((summary.todayTotal.toDouble() - summary.yesterdayTotal.toDouble()) / summary.yesterdayTotal.toDouble() * 100)
         : 0.0;
     
     // Status color for today vs daily budget
     final dailyHealthColor = summary.todayTotal > summary.dailyBudgetLimit 
         ? AppTheme.danger 
-        : (summary.todayTotal > summary.dailyBudgetLimit * 0.8 ? AppTheme.warning : AppTheme.success);
+        : (summary.todayTotal.toDouble() > summary.dailyBudgetLimit.toDouble() * 0.8 ? AppTheme.warning : AppTheme.success);
 
     return Column(
       children: [
@@ -412,7 +413,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 Icons.account_balance_wallet_rounded,
                 theme.colorScheme.primary,
                 subtitle: 'vs ${format(data.budget.limit)} limit',
-                progress: data.budget.limit > 0 ? (summary.monthlyTotal / data.budget.limit) : 0.0,
+                progress: data.budget.limit > Decimal.zero ? (summary.monthlyTotal.toDouble() / data.budget.limit.toDouble()) : 0.0,
               ),
             ),
             const SizedBox(width: 12),
@@ -420,17 +421,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               child: _buildGlassCard(
                 context,
                 'Budget Used',
-                '${data.budget.percentage.toStringAsFixed(1)}%',
+                '${data.budget.percentage.toDouble().toStringAsFixed(1)}%',
                 Icons.speed_rounded,
-                data.budget.percentage > 100 ? AppTheme.danger : (data.budget.percentage > 90 ? AppTheme.warning : AppTheme.success),
-                subtitle: data.budget.percentage > 100 ? 'Over Limit!' : 'On Track',
-                progress: data.budget.percentage / 100.0,
+                data.budget.percentage > Decimal.parse('100') ? AppTheme.danger : (data.budget.percentage > Decimal.parse('90') ? AppTheme.warning : AppTheme.success),
+                subtitle: data.budget.percentage > Decimal.parse('100') ? 'Over Limit!' : 'On Track',
+                progress: data.budget.percentage.toDouble() / 100.0,
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        if (summary.todayTotal > 0 || summary.dailyBudgetLimit > 0)
+        if (summary.todayTotal > Decimal.zero || summary.dailyBudgetLimit > Decimal.zero)
           _buildDailyHealthCard(context, summary, dashboard.maskingFactor),
       ],
     );
@@ -441,6 +442,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final isOverDaily = summary.todayTotal > summary.dailyBudgetLimit;
     final currency = context.read<DashboardService>().data?.summary.currency ?? '₹';
     final healthColor = isOverDaily ? AppTheme.danger : AppTheme.success;
+    
     
     final yesterdayDiff = summary.todayTotal - summary.yesterdayTotal;
     final lastMonthDiff = summary.todayTotal - summary.lastMonthSameDayTotal;
@@ -469,7 +471,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                    ),
                    const SizedBox(height: 4),
                    Text(
-                     '$currency${NumberFormat.decimalPattern().format(summary.todayTotal / maskingFactor)}',
+                     '$currency${NumberFormat.decimalPattern().format(summary.todayTotal.toDouble() / maskingFactor)}',
                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface),
                    ),
                 ],
@@ -479,7 +481,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 children: [
                   const Text('Daily Limit', style: TextStyle(fontSize: 10, color: Colors.grey)),
                   Text(
-                    '$currency${NumberFormat.compact().format(summary.dailyBudgetLimit / maskingFactor)}',
+                    '$currency${NumberFormat.compact().format(summary.dailyBudgetLimit.toDouble() / maskingFactor)}',
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                   Container(
@@ -532,10 +534,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildTrendItem(BuildContext context, String label, double diff, double maskingFactor, {bool isPositiveBad = true}) {
-    final isNegative = diff < 0;
-    final color = isNegative ? AppTheme.success : (diff == 0 ? Colors.grey : AppTheme.danger);
-    final icon = isNegative ? Icons.trending_down : (diff == 0 ? Icons.trending_flat : Icons.trending_up);
+  Widget _buildTrendItem(BuildContext context, String label, Decimal diff, double maskingFactor, {bool isPositiveBad = true}) {
+    final isNegative = diff < Decimal.zero;
+    final color = isNegative ? AppTheme.success : (diff == Decimal.zero ? Colors.grey : AppTheme.danger);
+    final icon = isNegative ? Icons.trending_down : (diff == Decimal.zero ? Icons.trending_flat : Icons.trending_up);
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -547,7 +549,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             Icon(icon, size: 12, color: color),
             const SizedBox(width: 4),
             Text(
-              '${diff > 0 ? "+" : ""}${NumberFormat.compact().format(diff / maskingFactor)}',
+              '${diff > Decimal.zero ? "+" : ""}${NumberFormat.compact().format(diff.toDouble() / maskingFactor)}',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: color),
             ),
           ],
@@ -620,11 +622,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     IconData icon = Icons.auto_awesome;
     Color color = AppTheme.success;
 
-    if (data.budget.percentage > 100) {
+    if (data.budget.percentage > Decimal.parse('100')) {
       insightText = "Budget exceeded! Check spending.";
       icon = Icons.warning_amber_rounded;
       color = AppTheme.danger;
-    } else if (data.budget.percentage > 80) {
+    } else if (data.budget.percentage > Decimal.parse('80')) {
       insightText = "Running close to budget. Slow down!";
       icon = Icons.info_outline;
       color = AppTheme.warning;
@@ -654,8 +656,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     double maxY = 0;
     for (var m in trend) {
-      if (m.spent > maxY) maxY = m.spent;
-      if (m.budget > maxY) maxY = m.budget;
+      if (m.spent.toDouble() > maxY) maxY = m.spent.toDouble();
+      if (m.budget.toDouble() > maxY) maxY = m.budget.toDouble();
     }
     maxY = maxY * 1.2;
 
@@ -672,21 +674,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           maxY: maxY,
           barGroups: trend.asMap().entries.map((e) {
             final isSelected = e.value.isSelected;
-            final isOverBudget = e.value.spent > e.value.budget && e.value.budget > 0;
+            final isOverBudget = e.value.spent > e.value.budget && e.value.budget > Decimal.zero;
             
             return BarChartGroupData(
               x: e.key,
               barRods: [
                 BarChartRodData(
-                  toY: e.value.spent,
+                  toY: e.value.spent.toDouble(),
                   color: isSelected 
-                    ? (isOverBudget ? AppTheme.danger : Theme.of(context).colorScheme.secondary)
-                    : (isOverBudget ? AppTheme.danger.withOpacity(0.4) : AppTheme.primary.withOpacity(0.4)),
+                    ? (e.value.spent > e.value.budget && e.value.budget > Decimal.zero ? AppTheme.danger : Theme.of(context).colorScheme.secondary)
+                    : (e.value.spent > e.value.budget && e.value.budget > Decimal.zero ? AppTheme.danger.withOpacity(0.4) : AppTheme.primary.withOpacity(0.4)),
                   width: isSelected ? 18 : 14,
                   borderRadius: BorderRadius.circular(6),
                   backDrawRodData: BackgroundBarChartRodData(
                     show: true,
-                    toY: e.value.budget > 0 ? e.value.budget : maxY * 0.8,
+                    toY: e.value.budget > Decimal.zero ? e.value.budget.toDouble() : maxY * 0.8,
                     color: isSelected 
                       ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
                       : Theme.of(context).dividerColor.withOpacity(0.05),
@@ -781,7 +783,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     double maxY = 0;
     for (var item in trend) {
-      if (item.amount > maxY) maxY = item.amount;
+      if (item.amount.toDouble() > maxY) maxY = item.amount.toDouble();
     }
     maxY = maxY * 1.2;
 
@@ -810,7 +812,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 10, fontWeight: FontWeight.bold),
                     children: [
                       TextSpan(
-                        text: '₹${NumberFormat.compact().format(item.amount / maskingFactor)}',
+                        text: '₹${NumberFormat.compact().format(item.amount.toDouble() / maskingFactor)}',
                         style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.w900),
                       ),
                     ],
@@ -826,7 +828,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 reservedSize: 45,
                 getTitlesWidget: (value, meta) {
                   return Text(
-                    NumberFormat.compact().format(value / maskingFactor),
+                    NumberFormat.compact().format(value.toDouble()),
                     style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold),
                   );
                 },
@@ -868,7 +870,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           borderData: FlBorderData(show: false),
           lineBarsData: [
             LineChartBarData(
-              spots: trend.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.amount)).toList(),
+              spots: trend.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.amount.toDouble())).toList(),
               isCurved: true,
               color: AppTheme.primary,
               barWidth: 4,
@@ -889,7 +891,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildCategoryPieChart(BuildContext context, List<CategoryPieItem> distribution, Function(double) format) {
+  Widget _buildCategoryPieChart(BuildContext context, List<CategoryPieItem> distribution, Function(Decimal) format) {
     if (distribution.isEmpty) return const SizedBox(height: 150, child: Center(child: Text("No Data")));
 
     final List<Color> colors = [
@@ -897,6 +899,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       const Color(0xFFEF4444), const Color(0xFF8B5CF6), const Color(0xFFEC4899),
       const Color(0xFF0EA5E9), const Color(0xFFF43F5E),
     ];
+
+    final totalAmount = distribution.fold(Decimal.zero, (sum, i) => sum + i.value);
+    final totalVal = totalAmount.toDouble();
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -916,10 +921,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 sections: distribution.asMap().entries.map((entry) {
                   final index = entry.key;
                   final item = entry.value;
+                  final percentage = totalVal > 0 ? (item.value.toDouble() / totalVal * 100) : 0.0;
                   return PieChartSectionData(
                     color: colors[index % colors.length],
-                    value: item.value,
-                    title: '${(item.value / distribution.fold(0.0, (sum, i) => sum + i.value) * 100).toStringAsFixed(0)}%',
+                    value: item.value.toDouble(),
+                    title: '${percentage.toStringAsFixed(0)}%',
                     titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                     radius: 50,
                   );
@@ -929,7 +935,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
           const SizedBox(height: 24),
           ...distribution.take(5).toList().asMap().entries.map((e) {
-            final percentage = (e.value.value / distribution.fold(0.0, (sum, i) => sum + i.value) * 100);
+            final percentage = totalVal > 0 ? (e.value.value.toDouble() / totalVal * 100) : 0.0;
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(

@@ -7,6 +7,7 @@ import 'package:mobile_app/modules/home/services/dashboard_service.dart';
 import 'package:mobile_app/modules/home/models/fund_models.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:mobile_app/core/widgets/app_shell.dart';
+import 'package:decimal/decimal.dart';
 import 'dart:math' as math;
 
 class MutualFundsScreen extends StatefulWidget {
@@ -36,8 +37,8 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
     
     // Masking Helper
     final currencyFormat = NumberFormat.currency(symbol: dashboardService.currencySymbol, decimalDigits: 0);
-    String formatAmount(double amount) {
-       return currencyFormat.format(amount / dashboardService.maskingFactor);
+    String formatAmount(Decimal amount) {
+       return currencyFormat.format(amount.toDouble() / dashboardService.maskingFactor);
     }
  
     return Scaffold(
@@ -102,7 +103,7 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
     );
   }
 
-  Widget _buildContent(BuildContext context, PortfolioSummary portfolio, Function(double) format) {
+  Widget _buildContent(BuildContext context, PortfolioSummary portfolio, Function(Decimal) format) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -121,9 +122,9 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
     );
   }
 
-  Widget _buildSummaryCard(BuildContext context, PortfolioSummary p, Function(double) format) {
+  Widget _buildSummaryCard(BuildContext context, PortfolioSummary p, Function(Decimal) format) {
     final theme = Theme.of(context);
-    final isProfit = p.totalPl >= 0;
+    final isProfit = p.totalPl >= Decimal.zero;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -160,7 +161,7 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                   const Text("Total Returns %", style: TextStyle(color: Colors.white70, fontSize: 13)),
                   const SizedBox(height: 4),
                   Text(
-                    "${(p.totalPl / p.totalInvested * 100).toStringAsFixed(2)}%",
+                    "${(p.totalPl.toDouble() / (p.totalInvested.toDouble() > 0 ? p.totalInvested.toDouble() : 1) * 100).toStringAsFixed(2)}%",
                     style: TextStyle(
                       color: isProfit ? Colors.greenAccent : Colors.redAccent,
                       fontSize: 20,
@@ -183,8 +184,8 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                 ],
               ),
               // Show Total Returns and Day Change
-               _buildValueColumn("Total Returns", p.totalPl, (p.totalPl / p.totalInvested * 100).toStringAsFixed(2), format),
-               _buildValueColumn("Day's Change", p.dayChange, p.dayChangePercentage.toStringAsFixed(2), format),
+               _buildValueColumn("Total Returns", p.totalPl, (p.totalPl.toDouble() / (p.totalInvested.toDouble() > 0 ? p.totalInvested.toDouble() : 1) * 100).toStringAsFixed(2), format),
+               _buildValueColumn("Day's Change", p.dayChange, p.dayChangePercentage.toDouble().toStringAsFixed(2), format),
             ],
           ),
         ],
@@ -192,8 +193,8 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
     );
   }
 
-  Widget _buildValueColumn(String label, double value, String percentage, Function(double) format) {
-    final isProfit = value >= 0;
+  Widget _buildValueColumn(String label, Decimal value, String percentage, Function(Decimal) format) {
+    final isProfit = value >= Decimal.zero;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -274,11 +275,11 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                       final double fontSize = isTouched ? 16.0 : 10.0;
                       final double radius = isTouched ? 50.0 : 40.0;
                       final currency = context.read<DashboardService>().currencySymbol;
-                      final percentage = (h.currentValue / portfolio.totalCurrent) * 100;
+                      final double percentage = (h.currentValue.toDouble() / (portfolio.totalCurrent.toDouble() > 0 ? portfolio.totalCurrent.toDouble() : 1)) * 100;
                       
                       return PieChartSectionData(
                         color: colors[index % colors.length],
-                        value: h.currentValue,
+                        value: h.currentValue.toDouble(),
                         radius: radius,
                         showTitle: percentage > 10 || isTouched,
                         title: isTouched 
@@ -457,10 +458,10 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
     );
   }
 
-  Widget _buildHoldingItem(BuildContext context, FundHolding h, Function(double) format) {
+  Widget _buildHoldingItem(BuildContext context, FundHolding h, Function(Decimal) format) {
     final theme = Theme.of(context);
     final dashboard = context.watch<DashboardService>();
-    final isProfit = h.profitLoss >= 0;
+    final isProfit = h.profitLoss >= Decimal.zero;
     
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -492,9 +493,9 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                 style: const TextStyle(color: Colors.grey, fontSize: 11),
               ),
               Text(
-                "${h.dayChange >= 0 ? '+' : ''}${format(h.dayChange)} (${h.dayChangePercentage.toStringAsFixed(2)}%)",
+                "${h.dayChange >= Decimal.zero ? '+' : ''}${format(h.dayChange)} (${h.dayChangePercentage.toDouble().toStringAsFixed(2)}%)",
                 style: TextStyle(
-                  color: h.dayChange >= 0 ? AppTheme.success : AppTheme.danger,
+                  color: h.dayChange >= Decimal.zero ? AppTheme.success : AppTheme.danger,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
@@ -522,9 +523,9 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                    const Text("Total Returns", style: TextStyle(color: Colors.grey, fontSize: 11)),
                    const SizedBox(height: 2),
                    Text(
-                     NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0).format(h.profitLoss / dashboard.maskingFactor),
+                     NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0).format(h.profitLoss.toDouble() / dashboard.maskingFactor),
                      style: TextStyle(
-                       color: h.profitLoss < 0 ? AppTheme.danger : AppTheme.success,
+                       color: h.profitLoss < Decimal.zero ? AppTheme.danger : AppTheme.success,
                        fontWeight: FontWeight.bold,
                        fontSize: 13,
                      ),

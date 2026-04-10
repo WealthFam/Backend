@@ -16,6 +16,7 @@ import 'package:mobile_app/core/services/socket_service.dart';
 import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/modules/config/screens/sync_settings_screen.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:decimal/decimal.dart';
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback? onMenuPressed;
@@ -43,23 +44,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final currencyFormat = NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0);
 
     // Helper to format with masking
-    String formatAmount(double amount) {
-       return currencyFormat.format(amount / dashboard.maskingFactor);
+    String formatAmount(Decimal amount) {
+       final numericAmount = amount.toDouble();
+       return currencyFormat.format(numericAmount / dashboard.maskingFactor);
     }
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: RefreshIndicator(
         onRefresh: () => dashboard.refresh(),
-        child: (dashboard.isLoading && dashboard.data == null)
-            ? const Center(child: CircularProgressIndicator())
-            : (dashboard.error != null && dashboard.data == null)
-                ? _buildErrorPlaceholder(context, dashboard.error!)
-                : CustomScrollView(
-                slivers: [
-                                SliverAppBar(
+        child: CustomScrollView(
+          slivers: [
+            SliverAppBar(
                   floating: true,
-                  pinned: true,
+                  pinned: false,
                   leading: widget.onMenuPressed != null ? IconButton(
                     icon: const Icon(Icons.menu),
                     onPressed: widget.onMenuPressed,
@@ -104,12 +102,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                   ),
-                  bottom: dashboard.data != null 
-                    ? PreferredSize(
-                        preferredSize: const Size.fromHeight(180),
-                        child: _buildSummarySection(context, dashboard.data!.summary, formatAmount),
-                      )
-                    : null,
+                  bottom: null,
                   actions: [
                     Consumer<SocketService>(
                       builder: (context, socket, _) => Tooltip(
@@ -125,24 +118,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ],
-                ),
-                if (dashboard.error != null)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppTheme.danger.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.danger.withOpacity(0.3)),
-                        ),
-                        child: Text(dashboard.error!, style: const TextStyle(color: AppTheme.danger)),
+            ),
+            if (dashboard.isLoading && dashboard.data == null)
+              const SliverFillRemaining(
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (dashboard.data == null)
+               SliverFillRemaining(
+                 child: _buildErrorPlaceholder(context, dashboard.error ?? 'No cached data available'),
+               )
+            else ...[
+              if (dashboard.error != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.danger.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.danger.withOpacity(0.3)),
                       ),
+                      child: Text(dashboard.error!, style: const TextStyle(color: AppTheme.danger)),
                     ),
                   ),
-                  if (dashboard.data != null) ...[
-                  SliverToBoxAdapter(child: _buildInvestmentsEntry(context, dashboard.data!.investmentSummary, formatAmount)),
+                ),
+              SliverToBoxAdapter(child: _buildSummarySection(context, dashboard.data!.summary, formatAmount)),
+              SliverToBoxAdapter(child: _buildInvestmentsEntry(context, dashboard.data!.investmentSummary, formatAmount)),
                   if (dashboard.data!.pendingTriageCount > 0 || dashboard.data!.pendingTrainingCount > 0)
                     SliverToBoxAdapter(
                       child: _buildTriageBanner(
@@ -187,12 +189,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildSummarySection(BuildContext context, DashboardSummary summary, Function(double) format) {
+  Widget _buildSummarySection(BuildContext context, DashboardSummary summary, Function(Decimal) format) {
     // Trend for Today vs Yesterday
     final todayDiff = summary.todayTotal - summary.yesterdayTotal;
-    final todayTrendIcon = todayDiff < 0 ? Icons.arrow_downward : (todayDiff > 0 ? Icons.arrow_upward : null);
-    final todayTrendColor = todayDiff < 0 ? Colors.greenAccent : (todayDiff > 0 ? Colors.orangeAccent : Colors.white70);
-    final todayTrendText = todayDiff != 0 ? '${todayDiff > 0 ? "+" : ""}${format(todayDiff.abs())}' : 'Same as yesterday';
+    final todayTrendIcon = todayDiff < Decimal.zero ? Icons.arrow_downward : (todayDiff > Decimal.zero ? Icons.arrow_upward : null);
+    final todayTrendColor = todayDiff < Decimal.zero ? Colors.greenAccent : (todayDiff > Decimal.zero ? Colors.orangeAccent : Colors.white70);
+    final todayTrendText = todayDiff != Decimal.zero ? '${todayDiff > Decimal.zero ? "+" : ""}${format(todayDiff.abs())}' : 'Same as yesterday';
 
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -221,7 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     child: FractionallySizedBox(
                       alignment: Alignment.centerLeft,
-                      widthFactor: (summary.proratedBudget > 0 ? (summary.monthlyTotal / (summary.proratedBudget * 1.5)) : 0.0).clamp(0.0, 1.0).toDouble(),
+                      widthFactor: (summary.proratedBudget > Decimal.zero ? (summary.monthlyTotal.toDouble() / (summary.proratedBudget.toDouble() * 1.5)) : 0.0).clamp(0.0, 1.0).toDouble(),
                       child: Container(
                         decoration: BoxDecoration(
                           color: summary.monthlyTotal > summary.proratedBudget ? Colors.orangeAccent : Colors.greenAccent,
@@ -271,7 +273,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 140, 
+        height: 170, 
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
@@ -329,138 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildBudgetCard(BuildContext context, BudgetSummary budget) {
-    if (budget.limit <= 0) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    final dashboard = DashboardService.of(context);
-    final currencyFormat = NumberFormat.currency(symbol: dashboard.currencySymbol, decimalDigits: 0);
-    String format(double amount) => currencyFormat.format(amount / dashboard.maskingFactor);
-
-    final isOver = budget.percentage > 100;
-    final color = isOver ? AppTheme.danger : (budget.percentage > 80 ? AppTheme.warning : AppTheme.success);
-    
-    // Feature: Calculate Pace
-    final summary = dashboard.data?.summary;
-    final prorated = summary?.proratedBudget ?? 0.0;
-    final isOverProrated = budget.spent > prorated && prorated > 0;
-    
-    final healthLabel = isOverProrated ? 'Over Pace' : 'On Track';
-    final healthColor = isOverProrated ? AppTheme.danger : AppTheme.success;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: theme.dividerColor.withOpacity(0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 40,
-            offset: const Offset(0, 15),
-          )
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Family Budget', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                  Text(
-                    'Monthly Limit: ${format(budget.limit)}',
-                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: healthColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  healthLabel,
-                  style: TextStyle(color: healthColor, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 28),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final paceX = (prorated / budget.limit).clamp(0.0, 1.0) * constraints.maxWidth;
-              
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(100),
-                    child: LinearProgressIndicator(
-                      value: (budget.percentage / 100).clamp(0.0, 1.0),
-                      backgroundColor: theme.dividerColor.withOpacity(0.05),
-                      color: color,
-                      minHeight: 14,
-                    ),
-                  ),
-                  // Pace Indicator (The "Should Be" Line)
-                  if (prorated > 0)
-                    Positioned(
-                      left: paceX,
-                      top: -4,
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 3,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withOpacity(0.4),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 10, 
-                    height: 10, 
-                    decoration: BoxDecoration(color: color, shape: BoxShape.circle)
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Spent: ${format(budget.spent)}', 
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)
-                  ),
-                ],
-              ),
-              Text(
-                'Est. Pace: ${format(prorated)}',
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12, fontStyle: FontStyle.italic),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInvestmentsEntry(BuildContext context, InvestmentSummary? summary, Function(double) format) {
+  Widget _buildInvestmentsEntry(BuildContext context, InvestmentSummary? summary, Function(Decimal) format) {
     if (context.read<AuthService>().userRole == 'CHILD') return const SizedBox.shrink();
 
     return Padding(
@@ -502,7 +373,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         LineChartBarData(
                           spots: summary.sparkline.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList(),
                           isCurved: true,
-                          color: summary.profitLoss >= 0 ? Colors.greenAccent : Colors.redAccent,
+                          color: summary.profitLoss >= Decimal.zero ? Colors.greenAccent : Colors.redAccent,
                           barWidth: 2,
                           dotData: const FlDotData(show: false),
                           belowBarData: BarAreaData(show: false),
@@ -529,7 +400,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       "Mutual Funds Overview",
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                     ),
-                    if (summary != null && summary.currentValue > 0) ...[
+                    if (summary != null && summary.currentValue > Decimal.zero) ...[
                       const SizedBox(height: 4),
                       // Current value + overall P&L
                       Row(
@@ -540,19 +411,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            "${summary.profitLoss >= 0 ? '+' : ''}${format(summary.profitLoss)}",
+                            "${summary.profitLoss >= Decimal.zero ? '+' : ''}${format(summary.profitLoss)}",
                             style: TextStyle(
-                              color: summary.profitLoss >= 0 ? Colors.greenAccent : Colors.redAccent,
+                              color: summary.profitLoss >= Decimal.zero ? Colors.greenAccent : Colors.redAccent,
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          if (summary.totalInvested > 0) ...[
+                          if (summary.totalInvested > Decimal.zero) ...[
                             const SizedBox(width: 4),
                             Text(
-                              "(${((summary.profitLoss / summary.totalInvested) * 100).toStringAsFixed(1)}%)",
+                              "(${((summary.profitLoss.toDouble() / summary.totalInvested.toDouble()) * 100).toStringAsFixed(1)}%)",
                               style: TextStyle(
-                                color: summary.profitLoss >= 0 ? Colors.greenAccent.withOpacity(0.8) : Colors.redAccent.withOpacity(0.8),
+                                color: summary.profitLoss >= Decimal.zero ? Colors.greenAccent.withOpacity(0.8) : Colors.redAccent.withOpacity(0.8),
                                 fontSize: 10,
                               ),
                             ),
@@ -564,22 +435,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Row(
                         children: [
                           Icon(
-                            summary.dayChange >= 0 ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                            color: summary.dayChange >= 0 ? Colors.greenAccent : Colors.redAccent,
+                            summary.dayChange >= Decimal.zero ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                            color: summary.dayChange >= Decimal.zero ? Colors.greenAccent : Colors.redAccent,
                             size: 14,
                           ),
                           Text(
-                            "Today: ${summary.dayChange >= 0 ? '+' : ''}${format(summary.dayChange)} (${summary.dayChangePercent.toStringAsFixed(2)}%)",
+                            "Today: ${summary.dayChange >= Decimal.zero ? '+' : ''}${format(summary.dayChange)} (${summary.dayChangePercent.toDouble().toStringAsFixed(2)}%)",
                             style: TextStyle(
-                              color: summary.dayChange >= 0 ? Colors.greenAccent : Colors.redAccent,
+                              color: summary.dayChange >= Decimal.zero ? Colors.greenAccent : Colors.redAccent,
                               fontSize: 10,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-                          if (summary.xirr != null && summary.xirr! > 0) ...[
+                          if (summary.xirr != null && summary.xirr! > Decimal.zero) ...[
                             const SizedBox(width: 8),
                             Text(
-                              "XIRR: ${summary.xirr!.toStringAsFixed(1)}%",
+                              "XIRR: ${summary.xirr!.toDouble().toStringAsFixed(1)}%",
                               style: const TextStyle(color: Colors.white54, fontSize: 10),
                             ),
                           ],
@@ -598,13 +469,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildBudgetSection(BuildContext context, BudgetSummary budget, Function(double) format) {
+  Widget _buildBudgetSection(BuildContext context, BudgetSummary budget, Function(Decimal) format) {
     final theme = Theme.of(context);
-    final isOver = budget.percentage > 100;
-    final color = isOver ? AppTheme.danger : (budget.percentage > 80 ? AppTheme.warning : AppTheme.success);
+    final isOver = budget.percentage > Decimal.parse('100');
+    final color = isOver ? AppTheme.danger : (budget.percentage > Decimal.parse('80') ? AppTheme.warning : AppTheme.success);
     final summary = DashboardService.of(context).data?.summary;
-    final prorated = summary?.proratedBudget ?? 0.0;
-    final isOverProrated = budget.spent > prorated && prorated > 0;
+    final prorated = summary?.proratedBudget ?? Decimal.zero;
+    final isOverProrated = budget.spent > prorated && prorated > Decimal.zero;
     final healthLabel = isOverProrated ? 'Over Pace' : 'On Track';
     final healthColor = isOverProrated ? AppTheme.danger : AppTheme.success;
 
@@ -659,15 +530,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: LinearProgressIndicator(
-                  value: (budget.percentage / 100).clamp(0, 1),
+                  value: (budget.percentage.toDouble() / 100.0).clamp(0.0, 1.0),
                   backgroundColor: theme.dividerColor.withOpacity(0.1),
                   color: color.withOpacity(0.3),
                   minHeight: 12,
                 ),
               ),
-              if (prorated > 0 && budget.limit > 0)
+              if (prorated > Decimal.zero && budget.limit > Decimal.zero)
                 Positioned(
-                  left: (MediaQuery.of(context).size.width - 88) * (prorated / budget.limit),
+                  left: (MediaQuery.of(context).size.width - 88) * (prorated.toDouble() / budget.limit.toDouble()),
                   child: Container(
                     width: 2,
                     height: 12,
@@ -700,9 +571,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // _buildTopCategoriesSection and _buildAnalysisTabs removed as they have been moved to AnalyticsScreen
 
-  Widget _buildTransactionItem(BuildContext context, RecentTransaction txn, Function(double) format) {
+  Widget _buildTransactionItem(BuildContext context, RecentTransaction txn, Function(Decimal) format) {
     final theme = Theme.of(context);
-    final isNegative = txn.amount < 0;
+    final isNegative = txn.amount < Decimal.zero;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
