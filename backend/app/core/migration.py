@@ -16,11 +16,9 @@ def run_auto_migrations(engine: Engine):
         with engine.connect() as connection:
             logger.info("Running auto-migration for mobile features...")
             
-            # Helper to add columns safely (handling TIMESTAMPTZ for sqlite/duckdb locally vs postgres in prod)
+            # Helper to add columns safely
             def safe_add_column(table, col, type_def):
                 try:
-                    # SQLite/DuckDB doesn't natively love 'TIMESTAMPTZ' syntax in ALTER statements the same way Postgres does
-                    # We normalize it for local dev vs prod
                     final_type = type_def
                     if engine.dialect.name in ['sqlite', 'duckdb']:
                         final_type = type_def.replace('TIMESTAMPTZ', 'TIMESTAMP')
@@ -28,27 +26,217 @@ def run_auto_migrations(engine: Engine):
                     connection.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {final_type}"))
                     logger.debug(f"Migration: ensured column {table}.{col}")
                 except Exception as e:
-                    # Log at WARNING — column likely already exists (IF NOT EXISTS should prevent this, but DuckDB may differ)
-                    logger.warning(f"Migration: could not add {table}.{col} ({type_def}): {e}")
+                    # If it fails, the transaction is likely aborted. 
+                    # We rollback specifically to allow subsequent commands to work (or rebuilds).
+                    connection.rollback()
+                    raise e
 
             # 1. Add columns to existing tables since CREATE TABLE IF NOT EXISTS won't add them
-            safe_add_column("pending_transactions", "latitude", "DECIMAL(10, 8)")
-            safe_add_column("pending_transactions", "longitude", "DECIMAL(11, 8)")
-            safe_add_column("pending_transactions", "created_at", "TIMESTAMPTZ")
-            safe_add_column("pending_transactions", "is_transfer", "BOOLEAN DEFAULT FALSE")
-            safe_add_column("pending_transactions", "to_account_id", "VARCHAR")
+            
+            # DUCKDB REBUILD LOGIC for pending_transactions
+            # Used when safe_add_column fails due to dependent views/indexes
+            def rebuild_pending_transactions():
+                logger.info("Migration: Rebuilding pending_transactions to resolve dependency locks...")
+                connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS pending_transactions_new (
+                    id VARCHAR PRIMARY KEY,
+                    tenant_id VARCHAR NOT NULL,
+                    account_id VARCHAR NOT NULL,
+                    amount NUMERIC(15, 2) NOT NULL,
+                    date TIMESTAMP NOT NULL,
+                    description VARCHAR,
+                    recipient VARCHAR,
+                    category VARCHAR,
+                    source VARCHAR NOT NULL,
+                    raw_message VARCHAR,
+                    content_hash VARCHAR,
+                    external_id VARCHAR,
+                    is_transfer BOOLEAN DEFAULT FALSE,
+                    to_account_id VARCHAR,
+                    balance_is_synced BOOLEAN DEFAULT FALSE,
+                    latitude DECIMAL(10, 8),
+                    longitude DECIMAL(11, 8),
+                    expense_group_id VARCHAR,
+                    exclude_from_reports BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+                );
+                """))
+                
+                # Copy data, mapping existing columns and using defaults for new ones
+                # We check which columns exist first to avoid "column not found"
+                existing_cols = [r[0] for r in connection.execute(text("PRAGMA table_info('pending_transactions')")).fetchall()]
+                
+                cols_to_copy = []
+                for c in ["id", "tenant_id", "account_id", "amount", "date", "description", 
+                          "recipient", "category", "source", "raw_message", "content_hash", 
+                          "external_id", "is_transfer", "to_account_id", "balance_is_synced", 
+                          "latitude", "longitude", "expense_group_id", "exclude_from_reports", "created_at"]:
+                    if c in existing_cols:
+                        cols_to_copy.append(c)
+                
+                col_list = ", ".join(cols_to_copy)
+                connection.execute(text(f"INSERT INTO pending_transactions_new ({col_list}) SELECT {col_list} FROM pending_transactions"))
+                connection.execute(text("DROP TABLE pending_transactions"))
+                connection.execute(text("ALTER TABLE pending_transactions_new RENAME TO pending_transactions"))
+                logger.info("Migration: pending_transactions rebuild complete.")
 
-            # 1b. Add columns to CONFIRMED transactions table (for auto-ingest)
-            safe_add_column("transactions", "latitude", "DECIMAL(10, 8)")
-            safe_add_column("transactions", "longitude", "DECIMAL(11, 8)")
-            safe_add_column("transactions", "is_transfer", "BOOLEAN DEFAULT FALSE")
-            safe_add_column("transactions", "linked_transaction_id", "VARCHAR")
+            # DUCKDB REBUILD LOGIC for transactions
+            def rebuild_transactions():
+                logger.info("Migration: Rebuilding transactions to resolve dependency locks...")
+                connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS transactions_new (
+                    id VARCHAR PRIMARY KEY,
+                    tenant_id VARCHAR NOT NULL,
+                    account_id VARCHAR NOT NULL,
+                    type VARCHAR DEFAULT 'DEBIT',
+                    amount NUMERIC(15, 2) NOT NULL,
+                    date TIMESTAMP NOT NULL,
+                    description VARCHAR,
+                    recipient VARCHAR,
+                    category VARCHAR,
+                    tags VARCHAR,
+                    content_hash VARCHAR,
+                    external_id VARCHAR,
+                    is_transfer BOOLEAN DEFAULT FALSE,
+                    linked_transaction_id VARCHAR,
+                    source VARCHAR DEFAULT 'MANUAL',
+                    latitude DECIMAL(10, 8),
+                    longitude DECIMAL(11, 8),
+                    expense_group_id VARCHAR,
+                    exclude_from_reports BOOLEAN DEFAULT FALSE,
+                    is_emi BOOLEAN DEFAULT FALSE,
+                    loan_id VARCHAR,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+                );
+                """))
+                
+                existing_cols = [r[0] for r in connection.execute(text("PRAGMA table_info('transactions')")).fetchall()]
+                cols_to_copy = []
+                for c in ["id", "tenant_id", "account_id", "type", "amount", "date", "description", 
+                          "recipient", "category", "tags", "content_hash", "external_id", 
+                          "is_transfer", "linked_transaction_id", "source", "latitude", "longitude", 
+                          "expense_group_id", "exclude_from_reports", "is_emi", "loan_id", "created_at"]:
+                    if c in existing_cols:
+                        cols_to_copy.append(c)
+                
+                col_list = ", ".join(cols_to_copy)
+                connection.execute(text(f"INSERT INTO transactions_new ({col_list}) SELECT {col_list} FROM transactions"))
+                connection.execute(text("DROP TABLE transactions"))
+                connection.execute(text("ALTER TABLE transactions_new RENAME TO transactions"))
+                logger.info("Migration: transactions rebuild complete.")
 
-            # 1c. Balance Refactoring sync fields
+            # DUCKDB REBUILD LOGIC for unparsed_messages
+            def rebuild_unparsed_messages():
+                logger.info("Migration: Rebuilding unparsed_messages to resolve dependency locks...")
+                connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS unparsed_messages_new (
+                    id VARCHAR PRIMARY KEY,
+                    tenant_id VARCHAR NOT NULL,
+                    source VARCHAR NOT NULL,
+                    raw_content VARCHAR NOT NULL,
+                    content_hash VARCHAR,
+                    subject VARCHAR,
+                    sender VARCHAR,
+                    latitude DECIMAL(10, 8),
+                    longitude DECIMAL(11, 8),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+                );
+                """))
+                
+                existing_cols = [r[0] for r in connection.execute(text("PRAGMA table_info('unparsed_messages')")).fetchall()]
+                cols_to_copy = []
+                for c in ["id", "tenant_id", "source", "raw_content", "content_hash", "subject", "sender", "latitude", "longitude", "created_at"]:
+                    if c in existing_cols:
+                        cols_to_copy.append(c)
+                
+                col_list = ", ".join(cols_to_copy)
+                connection.execute(text(f"INSERT INTO unparsed_messages_new ({col_list}) SELECT {col_list} FROM unparsed_messages"))
+                connection.execute(text("DROP TABLE unparsed_messages"))
+                connection.execute(text("ALTER TABLE unparsed_messages_new RENAME TO unparsed_messages"))
+                logger.info("Migration: unparsed_messages rebuild complete.")
+
+            # DUCKDB REBUILD LOGIC for alerts
+            def rebuild_alerts():
+                logger.info("Migration: Rebuilding alerts to resolve dependency locks...")
+                connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS alerts_new (
+                    id VARCHAR PRIMARY KEY,
+                    tenant_id VARCHAR NOT NULL,
+                    user_id VARCHAR,
+                    title VARCHAR NOT NULL,
+                    body VARCHAR NOT NULL,
+                    category VARCHAR DEFAULT 'INFO',
+                    icon VARCHAR,
+                    is_read BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP,
+                    FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+                    FOREIGN KEY(user_id) REFERENCES users (id)
+                );
+                """))
+                
+                existing_cols = [r[0] for r in connection.execute(text("PRAGMA table_info('alerts')")).fetchall()]
+                cols_to_copy = []
+                for c in ["id", "tenant_id", "user_id", "title", "body", "category", "icon", "is_read", "created_at", "expires_at"]:
+                    if c in existing_cols:
+                        cols_to_copy.append(c)
+                
+                col_list = ", ".join(cols_to_copy)
+                connection.execute(text(f"INSERT INTO alerts_new ({col_list}) SELECT {col_list} FROM alerts"))
+                connection.execute(text("DROP TABLE alerts"))
+                connection.execute(text("ALTER TABLE alerts_new RENAME TO alerts"))
+                logger.info("Migration: alerts rebuild complete.")
+
+            # Attempt normal migration first, fall back to rebuild if blocked
+            try:
+                safe_add_column("pending_transactions", "latitude", "DECIMAL(10, 8)")
+                safe_add_column("pending_transactions", "longitude", "DECIMAL(11, 8)")
+                safe_add_column("pending_transactions", "created_at", "TIMESTAMPTZ")
+                safe_add_column("pending_transactions", "is_transfer", "BOOLEAN DEFAULT FALSE")
+                safe_add_column("pending_transactions", "to_account_id", "VARCHAR")
+                safe_add_column("pending_transactions", "balance_is_synced", "BOOLEAN DEFAULT FALSE")
+            except Exception as e:
+                connection.rollback()
+                if "Dependency Error" in str(e):
+                    rebuild_pending_transactions()
+                else:
+                    logger.warning(f"Migration: Fallback for pending_transactions due to: {e}")
+                    rebuild_pending_transactions()
+
+            try:
+                safe_add_column("transactions", "latitude", "DECIMAL(10, 8)")
+                safe_add_column("transactions", "longitude", "DECIMAL(11, 8)")
+                safe_add_column("transactions", "is_transfer", "BOOLEAN DEFAULT FALSE")
+                safe_add_column("transactions", "linked_transaction_id", "VARCHAR")
+                safe_add_column("transactions", "content_hash", "VARCHAR")
+                safe_add_column("transactions", "exclude_from_reports", "BOOLEAN DEFAULT FALSE")
+                safe_add_column("transactions", "is_emi", "BOOLEAN DEFAULT FALSE")
+                safe_add_column("transactions", "loan_id", "VARCHAR")
+            except Exception as e:
+                connection.rollback()
+                if "Dependency Error" in str(e):
+                    rebuild_transactions()
+                else:
+                    logger.warning(f"Migration: Fallback for transactions due to: {e}")
+                    rebuild_transactions()
+
+            try:
+                # Ensure unparsed_messages has new columns
+                safe_add_column("unparsed_messages", "latitude", "DECIMAL(10, 8)")
+                safe_add_column("unparsed_messages", "longitude", "DECIMAL(11, 8)")
+                safe_add_column("unparsed_messages", "content_hash", "VARCHAR")
+            except Exception as e:
+                connection.rollback()
+                logger.warning(f"Migration: Fallback for unparsed_messages due to: {e}")
+                rebuild_unparsed_messages()
+
+            # 1c. Balance Refactoring sync fields for accounts
             safe_add_column("accounts", "last_synced_balance", "NUMERIC(15, 2)")
             safe_add_column("accounts", "last_synced_at", "TIMESTAMPTZ")
             safe_add_column("accounts", "last_synced_limit", "NUMERIC(15, 2)")
-            safe_add_column("pending_transactions", "balance_is_synced", "BOOLEAN DEFAULT FALSE")
 
             # 2. Add mobile_devices table
             connection.execute(text("""
@@ -80,15 +268,15 @@ def run_auto_migrations(engine: Engine):
                 tenant_id VARCHAR NOT NULL,
                 source VARCHAR NOT NULL,
                 raw_content VARCHAR NOT NULL,
+                content_hash VARCHAR,
                 subject VARCHAR,
                 sender VARCHAR,
+                latitude DECIMAL(10, 8),
+                longitude DECIMAL(11, 8),
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(tenant_id) REFERENCES tenants (id)
             );
             """))
-            
-            safe_add_column("unparsed_messages", "latitude", "DECIMAL(10, 8)")
-            safe_add_column("unparsed_messages", "longitude", "DECIMAL(11, 8)")
             
             # 4. Add ingestion_events table
             connection.execute(text("""
@@ -448,6 +636,7 @@ def run_auto_migrations(engine: Engine):
                 title VARCHAR NOT NULL,
                 body VARCHAR NOT NULL,
                 category VARCHAR DEFAULT 'INFO',
+                icon VARCHAR,
                 is_read BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 expires_at TIMESTAMPTZ,
@@ -456,7 +645,12 @@ def run_auto_migrations(engine: Engine):
             );
             """))
 
-            safe_add_column("alerts", "icon", "VARCHAR")
+            try:
+                safe_add_column("alerts", "icon", "VARCHAR")
+            except Exception as e:
+                connection.rollback()
+                logger.warning(f"Migration: Fallback for alerts due to: {e}")
+                rebuild_alerts()
             
             # 28. AI Insight Cache
             connection.execute(text("""
