@@ -1081,6 +1081,24 @@ def get_mobile_summary(
         user_id=user_id
     )
 
+# --- Spending Heatmap ---
+
+@router.get("/heatmap")
+def get_mobile_heatmap(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    member_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    target_user_id = get_target_user_id(current_user, member_id)
+    s_date = datetime.fromisoformat(start_date) if start_date and start_date.strip() else None
+    e_date = datetime.fromisoformat(end_date) if end_date and end_date.strip() else None
+    return AnalyticsService.get_heatmap_data(
+        db, str(current_user.tenant_id),
+        start_date=s_date, end_date=e_date, user_id=target_user_id
+    )
+
 # --- Investment Goals ---
 
 @router.get("/investment-goals", response_model=List[finance_schemas.InvestmentGoalProgress])
