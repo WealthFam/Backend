@@ -21,6 +21,9 @@ class _NeuralTrainingScreenState extends State<NeuralTrainingScreen> {
   List<UnparsedMessage> _messages = [];
   bool _isLoading = true;
   String? _error;
+  String _searchQuery = '';
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
   bool _showSpamOnly = false;
   List<dynamic> _spamFilters = [];
 
@@ -34,7 +37,7 @@ class _NeuralTrainingScreenState extends State<NeuralTrainingScreen> {
     setState(() { _isLoading = true; _error = null; });
     try {
       final dashboard = context.read<DashboardService>();
-      final messages = await dashboard.fetchTrainingQueue();
+      final messages = await dashboard.fetchTrainingQueue(search: _searchQuery);
       
       if (_showSpamOnly) {
          await _loadSpamFilters();
@@ -99,13 +102,44 @@ class _NeuralTrainingScreenState extends State<NeuralTrainingScreen> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('Neural Training ($count)', style: const TextStyle(fontWeight: FontWeight.w900)),
+        title: _isSearching 
+          ? TextField(
+              controller: _searchController,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              decoration: const InputDecoration(
+                hintText: 'Search senders or content...',
+                hintStyle: TextStyle(color: Colors.white54),
+                border: InputBorder.none,
+              ),
+              onChanged: (v) {
+                setState(() => _searchQuery = v);
+                _loadData();
+              },
+            )
+          : Text('Neural Training ($count)', style: const TextStyle(fontWeight: FontWeight.w900)),
         actions: [
+          if (!_showSpamOnly) IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: () {
+              setState(() {
+                _isSearching = !_isSearching;
+                if (!_isSearching) {
+                  _searchQuery = '';
+                  _searchController.clear();
+                  _loadData();
+                }
+              });
+            },
+          ),
           IconButton(
             icon: Icon(_showSpamOnly ? Icons.mark_email_read : Icons.report_gmailerrorred),
             tooltip: 'View Spam Bucket',
             onPressed: () {
-              setState(() => _showSpamOnly = !_showSpamOnly);
+              setState(() {
+                _showSpamOnly = !_showSpamOnly;
+                _isSearching = false;
+              });
               _loadData();
             },
           ),

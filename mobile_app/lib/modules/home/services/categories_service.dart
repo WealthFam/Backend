@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/models/transaction_category.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // for RecentTransaction update
 
 class CategoriesService extends ChangeNotifier {
@@ -16,7 +17,33 @@ class CategoriesService extends ChangeNotifier {
   List<TransactionCategory> get categories => _categories;
   bool get isLoading => _isLoading;
 
-  CategoriesService(this._config, this._auth);
+  CategoriesService(this._config, this._auth) {
+    _loadCache();
+  }
+
+  Future<void> _loadCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString('cached_categories');
+      if (cachedJson != null) {
+        final List<dynamic> data = jsonDecode(cachedJson);
+        _categories = data.map((e) => TransactionCategory.fromJson(e)).toList();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('CategoriesService: Error loading cache: $e');
+    }
+  }
+
+  Future<void> _saveCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = jsonEncode(_categories.map((e) => e.toJson()).toList());
+      await prefs.setString('cached_categories', jsonStr);
+    } catch (e) {
+      debugPrint('CategoriesService: Error saving cache: $e');
+    }
+  }
 
   Future<void> fetchCategories({bool force = false}) async {
     if (_auth.accessToken == null) return;
@@ -39,6 +66,7 @@ class CategoriesService extends ChangeNotifier {
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         _categories = data.map((e) => TransactionCategory.fromJson(e)).toList();
+        await _saveCache();
       }
     } catch (e) {
       debugPrint('Fetch Categories Error: $e');

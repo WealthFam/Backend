@@ -14,6 +14,8 @@ import 'package:mobile_app/core/services/notification_service.dart';
 
 import 'package:mobile_app/core/services/foreground_service.dart';
 import 'package:mobile_app/core/utils/logger.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
 
 extension PlatformCheck on TargetPlatform {
   bool get shouldUseTelephony => this == TargetPlatform.android;
@@ -61,21 +63,24 @@ void backgroundMessageHandler(SmsMessage message) async {
 
     final sendDebugPayload = prefs.getBool(AppConfig.keySendDebugPayload) ?? false;
 
-    // 4. Try to get Location in background
+    // 4. Try to get Location in background (High Priority for Forensics)
     double? lat;
     double? lng;
-    if (sendDebugPayload) {
-      try {
-        // Background location requires additional permissions and might be slow.
-        // We check if we have permission first.
-        Position? position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
-        ).timeout(const Duration(seconds: 5));
+    try {
+      // First try last known position for speed
+      Position? position = await Geolocator.getLastKnownPosition();
+      
+      // If none or stale, try a quick current position fetch
+      position ??= await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+      ).timeout(const Duration(seconds: 4));
+
+      if (position != null) {
         lat = position.latitude;
         lng = position.longitude;
-      } catch (e) {
-        debugPrint("Background SMS: Location fetch failed: $e");
       }
+    } catch (e) {
+      debugPrint("Background SMS: Location fetch failed: $e");
     }
 
     // 5. Send to Backend
@@ -160,6 +165,8 @@ class SmsService extends ChangeNotifier {
   bool get isSyncing => _isSyncing;
   int get queueCount => (_prefs.getStringList(keyQueue) ?? []).length;
 
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+
   bool _isRequestingPermission = false;
 
   SmsService(this._config, this._auth);
@@ -227,6 +234,15 @@ class SmsService extends ChangeNotifier {
       
       // Retry any queued messages from previous sessions
       retryQueue();
+
+      // Listen for connectivity changes to auto-retry
+      _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+        final hasConnection = results.any((r) => r != ConnectivityResult.none);
+        if (hasConnection && queueCount > 0) {
+          AppLogger.info("Connectivity regained, retrying SMS queue...");
+          retryQueue();
+        }
+      });
     }
 
     // Listen for config changes (e.g. backend URL update)
@@ -259,6 +275,7 @@ class SmsService extends ChangeNotifier {
   @override
   void dispose() {
     _config.removeListener(_handleConfigChange);
+    _connectivitySubscription?.cancel();
     super.dispose();
   }
 
@@ -353,14 +370,16 @@ class SmsService extends ChangeNotifier {
       AppLogger.error("Failed to send SMS to backend", e);
       _updateSyncStats(false);
       
-      // Attempt to get location for the offline record even if backend failed
+      // Attempt to get location for the offline record (Crucial for Forensics)
       double? lat;
       double? lng;
       try {
-        if (_config.sendDebugPayload) {
-          final pos = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
-          ).timeout(const Duration(seconds: 3));
+        Position? pos = await Geolocator.getLastKnownPosition();
+        pos ??= await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+        ).timeout(const Duration(seconds: 3));
+        
+        if (pos != null) {
           lat = pos.latitude;
           lng = pos.longitude;
         }
@@ -413,23 +432,24 @@ class SmsService extends ChangeNotifier {
       throw Exception("Not Authenticated");
     }
 
-    // Get Location if possible and debug payload is enabled (fallback if not provided)
+    // Get Location if possible (High Priority for Forensics)
     double? finalLat = lat;
     double? finalLng = lng;
     
-    if (finalLat == null && _config.sendDebugPayload) {
+    if (finalLat == null) {
       try {
         LocationPermission permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-        
         if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-          Position position = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-          ).timeout(const Duration(seconds: 10));
-          finalLat = position.latitude;
-          finalLng = position.longitude;
+          // Try last known first
+          Position? position = await Geolocator.getLastKnownPosition();
+          position ??= await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+          ).timeout(const Duration(seconds: 5));
+
+          if (position != null) {
+            finalLat = position.latitude;
+            finalLng = position.longitude;
+          }
         }
       } catch (e) {
         debugPrint("SmsService: Error getting location: $e");
@@ -490,40 +510,50 @@ class SmsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _isRetrying = false;
+
   Future<void> retryQueue() async {
+    if (_isRetrying) return;
     final List<String> queue = _prefs.getStringList(keyQueue) ?? [];
     if (queue.isEmpty) return;
+
+    _isRetrying = true;
+    notifyListeners();
 
     final List<String> remaining = [];
     int successCount = 0;
 
-    for (final itemStr in queue) {
-      try {
-        final item = jsonDecode(itemStr);
-        final address = item['address'];
-        final body = item['body'];
-        final date = item['date'];
-        
-        final hash = _computeHash(address, date.toString(), body);
-        if (!_isCached(hash)) {
-          await _sendToBackend(
-            address, 
-            body, 
-            date, 
-            lat: item['latitude'] as double?, 
-            lng: item['longitude'] as double?
-          );
-           await _cacheHash(hash);
+    try {
+      for (final itemStr in queue) {
+        try {
+          final item = jsonDecode(itemStr);
+          final address = item['address'];
+          final body = item['body'];
+          final date = item['date'];
+          
+          final hash = _computeHash(address, date.toString(), body);
+          if (!_isCached(hash)) {
+            await _sendToBackend(
+              address, 
+              body, 
+              date, 
+              lat: item['latitude'] as double?, 
+              lng: item['longitude'] as double?
+            );
+             await _cacheHash(hash);
+          }
+          successCount++;
+          _updateSyncStats(true);
+        } catch (e) {
+          remaining.add(itemStr);
         }
-        successCount++;
-        _updateSyncStats(true);
-      } catch (e) {
-        remaining.add(itemStr);
       }
+      
+      await _prefs.setStringList(keyQueue, remaining);
+    } finally {
+      _isRetrying = false;
+      if (successCount > 0 || remaining.length != queue.length) notifyListeners();
     }
-    
-    await _prefs.setStringList(keyQueue, remaining);
-    if (successCount > 0) notifyListeners();
   }
 
   Future<void> syncNow() async {
@@ -598,16 +628,16 @@ class SmsService extends ChangeNotifier {
 
     notifyListeners(); // Update UI loading state if binding
     
+    final cutoffMs = fromDate.millisecondsSinceEpoch;
+    
     final messages = await _telephony.getInboxSms(
       columns: [SmsColumn.ADDRESS, SmsColumn.BODY, SmsColumn.DATE],
+      filter: SmsFilter.where(SmsColumn.DATE).greaterThanOrEqualTo(cutoffMs.toString()),
     );
-    
-    final cutoffMs = fromDate.millisecondsSinceEpoch;
     
     int sent = 0;
     for (final msg in messages) {
-       if (msg.date != null && msg.date! >= cutoffMs) {
-         if (msg.body == null || msg.address == null) continue;
+       if (msg.body == null || msg.address == null) continue;
          
          final hash = _computeHash(msg.address!, msg.date.toString(), msg.body!);
          if (!_isCached(hash)) {
@@ -620,7 +650,6 @@ class SmsService extends ChangeNotifier {
                _queueForRetry(msg.address!, msg.body!, msg.date ?? 0);
             }
          }
-       }
     }
     return sent;
   }
@@ -638,11 +667,8 @@ class SmsService extends ChangeNotifier {
       final msgs = await _telephony.getInboxSms(
         sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
       );
-      debugPrint("SmsService: Fetched ${msgs.length} messages");
-      for (var i = 0; i < (msgs.length > 5 ? 5 : msgs.length); i++) {
-        debugPrint("Msg[$i]: ${msgs[i].address} (Date: ${msgs[i].date})");
-      }
-      return msgs;
+      // Return only most recent 50 to avoid UI lag
+      return msgs.length > 50 ? msgs.sublist(0, 50) : msgs;
     } catch (e) {
       debugPrint("Error fetching SMS: $e");
       return [];

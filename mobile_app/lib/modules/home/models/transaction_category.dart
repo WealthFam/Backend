@@ -28,4 +28,15 @@ class TransactionCategory {
           [],
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'icon': icon,
+      'type': type,
+      'parent_id': parentId,
+      'subcategories': subcategories.map((s) => s.toJson()).toList(),
+    };
+  }
 }
