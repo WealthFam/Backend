@@ -515,7 +515,7 @@
                                     <template v-slot:activator="{ props }">
                                         <v-btn v-bind="props" variant="tonal" color="primary" size="small"
                                             class="rounded-lg footer-action-btn"
-                                            @click="emit('findSimilar', msg.sender)">
+                                            @click="msg.sender ? emit('findSimilar', msg.sender) : null">
                                             <ScanSearch :size="16" />
                                         </v-btn>
                                     </template>

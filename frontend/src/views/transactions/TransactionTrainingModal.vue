@@ -1,121 +1,3 @@
-<script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Bot, Brain, X, Calendar, Tag, EyeOff, Info, BadgeIndianRupee, Landmark, Hash, Fingerprint, TrendingUp, ShieldCheck, Sparkles, Loader2 } from 'lucide-vue-next'
-import { aiApi } from '@/api/client'
-import { useNotificationStore } from '@/stores/notification'
-
-const props = defineProps<{
-    modelValue: boolean
-    selectedMessage: any
-    labelForm: any
-    categories: any[]
-}>()
-
-const emit = defineEmits<{
-    'update:modelValue': [value: boolean]
-    'submit': []
-}>()
-
-const categoryOptions = computed(() => {
-    const list: any[] = []
-    const flatten = (cats: any[], depth = 0) => {
-        cats.forEach(c => {
-            const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : ''
-            list.push({
-                title: `${prefix}${c.icon || '🏷️'} ${c.name}`,
-                value: c.name
-            })
-            if (c.subcategories && c.subcategories.length > 0) {
-                flatten(c.subcategories, depth + 1)
-            }
-        })
-    }
-    flatten(props.categories)
-    if (!list.find(o => o.value === 'Uncategorized')) {
-        list.push({ title: '🏷️ Uncategorized', value: 'Uncategorized' })
-    }
-    return list
-})
-const highlightedContent = computed(() => {
-    let content = props.selectedMessage?.raw_content || props.selectedMessage?.raw_message || ''
-    if (!content) return [{ text: 'No Payload', highlight: false }]
-
-    const highlights: { text: string; highlight: boolean; color?: string }[] = []
-    
-    // Values to find and highlight
-    const searchPairs = [
-        { val: props.labelForm.amount?.toString(), color: 'var(--v-theme-success)' },
-        { val: props.labelForm.recipient, color: 'var(--v-theme-primary)' },
-        { val: props.labelForm.ref_id, color: 'var(--v-theme-warning)' }
-    ].filter(p => p.val && p.val.length > 2)
-
-    if (searchPairs.length === 0) return [{ text: content, highlight: false }]
-
-    // Simple multi-match split logic
-    let temp = [{ text: content, highlight: false }]
-    
-    searchPairs.forEach(pair => {
-        const nextTemp: typeof temp = []
-        temp.forEach(chunk => {
-            if (chunk.highlight) {
-                nextTemp.push(chunk)
-                return
-            }
-            
-            const index = chunk.text.toLowerCase().indexOf(pair.val!.toLowerCase())
-            if (index !== -1) {
-                if (index > 0) nextTemp.push({ text: chunk.text.substring(0, index), highlight: false })
-                nextTemp.push({ text: chunk.text.substring(index, index + pair.val!.length), highlight: true, color: pair.color })
-                if (index + pair.val!.length < chunk.text.length) {
-                    nextTemp.push({ text: chunk.text.substring(index + pair.val!.length), highlight: false })
-                }
-            } else {
-                nextTemp.push(chunk)
-            }
-        })
-        temp = nextTemp
-    })
-
-    return temp
-})
-
-const notify = useNotificationStore()
-const isAutoParsing = ref(false)
-
-const handleAutoParse = async () => {
-    if (!props.selectedMessage?.id) return
-    isAutoParsing.value = true
-    try {
-        const res = await aiApi.autoParseTrainingMessage(props.selectedMessage.id)
-        const data = res.data
-        if (data) {
-            // Apply data to form
-            if (data.amount !== undefined) props.labelForm.amount = data.amount
-            if (data.recipient) props.labelForm.recipient = data.recipient
-            if (data.date) {
-                try {
-                    const d = new Date(data.date)
-                    if (!isNaN(d.getTime())) {
-                        props.labelForm.date = d.toISOString().substring(0, 16)
-                    }
-                } catch (e) {
-                    props.labelForm.date = data.date
-                }
-            }
-            if (data.account_mask) props.labelForm.account_mask = data.account_mask
-            if (data.ref_id) props.labelForm.ref_id = data.ref_id
-            if (data.type) props.labelForm.type = data.type
-            
-            notify.success('AI Forensic extraction complete')
-        }
-    } catch (e) {
-        // Error notification handled by interceptor or api
-    } finally {
-        isAutoParsing.value = false
-    }
-}
-</script>
-
 <template>
     <v-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)" persistent
         max-width="720" transition="scale-transition">
@@ -217,9 +99,9 @@ const handleAutoParse = async () => {
                             </v-text-field>
                         </v-col>
                         <v-col cols="12" md="6">
-                            <v-select v-model="labelForm.type" label="Flow" :items="['DEBIT', 'CREDIT']"
+                            <v-autocomplete v-model="labelForm.type" label="Flow" :items="['DEBIT', 'CREDIT']"
                                 density="compact" variant="outlined" rounded="lg" class="modern-field mb-1 font-weight-bold">
-                            </v-select>
+                            </v-autocomplete>
                         </v-col>
 
                         <v-col cols="12">
@@ -290,6 +172,129 @@ const handleAutoParse = async () => {
         </v-card>
     </v-dialog>
 </template>
+
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { Bot, Brain, X, Fingerprint, TrendingUp, Sparkles } from 'lucide-vue-next'
+import { aiApi } from '@/api/client'
+import { useNotificationStore } from '@/stores/notification'
+
+const props = defineProps<{
+    modelValue: boolean
+    selectedMessage: any
+    labelForm: any
+    categories: any[]
+}>()
+
+const emit = defineEmits<{
+    'update:modelValue': [value: boolean]
+    'submit': []
+}>()
+
+const categoryOptions = computed(() => {
+    const list: any[] = []
+    const flatten = (cats: any[], depth = 0) => {
+        cats.forEach(c => {
+            const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : ''
+            list.push({
+                title: `${prefix}${c.icon || '🏷️'} ${c.name}`,
+                value: c.name
+            })
+            if (c.subcategories && c.subcategories.length > 0) {
+                flatten(c.subcategories, depth + 1)
+            }
+        })
+    }
+    flatten(props.categories)
+    if (!list.find(o => o.value === 'Uncategorized')) {
+        list.push({ title: '🏷️ Uncategorized', value: 'Uncategorized' })
+    }
+    return list
+})
+
+interface MessageChunk {
+    text: string
+    highlight: boolean
+    color?: string
+}
+
+const highlightedContent = computed<MessageChunk[]>(() => {
+    let content = props.selectedMessage?.raw_content || props.selectedMessage?.raw_message || ''
+    if (!content) return [{ text: 'No Payload', highlight: false }]
+
+    // Values to find and highlight
+    const searchPairs = [
+        { val: props.labelForm.amount?.toString(), color: 'var(--v-theme-success)' },
+        { val: props.labelForm.recipient, color: 'var(--v-theme-primary)' },
+        { val: props.labelForm.ref_id, color: 'var(--v-theme-warning)' }
+    ].filter(p => p.val && p.val.length > 2)
+
+    if (searchPairs.length === 0) return [{ text: content, highlight: false }]
+
+    // Simple multi-match split logic
+    let temp: MessageChunk[] = [{ text: content, highlight: false }]
+    
+    searchPairs.forEach(pair => {
+        const nextTemp: MessageChunk[] = []
+        temp.forEach(chunk => {
+            if (chunk.highlight) {
+                nextTemp.push(chunk)
+                return
+            }
+            
+            const index = chunk.text.toLowerCase().indexOf(pair.val!.toLowerCase())
+            if (index !== -1) {
+                if (index > 0) nextTemp.push({ text: chunk.text.substring(0, index), highlight: false })
+                nextTemp.push({ text: chunk.text.substring(index, index + pair.val!.length), highlight: true, color: pair.color })
+                if (index + pair.val!.length < chunk.text.length) {
+                    nextTemp.push({ text: chunk.text.substring(index + pair.val!.length), highlight: false })
+                }
+            } else {
+                nextTemp.push(chunk)
+            }
+        })
+        temp = nextTemp
+    })
+
+    return temp
+})
+
+const notify = useNotificationStore()
+const isAutoParsing = ref(false)
+
+const handleAutoParse = async () => {
+    if (!props.selectedMessage?.id) return
+    isAutoParsing.value = true
+    try {
+        const res = await aiApi.autoParseTrainingMessage(props.selectedMessage.id)
+        const data = res.data
+        if (data) {
+            // Apply data to form
+            if (data.amount !== undefined) props.labelForm.amount = data.amount
+            if (data.recipient) props.labelForm.recipient = data.recipient
+            if (data.date) {
+                try {
+                    const d = new Date(data.date)
+                    if (!isNaN(d.getTime())) {
+                        props.labelForm.date = d.toISOString().substring(0, 16)
+                    }
+                } catch (e) {
+                    props.labelForm.date = data.date
+                }
+            }
+            if (data.account_mask) props.labelForm.account_mask = data.account_mask
+            if (data.ref_id) props.labelForm.ref_id = data.ref_id
+            if (data.type) props.labelForm.type = data.type
+            
+            notify.success('AI Forensic extraction complete')
+        }
+    } catch (e) {
+        // Error notification handled by interceptor or api
+    } finally {
+        isAutoParsing.value = false
+    }
+}
+</script>
 
 <style scoped>
 .premium-training-modal {
