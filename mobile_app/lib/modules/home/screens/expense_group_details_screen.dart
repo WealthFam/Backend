@@ -30,7 +30,6 @@ class _ExpenseGroupDetailsScreenState extends State<ExpenseGroupDetailsScreen> {
   void initState() {
     super.initState();
     _group = widget.group;
-    // Fetch categories and transactions
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CategoriesService>().fetchCategories();
       refreshData();
@@ -78,7 +77,7 @@ class _ExpenseGroupDetailsScreenState extends State<ExpenseGroupDetailsScreen> {
     try {
       final url = Uri.parse('${config.backendUrl}/api/v1/mobile/transactions').replace(queryParameters: {
         'expense_group_id': widget.group['id'].toString(),
-        'page_size': '100', // Load all relevant for the group
+        'page_size': '100',
       });
 
       final response = await http.get(
@@ -88,9 +87,8 @@ class _ExpenseGroupDetailsScreenState extends State<ExpenseGroupDetailsScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final List<dynamic> items = data['items'] ?? [];
+        final List<dynamic> items = data['data'] ?? [];
         
-        // Final sanity check filtering on client side too
         final filtered = items.where((t) {
           final gid = t['expense_group_id']?.toString();
           return gid == _group['id'].toString();
@@ -122,22 +120,18 @@ class _ExpenseGroupDetailsScreenState extends State<ExpenseGroupDetailsScreen> {
     final group = _group;
     final budget = (group['budget'] ?? 0.0).toDouble();
     
-    // Calculate net spend from transactions as the source of truth for this view
-    // We sum all transactions (credits and debits) to get the true consumed amount
+    // Net spend: backend stores debits as negative, so negate to get positive spend
     double spent = 0;
     for (var txn in _transactions) {
       final amt = (txn['amount'] as num).toDouble();
-      // Backend stores expenses as negative, so we subtract them (adds to spent)
-      // and add positive credits (subtracts from spent)
-      spent -= amt; 
+      spent -= amt;
     }
-    // Ensure spent doesn't go negative if we have more credits than debits (rare but possible)
     if (spent < 0) spent = 0;
     
     final progress = budget > 0 ? (spent / budget).clamp(0.0, 1.0) : 0.0;
     final isOverBudget = spent > budget && budget > 0;
     final isActive = group['is_active'] ?? true;
-    final currency = context.read<DashboardService>().data?.summary.currency ?? '₹';
+    final currency = context.read<DashboardService>().currencySymbol;
     final maskingFactor = context.read<DashboardService>().maskingFactor;
 
     return Scaffold(

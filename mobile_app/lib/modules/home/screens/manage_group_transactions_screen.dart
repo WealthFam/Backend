@@ -47,7 +47,7 @@ class _ManageGroupTransactionsScreenState extends State<ManageGroupTransactionsS
 
     try {
       final queryParams = {
-        'page_size': '500', // Load a good amount for management
+        'page_size': '500',
       };
 
       if (widget.group['start_date'] != null) {
@@ -66,7 +66,7 @@ class _ManageGroupTransactionsScreenState extends State<ManageGroupTransactionsS
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final List<dynamic> items = data['items'];
+        final List<dynamic> items = data['data'];
         
         final Set<String> selected = {};
         for (var item in items) {
@@ -144,7 +144,7 @@ class _ManageGroupTransactionsScreenState extends State<ManageGroupTransactionsS
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final currency = context.read<DashboardService>().data?.summary.currency ?? '₹';
+    final currency = context.read<DashboardService>().currencySymbol;
     final maskingFactor = context.read<DashboardService>().maskingFactor;
 
     final categories = _allTransactions

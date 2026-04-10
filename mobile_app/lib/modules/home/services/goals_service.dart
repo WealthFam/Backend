@@ -120,11 +120,16 @@ class GoalsService extends ChangeNotifier {
         headers: {'Authorization': 'Bearer ${_auth.accessToken}'},
       );
       if (response.statusCode == 200) {
-        _expenseGroups = jsonDecode(response.body);
+        final decoded = jsonDecode(response.body);
+        _expenseGroups = decoded is List ? decoded : [];
+        _error = null;
         await _saveGroupsCache();
+      } else {
+        _error = 'Failed to load expense groups: ${response.statusCode}';
       }
     } catch (e) {
       debugPrint('Expense Groups Fetch Error: $e');
+      _error = 'Connection error';
     } finally {
       _isLoading = false;
       notifyListeners();

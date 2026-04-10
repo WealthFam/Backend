@@ -38,7 +38,22 @@ class _ExpenseGroupsScreenState extends State<ExpenseGroupsScreen> {
         onRefresh: () => goalsService.fetchExpenseGroups(),
         child: goalsService.isLoading && goalsService.expenseGroups.isEmpty
             ? const Center(child: CircularProgressIndicator())
-            : _buildExpenseGroupsList(goalsService, goalsService.expenseGroups),
+            : goalsService.error != null && goalsService.expenseGroups.isEmpty
+                ? ListView(
+                    children: [
+                      SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+                      Center(child: Text(goalsService.error!, style: const TextStyle(color: AppTheme.danger))),
+                      const SizedBox(height: 16),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: () => goalsService.fetchExpenseGroups(),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ),
+                    ],
+                  )
+                : _buildExpenseGroupsList(goalsService, goalsService.expenseGroups),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddGroupDialog(context),
