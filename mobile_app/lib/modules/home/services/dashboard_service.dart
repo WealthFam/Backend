@@ -270,8 +270,12 @@ class DashboardService extends ChangeNotifier {
     }
   }
 
-  Future<List<UnparsedMessage>> fetchTrainingQueue() async {
-    final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/training');
+  Future<List<UnparsedMessage>> fetchTrainingQueue({String? search}) async {
+    final Map<String, String> queryParams = {
+      if (search != null && search.isNotEmpty) 'search': search,
+    };
+    final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/training')
+        .replace(queryParameters: queryParams);
     final response = await http.get(url, headers: _getHeaders());
     
     if (response.statusCode == 200) {
@@ -288,8 +292,11 @@ class DashboardService extends ChangeNotifier {
     required String description,
     required double amount,
     required String category,
-    required String accountMask,
+    String? accountId,
+    String? accountMask,
+    String type = 'DEBIT',
     bool createRule = true,
+    bool applyToUnparsed = true,
   }) async {
     final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/training/$messageId/label');
     final response = await http.post(
@@ -300,8 +307,11 @@ class DashboardService extends ChangeNotifier {
         'recipient': description,
         'amount': amount,
         'category': category,
+        'account_id': accountId,
         'account_mask': accountMask,
+        'type': type,
         'generate_pattern': createRule,
+        'apply_to_unparsed': applyToUnparsed,
       }),
     );
 
@@ -344,7 +354,10 @@ class DashboardService extends ChangeNotifier {
     if (response.statusCode == 200) {
       return jsonDecode(utf8.decode(response.bodyBytes));
     }
-    throw Exception('AI Forensic failed');
+    
+    final errorData = jsonDecode(utf8.decode(response.bodyBytes));
+    final message = errorData['detail'] ?? 'AI Forensic failed';
+    throw Exception(message);
   }
 
   void _updateData(DashboardData Function(DashboardData) updater) {

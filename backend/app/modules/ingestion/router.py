@@ -1054,14 +1054,24 @@ def label_message(
             raise HTTPException(status_code=404, detail="Message not found")
             
         # Promote to PendingTransaction
-        account = IngestionService.match_account(db, str(current_user.tenant_id), payload.account_mask)
+        account = None
+        if payload.account_id:
+            account = db.query(finance_models.Account).filter(
+                finance_models.Account.id == payload.account_id,
+                finance_models.Account.tenant_id == str(current_user.tenant_id)
+            ).first()
+        
+        if not account and payload.account_mask:
+            account = IngestionService.match_account(db, str(current_user.tenant_id), payload.account_mask)
+
         if not account:
             # Create auto-account if mask provided
+            mask = payload.account_mask or "0000"
             account = finance_models.Account(
                 tenant_id=str(current_user.tenant_id),
-                name=f"Detected: (XX{payload.account_mask[-4:]})",
+                name=f"Detected: (XX{mask[-4:]})",
                 type=finance_models.AccountType.BANK,
-                account_mask=payload.account_mask[-4:],
+                account_mask=mask[-4:],
                 is_verified=False,
                 balance=0.0
             )
@@ -1072,7 +1082,8 @@ def label_message(
         effective_ref = payload.ref_id
         if not effective_ref:
             date_str = payload.date.strftime("%Y%m%d%H%M%S")
-            effective_ref = f"MAN-{date_str}-{payload.account_mask}-{payload.amount:.2f}"
+            mask_str = payload.account_mask or account.account_mask or "XXXX"
+            effective_ref = f"MAN-{date_str}-{mask_str}-{payload.amount:.2f}"
 
         # Determine effective amount based on type
         effective_amount = payload.amount
@@ -1137,8 +1148,48 @@ def label_message(
                     regex_pattern=pattern_str,
                     mapping=json.loads(mapping_json)
                 )
+
+                # 4. Retroactive Sweep (Apply to other unparsed messages in the same cluster)
+                if payload.apply_to_unparsed:
+                    import re
+                    # Find similar messages (same source, tenant)
+                    others = db.query(ingestion_models.UnparsedMessage).filter(
+                        ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id),
+                        ingestion_models.UnparsedMessage.source == msg.source,
+                        ingestion_models.UnparsedMessage.id != msg.id
+                    ).all()
+
+                    compiled = re.compile(pattern_str, re.IGNORECASE)
+                    promoted_count = 0
+                    for other in others:
+                        if compiled.search(other.raw_content):
+                            # re-parse this one specifically using the new pattern or generic parse
+                            # For simplicity, we create a pending txn using the same logic as the current label
+                            # but we could call the parser service to be more accurate if we had a "test_pattern" endpoint.
+                            # Here we just promote it since it matches the regex the user just defined for this message.
+                            
+                            p = ingestion_models.PendingTransaction(
+                                tenant_id=str(current_user.tenant_id),
+                                account_id=str(account.id),
+                                amount=effective_amount,
+                                date=other.created_at, # Use its own timestamp
+                                description=f"Auto-Promoted: {payload.recipient or 'Unknown'}",
+                                recipient=payload.recipient,
+                                category=payload.category or "Uncategorized",
+                                source=other.source,
+                                raw_message=other.raw_content,
+                                external_id=f"AUTO-{other.id[:8]}",
+                                exclude_from_reports=payload.exclude_from_reports
+                            )
+                            db.add(p)
+                            db.delete(other)
+                            promoted_count += 1
+                    
+                    if promoted_count > 0:
+                        logger.info(f"Retroactively promoted {promoted_count} messages for tenant {current_user.tenant_id}")
+
             except Exception as e:
-                logger.exception("Error creating pattern:")
+                logger.exception("Error creating pattern or retroactive sweep:")
             
         db.delete(msg)
         db.commit()

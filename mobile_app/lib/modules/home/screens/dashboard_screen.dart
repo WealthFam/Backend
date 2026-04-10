@@ -59,7 +59,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 slivers: [
                                 SliverAppBar(
                   floating: true,
-                  pinned: true,
+                  pinned: false,
                   leading: widget.onMenuPressed != null ? IconButton(
                     icon: const Icon(Icons.menu),
                     onPressed: widget.onMenuPressed,
@@ -104,12 +104,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                   ),
-                  bottom: dashboard.data != null 
-                    ? PreferredSize(
-                        preferredSize: const Size.fromHeight(180),
-                        child: _buildSummarySection(context, dashboard.data!.summary, formatAmount),
-                      )
-                    : null,
+                  bottom: null,
                   actions: [
                     Consumer<SocketService>(
                       builder: (context, socket, _) => Tooltip(
@@ -142,6 +137,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   if (dashboard.data != null) ...[
+                  SliverToBoxAdapter(child: _buildSummarySection(context, dashboard.data!.summary, formatAmount)),
                   SliverToBoxAdapter(child: _buildInvestmentsEntry(context, dashboard.data!.investmentSummary, formatAmount)),
                   if (dashboard.data!.pendingTriageCount > 0 || dashboard.data!.pendingTrainingCount > 0)
                     SliverToBoxAdapter(
@@ -271,7 +267,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 140, 
+        height: 170, 
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),

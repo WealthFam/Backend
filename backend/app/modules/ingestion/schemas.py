@@ -114,7 +114,8 @@ class IngestionEventRead(IngestionBase):
 class TrainingLabelRequest(IngestionBase):
     amount: Decimal
     date: datetime
-    account_mask: str
+    account_mask: Optional[str] = None
+    account_id: Optional[str] = None
     recipient: Optional[str] = None
     category: Optional[str] = "Uncategorized"
     ref_id: Optional[str] = None
@@ -122,6 +123,7 @@ class TrainingLabelRequest(IngestionBase):
     credit_limit: Optional[Decimal] = None
     type: str = "DEBIT" # DEBIT or CREDIT
     generate_pattern: bool = True
+    apply_to_unparsed: bool = True
     exclude_from_reports: bool = False
 
 class PendingTransactionRead(IngestionBase):
