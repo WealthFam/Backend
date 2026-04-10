@@ -1,4 +1,12 @@
 import 'package:intl/intl.dart';
+import 'package:decimal/decimal.dart';
+
+Decimal _toDecimal(dynamic value) {
+  if (value == null) return Decimal.zero;
+  if (value is num) return Decimal.parse(value.toString());
+  if (value is String) return Decimal.tryParse(value) ?? Decimal.zero;
+  return Decimal.zero;
+}
 
 class DashboardData {
   final DashboardSummary summary;
@@ -9,6 +17,7 @@ class DashboardData {
   final List<MonthTrendItem> monthWiseTrend;
   final List<RecentTransaction> recentTransactions;
   final int pendingTriageCount;
+  final int pendingTrainingCount;
   final int? familyMembersCount;
 
   DashboardData({
@@ -20,6 +29,7 @@ class DashboardData {
     required this.monthWiseTrend,
     required this.recentTransactions,
     this.pendingTriageCount = 0,
+    this.pendingTrainingCount = 0,
     this.familyMembersCount,
   });
 
@@ -41,6 +51,7 @@ class DashboardData {
           .map((i) => RecentTransaction.fromJson(i))
           .toList(),
       pendingTriageCount: json['pending_triage_count'] ?? 0,
+      pendingTrainingCount: json['pending_training_count'] ?? 0,
       familyMembersCount: json['family_members_count'],
     );
   }
@@ -55,6 +66,7 @@ class DashboardData {
       'month_wise_trend': monthWiseTrend.map((i) => i.toJson()).toList(),
       'recent_transactions': recentTransactions.map((i) => i.toJson()).toList(),
       'pending_triage_count': pendingTriageCount,
+      'pending_training_count': pendingTrainingCount,
       'family_members_count': familyMembersCount,
     };
   }
@@ -68,6 +80,7 @@ class DashboardData {
     List<MonthTrendItem>? monthWiseTrend,
     List<RecentTransaction>? recentTransactions,
     int? pendingTriageCount,
+    int? pendingTrainingCount,
     int? familyMembersCount,
   }) {
     return DashboardData(
@@ -79,6 +92,7 @@ class DashboardData {
       monthWiseTrend: monthWiseTrend ?? this.monthWiseTrend,
       recentTransactions: recentTransactions ?? this.recentTransactions,
       pendingTriageCount: pendingTriageCount ?? this.pendingTriageCount,
+      pendingTrainingCount: pendingTrainingCount ?? this.pendingTrainingCount,
       familyMembersCount: familyMembersCount ?? this.familyMembersCount,
     );
   }
@@ -86,23 +100,23 @@ class DashboardData {
 
 class SpendingTrendItem {
   final String date;
-  final double amount;
-  final double dailyLimit;
+  final Decimal amount;
+  final Decimal dailyLimit;
 
   SpendingTrendItem({required this.date, required this.amount, required this.dailyLimit});
 
   factory SpendingTrendItem.fromJson(Map<String, dynamic> json) {
     return SpendingTrendItem(
       date: json['date'],
-      amount: (json['amount'] as num).toDouble(),
-      dailyLimit: (json['daily_limit'] as num).toDouble(),
+      amount: _toDecimal(json['amount']),
+      dailyLimit: _toDecimal(json['daily_limit']),
     );
   }
 
   Map<String, dynamic> toJson() => {
     'date': date,
-    'amount': amount,
-    'daily_limit': dailyLimit,
+    'amount': amount.toString(),
+    'daily_limit': dailyLimit.toString(),
   };
   
   DateTime get dateTime => DateTime.parse(date).toLocal();
@@ -110,69 +124,69 @@ class SpendingTrendItem {
 
 class CategoryPieItem {
   final String name;
-  final double value;
+  final Decimal value;
 
   CategoryPieItem({required this.name, required this.value});
 
   factory CategoryPieItem.fromJson(Map<String, dynamic> json) {
     return CategoryPieItem(
       name: json['name'],
-      value: (json['value'] as num).toDouble(),
+      value: _toDecimal(json['value']),
     );
   }
 
   Map<String, dynamic> toJson() => {
     'name': name,
-    'value': value,
+    'value': value.toString(),
   };
 }
 
 class DashboardSummary {
-  final double todayTotal;
-  final double yesterdayTotal;
-  final double lastMonthSameDayTotal;
-  final double monthlyTotal;
+  final Decimal todayTotal;
+  final Decimal yesterdayTotal;
+  final Decimal lastMonthSameDayTotal;
+  final Decimal monthlyTotal;
   final String currency;
-  final double dailyBudgetLimit;
-  final double proratedBudget;
+  final Decimal dailyBudgetLimit;
+  final Decimal proratedBudget;
 
   DashboardSummary({
     required this.todayTotal,
-    this.yesterdayTotal = 0.0,
-    this.lastMonthSameDayTotal = 0.0,
+    required this.yesterdayTotal,
+    required this.lastMonthSameDayTotal,
     required this.monthlyTotal,
     required this.currency,
-    this.dailyBudgetLimit = 0.0,
-    this.proratedBudget = 0.0,
+    required this.dailyBudgetLimit,
+    required this.proratedBudget,
   });
 
   factory DashboardSummary.fromJson(Map<String, dynamic> json) {
     return DashboardSummary(
-      todayTotal: (json['today_total'] as num).toDouble(),
-      yesterdayTotal: (json['yesterday_total'] as num? ?? 0.0).toDouble(),
-      lastMonthSameDayTotal: (json['last_month_same_day_total'] as num? ?? 0.0).toDouble(),
-      monthlyTotal: (json['monthly_total'] as num).toDouble(),
+      todayTotal: _toDecimal(json['today_total']),
+      yesterdayTotal: _toDecimal(json['yesterday_total']),
+      lastMonthSameDayTotal: _toDecimal(json['last_month_same_day_total']),
+      monthlyTotal: _toDecimal(json['monthly_total']),
       currency: json['currency'] ?? 'INR',
-      dailyBudgetLimit: (json['daily_budget_limit'] as num? ?? 0.0).toDouble(),
-      proratedBudget: (json['prorated_budget'] as num? ?? 0.0).toDouble(),
+      dailyBudgetLimit: _toDecimal(json['daily_budget_limit']),
+      proratedBudget: _toDecimal(json['prorated_budget']),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'today_total': todayTotal,
-    'yesterday_total': yesterdayTotal,
-    'last_month_same_day_total': lastMonthSameDayTotal,
-    'monthly_total': monthlyTotal,
+    'today_total': todayTotal.toString(),
+    'yesterday_total': yesterdayTotal.toString(),
+    'last_month_same_day_total': lastMonthSameDayTotal.toString(),
+    'monthly_total': monthlyTotal.toString(),
     'currency': currency,
-    'daily_budget_limit': dailyBudgetLimit,
-    'prorated_budget': proratedBudget,
+    'daily_budget_limit': dailyBudgetLimit.toString(),
+    'prorated_budget': proratedBudget.toString(),
   };
 }
 
 class BudgetSummary {
-  final double limit;
-  final double spent;
-  final double percentage;
+  final Decimal limit;
+  final Decimal spent;
+  final Decimal percentage;
 
   BudgetSummary({
     required this.limit,
@@ -182,27 +196,27 @@ class BudgetSummary {
 
   factory BudgetSummary.fromJson(Map<String, dynamic> json) {
     return BudgetSummary(
-      limit: (json['limit'] as num).toDouble(),
-      spent: (json['spent'] as num).toDouble(),
-      percentage: (json['percentage'] as num).toDouble(),
+      limit: _toDecimal(json['limit']),
+      spent: _toDecimal(json['spent']),
+      percentage: _toDecimal(json['percentage']),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'limit': limit,
-    'spent': spent,
-    'percentage': percentage,
+    'limit': limit.toString(),
+    'spent': spent.toString(),
+    'percentage': percentage.toString(),
   };
 }
 
 class InvestmentSummary {
-  final double totalInvested;
-  final double currentValue;
-  final double profitLoss;
-  final double? xirr;
+  final Decimal totalInvested;
+  final Decimal currentValue;
+  final Decimal profitLoss;
+  final Decimal? xirr;
   final List<double> sparkline;
-  final double dayChange;
-  final double dayChangePercent;
+  final Decimal dayChange;
+  final Decimal dayChangePercent;
 
   InvestmentSummary({
     required this.totalInvested,
@@ -210,30 +224,30 @@ class InvestmentSummary {
     required this.profitLoss,
     this.xirr,
     this.sparkline = const [],
-    this.dayChange = 0.0,
-    this.dayChangePercent = 0.0,
+    required this.dayChange,
+    required this.dayChangePercent,
   });
 
   factory InvestmentSummary.fromJson(Map<String, dynamic> json) {
     return InvestmentSummary(
-      totalInvested: (json['total_invested'] as num).toDouble(),
-      currentValue: (json['current_value'] as num).toDouble(),
-      profitLoss: (json['profit_loss'] as num).toDouble(),
-      xirr: json['xirr'] != null ? (json['xirr'] as num).toDouble() : null,
+      totalInvested: _toDecimal(json['total_invested']),
+      currentValue: _toDecimal(json['current_value']),
+      profitLoss: _toDecimal(json['profit_loss']),
+      xirr: json['xirr'] != null ? _toDecimal(json['xirr']) : null,
       sparkline: (json['sparkline'] as List? ?? []).map((v) => (v as num).toDouble()).toList(),
-      dayChange: (json['day_change'] as num? ?? 0).toDouble(),
-      dayChangePercent: (json['day_change_percent'] as num? ?? 0).toDouble(),
+      dayChange: _toDecimal(json['day_change']),
+      dayChangePercent: _toDecimal(json['day_change_percent']),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'total_invested': totalInvested,
-    'current_value': currentValue,
-    'profit_loss': profitLoss,
-    'xirr': xirr,
+    'total_invested': totalInvested.toString(),
+    'current_value': currentValue.toString(),
+    'profit_loss': profitLoss.toString(),
+    'xirr': xirr?.toString(),
     'sparkline': sparkline,
-    'day_change': dayChange,
-    'day_change_percent': dayChangePercent,
+    'day_change': dayChange.toString(),
+    'day_change_percent': dayChangePercent.toString(),
   };
 }
 
@@ -241,13 +255,14 @@ class RecentTransaction {
   final String id;
   final DateTime date;
   final String description;
-  final double amount;
+  final Decimal amount;
   final String category;
   final String? accountName;
   final String? accountOwnerName;
   final bool isHidden;
   final String? expenseGroupId;
   final String? expenseGroupName;
+  final String? source;
 
   RecentTransaction({
     required this.id,
@@ -260,20 +275,22 @@ class RecentTransaction {
     this.isHidden = false,
     this.expenseGroupId,
     this.expenseGroupName,
+    this.source,
   });
 
   factory RecentTransaction.fromJson(Map<String, dynamic> json) {
     return RecentTransaction(
       id: json['id'],
       date: DateTime.parse(json['date']).toLocal(),
-      description: json['description'],
-      amount: (json['amount'] as num).toDouble(),
-      category: json['category'],
+      description: json['description'] ?? '',
+      amount: _toDecimal(json['amount']),
+      category: json['category'] ?? 'Uncategorized',
       accountName: json['account_name'],
       accountOwnerName: json['account_owner_name'],
       isHidden: json['is_hidden'] ?? false,
       expenseGroupId: json['expense_group_id'],
       expenseGroupName: json['expense_group_name'],
+      source: json['source'],
     );
   }
 
@@ -281,13 +298,14 @@ class RecentTransaction {
     'id': id,
     'date': date.toUtc().toIso8601String(),
     'description': description,
-    'amount': amount,
+    'amount': amount.toString(),
     'category': category,
     'account_name': accountName,
     'account_owner_name': accountOwnerName,
     'is_hidden': isHidden,
     'expense_group_id': expenseGroupId,
     'expense_group_name': expenseGroupName,
+    'source': source,
   };
 
   String get formattedDate => DateFormat('MMM d, h:mm a').format(date);
@@ -295,8 +313,8 @@ class RecentTransaction {
 
 class MonthTrendItem {
   final String month;
-  final double spent;
-  final double budget;
+  final Decimal spent;
+  final Decimal budget;
   final bool isSelected;
 
   MonthTrendItem({
@@ -309,16 +327,16 @@ class MonthTrendItem {
   factory MonthTrendItem.fromJson(Map<String, dynamic> json) {
     return MonthTrendItem(
       month: json['month'],
-      spent: (json['spent'] as num).toDouble(),
-      budget: (json['budget'] as num).toDouble(),
+      spent: _toDecimal(json['spent']),
+      budget: _toDecimal(json['budget']),
       isSelected: json['is_selected'] ?? false,
     );
   }
 
   Map<String, dynamic> toJson() => {
     'month': month,
-    'spent': spent,
-    'budget': budget,
+    'spent': spent.toString(),
+    'budget': budget.toString(),
     'is_selected': isSelected,
   };
 }

@@ -109,7 +109,7 @@ class AuthService extends ChangeNotifier {
           'device_id': _deviceId,
           'device_name': _deviceName,
         }),
-      );
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -183,7 +183,7 @@ class AuthService extends ChangeNotifier {
         headers: {
           'Authorization': 'Bearer $_accessToken',
         },
-      );
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -227,10 +227,10 @@ class AuthService extends ChangeNotifier {
       final response = await http.post(
         url,
         headers: {
-          'Authorization': 'Bearer $_accessToken',
+          'Authorization': 'Bearer $accessToken',
           'Content-Type': 'application/json',
         },
-      );
+      ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

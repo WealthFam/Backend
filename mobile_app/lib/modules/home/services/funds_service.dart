@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/models/fund_models.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FundsService extends ChangeNotifier {
   final AppConfig _config;
@@ -24,8 +25,36 @@ class FundsService extends ChangeNotifier {
   // Filter State
   String? _selectedMemberId;
   String? get selectedMemberId => _selectedMemberId;
+  
+  String get _cacheKey => 'cached_portfolio_${_selectedMemberId ?? 'all'}';
 
-  FundsService(this._config, this._auth);
+  FundsService(this._config, this._auth) {
+    _loadCache();
+  }
+
+  Future<void> _loadCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString(_cacheKey);
+      if (cachedJson != null) {
+        _portfolio = PortfolioSummary.fromJson(jsonDecode(cachedJson));
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('FundsService: Error loading cache: $e');
+    }
+  }
+
+  Future<void> _saveCache() async {
+    try {
+      if (_portfolio != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_cacheKey, jsonEncode(_portfolio!.toJson()));
+      }
+    } catch (e) {
+      debugPrint('FundsService: Error saving cache: $e');
+    }
+  }
 
   void setMember(String? memberId) {
     _selectedMemberId = memberId;
@@ -56,6 +85,7 @@ class FundsService extends ChangeNotifier {
       if (response.statusCode == 200) {
         _portfolio = PortfolioSummary.fromJson(jsonDecode(response.body));
         _error = null;
+        await _saveCache();
       } else {
         _error = 'Failed to load funds: ${response.statusCode}';
       }

@@ -112,7 +112,7 @@ export function useTriageState(
                 })
             ])
 
-            triageTransactions.value = res.data.items.map((t: any) => ({
+            triageTransactions.value = res.data.data.map((t: any) => ({
                 ...t,
                 category: t.category || 'Uncategorized',
                 is_transfer: !!t.is_transfer,
@@ -121,7 +121,7 @@ export function useTriageState(
             triagePagination.value.total = res.data.total
             selectedTriageIds.value = []
 
-            unparsedMessages.value = trainingRes.data.items
+            unparsedMessages.value = trainingRes.data.data
             trainingPagination.value.total = trainingRes.data.total
             selectedTrainingIds.value = []
 

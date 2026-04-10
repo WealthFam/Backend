@@ -18,24 +18,32 @@ def handle_ai_error(e: Exception):
         status = e.code if hasattr(e, 'code') else 500
         
         detail = "AI intelligence is currently unavailable. Please check your settings."
+        code = "AI_GENERAL_ERROR"
         err_str = str(e).upper()
         
         if status == 429 or "RESOURCE_EXHAUSTED" in err_str:
             detail = "Quota limit reached for your Gemini API key. Please try again in a few minutes or switch models."
+            code = "AI_QUOTA_EXHAUSTED"
         elif status == 401 or "UNAUTHENTICATED" in err_str or "API_KEY_INVALID" in err_str:
             detail = "Authentication failed. Your API key might be invalid or expired."
+            code = "AI_AUTH_FAILED"
         elif status == 404 or "NOT_FOUND" in err_str:
             detail = "The requested model was not found in your Google project."
+            code = "AI_MODEL_NOT_FOUND"
         elif status == 400 or "INVALID_ARGUMENT" in err_str:
             detail = "The request or data is invalid for the current AI model."
+            code = "AI_INVALID_REQUEST"
             
-        return HTTPException(status_code=status, detail=detail)
+        return HTTPException(status_code=status, detail={"detail": detail, "code": code})
     
     if isinstance(e, HTTPException):
         return e
         
     logger.error(f"Unexpected AI error: {e}")
-    return HTTPException(status_code=500, detail="Intelligence service encountered an unexpected error.")
+    return HTTPException(
+        status_code=500, 
+        detail={"detail": "Intelligence service encountered an unexpected error.", "code": "AI_UNEXPECTED_ERROR"}
+    )
 
 router = APIRouter(prefix="/ai", tags=["AI Settings"])
 

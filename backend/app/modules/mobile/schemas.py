@@ -84,6 +84,7 @@ class RecentTransaction(BaseModel):
     is_hidden: bool = False
     expense_group_id: Optional[str] = None
     expense_group_name: Optional[str] = None
+    source: Optional[str] = None
 
 class SpendingTrendItem(BaseModel):
     date: str
@@ -126,6 +127,7 @@ class DashboardSummaryResponse(BaseModel):
     budget: BudgetSummary
     recent_transactions: List[RecentTransaction]
     pending_triage_count: int
+    pending_training_count: int
     family_members_count: int
 
 class DashboardTrendsResponse(BaseModel):
@@ -145,7 +147,7 @@ class MemberResponse(BaseModel):
     avatar_url: Optional[str] = None
 
 class TransactionResponse(BaseModel):
-    items: List[RecentTransaction]
+    data: List[RecentTransaction]
     next_page: Optional[int] = None
 
 class FundHolding(BaseModel):

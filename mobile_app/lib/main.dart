@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/core/theme/app_theme.dart';
@@ -22,30 +23,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Set default logging level to reduce noise
   AppLogger.minLevel = LogLevel.warning;
-  
-  // Initialize communication port for Foreground Task (v9.0+)
-  FlutterForegroundTask.initCommunicationPort();
-  
-  // 1. Critical Services (Blocking)
+
+  if (!kIsWeb) {
+    FlutterForegroundTask.initCommunicationPort();
+  }
+
   final config = AppConfig();
-  await config.init();
-  
   final auth = AuthService(config);
-  await auth.init();
-
   final security = SecurityService();
-  await security.init();
-
   final sms = SmsService(config, auth);
-  await sms.init(); 
-
   final notifications = NotificationService();
-  
-  // 2. Secondary Services (Non-blocking)
+
+  try {
+    await config.init().timeout(const Duration(seconds: 3));
+    await auth.init().timeout(const Duration(seconds: 3));
+    await security.init().timeout(const Duration(seconds: 3));
+  } catch (e) {
+    debugPrint("Startup services initialized with issues: $e");
+  }
+
   _initSecondaryServices(notifications);
+  sms.init(); 
 
   final dashboard = DashboardService(config, auth);
   final funds = FundsService(config, auth);
@@ -53,22 +52,19 @@ void main() async {
   final vault = VaultService(config, auth);
   final goals = GoalsService(config, auth);
   final socket = SocketService(config, auth, notifications, dashboard);
-  
-  // Connect socket if already authenticated
+
   if (auth.isAuthenticated) {
     socket.connect();
-    
-    // Explicitly start foreground service ASAP if enabled
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('fg_service_enabled') ?? false) {
-       ForegroundServiceWrapper.start(
-         url: config.backendUrl,
-         token: auth.accessToken!,
-       );
-    }
+    SharedPreferences.getInstance().then((prefs) {
+      if (prefs.getBool('fg_service_enabled') ?? false) {
+        ForegroundServiceWrapper.start(
+          url: config.backendUrl,
+          token: auth.accessToken ?? '',
+        );
+      }
+    });
   }
-  
-  // Listen for auth changes to connect/disconnect socket
+
   auth.addListener(() {
     if (auth.isAuthenticated) {
       if (!socket.isConnected) socket.connect();
@@ -77,19 +73,20 @@ void main() async {
     }
   });
 
-  // Listen for data from Foreground Task Isolate
-  FlutterForegroundTask.addTaskDataCallback((data) {
-    if (data is Map && data['type'] == 'masking_update') {
-      dashboard.updateMaskingFromForeground(data['value']);
-    }
-  });
+  if (!kIsWeb) {
+    FlutterForegroundTask.addTaskDataCallback((data) {
+      if (data is Map && data['type'] == 'masking_update') {
+        dashboard.updateMaskingFromForeground(data['value']);
+      }
+    });
+  }
 
   runApp(MyApp(
-    config: config, 
-    auth: auth, 
-    sms: sms, 
-    security: security, 
-    dashboard: dashboard, 
+    config: config,
+    auth: auth,
+    sms: sms,
+    security: security,
+    dashboard: dashboard,
     funds: funds,
     categories: categories,
     vault: vault,

@@ -4,10 +4,13 @@ import 'package:http/http.dart' as http;
 import 'package:mobile_app/core/config/app_config.dart';
 import 'package:mobile_app/modules/auth/services/auth_service.dart';
 import 'package:mobile_app/modules/home/models/dashboard_data.dart';
+import 'package:mobile_app/modules/home/models/unparsed_message.dart';
+import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/widgets.dart';
+import 'package:decimal/decimal.dart';
 
 class DashboardService extends ChangeNotifier {
   final AppConfig _config;
@@ -53,20 +56,20 @@ class DashboardService extends ChangeNotifier {
   }
   
   Future<void> loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    _maskingFactor = prefs.getDouble('masking_factor') ?? 1.0;
-    
-    // Load cached dashboard data
-    final cachedData = prefs.getString('cached_dashboard_data');
-    if (cachedData != null) {
-      try {
-        _data = DashboardData.fromJson(jsonDecode(cachedData));
-      } catch (e) {
-        debugPrint('DashboardService: Error loading cache: $e');
-      }
-    }
-    
+    _isLoading = true;
     notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _maskingFactor = prefs.getDouble('masking_factor') ?? 1.0;
+      
+      // Load existing cache using the consistent key
+      // This ensures data is present before refresh() or error screen can hide it
+      await _loadCache();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
   
   Future<void> setMaskingFactor(double value) async {
@@ -175,7 +178,7 @@ class DashboardService extends ChangeNotifier {
         futures.add(refreshMembers());
       }
       
-      await Future.wait(futures);
+      await Future.wait(futures).timeout(const Duration(seconds: 10));
       _error = null;
     } catch (e) {
       debugPrint('Dashboard Service Multi-Fetch Error: $e');
@@ -206,6 +209,7 @@ class DashboardService extends ChangeNotifier {
         budget: budget,
         recentTransactions: txns,
         pendingTriageCount: data['pending_triage_count'],
+        pendingTrainingCount: data['pending_training_count'] ?? 0,
         familyMembersCount: data['family_members_count'],
       ));
     }
@@ -229,6 +233,8 @@ class DashboardService extends ChangeNotifier {
         spendingTrend: spendingTrend,
         monthWiseTrend: monthWiseTrend,
       ));
+    } else {
+      throw Exception('Trends failed: ${response.statusCode}');
     }
   }
 
@@ -244,6 +250,8 @@ class DashboardService extends ChangeNotifier {
           .toList();
       
       _updateData((d) => d.copyWith(categoryDistribution: categories));
+    } else {
+      throw Exception('Category breakdown failed: ${response.statusCode}');
     }
   }
 
@@ -263,11 +271,109 @@ class DashboardService extends ChangeNotifier {
     }
   }
 
+  Future<List<UnparsedMessage>> fetchTrainingQueue({String? search}) async {
+    final Map<String, String> queryParams = {
+      if (search != null && search.isNotEmpty) 'search': search,
+    };
+    final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/training')
+        .replace(queryParameters: queryParams);
+    final response = await http.get(url, headers: _getHeaders());
+    
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+      final List items = data['data'] ?? [];
+      return items.map((i) => UnparsedMessage.fromJson(i)).toList();
+    }
+    throw Exception('Failed to fetch training queue');
+  }
+
+  Future<void> finalizeTraining({
+    required String messageId,
+    required DateTime date,
+    required String description,
+    required Decimal amount,
+    required String category,
+    String? accountId,
+    String? accountMask,
+    String type = 'DEBIT',
+    bool createRule = true,
+    bool applyToUnparsed = true,
+  }) async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/training/$messageId/label');
+    final response = await http.post(
+      url,
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'date': date.toUtc().toIso8601String(),
+        'recipient': description,
+        'amount': amount,
+        'category': category,
+        'account_id': accountId,
+        'account_mask': accountMask,
+        'type': type,
+        'generate_pattern': createRule,
+        'apply_to_unparsed': applyToUnparsed,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to finalize training: ${response.body}');
+    }
+    
+    refresh();
+  }
+
+  Future<List<dynamic>> fetchAccounts() async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/mobile/accounts');
+    final response = await http.get(url, headers: _getHeaders());
+    if (response.statusCode == 200) {
+      return jsonDecode(utf8.decode(response.bodyBytes))['data'];
+    }
+    return [];
+  }
+
+  Future<void> dismissTraining(String messageId) async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/ingestion/training/$messageId/dismiss');
+    final response = await http.post(
+      url, 
+      headers: _getHeaders(),
+      body: jsonEncode({'create_rule': false})
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to dismiss training');
+    }
+    
+    refresh();
+  }
+
+  Future<Map<String, dynamic>> aiForensicParse(String content) async {
+    final url = Uri.parse('${_config.backendUrl}/api/v1/mobile/ai/forensic-parse')
+        .replace(queryParameters: {'content': content});
+    
+    final response = await http.get(url, headers: _getHeaders());
+    if (response.statusCode == 200) {
+      return jsonDecode(utf8.decode(response.bodyBytes));
+    }
+    
+    final errorData = jsonDecode(utf8.decode(response.bodyBytes));
+    final message = errorData['detail'] ?? 'AI Forensic failed';
+    throw Exception(message);
+  }
+
   void _updateData(DashboardData Function(DashboardData) updater) {
     if (_data == null) {
       _data = DashboardData(
-         summary: DashboardSummary(todayTotal: 0, monthlyTotal: 0, currency: 'INR'),
-         budget: BudgetSummary(limit: 0, spent: 0, percentage: 0),
+         summary: DashboardSummary(
+           todayTotal: Decimal.zero, 
+           yesterdayTotal: Decimal.zero,
+           lastMonthSameDayTotal: Decimal.zero,
+           monthlyTotal: Decimal.zero, 
+           currency: 'INR',
+           dailyBudgetLimit: Decimal.zero,
+           proratedBudget: Decimal.zero
+         ),
+         budget: BudgetSummary(limit: Decimal.zero, spent: Decimal.zero, percentage: Decimal.zero),
          spendingTrend: [],
          categoryDistribution: [],
          monthWiseTrend: [],

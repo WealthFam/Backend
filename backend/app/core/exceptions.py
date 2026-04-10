@@ -3,9 +3,20 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    # If detail is a dict, attempt to extract 'code'
+    detail = exc.detail
+    code = "HTTP_ERROR"
+    
+    if isinstance(detail, dict):
+        code = detail.get("code", "HTTP_ERROR")
+        detail = detail.get("detail", str(detail))
+    
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail},
+        content={
+            "detail": detail,
+            "code": code
+        },
     )
 
 async def generic_exception_handler(request: Request, exc: Exception):
@@ -17,5 +28,8 @@ async def generic_exception_handler(request: Request, exc: Exception):
     
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc)},
+        content={
+            "detail": "Internal server error. Please contact support.",
+            "code": "INTERNAL_SERVER_ERROR"
+        },
     )

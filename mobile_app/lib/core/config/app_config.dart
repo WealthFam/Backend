@@ -6,8 +6,8 @@ class AppConfig extends ChangeNotifier {
   static const String keyWebUiUrl = 'web_ui_url';
   static const String keySendDebugPayload = 'show_debug_payload';
 
-  static const String defaultBackendUrl = 'http://192.168.0.9:8000';
-  static const String defaultWebUiUrl = 'http://192.168.0.9:80';
+  static const String defaultBackendUrl = 'http://192.168.0.7:8000';
+  static const String defaultWebUiUrl = 'http://192.168.0.7:80';
 
   late SharedPreferences _prefs;
   bool _initialized = false;

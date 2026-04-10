@@ -34,7 +34,7 @@ export const useTransactionStore = defineStore('transactions', () => {
                 params.sortOrder,
                 auth.selectedMemberId || undefined
             )
-            transactions.value = res.data.items
+            transactions.value = res.data.data
             total.value = res.data.total
 
             // Fetch metrics if on main list with no search

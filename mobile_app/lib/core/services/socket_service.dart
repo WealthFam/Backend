@@ -107,11 +107,17 @@ class SocketService extends ChangeNotifier {
         final title = payload['title'] ?? 'WealthFam Alert';
         final body = payload['body'] ?? '';
         
+        // Safely parse ID which might be a string from backend
+        final rawId = payload['id'];
+        final int notificationId = rawId is int 
+            ? rawId 
+            : (int.tryParse(rawId?.toString() ?? '') ?? DateTime.now().millisecondsSinceEpoch % 100000);
+
         // Show local notification
         _notifications.showNotification(
           title: title,
           body: body,
-          id: payload['id'] ?? DateTime.now().millisecondsSinceEpoch % 100000,
+          id: notificationId,
         );
 
         // Refresh dashboard to reflect changes if it was a transaction/budget update

@@ -31,7 +31,6 @@ router = APIRouter(tags=["Ingestion"])
 
 # Schemas moved to ingestion.schemas
 
-# Schemas moved to ingestion.schemas
 @router.post("/sms")
 def ingest_sms(
     payload: ingestion_schemas.SmsPayload,
@@ -148,7 +147,7 @@ def ingest_sms(
             balance=t.get("balance"),
             credit_limit=t.get("credit_limit"),
             raw_message=t.get("raw_message") or payload.message,
-            source="SMS",
+            source=f"SMS: {payload.sender}",
             is_ai_parsed=str(item.get("metadata", {}).get("parser_used", "")).upper() == "AI"
         )
         
@@ -236,7 +235,7 @@ def ingest_email(
             balance=t.get("balance"),
             credit_limit=t.get("credit_limit"),
             raw_message=t.get("raw_message") or payload.body,
-            source="EMAIL",
+            source=f"EMAIL: {payload.sender}",
             is_ai_parsed=str(item.get("metadata", {}).get("parser_used", "")).upper() == "AI"
         )
         
@@ -631,30 +630,10 @@ def import_csv(
 
 # --- Triage Area ---
 
-class PendingTransactionRead(BaseModel):
-    id: str
-    tenant_id: str
-    account_id: str
-    amount: float
-    date: datetime
-    description: Optional[str] = None
-    recipient: Optional[str] = None
-    category: Optional[str] = None
-    source: str
-    raw_message: Optional[str] = None
-    external_id: Optional[str] = None
-    balance_is_synced: bool = False
-    is_transfer: bool = False
-    to_account_id: Optional[str] = None
-    exclude_from_reports: bool = False
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    created_at: datetime
+# PendingTransactionRead Schema removed (Moved to ingestion.schemas)
 
-    class Config:
-        from_attributes = True
 
-@router.get("/triage")
+@router.get("/triage", response_model=ingestion_schemas.TriageListResponse)
 def list_triage(
     limit: int = 50,
     skip: int = 0,
@@ -671,9 +650,29 @@ def list_triage(
         sort_by=sort_by, sort_order=sort_order, search=search, source=source,
         user_id=user_id
     )
+    res_data = []
+    for item in items:
+        res_data.append({
+            "id": item.id,
+            "account_id": item.account_id,
+            "account_name": item.account.name if item.account else "Unknown",
+            "account_owner_name": item.account.owner.full_name if item.account and item.account.owner else None,
+            "amount": item.amount,
+            "date": item.date,
+            "description": item.description,
+            "recipient": item.recipient,
+            "category": item.category,
+            "source": item.source,
+            "external_id": item.external_id,
+            "is_transfer": item.is_transfer,
+            "to_account_id": item.to_account_id,
+            "exclude_from_reports": item.exclude_from_reports,
+            "created_at": item.created_at
+        })
+
     return {
         "total": total,
-        "items": items,
+        "data": res_data,
         "limit": limit,
         "skip": skip
     }
@@ -804,7 +803,7 @@ def get_unparsed_messages(
 
     return {
         "total": total,
-        "items": items,
+        "data": items,
         "limit": limit,
         "skip": skip
     }
@@ -1055,14 +1054,24 @@ def label_message(
             raise HTTPException(status_code=404, detail="Message not found")
             
         # Promote to PendingTransaction
-        account = IngestionService.match_account(db, str(current_user.tenant_id), payload.account_mask)
+        account = None
+        if payload.account_id:
+            account = db.query(finance_models.Account).filter(
+                finance_models.Account.id == payload.account_id,
+                finance_models.Account.tenant_id == str(current_user.tenant_id)
+            ).first()
+        
+        if not account and payload.account_mask:
+            account = IngestionService.match_account(db, str(current_user.tenant_id), payload.account_mask)
+
         if not account:
             # Create auto-account if mask provided
+            mask = payload.account_mask or "0000"
             account = finance_models.Account(
                 tenant_id=str(current_user.tenant_id),
-                name=f"Detected: (XX{payload.account_mask[-4:]})",
+                name=f"Detected: (XX{mask[-4:]})",
                 type=finance_models.AccountType.BANK,
-                account_mask=payload.account_mask[-4:],
+                account_mask=mask[-4:],
                 is_verified=False,
                 balance=0.0
             )
@@ -1073,7 +1082,8 @@ def label_message(
         effective_ref = payload.ref_id
         if not effective_ref:
             date_str = payload.date.strftime("%Y%m%d%H%M%S")
-            effective_ref = f"MAN-{date_str}-{payload.account_mask}-{payload.amount:.2f}"
+            mask_str = payload.account_mask or account.account_mask or "XXXX"
+            effective_ref = f"MAN-{date_str}-{mask_str}-{payload.amount:.2f}"
 
         # Determine effective amount based on type
         effective_amount = payload.amount
@@ -1138,8 +1148,48 @@ def label_message(
                     regex_pattern=pattern_str,
                     mapping=json.loads(mapping_json)
                 )
+
+                # 4. Retroactive Sweep (Apply to other unparsed messages in the same cluster)
+                if payload.apply_to_unparsed:
+                    import re
+                    # Find similar messages (same source, tenant)
+                    others = db.query(ingestion_models.UnparsedMessage).filter(
+                        ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id),
+                        ingestion_models.UnparsedMessage.source == msg.source,
+                        ingestion_models.UnparsedMessage.id != msg.id
+                    ).all()
+
+                    compiled = re.compile(pattern_str, re.IGNORECASE)
+                    promoted_count = 0
+                    for other in others:
+                        if compiled.search(other.raw_content):
+                            # re-parse this one specifically using the new pattern or generic parse
+                            # For simplicity, we create a pending txn using the same logic as the current label
+                            # but we could call the parser service to be more accurate if we had a "test_pattern" endpoint.
+                            # Here we just promote it since it matches the regex the user just defined for this message.
+                            
+                            p = ingestion_models.PendingTransaction(
+                                tenant_id=str(current_user.tenant_id),
+                                account_id=str(account.id),
+                                amount=effective_amount,
+                                date=other.created_at, # Use its own timestamp
+                                description=f"Auto-Promoted: {payload.recipient or 'Unknown'}",
+                                recipient=payload.recipient,
+                                category=payload.category or "Uncategorized",
+                                source=other.source,
+                                raw_message=other.raw_content,
+                                external_id=f"AUTO-{other.id[:8]}",
+                                exclude_from_reports=payload.exclude_from_reports
+                            )
+                            db.add(p)
+                            db.delete(other)
+                            promoted_count += 1
+                    
+                    if promoted_count > 0:
+                        logger.info(f"Retroactively promoted {promoted_count} messages for tenant {current_user.tenant_id}")
+
             except Exception as e:
-                logger.exception("Error creating pattern:")
+                logger.exception("Error creating pattern or retroactive sweep:")
             
         db.delete(msg)
         db.commit()
