@@ -12,6 +12,8 @@ import 'package:mobile_app/modules/ingestion/screens/triage_screen.dart';
 import 'package:mobile_app/modules/home/services/categories_service.dart';
 import 'package:mobile_app/modules/home/models/transaction_category.dart';
 import 'package:mobile_app/core/services/socket_service.dart';
+import 'package:mobile_app/core/config/app_config.dart';
+import 'package:mobile_app/modules/config/screens/sync_settings_screen.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -48,9 +50,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       body: RefreshIndicator(
         onRefresh: () => dashboard.refresh(),
-        child: dashboard.isLoading && dashboard.data == null
+        child: (dashboard.isLoading && dashboard.data == null)
             ? const Center(child: CircularProgressIndicator())
-            : CustomScrollView(
+            : (dashboard.error != null && dashboard.data == null)
+                ? _buildErrorPlaceholder(context, dashboard.error!)
+                : CustomScrollView(
                 slivers: [
                                 SliverAppBar(
                   floating: true,
@@ -836,4 +840,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildErrorPlaceholder(BuildContext context, String error) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cloud_off_outlined, size: 80, color: theme.colorScheme.error.withOpacity(0.5)),
+            const SizedBox(height: 24),
+            Text(
+              'Server Unreachable',
+              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'We couldn''t connect to the backend at ${context.read<AppConfig>().backendUrl}. Please check your connection or server settings.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => SyncSettingsScreen()),
+                );
+              },
+              icon: const Icon(Icons.settings),
+              label: const Text('Update Server URL'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+            ),
+            TextButton(
+              onPressed: () => context.read<DashboardService>().refresh(),
+              child: const Text('Retry Connection'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

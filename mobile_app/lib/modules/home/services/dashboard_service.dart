@@ -175,7 +175,7 @@ class DashboardService extends ChangeNotifier {
         futures.add(refreshMembers());
       }
       
-      await Future.wait(futures);
+      await Future.wait(futures).timeout(const Duration(seconds: 10));
       _error = null;
     } catch (e) {
       debugPrint('Dashboard Service Multi-Fetch Error: $e');
@@ -229,6 +229,8 @@ class DashboardService extends ChangeNotifier {
         spendingTrend: spendingTrend,
         monthWiseTrend: monthWiseTrend,
       ));
+    } else {
+      throw Exception('Trends failed: ${response.statusCode}');
     }
   }
 
@@ -244,6 +246,8 @@ class DashboardService extends ChangeNotifier {
           .toList();
       
       _updateData((d) => d.copyWith(categoryDistribution: categories));
+    } else {
+      throw Exception('Category breakdown failed: ${response.statusCode}');
     }
   }
 
