@@ -134,7 +134,7 @@ class TransactionRead(TransactionBase):
         from_attributes = True
 
 class TransactionPagination(BaseModel):
-    items: List[TransactionRead]
+    data: List[TransactionRead]
     total: int
     page: int
     size: int

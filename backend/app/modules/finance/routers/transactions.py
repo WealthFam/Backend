@@ -53,7 +53,7 @@ def get_transactions(
     )
     
     return {
-        "items": items,
+        "data": items,
         "total": total,
         "page": page,
         "size": limit

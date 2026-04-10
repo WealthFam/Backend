@@ -31,7 +31,6 @@ router = APIRouter(tags=["Ingestion"])
 
 # Schemas moved to ingestion.schemas
 
-# Schemas moved to ingestion.schemas
 @router.post("/sms")
 def ingest_sms(
     payload: ingestion_schemas.SmsPayload,
@@ -148,7 +147,7 @@ def ingest_sms(
             balance=t.get("balance"),
             credit_limit=t.get("credit_limit"),
             raw_message=t.get("raw_message") or payload.message,
-            source="SMS",
+            source=f"SMS: {payload.sender}",
             is_ai_parsed=str(item.get("metadata", {}).get("parser_used", "")).upper() == "AI"
         )
         
@@ -236,7 +235,7 @@ def ingest_email(
             balance=t.get("balance"),
             credit_limit=t.get("credit_limit"),
             raw_message=t.get("raw_message") or payload.body,
-            source="EMAIL",
+            source=f"EMAIL: {payload.sender}",
             is_ai_parsed=str(item.get("metadata", {}).get("parser_used", "")).upper() == "AI"
         )
         
@@ -631,30 +630,10 @@ def import_csv(
 
 # --- Triage Area ---
 
-class PendingTransactionRead(BaseModel):
-    id: str
-    tenant_id: str
-    account_id: str
-    amount: float
-    date: datetime
-    description: Optional[str] = None
-    recipient: Optional[str] = None
-    category: Optional[str] = None
-    source: str
-    raw_message: Optional[str] = None
-    external_id: Optional[str] = None
-    balance_is_synced: bool = False
-    is_transfer: bool = False
-    to_account_id: Optional[str] = None
-    exclude_from_reports: bool = False
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    created_at: datetime
+# PendingTransactionRead Schema removed (Moved to ingestion.schemas)
 
-    class Config:
-        from_attributes = True
 
-@router.get("/triage")
+@router.get("/triage", response_model=ingestion_schemas.TriageListResponse)
 def list_triage(
     limit: int = 50,
     skip: int = 0,
@@ -671,9 +650,29 @@ def list_triage(
         sort_by=sort_by, sort_order=sort_order, search=search, source=source,
         user_id=user_id
     )
+    res_data = []
+    for item in items:
+        res_data.append({
+            "id": item.id,
+            "account_id": item.account_id,
+            "account_name": item.account.name if item.account else "Unknown",
+            "account_owner_name": item.account.owner.full_name if item.account and item.account.owner else None,
+            "amount": item.amount,
+            "date": item.date,
+            "description": item.description,
+            "recipient": item.recipient,
+            "category": item.category,
+            "source": item.source,
+            "external_id": item.external_id,
+            "is_transfer": item.is_transfer,
+            "to_account_id": item.to_account_id,
+            "exclude_from_reports": item.exclude_from_reports,
+            "created_at": item.created_at
+        })
+
     return {
         "total": total,
-        "items": items,
+        "data": res_data,
         "limit": limit,
         "skip": skip
     }
@@ -804,7 +803,7 @@ def get_unparsed_messages(
 
     return {
         "total": total,
-        "items": items,
+        "data": items,
         "limit": limit,
         "skip": skip
     }

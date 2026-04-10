@@ -506,6 +506,10 @@ def get_dashboard_summary(
         db, str(current_user.tenant_id), limit=1, user_id=target_user_id
     )
     family_members_count = db.query(auth_models.User).filter(auth_models.User.tenant_id == str(current_user.tenant_id)).count()
+    
+    pending_training_count = db.query(ingestion_models.UnparsedMessage).filter(
+        ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
+    ).count()
 
     def enrich_txn(txn):
         ext = {
@@ -531,6 +535,7 @@ def get_dashboard_summary(
             enrich_txn(txn) for txn in metrics["recent_transactions"]
         ],
         "pending_triage_count": triage_count,
+        "pending_training_count": pending_training_count,
         "family_members_count": family_members_count
     }
 
@@ -641,7 +646,8 @@ def list_mobile_triage(
             "amount": float(txn.amount),
             "category": txn.category,
             "account_name": txn.account.name if txn.account else "Unknown",
-            "account_owner_name": owner_name
+            "account_owner_name": owner_name,
+            "source": txn.source
         })
     return enriched
 
@@ -733,13 +739,14 @@ def list_mobile_transactions(
             "category": txn.category,
             "account_name": txn.account.name if txn.account else "Unknown",
             "account_owner_name": owner_name,
-            "expense_group_id": txn.expense_group_id
+            "expense_group_id": txn.expense_group_id,
+            "source": txn.source
         })
         
     has_next = (page * page_size) < total_count
     
     return {
-        "items": enriched,
+        "data": enriched,
         "next_page": page + 1 if has_next else None
     }
     
@@ -1147,3 +1154,15 @@ def unlink_holding_from_goal(
          raise HTTPException(status_code=400, detail="holding_id is required")
     success = MobileInvestmentGoalService.unlink_holding(db, holding_id, str(current_user.tenant_id))
     return {"status": "success" if success else "failed"}
+
+@router.get("/accounts")
+def list_mobile_accounts(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    List accounts for mobile forensic annotation.
+    """
+    from backend.app.modules.finance.services.account_service import AccountService
+    accounts = AccountService.get_accounts(db, str(current_user.tenant_id), user_role=current_user.role)
+    return {"data": accounts}

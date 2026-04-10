@@ -234,7 +234,8 @@ class AnalyticsService:
                 "account_id": str(txn.account_id),
                 "is_transfer": txn.is_transfer,
                 "exclude_from_reports": txn.exclude_from_reports,
-                "expense_group_id": str(txn.expense_group_id) if txn.expense_group_id else None
+                "expense_group_id": str(txn.expense_group_id) if txn.expense_group_id else None,
+                "source": txn.source
             }
             
             account = account_map.get(txn.account_id)

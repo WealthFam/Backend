@@ -619,7 +619,7 @@ class TransactionService:
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
         query = db.query(ingestion_models.PendingTransaction).options(
-            joinedload(ingestion_models.PendingTransaction.account)
+            joinedload(ingestion_models.PendingTransaction.account).joinedload(models.Account.owner)
         ).filter(
             ingestion_models.PendingTransaction.tenant_id == tenant_id
         )
@@ -631,9 +631,14 @@ class TransactionService:
             query = query.outerjoin(finance_models.Account, ingestion_models.PendingTransaction.account_id == finance_models.Account.id)\
                          .filter(or_(finance_models.Account.owner_id == user_id, finance_models.Account.owner_id == None))
         
-        # Filter by source (SMS, EMAIL, etc.)
+        # Filter by source (SMS, EMAIL, etc.) with support for forensic labels
         if source:
-            query = query.filter(ingestion_models.PendingTransaction.source == source)
+            if source == 'SMS':
+                query = query.filter(ingestion_models.PendingTransaction.source.like('SMS%'))
+            elif source == 'EMAIL':
+                query = query.filter(ingestion_models.PendingTransaction.source.like('EMAIL%'))
+            else:
+                query = query.filter(ingestion_models.PendingTransaction.source == source)
         
         # Filter by search query (description, recipient, amount, ID)
         if search:
