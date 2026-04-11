@@ -85,6 +85,7 @@ class RecentTransaction(BaseModel):
     expense_group_id: Optional[str] = None
     expense_group_name: Optional[str] = None
     source: Optional[str] = None
+    has_documents: bool = False
 
 class SpendingTrendItem(BaseModel):
     date: str

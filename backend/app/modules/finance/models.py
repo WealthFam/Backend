@@ -108,6 +108,10 @@ class Transaction(Base):
             return self.linked_transaction.account_id
         return None
 
+    @property
+    def account_name(self):
+        return self.account.name if self.account else "Account"
+
     account = relationship("Account", back_populates="transactions",
                           primaryjoin="Transaction.account_id == Account.id",
                           foreign_keys="Transaction.account_id",

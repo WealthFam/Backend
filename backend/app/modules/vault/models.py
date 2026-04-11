@@ -9,6 +9,7 @@ from backend.app.core.timezone import UTCDateTime
 from backend.app.core import timezone
 
 class DocumentType(str, enum.Enum):
+    BILL = "BILL"
     INVOICE = "INVOICE"
     POLICY = "POLICY"
     TAX = "TAX"

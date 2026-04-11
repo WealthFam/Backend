@@ -1,14 +1,17 @@
 import os
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+
 from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
-from .service import VaultService
-from .gdrive import GoogleDriveService
+
 from . import models
+from .gdrive import GoogleDriveService
+from .service import VaultService
 
 router = APIRouter()
 
@@ -84,7 +87,11 @@ def get_sync_history(
     db: Session = Depends(get_db)
 ):
     """Get recent sync logs"""
-    return VaultService.get_sync_history(db, str(current_user.tenant_id), limit)
+    items = VaultService.get_sync_history(db, str(current_user.tenant_id), limit)
+    return {
+        "data": items,
+        "total": len(items)
+    }
 
 @router.post("/upload")
 async def upload_document(
@@ -97,43 +104,38 @@ async def upload_document(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Securely upload a document to the vault with folder support"""
-    try:
-        doc = VaultService.upload_document(
-            db=db,
-            tenant_id=str(current_user.tenant_id),
-            owner_id=str(current_user.id),
-            file=file,
-            file_type=file_type,
-            transaction_id=transaction_id,
-            parent_id=parent_id,
-            is_shared=is_shared,
-            description=description
-        )
-        return doc
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """Upload a new document or version to the vault"""
+    # Check if this filename already exists in the same folder to handle versioning
+    # Actually service.py handles it by looking at parent_id + filename
+    return await VaultService.upload_document(
+        db=db,
+        tenant_id=str(current_user.tenant_id),
+        owner_id=str(current_user.id),
+        file=file,
+        file_type=file_type,
+        transaction_id=transaction_id,
+        parent_id=parent_id,
+        is_shared=is_shared,
+        description=description
+    )
 
 @router.post("/{document_id}/version")
-async def update_document_version(
+async def upload_new_version(
     document_id: str,
     file: UploadFile = File(...),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Upload a new version of an existing document"""
-    try:
-        return VaultService.update_document_version(
-            db=db,
-            doc_id=document_id,
-            tenant_id=str(current_user.tenant_id),
-            file=file
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """Force upload a new version for an existing document ID"""
+    return await VaultService.upload_version(
+        db=db,
+        doc_id=document_id,
+        tenant_id=str(current_user.tenant_id),
+        file=file
+    )
 
 @router.put("/{document_id}")
-async def update_document(
+def update_document(
     document_id: str,
     file_type: Optional[models.DocumentType] = Form(None),
     is_shared: Optional[bool] = Form(None),
@@ -142,7 +144,7 @@ async def update_document(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update document metadata"""
+    """Update metadata for an existing document"""
     doc = VaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -194,14 +196,10 @@ def link_document_to_transaction(
     db: Session = Depends(get_db)
 ):
     """Link or unlink a vault document to a transaction. Pass transaction_id=null to unlink."""
-    doc = VaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    transaction_id = data.get("transaction_id")
+    doc = VaultService.link_transaction(db, document_id, str(current_user.tenant_id), transaction_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-
-    transaction_id = data.get("transaction_id")  # Can be None to unlink
-    doc.transaction_id = transaction_id
-    db.commit()
-    db.refresh(doc)
     return doc
 
 
@@ -216,9 +214,14 @@ def list_document_versions(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     
-    return db.query(models.DocumentVersion).filter(
+    items = db.query(models.DocumentVersion).filter(
         models.DocumentVersion.document_id == document_id
     ).order_by(models.DocumentVersion.version_number.desc()).all()
+    
+    return {
+        "data": items,
+        "total": len(items)
+    }
 
 @router.post("/folders")
 def create_folder(
@@ -247,13 +250,14 @@ def list_documents(
     parent_id: Optional[str] = "ROOT",
     file_type: Optional[models.DocumentType] = None,
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    is_folder: Optional[bool] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """List vault documents/folders with hierarchical support"""
-    return VaultService.get_documents(
+    items, total = VaultService.get_documents(
         db=db,
         tenant_id=str(current_user.tenant_id),
         user_id=str(current_user.id),
@@ -261,9 +265,16 @@ def list_documents(
         parent_id=parent_id,
         file_type=file_type,
         search=search,
+        is_folder=is_folder,
         skip=skip,
         limit=limit
     )
+    return {
+        "data": items,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
 
 @router.get("/{document_id}/download")
 def download_document(

@@ -8,6 +8,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from backend.app.api.v1.router import api_router as api_v1_router
 from backend.app.core.config import settings
@@ -57,6 +59,15 @@ def create_application() -> FastAPI:
     # Exception Handlers
     application.add_exception_handler(StarletteHTTPException, http_exception_handler)
     application.add_exception_handler(Exception, generic_exception_handler)
+
+    @application.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request, exc):
+        logger.error(f"422 Validation Error at {request.url.path}: {exc.errors()}")
+        logger.error(f"Request body: {exc.body}")
+        return JSONResponse(
+            status_code=422,
+            content={"detail": exc.errors(), "body": str(exc.body)},
+        )
 
     # Routers
     application.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])

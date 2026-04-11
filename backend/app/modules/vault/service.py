@@ -1,15 +1,18 @@
+import logging
 import os
 import shutil
 import uuid
 from typing import List, Optional
-from sqlalchemy.orm import Session, joinedload
+
 from sqlalchemy import or_
-import logging
+from sqlalchemy.orm import Session, joinedload
+
 from . import models
 
 logger = logging.getLogger(__name__)
 
 STORAGE_BASE_PATH = "data/vault"
+THUMBNAIL_SIZE = (256, 256)
 
 class VaultService:
     @staticmethod
@@ -37,9 +40,10 @@ class VaultService:
             
             # 1. Handle Images
             if content_type and content_type.startswith("image/"):
+                # Deferred import to avoid mandatory dependency on libraries in environments not processing images
                 from PIL import Image
                 with Image.open(file_path) as img:
-                    img.thumbnail((256, 256))
+                    img.thumbnail(THUMBNAIL_SIZE)
                     if img.mode in ("RGBA", "P"):
                         background = Image.new("RGB", img.size, (255, 255, 255))
                         try:
@@ -57,11 +61,12 @@ class VaultService:
             # 2. Handle PDFs
             elif content_type and (content_type == "application/pdf" or "pdf" in content_type):
                 try:
+                    # Deferred import to avoid mandatory dependency on PyMuPDF (fitz)
                     import fitz  # PyMuPDF
                     doc = fitz.open(file_path)
                     if doc.page_count > 0:
                         page = doc.load_page(0)  # first page
-                        pix = page.get_pixmap(matrix=fitz.Matrix(256/page.rect.width, 256/page.rect.width))
+                        pix = page.get_pixmap(matrix=fitz.Matrix(THUMBNAIL_SIZE[0]/page.rect.width, THUMBNAIL_SIZE[0]/page.rect.width))
                         pix.save(thumb_path)
                         doc.close()
                         logger.info(f"  PDF thumbnail created: {thumb_path}")
@@ -101,7 +106,7 @@ class VaultService:
         
         existing_doc = query.first()
         if existing_doc:
-            return VaultService.update_document_version(db, existing_doc.id, tenant_id, file)
+            return VaultService.update_document_version(db, existing_doc.id, tenant_id, file, transaction_id=transaction_id)
 
         # 1. Generate ID and prepare path
         doc_id = str(uuid.uuid4())
@@ -164,7 +169,8 @@ class VaultService:
         db: Session,
         doc_id: str,
         tenant_id: str,
-        file
+        file,
+        transaction_id: Optional[str] = None
     ) -> models.DocumentVault:
         """Upload a new version of an existing document"""
         doc = VaultService.get_document_by_id(db, doc_id, tenant_id)
@@ -188,6 +194,9 @@ class VaultService:
             doc.filename = file.filename # Update filename to latest if changed
             doc.mime_type = file.content_type
             doc.thumbnail_path = thumbnail_path
+            
+            if transaction_id:
+                doc.transaction_id = transaction_id
             
             # Create Version record
             new_ver = models.DocumentVersion(
@@ -249,9 +258,10 @@ class VaultService:
         parent_id: Optional[str] = "ROOT",
         file_type: Optional[models.DocumentType] = None,
         search: Optional[str] = None,
+        is_folder: Optional[bool] = None,
         skip: int = 0,
         limit: int = 50
-    ) -> List[models.DocumentVault]:
+    ) -> tuple[List[models.DocumentVault], int]:
         """List documents with tenant and owner isolation"""
         query = db.query(models.DocumentVault).options(
             joinedload(models.DocumentVault.transaction)
@@ -259,14 +269,21 @@ class VaultService:
             models.DocumentVault.tenant_id == tenant_id
         )
 
-        # When searching by text, ignore folder hierarchy
+        # When searching by text or transaction, ignore folder hierarchy
         if search:
+            query = query.filter(models.DocumentVault.filename.ilike(f"%{search}%"))
+            
+        if transaction_id:
             query = query.filter(
-                models.DocumentVault.is_folder == False,
-                models.DocumentVault.filename.ilike(f"%{search}%")
+                models.DocumentVault.transaction_id == transaction_id,
+                models.DocumentVault.is_folder == False
             )
-        else:
-            if parent_id == "ROOT":
+        
+        # Folder hierarchy (only if not searching/filtering by transaction)
+        if not search and not transaction_id:
+            if parent_id == "ALL":
+                pass # No parent filter
+            elif parent_id == "ROOT":
                 query = query.filter(models.DocumentVault.parent_id == None)
             elif parent_id:
                 query = query.filter(models.DocumentVault.parent_id == parent_id)
@@ -274,7 +291,14 @@ class VaultService:
         if transaction_id:
             query = query.filter(models.DocumentVault.transaction_id == transaction_id)
         if file_type:
-            query = query.filter(models.DocumentVault.file_type == file_type)
+            query = query.filter(
+                or_(
+                    models.DocumentVault.file_type == file_type,
+                    models.DocumentVault.is_folder == True
+                )
+            )
+        if is_folder is not None:
+            query = query.filter(models.DocumentVault.is_folder == is_folder)
             
         if user_id:
             query = query.filter(
@@ -284,7 +308,9 @@ class VaultService:
                 )
             )
             
-        return query.order_by(models.DocumentVault.is_folder.desc(), models.DocumentVault.filename.asc()).offset(skip).limit(limit).all()
+        total = query.count()
+        items = query.order_by(models.DocumentVault.is_folder.desc(), models.DocumentVault.filename.asc()).offset(skip).limit(limit).all()
+        return items, total
 
     @staticmethod
     def get_document_by_id(db: Session, doc_id: str, tenant_id: str) -> Optional[models.DocumentVault]:
@@ -317,6 +343,18 @@ class VaultService:
         db.delete(doc)
         db.commit()
         return True
+
+    @staticmethod
+    def link_transaction(db: Session, doc_id: str, tenant_id: str, transaction_id: Optional[str]) -> models.DocumentVault:
+        """Link or unlink a document to a transaction"""
+        doc = VaultService.get_document_by_id(db, doc_id, tenant_id)
+        if not doc:
+            return None
+            
+        doc.transaction_id = transaction_id
+        db.commit()
+        db.refresh(doc)
+        return doc
 
     @staticmethod
     def move_documents(db: Session, doc_ids: List[str], tenant_id: str, target_parent_id: Optional[str]) -> int:

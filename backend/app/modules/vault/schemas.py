@@ -1,18 +1,26 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
+
 from .models import DocumentType
-from backend.app.modules.finance.schemas import TransactionRead
+
 
 class SimpleTransaction(BaseModel):
+    model_config = ConfigDict(strict=True, from_attributes=True)
+    
     id: str
     description: str
     amount: Decimal
     date: datetime
     category: Optional[str] = None
+    account_name: Optional[str] = None
+
 
 class DocumentBase(BaseModel):
+    model_config = ConfigDict(strict=True, from_attributes=True)
+    
     filename: str
     file_type: DocumentType = DocumentType.OTHER
     description: Optional[str] = None
@@ -20,8 +28,10 @@ class DocumentBase(BaseModel):
     transaction_id: Optional[str] = None
     parent_id: Optional[str] = None
 
+
 class DocumentCreate(DocumentBase):
     pass
+
 
 class DocumentRead(DocumentBase):
     id: str
@@ -34,12 +44,12 @@ class DocumentRead(DocumentBase):
     current_version: int = 1
     created_at: datetime
     updated_at: datetime
-    linked_transaction: Optional[SimpleTransaction] = None
+    transaction: Optional[SimpleTransaction] = None
 
-    class Config:
-        from_attributes = True
 
 class DocumentVersionRead(BaseModel):
+    model_config = ConfigDict(strict=True, from_attributes=True)
+    
     id: str
     document_id: str
     version_number: int
@@ -48,10 +58,10 @@ class DocumentVersionRead(BaseModel):
     filename: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
 
 class FolderCreate(BaseModel):
+    model_config = ConfigDict(strict=True, from_attributes=True)
+    
     name: str
     parent_id: Optional[str] = None
     is_shared: bool = True

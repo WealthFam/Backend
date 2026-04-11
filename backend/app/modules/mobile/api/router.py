@@ -515,9 +515,23 @@ def get_dashboard_summary(
         ingestion_models.UnparsedMessage.tenant_id == str(current_user.tenant_id)
     ).count()
 
+    # Document map for visual indicator
+    from backend.app.modules.vault.models import DocumentVault
+    linked_doc_counts = {
+        row.transaction_id: row.count 
+        for row in db.query(
+            DocumentVault.transaction_id, 
+            func.count(DocumentVault.id).label('count')
+        ).filter(
+            DocumentVault.tenant_id == str(current_user.tenant_id),
+            DocumentVault.transaction_id.in_(list(set(txn['id'] for txn in metrics["recent_transactions"])))
+        ).group_by(DocumentVault.transaction_id).all()
+    }
+
     def enrich_txn(txn):
         ext = {
             "account_name": account_map.get(txn['account_id']).name if account_map.get(txn['account_id']) else "Unknown",
+            "has_documents": linked_doc_counts.get(txn['id'], 0) > 0
         }
         gid = txn.get('expense_group_id')
         if gid and group_map.get(gid):
@@ -619,6 +633,29 @@ def get_mobile_dashboard(
         month=month, year=year, user_id=get_target_user_id(current_user, member_id)
     )
     return dashboard
+
+@router.get("/heatmap")
+def get_mobile_heatmap(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    member_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    target_user_id = get_target_user_id(current_user, member_id)
+    now = timezone.utcnow()
+    target_month = month or now.month
+    target_year = year or now.year
+    
+    start_date = timezone.ensure_utc(datetime(target_year, target_month, 1))
+    last_day = calendar.monthrange(target_year, target_month)[1]
+    end_date = timezone.ensure_utc(datetime(target_year, target_month, last_day, 23, 59, 59))
+
+    return AnalyticsService.get_heatmap_data(
+        db, str(current_user.tenant_id), 
+        start_date=start_date, end_date=end_date, 
+        user_id=target_user_id
+    )
 
 @router.get("/triage", response_model=List[mobile_schemas.RecentTransaction])
 def list_mobile_triage(
@@ -733,6 +770,20 @@ def list_mobile_transactions(
                         .limit(page_size) \
                         .all()
                         
+    # Document link detection
+    from backend.app.modules.vault.models import DocumentVault
+    txn_ids = [txn.id for txn in transactions]
+    linked_doc_counts = {
+        row.transaction_id: row.count 
+        for row in db.query(
+            DocumentVault.transaction_id, 
+            func.count(DocumentVault.id).label('count')
+        ).filter(
+            DocumentVault.tenant_id == str(current_user.tenant_id),
+            DocumentVault.transaction_id.in_(txn_ids)
+        ).group_by(DocumentVault.transaction_id).all()
+    }
+
     # Enrich with owner info (simplified) or mapped
     enriched = []
     for txn in transactions:
@@ -765,7 +816,8 @@ def list_mobile_transactions(
             "expense_group_id": txn.expense_group_id,
             "source": txn.source,
             "is_transfer": txn.is_transfer,
-            "exclude_from_reports": txn.exclude_from_reports
+            "exclude_from_reports": txn.exclude_from_reports,
+            "has_documents": linked_doc_counts.get(txn.id, 0) > 0
         })
         
     has_next = (page * page_size) < total_count

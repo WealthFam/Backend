@@ -1400,8 +1400,8 @@ class AnalyticsService:
                 "latitude": float(row.latitude),
                 "longitude": float(row.longitude),
                 "amount": float(abs(Decimal(row.amount))),
-                "category": row.category,
-                "description": row.description
+                "category": row.category or "Uncategorized",
+                "description": row.description or "No description"
             }
             for row in results
         ]
