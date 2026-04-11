@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { X, Download, Clock, Upload, FileText, Link2, Unlink2, FileImage, FileVideo, Music, FileCode, FileArchive, Fingerprint, ShieldCheck, Folder, Receipt, Scale, FileSpreadsheet, Presentation, Shield } from 'lucide-vue-next'
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { X, Download, Clock, Upload, FileText, Link2, Unlink2, FileImage, FileVideo, Music, FileCode, FileArchive, Fingerprint, ShieldCheck, Folder, Receipt, Scale, FileSpreadsheet, Presentation, Shield } from 'lucide-vue-next'
 import { financeApi } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
 
@@ -129,7 +129,7 @@ async function fetchVersions() {
     versionsLoading.value = true
     try {
         const res = await financeApi.listVersions(props.item.id)
-        versions.value = res.data
+        versions.value = res.data.data
     } catch (e) {
         console.error('Failed to fetch versions', e)
     } finally {
@@ -284,6 +284,7 @@ function getIcon(item: any) {
     const filename = (item.filename || '').toLowerCase()
     const mt = (item.mime_type || '').toLowerCase()
 
+    if (item.file_type === 'BILL') return Receipt
     if (item.file_type === 'INVOICE') return Receipt
     if (item.file_type === 'POLICY') return ShieldCheck
     if (item.file_type === 'TAX') return Scale
@@ -311,6 +312,7 @@ function getIconColor(item: any) {
     const filename = (item.filename || '').toLowerCase()
     const mt = (item.mime_type || '').toLowerCase()
 
+    if (item.file_type === 'BILL') return 'text-teal-darken-2'
     if (item.file_type === 'INVOICE') return 'text-orange-darken-2'
     if (item.file_type === 'POLICY') return 'text-blue-darken-2'
     if (item.file_type === 'TAX') return 'text-red-darken-2'

@@ -96,6 +96,7 @@
                             <v-btn-toggle v-model="filterType" mandatory color="primary" rounded="pill"
                                 density="compact" class="vault-toggle">
                                 <v-btn value="ALL" class="px-4">All Items</v-btn>
+                                <v-btn value="BILL" class="px-4 text-teal">Bills</v-btn>
                                 <v-btn value="INVOICE" class="px-4">Invoices</v-btn>
                                 <v-btn value="POLICY" class="px-4">Policies</v-btn>
                                 <v-btn value="TAX" class="px-4">Tax Docs</v-btn>
@@ -245,8 +246,8 @@
                             </v-btn>
                         </div>
 
-                        <v-select v-model="uploadForm.file_type" label="Category" :items="docTypes" variant="outlined"
-                            rounded="lg"></v-select>
+                        <v-autocomplete v-model="uploadForm.file_type" label="Category" :items="docTypes" variant="outlined"
+                            rounded="lg"></v-autocomplete>
                         <v-checkbox v-model="uploadForm.is_shared" label="Shared with Family"
                             color="primary"></v-checkbox>
 
@@ -281,12 +282,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import MainLayout from '@/layouts/MainLayout.vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { 
+    X, Download, Clock, Upload, FileText, Link2, FileImage, FileVideo, 
+    Music, FileCode, FileArchive, Fingerprint, ShieldCheck, Folder, 
+    Receipt, Scale, FileSpreadsheet, Presentation, FolderPlus, 
+    MoreVertical, UploadCloud, Home, ChevronRight, Search, Trash2 
+} from 'lucide-vue-next'
+
 import { financeApi } from '@/api/client'
-import { useNotificationStore } from '@/stores/notification'
+import MainLayout from '@/layouts/MainLayout.vue'
 import { useConfirmStore } from '@/stores/confirm'
-import { X, Download, Clock, Upload, FileText, Link2, FileImage, FileVideo, Music, FileCode, FileArchive, Fingerprint, ShieldCheck, Folder, Receipt, Scale, FileSpreadsheet, Presentation, FolderPlus, MoreVertical, UploadCloud, Home, ChevronRight, Search, Trash2 } from 'lucide-vue-next'
+import { useNotificationStore } from '@/stores/notification'
 
 const notification = useNotificationStore()
 const confirmDialog = useConfirmStore()
@@ -316,11 +323,10 @@ const showPreviewModal = ref(false)
 const selectedDoc = ref<any>(null)
 const isPreviewEdit = ref(false)
 
-
-
 const docTypes = [
     { title: 'Other', value: 'OTHER' },
-    { title: 'Invoice / Receipt', value: 'INVOICE' },
+    { title: 'Utility Bill / Receipt', value: 'BILL' },
+    { title: 'Invoice', value: 'INVOICE' },
     { title: 'Insurance Policy', value: 'POLICY' },
     { title: 'Tax Document', value: 'TAX' },
     { title: 'Identity Proof', value: 'IDENTITY' }
@@ -329,9 +335,16 @@ const docTypes = [
 // Fetching
 async function fetchItems() {
     loading.value = true
+    const params: any = { 
+        parent_id: currentFolderId.value || 'ROOT',
+        limit: 100 // Fetch a larger chunk for now since we don't have infinite scroll yet
+    }
+    if (search.value) params.search = search.value
+    if (filterType.value !== 'ALL') params.file_type = filterType.value
+
     try {
-        const res = await financeApi.getDocuments({ parent_id: currentFolderId.value || 'ROOT' })
-        items.value = res.data
+        const res = await financeApi.getDocuments(params)
+        items.value = res.data.data
 
         // Sync selectedDoc if modal is open to ensure details tab stays fresh
         if (showPreviewModal.value && selectedDoc.value) {
@@ -363,7 +376,6 @@ function navigateTo(id: string | null, name?: string) {
         currentFolderId.value = id
         currentPathName.value = name || 'Folder'
     }
-    fetchItems()
 }
 
 function openPreview(item: any, isEdit = false) {
@@ -457,17 +469,7 @@ async function deleteItem(item: any) {
 }
 
 // Helpers
-const filteredItems = computed(() => {
-    let list = items.value
-    if (filterType.value !== 'ALL') {
-        list = list.filter(i => i.is_folder || i.file_type === filterType.value)
-    }
-    if (search.value) {
-        const s = search.value.toLowerCase()
-        list = list.filter(i => i.filename.toLowerCase().includes(s))
-    }
-    return list
-})
+const filteredItems = computed(() => items.value)
 
 function getIcon(item: any) {
     if (!item) return FileText
@@ -476,6 +478,7 @@ function getIcon(item: any) {
     const mt = (item.mime_type || '').toLowerCase()
 
     // 1. By Category (Highest Priority)
+    if (item.file_type === 'BILL') return Receipt
     if (item.file_type === 'INVOICE') return Receipt
     if (item.file_type === 'POLICY') return ShieldCheck
     if (item.file_type === 'TAX') return Scale
@@ -506,6 +509,7 @@ function getIconColor(item: any) {
     const mt = (item.mime_type || '').toLowerCase()
 
     // 1. By Category
+    if (item.file_type === 'BILL') return 'text-teal-darken-2'
     if (item.file_type === 'INVOICE') return 'text-orange-darken-2'
     if (item.file_type === 'POLICY') return 'text-blue-darken-2'
     if (item.file_type === 'TAX') return 'text-red-darken-2'
@@ -536,6 +540,18 @@ function formatSize(bytes: number) {
 function formatDate(dateStr: string) {
     return new Date(dateStr).toLocaleDateString()
 }
+
+let searchDebounce: any = null
+watch(search, (newVal) => {
+    if (searchDebounce) clearTimeout(searchDebounce)
+    searchDebounce = setTimeout(() => {
+        fetchItems()
+    }, 400) // 400ms debounce
+})
+
+watch([filterType, currentFolderId], () => {
+    fetchItems()
+})
 
 onMounted(() => {
     fetchItems()
