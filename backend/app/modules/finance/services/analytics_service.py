@@ -223,12 +223,21 @@ class AnalyticsService:
                 leaf_name = txn.category.split(" › ")[-1]
                 cat_obj = cat_map.get(leaf_name)
                 
+            # Ensure hierarchy display parity with web
+            display_category = txn.category or "Uncategorized"
+            if display_category and " › " not in display_category:
+                cat_obj = cat_map.get(display_category)
+                if cat_obj and cat_obj.parent_id:
+                    parent = next((c for c in category_objs if c.id == cat_obj.parent_id), None)
+                    if parent:
+                        display_category = f"{parent.name} › {cat_obj.name}"
+
             txn_dict = {
                 "id": txn.id,
                 "date": txn.date,
                 "description": txn.description,
                 "amount": Decimal(txn.amount),
-                "category": txn.category,
+                "category": display_category,
                 "category_icon": cat_obj.icon if cat_obj else "🏷️",
                 "category_color": cat_obj.color if cat_obj else "#9ca3af",
                 "account_id": str(txn.account_id),
@@ -272,7 +281,7 @@ class AnalyticsService:
         top_spending_category = None
         if top_cat_query:
             top_spending_category = {
-                "name": top_cat_query[0],
+                "name": top_cat_query[0] or "Uncategorized",
                 "amount": abs(Decimal(top_cat_query[1]))
             }
         

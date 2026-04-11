@@ -603,6 +603,35 @@ class TransactionService:
                 continue
         return "Uncategorized"
 
+    @staticmethod
+    def get_potential_transfer_matches(
+        db: Session, 
+        tenant_id: str, 
+        amount: float, 
+        date: datetime, 
+        source_account_id: str
+    ) -> List[models.Transaction]:
+        from datetime import timedelta
+        start_date = date - timedelta(days=5)
+        end_date = date + timedelta(days=5)
+        target_amount = -amount # Opposite sign
+
+        # Margin for small differences (e.g. fees)
+        margin = abs(float(target_amount)) * 0.05 if target_amount != 0 else 0.5
+        min_amt = float(target_amount) - margin
+        max_amt = float(target_amount) + margin
+
+        query = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.account_id != source_account_id,
+            models.Transaction.date >= start_date,
+            models.Transaction.date <= end_date,
+            models.Transaction.amount.between(min_amt, max_amt),
+            models.Transaction.linked_transaction_id == None # Not already linked
+        )
+
+        return query.order_by(models.Transaction.date.desc()).limit(10).all()
+
     # --- Triage Functions ---
     @staticmethod
     def get_pending_transactions(
@@ -678,7 +707,8 @@ class TransactionService:
         to_account_id_override: Optional[str] = None,
         exclude_from_reports_override: Optional[bool] = None,
         create_rule: bool = False,
-        account_id_override: Optional[str] = None
+        account_id_override: Optional[str] = None,
+        linked_transaction_id_override: Optional[str] = None
     ):
         pending = db.query(ingestion_models.PendingTransaction).filter(
             ingestion_models.PendingTransaction.id == pending_id,
@@ -724,11 +754,38 @@ class TransactionService:
             longitude=pending.longitude
         )
         
-        if txn_create.is_transfer and txn_create.to_account_id:
-            pending.is_transfer = final_is_transfer
-            pending.to_account_id = final_to_account_id
-            pending.exclude_from_reports = final_exclude
-            real_txn = TransferService.approve_transfer(db, pending, tenant_id)
+        if txn_create.is_transfer:
+            if linked_transaction_id_override:
+                # 1. Create the primary transaction from pending
+                real_txn = TransactionService.create_transaction(
+                    db, txn_create, tenant_id, 
+                    exclude_pending_id=pending_id,
+                    update_balance=not getattr(pending, 'balance_is_synced', False)
+                )
+                
+                # 2. Link to existing
+                target_txn = db.query(models.Transaction).filter(
+                    models.Transaction.id == linked_transaction_id_override,
+                    models.Transaction.tenant_id == tenant_id
+                ).first()
+                
+                if target_txn:
+                    real_txn.linked_transaction_id = target_txn.id
+                    target_txn.linked_transaction_id = real_txn.id
+                    target_txn.is_transfer = True
+                    target_txn.exclude_from_reports = True
+                    db.add(target_txn)
+            elif txn_create.to_account_id:
+                pending.is_transfer = final_is_transfer
+                pending.to_account_id = final_to_account_id
+                pending.exclude_from_reports = final_exclude
+                real_txn = TransferService.approve_transfer(db, pending, tenant_id)
+            else:
+                real_txn = TransactionService.create_transaction(
+                    db, txn_create, tenant_id, 
+                    exclude_pending_id=pending_id,
+                    update_balance=not getattr(pending, 'balance_is_synced', False)
+                )
         else:
             real_txn = TransactionService.create_transaction(
                 db, txn_create, tenant_id, 

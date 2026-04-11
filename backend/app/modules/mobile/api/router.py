@@ -636,8 +636,7 @@ def list_mobile_triage(
     # Let's ensure owners are pre-loaded to avoid N+1.
     # We can perform a bulk lookup for owners.
     owner_ids = list(set(txn.account.owner_id for txn in items if txn.account and txn.account.owner_id))
-    from backend.app.modules.auth.models import User
-    owners_map = {str(u.id): u.full_name or u.email.split('@')[0] for u in db.query(User).filter(User.id.in_(owner_ids)).all()}
+    owners_map = {str(u.id): u.full_name or u.email.split('@')[0] for u in db.query(auth_models.User).filter(auth_models.User.id.in_(owner_ids)).all()}
     
     enriched = []
     for txn in items:
@@ -691,6 +690,11 @@ def list_mobile_transactions(
         finance_models.Transaction.is_transfer == False,
         finance_models.Transaction.exclude_from_reports == False
     )
+
+    # Fetch categories for enrichment
+    from backend.app.modules.finance.models import Category
+    category_objs = db.query(Category).filter(Category.tenant_id == str(current_user.tenant_id)).all()
+    cat_map = {c.name: c for c in category_objs}
     
     # Filter by user ownership if target_user_id is set
     if target_user_id:
@@ -734,17 +738,34 @@ def list_mobile_transactions(
     for txn in transactions:
         # Use relationship for owner info (pre-loaded via joinedload)
         owner_name = txn.account.owner.full_name or txn.account.owner.email.split('@')[0] if txn.account and txn.account.owner else "Unknown"
+        
+        # Category enrichment
+        display_category = txn.category
+        if not display_category or display_category == "Uncategorized":
+            # Optional: try to find if it has an expense group or other hint
+            display_category = "Uncategorized"
+        
+        # Ensure hierarchy display parity with web
+        if display_category and " › " not in display_category:
+            cat_obj = cat_map.get(display_category)
+            if cat_obj and cat_obj.parent_id:
+                parent = next((c for c in category_objs if c.id == cat_obj.parent_id), None)
+                if parent:
+                    display_category = f"{parent.name} › {cat_obj.name}"
 
         enriched.append({
             "id": txn.id,
             "date": txn.date,
             "description": txn.description,
             "amount": float(txn.amount),
-            "category": txn.category,
+            "category": display_category,
+            "account_id": str(txn.account_id),
             "account_name": txn.account.name if txn.account else "Unknown",
             "account_owner_name": owner_name,
             "expense_group_id": txn.expense_group_id,
-            "source": txn.source
+            "source": txn.source,
+            "is_transfer": txn.is_transfer,
+            "exclude_from_reports": txn.exclude_from_reports
         })
         
     has_next = (page * page_size) < total_count
@@ -1098,6 +1119,57 @@ def get_mobile_heatmap(
         db, str(current_user.tenant_id),
         start_date=s_date, end_date=e_date, user_id=target_user_id
     )
+
+@router.get("/ingestion/triage/{pending_id}/matches")
+def get_triage_matches(
+    pending_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    pending = db.query(ingestion_models.PendingTransaction).filter(
+        ingestion_models.PendingTransaction.id == pending_id,
+        ingestion_models.PendingTransaction.tenant_id == str(current_user.tenant_id)
+    ).first()
+    if not pending: return []
+    
+    matches = TransactionService.get_potential_transfer_matches(
+        db, str(current_user.tenant_id), 
+        float(pending.amount), pending.date, str(pending.account_id)
+    )
+    return [
+        {
+            "id": m.id,
+            "date": m.date,
+            "description": m.description,
+            "amount": float(m.amount),
+            "account_name": m.account.name if m.account else "Unknown",
+            "category": m.category
+        } for m in matches
+    ]
+
+@router.get("/ingestion/matches")
+def get_general_matches(
+    amount: float,
+    date: str,
+    account_id: str,
+    target_account_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    dt = datetime.fromisoformat(date.replace('Z', '+00:00'))
+    matches = TransactionService.get_potential_transfer_matches(
+        db, str(current_user.tenant_id), amount, dt, account_id
+    )
+    return [
+        {
+            "id": m.id,
+            "date": m.date,
+            "description": m.description,
+            "amount": float(m.amount),
+            "account_name": m.account.name if m.account else "Unknown",
+            "category": m.category
+        } for m in matches
+    ]
 
 # --- Investment Goals ---
 
