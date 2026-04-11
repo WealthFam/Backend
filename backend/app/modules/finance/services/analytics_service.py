@@ -1740,3 +1740,45 @@ class AnalyticsService:
             "excludedCategories": final_ex_cats,
             "trend": final_trend
         }
+
+    @staticmethod
+    def get_daily_spending_history(
+        session: Session,
+        tenant_id: str,
+        user_id: str = None,
+        days: int = 365,
+        end_date: datetime = None
+    ):
+        if end_date is None:
+            end_date = datetime.now()
+            
+        start_date = end_date - timedelta(days=days)
+        """
+        Returns daily spending totals for the last 'days' days.
+        Used for GitHub-style calendar heatmap.
+        """
+        if user_id in [None, "null", "undefined", ""]:
+            user_id = None
+            
+        from backend.app.modules.finance.models import Transaction, Account
+        
+        query = session.query(
+            func.date(Transaction.date).label('day'),
+            func.sum(Transaction.amount).label('total')
+        ).filter(
+            Transaction.tenant_id == tenant_id,
+            Transaction.amount < 0,
+            Transaction.is_transfer == False,
+            Transaction.exclude_from_reports == False,
+            Transaction.date >= start_date,
+            Transaction.date <= end_date
+        )
+        
+        if user_id:
+            query = query.join(Account, Transaction.account_id == Account.id)\
+                         .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+            
+        results = query.group_by(func.date(Transaction.date)).all()
+        
+        # Format: { "YYYY-MM-DD": amount }
+        return {str(row.day): float(abs(Decimal(row.total))) for row in results}

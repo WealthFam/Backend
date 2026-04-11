@@ -1297,3 +1297,35 @@ def ai_forensic_parse(
             logger.error(traceback.format_exc())
             
         raise HTTPException(status_code=status_code, detail=detail)
+
+@router.get("/heatmap/calendar")
+def get_mobile_calendar_heatmap(
+    days: int = 365,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    member_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get daily spending totals for the last 'days' days for calendar heatmap.
+    Supports filtering by month/year to show pulse for a specific period.
+    """
+    target_user_id = get_target_user_id(current_user, member_id)
+    
+    end_date = None
+    if year and month:
+        # Last day of selected month/year
+        import calendar
+        _, last_day = calendar.monthrange(year, month)
+        end_date = datetime(year, month, last_day, 23, 59, 59)
+    elif year:
+        # End of selected year
+        end_date = datetime(year, 12, 31, 23, 59, 59)
+
+    return AnalyticsService.get_daily_spending_history(
+        db, str(current_user.tenant_id), 
+        days=days, 
+        user_id=target_user_id,
+        end_date=end_date
+    )
