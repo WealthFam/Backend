@@ -3,6 +3,14 @@ from typing import Optional
 from datetime import datetime
 from decimal import Decimal
 from .models import DocumentType
+from backend.app.modules.finance.schemas import TransactionRead
+
+class SimpleTransaction(BaseModel):
+    id: str
+    description: str
+    amount: Decimal
+    date: datetime
+    category: Optional[str] = None
 
 class DocumentBase(BaseModel):
     filename: str
@@ -26,6 +34,7 @@ class DocumentRead(DocumentBase):
     current_version: int = 1
     created_at: datetime
     updated_at: datetime
+    linked_transaction: Optional[SimpleTransaction] = None
 
     class Config:
         from_attributes = True

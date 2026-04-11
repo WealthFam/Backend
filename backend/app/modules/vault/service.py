@@ -88,6 +88,8 @@ class VaultService:
         description: Optional[str] = None
     ) -> models.DocumentVault:
         """Handle file upload and metadata creation with versioning"""
+        if parent_id == "":
+            parent_id = None
         
         # 0. Check for filename collision in the same parent folder
         query = db.query(models.DocumentVault).filter(
@@ -218,6 +220,9 @@ class VaultService:
         description: Optional[str] = None
     ) -> models.DocumentVault:
         """Create a virtual folder in the vault"""
+        if parent_id == "":
+            parent_id = None
+            
         folder = models.DocumentVault(
             tenant_id=tenant_id,
             owner_id=owner_id,
@@ -312,6 +317,32 @@ class VaultService:
         db.delete(doc)
         db.commit()
         return True
+
+    @staticmethod
+    def move_documents(db: Session, doc_ids: List[str], tenant_id: str, target_parent_id: Optional[str]) -> int:
+        """Batch move documents/folders to a new parent folder"""
+        if target_parent_id == "ROOT" or target_parent_id == "":
+            target_parent_id = None
+            
+        # Verify target exists and is a folder
+        if target_parent_id:
+            target = VaultService.get_document_by_id(db, target_parent_id, tenant_id)
+            if not target or not target.is_folder:
+                raise Exception("Target parent is not a folder")
+
+        count = 0
+        for doc_id in doc_ids:
+            # Prevent moving a folder into itself
+            if doc_id == target_parent_id:
+                continue
+                
+            doc = VaultService.get_document_by_id(db, doc_id, tenant_id)
+            if doc:
+                doc.parent_id = target_parent_id
+                count += 1
+        
+        db.commit()
+        return count
 
     @staticmethod
     def get_sync_history(db: Session, tenant_id: str, limit: int = 10):

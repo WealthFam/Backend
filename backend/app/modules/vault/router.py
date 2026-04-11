@@ -161,6 +161,31 @@ async def update_document(
     return doc
 
 
+@router.patch("/move")
+def move_documents(
+    data: dict,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Batch move documents/folders to a new parent folder"""
+    doc_ids = data.get("doc_ids", [])
+    target_parent_id = data.get("target_parent_id")
+    
+    if not doc_ids:
+        raise HTTPException(status_code=400, detail="No document IDs provided")
+        
+    try:
+        count = VaultService.move_documents(
+            db=db,
+            doc_ids=doc_ids,
+            tenant_id=str(current_user.tenant_id),
+            target_parent_id=target_parent_id
+        )
+        return {"status": "success", "count": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.patch("/{document_id}/link-transaction")
 def link_document_to_transaction(
     document_id: str,
