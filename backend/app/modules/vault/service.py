@@ -81,7 +81,7 @@ class VaultService:
             return None
 
     @staticmethod
-    def upload_document(
+    async def upload_document(
         db: Session,
         tenant_id: str,
         owner_id: str,
@@ -106,7 +106,7 @@ class VaultService:
         
         existing_doc = query.first()
         if existing_doc:
-            return VaultService.update_document_version(db, existing_doc.id, tenant_id, file, transaction_id=transaction_id)
+            return await VaultService.upload_version(db, existing_doc.id, tenant_id, file, transaction_id=transaction_id)
 
         # 1. Generate ID and prepare path
         doc_id = str(uuid.uuid4())
@@ -165,7 +165,7 @@ class VaultService:
             raise Exception(f"Failed to create document record: {str(e)}")
 
     @staticmethod
-    def update_document_version(
+    async def upload_version(
         db: Session,
         doc_id: str,
         tenant_id: str,
