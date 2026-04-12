@@ -542,7 +542,7 @@ function formatDate(dateStr: string) {
 }
 
 let searchDebounce: any = null
-watch(search, (newVal) => {
+watch(search, () => {
     if (searchDebounce) clearTimeout(searchDebounce)
     searchDebounce = setTimeout(() => {
         fetchItems()
