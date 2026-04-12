@@ -99,20 +99,6 @@ def create_application() -> FastAPI:
         
         # 3. Start Scheduler (Handles both recurring checks and email auto-sync)
         start_scheduler()
-        
-        # Seed Demo Data (Only if DEMO_MODE is true)
-        demo_mode = str(os.getenv("DEMO_MODE", "false")).lower()
-        logger.info(f"Startup Config: DEMO_MODE={demo_mode}")
-        
-        if demo_mode == "true":
-            try:
-                logger.info("Starting demo data seeding...")
-                from backend.app.core.seeder import seed_data
-                seed_data()
-                logger.info("Demo data seeding completed.")
-            except Exception as e:
-                logger.error(f"Startup seeding failed: {e}")
-                logger.exception(e)
 
         # Trigger single-tenant migration on the parser service
         # This aligns any old 'system_tenant' data in the parser DB with the active tenant.
