@@ -15,7 +15,7 @@ from backend.app.api.v1.router import api_router as api_v1_router
 from backend.app.core.config import settings
 from backend.app.core.database import SessionLocal, Base, engine
 from backend.app.core.exceptions import generic_exception_handler, http_exception_handler
-from backend.app.core.migration import run_auto_migrations
+from backend.app.core.migrations.manager import run_schema_sync
 from backend.app.core.scheduler import start_scheduler, stop_scheduler
 from backend.app.core.websockets import manager
 from backend.app.modules.auth.dependencies import get_current_user_from_token
@@ -89,19 +89,18 @@ def create_application() -> FastAPI:
         logger.info("Running Base.metadata.create_all...")
         Base.metadata.create_all(bind=engine)
         
-        # 2. Run ALTER TABLE migrations for columns added after initial table creation
+        # 2. Run modular migrations for schema evolution (DuckDB safe)
         logger.info("Running auto-migrations...")
-        # try:
-        #     run_auto_migrations(engine)
-        # except Exception as e:
-        #     logger.error(f"Auto-migration failed: {e}")
-        #     logger.exception(e)
+        try:
+            run_schema_sync(engine)
+        except Exception as e:
+            logger.error(f"Auto-migration failed: {e}")
+            logger.exception(e)
+            # Fail early if migrations are broken to prevent inconsistent data states
+            raise e
         
         # 3. Start Scheduler (Handles both recurring checks and email auto-sync)
         start_scheduler()
-
-        # Trigger single-tenant migration on the parser service (Removed - obsolete)
-        pass
     @application.on_event("shutdown")
     async def stop_scheduler_event():
         stop_scheduler()
