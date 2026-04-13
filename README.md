@@ -1,14 +1,14 @@
 
 <div align="center">
 
-![WealthFam Branding](/frontend/public/wordmark.png)
+![WealthFam Branding](../frontend/public/wordmark.png)
 
 ### The Ultimate Family Finance Operating System
 
 [![Demo Status](https://img.shields.io/badge/Demo-Live_🟢-success?style=for-the-badge&logo=render&logoColor=white)](https://wealthfam.onrender.com) &nbsp; [![Version](https://img.shields.io/badge/Version-2.0.0-blue?style=for-the-badge)](version.json)
 <br><br>
 
-[**🚀 Try Live Demo**](https://wealthfam.onrender.com) &nbsp;•&nbsp; [**📂 Documentation**](docs/) &nbsp;•&nbsp; [**☁️ Deploy Now**](#-cloud-deployment-one-click)
+[**🚀 Try Live Demo**](https://wealthfam.onrender.com) &nbsp;•&nbsp; [**📂 Documentation**](../Docs/) &nbsp;•&nbsp; [**☁️ Deploy Now**](#-cloud-deployment-one-click)
 
 <br>
 
