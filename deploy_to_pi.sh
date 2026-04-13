@@ -27,7 +27,7 @@ mkdir -p $STAGING_DIR
 # Copy files to staging (using rsync if available would be better, but cp -r works)
 # We handle exclusions by just copying what we need or removing after
 cp -r backend $STAGING_DIR/
-cp -r frontend $STAGING_DIR/
+cp -r ../frontend $STAGING_DIR/
 cp -r parser $STAGING_DIR/
 cp -r scripts $STAGING_DIR/
 cp Dockerfile $STAGING_DIR/
