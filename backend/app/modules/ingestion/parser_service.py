@@ -22,23 +22,6 @@ class ExternalParserService:
         return {"Authorization": f"Bearer {token}"}
 
     @staticmethod
-    def trigger_migration(tenant_id: str) -> bool:
-        """
-        Forces the parser service to migrate old 'system_tenant' records to this active tenant_id.
-        Should only be called once during backend startup for single-tenant instances.
-        """
-        try:
-            url = f"{settings.PARSER_SERVICE_URL}/migrate-tenant"
-            response = requests.post(
-                url, 
-                headers=ExternalParserService._get_auth_header(tenant_id), 
-                timeout=10
-            )
-            return response.status_code == 200
-        except Exception as e:
-            logger.error(f"Error triggering parser tenant migration: {e}")
-            return False
-    @staticmethod
     def parse_sms(tenant_id: str, sender: str, body: str, received_at: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
         """
         Call the external parser microservice for SMS ingestion.
