@@ -91,70 +91,17 @@ def create_application() -> FastAPI:
         
         # 2. Run ALTER TABLE migrations for columns added after initial table creation
         logger.info("Running auto-migrations...")
-        try:
-            run_auto_migrations(engine)
-        except Exception as e:
-            logger.error(f"Auto-migration failed: {e}")
-            logger.exception(e)
+        # try:
+        #     run_auto_migrations(engine)
+        # except Exception as e:
+        #     logger.error(f"Auto-migration failed: {e}")
+        #     logger.exception(e)
         
         # 3. Start Scheduler (Handles both recurring checks and email auto-sync)
         start_scheduler()
 
-        # Trigger single-tenant migration on the parser service
-        # This aligns any old 'system_tenant' data in the parser DB with the active tenant.
-        db = SessionLocal()
-        try:
-            from backend.app.modules.auth.models import Tenant
-            # Find the most recent active tenant
-            tenants = db.query(Tenant).order_by(Tenant.created_at.desc()).limit(2).all()
-            
-            # If we have exactly one tenant (ideal for self-hosted/single-user Docker), 
-            # we trigger the migration automatically.
-            if len(tenants) == 1:
-                from backend.app.modules.ingestion.parser_service import ExternalParserService
-                single_tenant_id = tenants[0].id
-                logger.info(f"Found active tenant {single_tenant_id}. Waiting for Parser service to trigger data migration...")
-                
-                async def wait_and_trigger():
-                    import requests
-                    # 5 minute window: 60 retries * 5 seconds = 300 seconds
-                    max_retries = 60 
-                    url = f"{settings.PARSER_SERVICE_URL}/health"
-                    logger.info(f"Starting 5-minute wait window for Parser health check...")
-                    
-                    for i in range(max_retries):
-                        try:
-                            # Use internal health check to wait for service
-                            if requests.get(url, timeout=3).status_code == 200:
-                                logger.info(f"Parser is healthy. Firing migration for tenant {single_tenant_id}...")
-                                success = ExternalParserService.trigger_migration(single_tenant_id)
-                                if success:
-                                    logger.info("Parser migration trigger SUCCESS.")
-                                else:
-                                    logger.warning("Parser migration trigger returned non-200 status.")
-                                return
-                        except Exception:
-                            pass
-                        
-                        if (i + 1) % 12 == 0: # Log every 1 minute
-                            logger.info(f"Still waiting for Parser service... (Minute {(i+1)//12}/5)")
-                        
-                        await asyncio.sleep(5)
-                    logger.warning("Parser service did not become healthy within 5 minutes. Migration trigger skipped.")
-
-                asyncio.create_task(wait_and_trigger())
-            else:
-                log_msg = f"Active tenants found: {len(tenants)}. "
-                if len(tenants) == 0:
-                    log_msg += "No tenant data found to migrate."
-                else:
-                    log_msg += "Automatic migration trigger skipped (multiple tenants require manual action)."
-                logger.info(log_msg)
-        except Exception as e:
-            logger.error(f"Failed to check/trigger parser migration: {e}")
-        finally:
-            db.close()
-
+        # Trigger single-tenant migration on the parser service (Removed - obsolete)
+        pass
     @application.on_event("shutdown")
     async def stop_scheduler_event():
         stop_scheduler()
