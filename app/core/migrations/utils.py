@@ -5,6 +5,21 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
+def safe_rename_column(connection, table: str, old_col: str, new_col: str):
+    """
+    Idempotent helper to rename a column in a table only if old_col exists and new_col doesn't.
+    """
+    try:
+        cols = connection.execute(text(f"PRAGMA table_info('{table}')")).fetchall()
+        col_names = [c[1] for c in cols]
+        
+        if old_col in col_names and new_col not in col_names:
+            logger.info(f"Renaming column {old_col} to {new_col} in table {table}...")
+            connection.execute(text(f"ALTER TABLE {table} RENAME COLUMN {old_col} TO {new_col}"))
+            logger.info(f"Successfully renamed {old_col} to {new_col} in {table}.")
+    except Exception as e:
+        logger.warning(f"Could not rename column {old_col} to {new_col} in {table}: {e}")
+
 def safe_add_column(connection, table: str, col: str, col_type: str):
     """
     Idempotent helper to add a column to a table only if it doesn't already exist.

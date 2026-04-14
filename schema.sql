@@ -261,6 +261,17 @@ CREATE TABLE IF NOT EXISTS portfolio_timeline_cache (
 	FOREIGN KEY (tenant_id) REFERENCES tenants (id)
 );
 
+CREATE TABLE IF NOT EXISTS mutual_fund_sync_logs (
+	id VARCHAR PRIMARY KEY,
+	tenant_id VARCHAR NOT NULL,
+	started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	completed_at TIMESTAMP,
+	status VARCHAR DEFAULT 'running',
+	num_funds_updated INTEGER DEFAULT 0,
+	error_message VARCHAR,
+	FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+);
+
 -- 5. Ingestion Configuration
 CREATE TABLE IF NOT EXISTS email_configurations (
 	id VARCHAR PRIMARY KEY,

@@ -35,7 +35,10 @@ def apply_patches(connection):
     # SCAFFOLD: Put future ad-hoc migrations below this line
     # -------------------------------------------------------------------------
     
-    # logger.info("Applying ad-hoc schema patches...")
+    logger.info("Applying ad-hoc schema patches...")
+    
+    # [2026-04-14] Fix column name mismatch in mutual_fund_holdings
+    utils.safe_rename_column(connection, "mutual_fund_holdings", "last_updated", "last_updated_at")
     
     # TODO: Add schema evolution logic here as the app grows.
     pass

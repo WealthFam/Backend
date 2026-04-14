@@ -34,8 +34,7 @@ class TransferService:
             source=pending.source,
             exclude_from_reports=pending.exclude_from_reports,
             latitude=pending.latitude,
-            longitude=pending.longitude,
-            location_name=pending.location_name
+            longitude=pending.longitude
         )
         
         # We need to handle the balance sync flag from pending for the source side
@@ -63,8 +62,7 @@ class TransferService:
             source=pending.source,
             exclude_from_reports=pending.exclude_from_reports,
             latitude=pending.latitude,
-            longitude=pending.longitude,
-            location_name=pending.location_name
+            longitude=pending.longitude
         )
         
         target_txn = TransactionService.create_transaction(
