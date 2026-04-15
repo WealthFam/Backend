@@ -40,5 +40,24 @@ def apply_patches(connection):
     # [2026-04-14] Fix column name mismatch in mutual_fund_holdings
     utils.safe_rename_column(connection, "mutual_fund_holdings", "last_updated", "last_updated_at")
     
+    # [2026-04-15] Add missing latitude and longitude columns to ingestion and transactions
+    utils.safe_add_column(connection, "unparsed_messages", "latitude", "DECIMAL(10, 8)")
+    utils.safe_add_column(connection, "unparsed_messages", "longitude", "DECIMAL(11, 8)")
+    utils.safe_add_column(connection, "pending_transactions", "latitude", "DECIMAL(10, 8)")
+    utils.safe_add_column(connection, "pending_transactions", "longitude", "DECIMAL(11, 8)")
+    utils.safe_add_column(connection, "transactions", "latitude", "DECIMAL(10, 8)")
+    utils.safe_add_column(connection, "transactions", "longitude", "DECIMAL(11, 8)")
+    
+    # [2026-04-15] Add missing mutual fund columns 
+    utils.safe_add_column(connection, "mutual_fund_holdings", "average_price", "DECIMAL(15, 4)")
+    utils.safe_add_column(connection, "mutual_fund_holdings", "current_value", "DECIMAL(15, 2)")
+    utils.safe_add_column(connection, "mutual_fund_holdings", "last_nav", "DECIMAL(15, 4)")
+    utils.safe_add_column(connection, "mutual_fund_holdings", "user_id", "VARCHAR")
+    utils.safe_add_column(connection, "mutual_fund_holdings", "goal_id", "VARCHAR")
+    
+    # [2026-04-15] Legacy patches migrated from upgrade_mf_schema.py
+    utils.safe_add_column(connection, "mutual_fund_orders", "transaction_hash", "VARCHAR")
+    utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmark_value", "DOUBLE")
+
     # TODO: Add schema evolution logic here as the app grows.
     pass
