@@ -6,6 +6,7 @@
 [![Framework](https://img.shields.io/badge/FastAPI-0.109+-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Database](https://img.shields.io/badge/DuckDB-Serverless-FFF000?style=for-the-badge&logo=duckdb&logoColor=black)](https://duckdb.org/)
 [![Status](https://img.shields.io/badge/Docs-Technical_Hub-e11d48?style=for-the-badge)](https://wealthfam.github.io/docs)
+[![Docker Hub](https://img.shields.io/badge/Docker_Hub-wglabz/wealthfam--backend-blue?style=for-the-badge&logo=docker)](https://hub.docker.com/r/wglabz/wealthfam-backend)
 
 **High-performance REST API for financial orchestration and AI intelligence.**  
 *Built for speed, security, and local-first data privacy.*
