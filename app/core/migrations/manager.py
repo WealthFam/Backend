@@ -48,5 +48,12 @@ def apply_patches(connection):
     utils.safe_add_column(connection, "transactions", "latitude", "DECIMAL(10, 8)")
     utils.safe_add_column(connection, "transactions", "longitude", "DECIMAL(11, 8)")
     
+    # [2026-04-15] Add missing mutual fund columns 
+    utils.safe_add_column(connection, "mutual_fund_holdings", "average_price", "DECIMAL(15, 4)")
+    utils.safe_add_column(connection, "mutual_fund_holdings", "current_value", "DECIMAL(15, 2)")
+    utils.safe_add_column(connection, "mutual_fund_holdings", "last_nav", "DECIMAL(15, 4)")
+    utils.safe_add_column(connection, "mutual_fund_holdings", "user_id", "VARCHAR")
+    utils.safe_add_column(connection, "mutual_fund_holdings", "goal_id", "VARCHAR")
+
     # TODO: Add schema evolution logic here as the app grows.
     pass
