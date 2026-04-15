@@ -2,9 +2,10 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-2.2.15-1b5e20?style=for-the-badge)](https://github.com/oksbwn/wealthfam/backend)
+[![Version](https://img.shields.io/badge/Version-2.2.15-4338ca?style=for-the-badge)](https://github.com/WealthFam/backend)
 [![Framework](https://img.shields.io/badge/FastAPI-0.109+-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Database](https://img.shields.io/badge/DuckDB-Serverless-FFF000?style=for-the-badge&logo=duckdb&logoColor=black)](https://duckdb.org/)
+[![Status](https://img.shields.io/badge/Docs-Technical_Hub-e11d48?style=for-the-badge)](https://wealthfam.github.io/docs)
 
 **High-performance REST API for financial orchestration and AI intelligence.**  
 *Built for speed, security, and local-first data privacy.*
@@ -15,11 +16,14 @@
 
 ## 🚀 Overview
 
-The WealthFam Backend is the central nervous system of the ecosystem. It manages transaction lifecycle, bank-specific parsing logic, and secure storage via local DuckDB instances. Designed for modularity, it serves as the ground truth for the Frontend and Mobile companions.
+The WealthFam Backend is the central nervous system of the ecosystem. It manages the transaction lifecycle, multi-tenant partitioning, and secure storage via local DuckDB instances. 
 
 ---
 
-## 🛠️ Technical Stack
+## 🛠️ Technical Stack at a Glance
+
+For a detailed breakdown of our technical choices, see:  
+[**📖 Deep Dive: The WealthFam Stack**](../Docs/technical/stack.md)
 
 | Category | Technology |
 | :--- | :--- |
@@ -30,20 +34,22 @@ The WealthFam Backend is the central nervous system of the ecosystem. It manages
 
 ---
 
-## 🏁 Development
+## 🏗️ Architecture
 
-To run the backend locally or set up a development environment, please refer to the unified guide:
+The backend follows a modular service pattern, ensuring that parsing, persistence, and presentation are strictly decoupled.
 
-[**🛠️ In-Depth Setup Guide**](../../Docs/technical/development/setup.md)
+- **[🏛️ System Overview](../Docs/technical/architecture/system_overview.md)**
+- **[🔄 Ingestion Logic](../Docs/technical/architecture/ingestion.md)**
 
 ---
 
-## 📖 Key Documentation
-- **[🔄 Ingestion Architecture](../../Docs/technical/architecture/ingestion.md)**: Deep dive into the parsing pipeline.
-- **[✨ System Features](../../Docs/user/features.md)**: Product-level overview.
-- **[🎨 Master Documentation](../../Docs/README.md)**: Global knowledge base.
+## 🏁 Development Setup
+
+To run the backend locally or contribute to the core services:
+
+[**🛠️ Master Setup Guide**](../Docs/technical/getting_started.md)
 
 ---
 <div align="center">
-*Maintained by the WealthFam Backend Team*
+*Maintained by the WealthFam Backend Engineering Team*
 </div>
