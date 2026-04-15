@@ -374,6 +374,7 @@ class MutualFundOrder(Base):
     folio_number = Column(String, nullable=True, index=True)
     status = Column(String, default="COMPLETED")
     external_id = Column(String, nullable=True)
+    transaction_hash = Column(String, nullable=True)
     import_source = Column(String, default="MANUAL")
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
