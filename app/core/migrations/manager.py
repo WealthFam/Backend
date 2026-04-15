@@ -40,5 +40,13 @@ def apply_patches(connection):
     # [2026-04-14] Fix column name mismatch in mutual_fund_holdings
     utils.safe_rename_column(connection, "mutual_fund_holdings", "last_updated", "last_updated_at")
     
+    # [2026-04-15] Add missing latitude and longitude columns to ingestion and transactions
+    utils.safe_add_column(connection, "unparsed_messages", "latitude", "DECIMAL(10, 8)")
+    utils.safe_add_column(connection, "unparsed_messages", "longitude", "DECIMAL(11, 8)")
+    utils.safe_add_column(connection, "pending_transactions", "latitude", "DECIMAL(10, 8)")
+    utils.safe_add_column(connection, "pending_transactions", "longitude", "DECIMAL(11, 8)")
+    utils.safe_add_column(connection, "transactions", "latitude", "DECIMAL(10, 8)")
+    utils.safe_add_column(connection, "transactions", "longitude", "DECIMAL(11, 8)")
+    
     # TODO: Add schema evolution logic here as the app grows.
     pass
