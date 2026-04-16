@@ -185,6 +185,9 @@ class CategoryService:
              db_rule.keywords = []
              db_rule.is_valid = False
              db_rule.validation_error = "Malformed JSON"
+        
+        # Cast Numeric to int for strict validation
+        db_rule.priority = int(db_rule.priority)
              
         return db_rule
 
@@ -210,6 +213,10 @@ class CategoryService:
                  r.is_valid = False
                  r.validation_error = f"Malformed JSON in keywords: {str(e)}"
                  r.keywords = []
+             
+             # Cast Numeric to int for strict validation
+             r.priority = int(r.priority)
+             
         return {"data": rules, "total": total}
 
     @staticmethod
@@ -249,6 +256,9 @@ class CategoryService:
              db_rule.keywords = []
              db_rule.is_valid = False
              db_rule.validation_error = "Malformed JSON"
+             
+        # Cast Numeric to int for strict validation
+        db_rule.priority = int(db_rule.priority)
              
         return db_rule
 
@@ -332,7 +342,7 @@ class CategoryService:
         
         # Flatten existing keywords for exclusion
         exclusion_set = set()
-        for r in existing_rules:
+        for r in existing_rules["data"]:
             for kw in (r.keywords or []): 
                 if isinstance(kw, str): exclusion_set.add(kw.lower())
         for i in ignored:
@@ -356,6 +366,7 @@ class CategoryService:
             aggregated[clean_name]["count"] += c.count
             # If multiple descriptions map to same clean name, we can add them to keywords or just stick to clean name
             # aggregated[clean_name]["keywords"].add(c.description) # Maybe too noisy? Let's just use clean name
+            # aggregated[clean_name]["keywords"].add(c.description)
 
         # 4. Final collection
         suggestions = []

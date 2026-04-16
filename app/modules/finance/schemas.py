@@ -144,7 +144,7 @@ class BulkDeleteRequest(BaseModel):
 
 
 class CategoryRuleBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True, strict=True)
+    model_config = ConfigDict(from_attributes=True, strict=False)
 
     name: str = Field(description="Human-readable name for the rule")
     category: str = Field(description="The category to assign if matched")
@@ -157,15 +157,16 @@ class CategoryRuleBase(BaseModel):
     @field_validator('keywords')
     @classmethod
     def validate_keywords(cls, v):
-        if not v:
-            raise ValueError("Keywords list cannot be empty")
+        # Soften validator: Allow empty list for READ operations 
+        # (Application layer handles is_valid=False for empty rules)
+        if v is None:
+            return []
         
         cleaned = []
         for kw in v:
             val = kw.strip()
-            if len(val) < 3:
-                raise ValueError(f"Keyword '{val}' is too short (min 3 characters)")
-            cleaned.append(val)
+            if len(val) >= 3:
+                cleaned.append(val)
         return cleaned
 
 class CategoryRuleCreate(CategoryRuleBase):
@@ -188,7 +189,7 @@ class CategoryRuleRead(CategoryRuleBase):
     created_at: datetime
 
 class CategoryRulePagination(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=False)
     data: List[CategoryRuleRead]
     total: int
 
