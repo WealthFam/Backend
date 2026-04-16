@@ -21,113 +21,100 @@ logger = logging.getLogger(__name__)
 
 class TransactionService:
     @staticmethod
-    def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None, update_balance: bool = True):
+    def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None, update_balance: bool = True, commit: bool = True):
         with db_write_lock:
-            # 1. Unified Deduplication Check (Ref ID, Hash-Fallback, and Fields)
-            
-            # Skip strict deduplication for MANUAL entries to allow user intent
-            is_dup = False
-            reason = None
-            existing_id = None
-            
-            if getattr(transaction, 'source', 'MANUAL') != 'MANUAL':
-                is_dup, reason, existing_id = TransactionDeduplicator.check_raw_duplicate(
-                    db, tenant_id, str(transaction.account_id), transaction.amount, transaction.date, 
-                    transaction.description, transaction.recipient, transaction.external_id,
-                    exclude_pending_id=exclude_pending_id
-                )
-            
-            if is_dup:
-                # If it found a match in confirmed transactions, return it
-                # We check the confirmed table specifically here to be sure
-                existing = db.query(models.Transaction).filter(models.Transaction.id == existing_id).first()
-                if existing: return existing
-                
-                # If it was in pending/triage, the deduplicator returns it, but create_transaction 
-                # should probably still proceed or throw if it's strictly enforced.
-                # In our system, manual creation/import should skip if already in triage too.
-                # For now, let's treat it as a skip (return None or raise?) 
-                # But the service signature returns models.Transaction.
-                # Easiest: return None or raise. Usually create_transaction should be idempotent.
-                # If it's a confirmed duplicate in another table, we return it to represent "creation was handled"
-                # If it's simply "triage", we skip creation in confirmed.
-                return None
-    
-            data = transaction.model_dump()
-            data['tenant_id'] = tenant_id
-            
-            # Remove fields that exist in schema but not in the Transaction model
-            data.pop('to_account_id', None)
-            
-            # Use UUID if not provided (though models usually handle this, explicit is safer for deduplication sync)
-            if not data.get('id'):
-                import uuid
-                data['id'] = str(uuid.uuid4())
-    
-            # Content Hash for weak deduplication
-            if not data.get('content_hash'):
-                data['content_hash'] = TransactionDeduplicator.generate_hash(
-                    tenant_id, str(data['account_id']), data['date'], data['amount'], 
-                    data['description'], data['recipient']
-                )
-    
-            db_transaction = models.Transaction(**data)
-            db.add(db_transaction)
-            
-            # 2. Update Account Balance
-            if update_balance:
-                db_account = db.query(models.Account).filter(
-                    models.Account.id == transaction.account_id,
-                    models.Account.tenant_id == tenant_id
-                ).first()
-                
-                if db_account:
-                    from backend.app.core import timezone
-                    anchor_date = timezone.ensure_utc(db_account.last_synced_at)
-                    txn_date = timezone.ensure_utc(db_transaction.date)
-                    
-                    # Only affect balance if transaction is NEWER than the last sync anchor
-                    if not anchor_date or txn_date > anchor_date:
-                        # Transaction amount is already signed (e.g. -500 for debit)
-                        # For LOAN/CREDIT accounts, a debit (-500) INCREASES the positive balance (debt)
-                        # For BANK accounts, a debit (-500) DECREASES the positive balance
-                        
-                        balance_change = 0
-                        if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                            # Debt increase = -(-500) = +500
-                            balance_change = -db_transaction.amount
-                        else:
-                            # Cash decrease = +(-500) = -500
-                            balance_change = db_transaction.amount
-                        
-                        # Atomic balance update to prevent race conditions
-                        if balance_change != 0:
-                            db.query(models.Account).filter(models.Account.id == db_account.id).update({
-                                "balance": models.Account.balance + balance_change
-                            })
-            
-            db.commit()
-            db.refresh(db_transaction)
-            
-            # 3. Trigger Real-time Notification
             try:
-                from backend.app.modules.notifications.services import NotificationService
-                # Fetch fresh account name for notification
-                db_account = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
-                if db_account:
-                    NotificationService.notify_transaction(
-                        db, 
-                        tenant_id, 
-                        db_transaction.amount, 
-                        db_transaction.description or db_transaction.recipient, 
-                        db_account.name,
-                        user_id=db_account.owner_id,
-                        category_name=db_transaction.category
+                # 1. Unified Deduplication Check (Ref ID, Hash-Fallback, and Fields)
+                
+                # Skip strict deduplication for MANUAL entries to allow user intent
+                is_dup = False
+                reason = None
+                existing_id = None
+                
+                if getattr(transaction, 'source', 'MANUAL') != 'MANUAL':
+                    is_dup, reason, existing_id = TransactionDeduplicator.check_raw_duplicate(
+                        db, tenant_id, str(transaction.account_id), transaction.amount, transaction.date, 
+                        transaction.description, transaction.recipient, transaction.external_id,
+                        exclude_pending_id=exclude_pending_id
                     )
-            except Exception as e:
-                logger.error(f"Failed to trigger transaction notification: {e}")
-    
-            return db_transaction
+                
+                if is_dup:
+                    # If it found a match in confirmed transactions, return it
+                    existing = db.query(models.Transaction).filter(models.Transaction.id == existing_id).first()
+                    if existing: return existing
+                    return None
+        
+                data = transaction.model_dump()
+                data['tenant_id'] = tenant_id
+                
+                # Remove fields that exist in schema but not in the Transaction model
+                data.pop('to_account_id', None)
+                
+                # Use UUID if not provided
+                if not data.get('id'):
+                    import uuid
+                    data['id'] = str(uuid.uuid4())
+        
+                # Content Hash for weak deduplication
+                if not data.get('content_hash'):
+                    data['content_hash'] = TransactionDeduplicator.generate_hash(
+                        tenant_id, str(data['account_id']), data['date'], data['amount'], 
+                        data['description'], data['recipient']
+                    )
+        
+                db_transaction = models.Transaction(**data)
+                db.add(db_transaction)
+                
+                # 2. Update Account Balance
+                if update_balance:
+                    db_account = db.query(models.Account).filter(
+                        models.Account.id == transaction.account_id,
+                        models.Account.tenant_id == tenant_id
+                    ).first()
+                    
+                    if db_account:
+                        from backend.app.core import timezone
+                        anchor_date = timezone.ensure_utc(db_account.last_synced_at)
+                        txn_date = timezone.ensure_utc(db_transaction.date)
+                        
+                        if not anchor_date or txn_date > anchor_date:
+                            balance_change = 0
+                            if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                                balance_change = -db_transaction.amount
+                            else:
+                                balance_change = db_transaction.amount
+                            
+                            if balance_change != 0:
+                                db.query(models.Account).filter(models.Account.id == db_account.id).update({
+                                    "balance": models.Account.balance + balance_change
+                                })
+                
+                if commit:
+                    db.commit()
+                    db.refresh(db_transaction)
+                    
+                    # 3. Trigger Real-time Notification
+                    try:
+                        from backend.app.modules.notifications.services import NotificationService
+                        db_account = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
+                        if db_account:
+                            NotificationService.notify_transaction(
+                                db, 
+                                tenant_id, 
+                                db_transaction.amount, 
+                                db_transaction.description or db_transaction.recipient, 
+                                db_account.name,
+                                user_id=db_account.owner_id,
+                                category_name=db_transaction.category
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to trigger transaction notification: {e}")
+        
+                return db_transaction
+            except Exception:
+                if commit:
+                    db.rollback()
+                raise
 
     @staticmethod
     def get_transactions(
@@ -438,152 +425,152 @@ class TransactionService:
     @staticmethod
     def update_transaction(db: Session, txn_id: str, txn_update: schemas.TransactionUpdate, tenant_id: str) -> Optional[models.Transaction]:
         with db_write_lock:
-            db_txn = db.query(models.Transaction).filter(
-                models.Transaction.id == txn_id,
-                models.Transaction.tenant_id == tenant_id
-            ).first()
+            try:
+                db_txn = db.query(models.Transaction).filter(
+                    models.Transaction.id == txn_id,
+                    models.Transaction.tenant_id == tenant_id
+                ).first()
+            
+                if not db_txn:
+                    return None
+                    
+                # 1. Snapshot old state for balance adjustment
+                old_amount = db_txn.amount
+                old_date = db_txn.date
+                old_account_id = db_txn.account_id
+                
+                update_data = txn_update.model_dump(exclude_unset=True)
+                
+                # 2. Handle Transfer Logic Changes
+                is_transfer_update = update_data.get('is_transfer')
+                to_account_id = update_data.get('to_account_id')
+                
+                if is_transfer_update is True:
+                    db_txn.is_transfer = True
+                    db_txn.exclude_from_reports = True
+                    
+                    if update_data.get('linked_transaction_id'):
+                        # Unlink old if exists
+                        if db_txn.linked_transaction_id:
+                             old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                             if old_linked:
+                                old_linked.linked_transaction_id = None
+                                db.add(old_linked)
         
-            if not db_txn:
-                return None
-                
-            # Snapshot old state for balance adjustment
-            old_amount = db_txn.amount
-            old_date = db_txn.date
-            old_account_id = db_txn.account_id
-            
-            update_data = txn_update.model_dump(exclude_unset=True)
-            
-            # --- Transfer logic remains same ---
-            is_transfer_update = update_data.get('is_transfer')
-            to_account_id = update_data.get('to_account_id')
-            
-            if is_transfer_update is True:
-                db_txn.is_transfer = True
-                db_txn.exclude_from_reports = True
-                
-                if update_data.get('linked_transaction_id'):
-                    if db_txn.linked_transaction_id:
-                         old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
-                         if old_linked:
-                            old_linked.linked_transaction_id = None
-                            db.add(old_linked)
-    
-                    target_id = update_data['linked_transaction_id']
-                    target_txn = db.query(models.Transaction).filter(models.Transaction.id == target_id).first()
-                    
-                    if target_txn:
-                        db_txn.linked_transaction_id = target_txn.id
-                        target_txn.linked_transaction_id = db_txn.id
-                        target_txn.is_transfer = True
-                        target_txn.category = "Transfer"
-                        target_txn.exclude_from_reports = True 
+                        target_id = update_data['linked_transaction_id']
+                        target_txn = db.query(models.Transaction).filter(models.Transaction.id == target_id).first()
+                        
+                        if target_txn:
+                            db_txn.linked_transaction_id = target_txn.id
+                            target_txn.linked_transaction_id = db_txn.id
+                            target_txn.is_transfer = True
+                            target_txn.category = "Transfer"
+                            target_txn.exclude_from_reports = True 
+                            db.add(target_txn)
+        
+                    elif to_account_id:
+                        # Auto-create target if account provided
+                        if db_txn.linked_transaction_id:
+                             old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                             if old_linked: 
+                                 db.delete(old_linked)
+                        
+                        import uuid
+                        target_txn = models.Transaction(
+                            id=str(uuid.uuid4()),
+                            tenant_id=tenant_id,
+                            account_id=to_account_id,
+                            amount=-db_txn.amount if 'amount' not in update_data else -update_data['amount'],
+                            date=db_txn.date if 'date' not in update_data else update_data['date'],
+                            description=f"Transfer from {db_txn.account_id} (Linked)",
+                            recipient=db_txn.recipient,
+                            category="Transfer",
+                            is_transfer=True,
+                            source=db_txn.source,
+                            linked_transaction_id=db_txn.id,
+                            exclude_from_reports=True
+                        )
                         db.add(target_txn)
-    
-                elif to_account_id:
+                        db_txn.linked_transaction_id = target_txn.id
+                        db_txn.category = "Transfer"
+                        update_data['category'] = "Transfer"
+        
+                elif is_transfer_update is False:
+                    db_txn.is_transfer = False
                     if db_txn.linked_transaction_id:
-                         old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
-                         if old_linked: db.delete(old_linked)
-                    
-                    target_txn = models.Transaction(
-                        id=str(uuid.uuid4()),
-                        tenant_id=tenant_id,
-                        account_id=to_account_id,
-                        amount=-db_txn.amount if 'amount' not in update_data else -update_data['amount'],
-                        date=db_txn.date if 'date' not in update_data else update_data['date'],
-                        description=f"Transfer from {db_txn.account_id} (Linked)",
-                        recipient=db_txn.recipient,
-                        category="Transfer",
-                        type=TransactionType.CREDIT if (db_txn.amount < 0) else TransactionType.DEBIT,
-                        is_transfer=True,
-                        source=db_txn.source,
-                        linked_transaction_id=db_txn.id,
-                        exclude_from_reports=True
-                    )
-                    db.add(target_txn)
-                    db_txn.linked_transaction_id = target_txn.id
-                    db_txn.category = "Transfer"
-                    update_data['category'] = "Transfer"
-    
-            elif is_transfer_update is False:
-                db_txn.is_transfer = False
-                if db_txn.linked_transaction_id:
-                    linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
-                    if linked:
-                        linked.linked_transaction_id = None
-                        linked.is_transfer = False 
-                        db.add(linked)
-    
-                    db_txn.linked_transaction_id = None
-            
-            # Apply updates to db_txn
-            for key, value in update_data.items():
-                if key in ['is_transfer', 'to_account_id']: continue
-                if key == 'tags' and value is not None:
-                    setattr(db_txn, key, json.dumps(value))
-                elif key in ['linked_transaction_id', 'expense_group_id', 'loan_id'] and value == "":
-                    setattr(db_txn, key, None)
-                elif key == 'account_id' and value:
-                    db_txn.account_id = str(value)
-                else:
-                    setattr(db_txn, key, value)
-            
-            # Recalculate type based on final amount
-            db_txn.type = models.TransactionType.DEBIT if db_txn.amount < 0 else models.TransactionType.CREDIT
+                        linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                        if linked:
+                            linked.linked_transaction_id = None
+                            linked.is_transfer = False 
+                            db.add(linked)
 
-            # Account for balance changes if amount, date, or account changed
-            from backend.app.core import timezone
-            has_important_change = (
-                'amount' in update_data or 
-                'date' in update_data or 
-                'account_id' in update_data
-            )
-            
-            if has_important_change:
-                # 1. Revert Old Balance Contribution
-                old_acc = db.query(models.Account).filter(models.Account.id == old_account_id).first()
-                if old_acc:
-                    old_anchor = timezone.ensure_utc(old_acc.last_synced_at)
-                    old_txn_date = timezone.ensure_utc(old_date)
-                    
-                    if not old_anchor or old_txn_date > old_anchor:
-                        old_revert_change = 0
-                        if old_acc.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                            old_revert_change = old_amount
-                        else:
-                            old_revert_change = -old_amount
-                        
-                        if old_revert_change != 0:
-                            db.query(models.Account).filter(models.Account.id == old_account_id).update({
-                                "balance": models.Account.balance + old_revert_change
-                            })
+                # 3. Apply basic field updates
+                for key, value in update_data.items():
+                    if key in ['id', 'tenant_id', 'is_transfer', 'to_account_id']: 
+                        continue
+                    if key == 'tags' and value is not None:
+                        setattr(db_txn, key, json.dumps(value))
+                    elif key in ['linked_transaction_id', 'expense_group_id', 'loan_id'] and value == "":
+                        setattr(db_txn, key, None)
+                    elif key == 'account_id' and value:
+                        db_txn.account_id = str(value)
+                    else:
+                        setattr(db_txn, key, value)
                 
-                # 2. Apply New Balance Contribution
-                new_account_id = db_txn.account_id
-                new_amount = db_txn.amount
-                new_date = db_txn.date
+                # Recalculate type based on final amount
+                db_txn.type = models.TransactionType.DEBIT if db_txn.amount < 0 else models.TransactionType.CREDIT
+
+                # 4. Handle Account Balance Adjustments
+                from backend.app.core import timezone
+                has_important_change = (
+                    'amount' in update_data or 
+                    'date' in update_data or 
+                    'account_id' in update_data
+                )
                 
-                new_acc_exists = db.query(models.Account).filter(models.Account.id == new_account_id).first()
-                if new_acc_exists:
-                    new_anchor = timezone.ensure_utc(new_acc_exists.last_synced_at)
-                    new_txn_date = timezone.ensure_utc(new_date)
-                    
-                    if not new_anchor or new_txn_date > new_anchor:
-                        new_balance_change = 0
-                        if new_acc_exists.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                            new_balance_change = -new_amount
-                        else:
-                            new_balance_change = new_amount
+                if has_important_change:
+                    # A. Revert Old Balance Contribution
+                    old_acc = db.query(models.Account).filter(models.Account.id == old_account_id).first()
+                    if old_acc:
+                        old_anchor = timezone.ensure_utc(old_acc.last_synced_at)
+                        old_txn_date = timezone.ensure_utc(old_date)
                         
-                        if new_balance_change != 0:
-                            db.query(models.Account).filter(models.Account.id == new_account_id).update({
-                                "balance": models.Account.balance + new_balance_change
-                            })
-    
-            # -------------------------------
+                        if not old_anchor or old_txn_date > old_anchor:
+                            old_revert_change = 0
+                            if old_acc.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                                old_revert_change = old_amount
+                            else:
+                                old_revert_change = -old_amount
+                            
+                            if old_revert_change != 0:
+                                db.query(models.Account).filter(models.Account.id == old_account_id).update({
+                                    "balance": models.Account.balance + old_revert_change
+                                })
                     
-            db.commit()
-            db.refresh(db_txn)
-            return db_txn
+                    # B. Apply New Balance Contribution
+                    new_acc = db.query(models.Account).filter(models.Account.id == db_txn.account_id).first()
+                    if new_acc:
+                        new_anchor = timezone.ensure_utc(new_acc.last_synced_at)
+                        new_txn_date = timezone.ensure_utc(db_txn.date)
+                        
+                        if not new_anchor or new_txn_date > new_anchor:
+                            new_balance_change = 0
+                            if new_acc.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                                new_balance_change = -db_txn.amount
+                            else:
+                                new_balance_change = db_txn.amount
+                            
+                            if new_balance_change != 0:
+                                db.query(models.Account).filter(models.Account.id == db_txn.account_id).update({
+                                    "balance": models.Account.balance + new_balance_change
+                                })
+        
+                db.commit()
+                db.refresh(db_txn)
+                return db_txn
+            except Exception:
+                db.rollback()
+                raise
 
     @staticmethod
     def get_suggested_category(db: Session, tenant_id: str, description: Optional[str], recipient: Optional[str]) -> str:
@@ -865,7 +852,9 @@ class TransactionService:
         tenant_id: str,
         create_rule: bool = False,
         apply_to_similar: bool = False,
-        exclude_from_reports: bool = False
+        exclude_from_reports: bool = False,
+        is_transfer: bool = False,
+        to_account_id: Optional[str] = None
     ) -> dict:
         db_txn = db.query(models.Transaction).filter(
             models.Transaction.id == txn_id,
@@ -875,84 +864,87 @@ class TransactionService:
         if not db_txn:
             return {"success": False, "message": "Transaction not found"}
             
-        old_category = db_txn.category
-        db_txn.category = category
-        if exclude_from_reports:
-            db_txn.exclude_from_reports = True
-        db.add(db_txn)
-        
-        affected_count = 1
-        rule_created = False
-        
-        pattern = db_txn.recipient or db_txn.description
-        if not pattern:
-            db.commit()
-            return {"success": True, "affected": affected_count, "rule_created": False}
-
-        if create_rule:
-            # Inline import to break circular dependency: AIService -> CategoryService -> TransactionService
-            from backend.app.modules.ingestion.ai_service import AIService
-            
-            # Use heuristic cleaning to get a "generic but unique" keyword (No AI tokens used)
-            clean_pattern = AIService.heuristic_clean_merchant(pattern)
-            
-            # Skip auto-creation if the result is too generic or invalid
-            if clean_pattern == "Unknown" or len(clean_pattern) < 3:
-                db.commit()
-                return {"success": True, "affected": affected_count, "rule_created": False}
-
-            existing_rule = db.query(models.CategoryRule).filter(
-                models.CategoryRule.tenant_id == tenant_id,
-                models.CategoryRule.name == f"Auto: {clean_pattern}"
-            ).first()
-            
-            if not existing_rule:
-                new_rule = models.CategoryRule(
-                    tenant_id=tenant_id,
-                    name=f"Auto: {clean_pattern}",
-                    category=category,
-                    keywords=json.dumps([clean_pattern]),
-                    priority=1,
-                    exclude_from_reports=exclude_from_reports
-                )
-                db.add(new_rule)
-                rule_created = True
-            else:
-                # Update existing rule to reflect new decision
-                existing_rule.category = category
-                existing_rule.exclude_from_reports = exclude_from_reports
-                db.add(existing_rule)
-                rule_created = True
-
-        if apply_to_similar:
-            from sqlalchemy import or_
-            query = db.query(models.Transaction).filter(
-                models.Transaction.tenant_id == tenant_id,
-                models.Transaction.id != txn_id,
-                (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)
-            )
-            
-            search_pattern = f"%{pattern}%"
-            query = query.filter(or_(
-                models.Transaction.description.ilike(search_pattern),
-                models.Transaction.recipient.ilike(search_pattern)
-            ))
-                
-            similar_txns = query.all()
-            for st in similar_txns:
-                st.category = category
+        with db_write_lock:
+            try:
+                db_txn.category = category
+                db_txn.is_transfer = is_transfer
+                db_txn.to_account_id = to_account_id
                 if exclude_from_reports:
-                    st.exclude_from_reports = True
-                db.add(st)
-                affected_count += 1
+                    db_txn.exclude_from_reports = True
+                db.add(db_txn)
+                
+                affected_count = 1
+                rule_created = False
+                pattern = db_txn.recipient or db_txn.description
+                
+                if not pattern:
+                    db.commit()
+                    return {"success": True, "affected": affected_count, "rule_created": False}
 
-        db.commit()
-        return {
-            "success": True, 
-            "affected": affected_count, 
-            "rule_created": rule_created,
-            "pattern": pattern
-        }
+                if create_rule:
+                    from backend.app.modules.ingestion.ai_service import AIService
+                    clean_pattern = AIService.heuristic_clean_merchant(pattern)
+                    
+                    if clean_pattern != "Unknown" and len(clean_pattern) >= 3:
+                        existing_rule = db.query(models.CategoryRule).filter(
+                            models.CategoryRule.tenant_id == tenant_id,
+                            models.CategoryRule.name == f"Auto: {clean_pattern}"
+                        ).first()
+                        
+                        if not existing_rule:
+                            new_rule = models.CategoryRule(
+                                tenant_id=tenant_id,
+                                name=f"Auto: {clean_pattern}",
+                                category=category,
+                                keywords=json.dumps([clean_pattern]),
+                                priority=1,
+                                exclude_from_reports=exclude_from_reports,
+                                is_transfer=is_transfer,
+                                to_account_id=to_account_id
+                            )
+                            db.add(new_rule)
+                        else:
+                            existing_rule.category = category
+                            existing_rule.exclude_from_reports = exclude_from_reports
+                            existing_rule.is_transfer = is_transfer
+                            existing_rule.to_account_id = to_account_id
+                            db.add(existing_rule)
+                        rule_created = True
+
+                if apply_to_similar:
+                    from sqlalchemy import or_
+                    query = db.query(models.Transaction).filter(
+                        models.Transaction.tenant_id == tenant_id,
+                        models.Transaction.id != txn_id,
+                        (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)
+                    )
+                    
+                    search_pattern = f"%{pattern}%"
+                    query = query.filter(or_(
+                        models.Transaction.description.ilike(search_pattern),
+                        models.Transaction.recipient.ilike(search_pattern)
+                    ))
+                        
+                    similar_txns = query.all()
+                    for st in similar_txns:
+                        st.category = category
+                        st.is_transfer = is_transfer
+                        st.to_account_id = to_account_id
+                        if exclude_from_reports:
+                            st.exclude_from_reports = True
+                        db.add(st)
+                        affected_count += 1
+
+                db.commit()
+                return {
+                    "success": True, 
+                    "affected": affected_count, 
+                    "rule_created": rule_created,
+                    "pattern": pattern
+                }
+            except Exception:
+                db.rollback()
+                raise
 
     @staticmethod
     def apply_rule_retrospectively(db: Session, rule_id: str, tenant_id: str, override: bool = False) -> dict:
@@ -977,54 +969,59 @@ class TransactionService:
             ))
             
         # 1. Update Confirmed Transactions
-        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
-        if not override:
-            query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
-        
-        query = query.filter(or_(*filters))
-        target_txns = query.all()
         affected_count = 0
-        for txn in target_txns:
-            txn.category = rule.category
-            if rule.exclude_from_reports:
-                txn.exclude_from_reports = True
-            if rule.is_transfer and rule.to_account_id:
-                txn.is_transfer = True
-            db.add(txn)
-            affected_count += 1
-            
-        # 2. Update Pending Transactions (Triage)
-        pending_filters = []
-        for k in keywords:
-            pattern = f"%{k}%"
-            pending_filters.append(or_(
-                ingestion_models.PendingTransaction.description.ilike(pattern),
-                ingestion_models.PendingTransaction.recipient.ilike(pattern)
-            ))
+        with db_write_lock:
+            try:
+                query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+                if not override:
+                    query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
+                
+                query = query.filter(or_(*filters))
+                target_txns = query.all()
+                for txn in target_txns:
+                    txn.category = rule.category
+                    if rule.exclude_from_reports:
+                        txn.exclude_from_reports = True
+                    if rule.is_transfer and rule.to_account_id:
+                        txn.is_transfer = True
+                    db.add(txn)
+                    affected_count += 1
+                    
+                # 2. Update Pending Transactions (Triage)
+                pending_filters = []
+                for k in keywords:
+                    pattern = f"%{k}%"
+                    pending_filters.append(or_(
+                        ingestion_models.PendingTransaction.description.ilike(pattern),
+                        ingestion_models.PendingTransaction.recipient.ilike(pattern)
+                    ))
 
-        pending_query = db.query(ingestion_models.PendingTransaction).filter(
-            ingestion_models.PendingTransaction.tenant_id == tenant_id
-        )
-        if not override:
-            pending_query = pending_query.filter(
-                (ingestion_models.PendingTransaction.category == "Uncategorized") | 
-                (ingestion_models.PendingTransaction.category == None)
-            )
-        
-        pending_query = pending_query.filter(or_(*pending_filters))
-        target_pending = pending_query.all()
-        for p_txn in target_pending:
-            p_txn.category = rule.category
-            if rule.exclude_from_reports:
-                p_txn.exclude_from_reports = True
-            if rule.is_transfer and rule.to_account_id:
-                p_txn.is_transfer = True
-                p_txn.to_account_id = rule.to_account_id
-            db.add(p_txn)
-            affected_count += 1
+                pending_query = db.query(ingestion_models.PendingTransaction).filter(
+                    ingestion_models.PendingTransaction.tenant_id == tenant_id
+                )
+                if not override:
+                    pending_query = pending_query.filter(
+                        (ingestion_models.PendingTransaction.category == "Uncategorized") | 
+                        (ingestion_models.PendingTransaction.category == None)
+                    )
+                
+                pending_query = pending_query.filter(or_(*pending_filters))
+                target_pending = pending_query.all()
+                for p_txn in target_pending:
+                    p_txn.category = rule.category
+                    if rule.exclude_from_reports:
+                        p_txn.exclude_from_reports = True
+                    if rule.is_transfer and rule.to_account_id:
+                        p_txn.is_transfer = True
+                        p_txn.to_account_id = rule.to_account_id
+                    db.add(p_txn)
+                    affected_count += 1
 
-        db.commit()
-        return {"success": True, "affected": affected_count, "category": rule.category}
+                db.commit()
+                return {"success": True, "affected": affected_count, "category": rule.category}
+            except Exception:
+                db.rollback()
+                raise
 
     @staticmethod
     def get_matching_count(db: Session, keywords: List[str], tenant_id: str, only_uncategorized: bool = True) -> int:
@@ -1148,21 +1145,7 @@ class TransactionService:
             )
         )
         
-        txns = query.all()
-        for t in txns:
-            if t.recipient == old_name:
-                t.recipient = new_name
-            if t.description == old_name:
-                t.description = new_name
-            db.add(t)
-        
-        db.commit()
-        
-        if sync_to_parser and old_name != new_name:
-             try:
-                 from backend.app.modules.ingestion.parser_service import ExternalParserService
-                 ExternalParserService.create_alias(tenant_id, old_name, new_name)
-             except Exception as e:
+        with db_write_lock:
                  logger.error(f"Failed to sync alias to parser: {e}")
                  
         return len(txns)

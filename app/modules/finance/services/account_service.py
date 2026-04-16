@@ -13,38 +13,42 @@ logger = logging.getLogger(__name__)
 class AccountService:
     @staticmethod
     def create_account(db: Session, account: schemas.AccountCreate, tenant_id: str) -> models.Account:
-        with db_write_lock:
-            data = account.model_dump()
+        data = account.model_dump()
         if not data.get('tenant_id'):
             data['tenant_id'] = tenant_id
             
-        db_account = models.Account(**data)
-        if hasattr(db_account, 'owner_id') and db_account.owner_id:
-             db_account.owner_id = str(db_account.owner_id) # Ensure string
+        with db_write_lock:
+            try:
+                db_account = models.Account(**data)
+                if hasattr(db_account, 'owner_id') and db_account.owner_id:
+                     db_account.owner_id = str(db_account.owner_id) # Ensure string
 
-        # Anchor the initial balance if provided
-        if db_account.balance is not None:
-             db_account.last_synced_balance = db_account.balance
-             db_account.last_synced_at = timezone.utcnow()
-             if db_account.credit_limit:
-                 db_account.last_synced_limit = db_account.credit_limit
+                # Anchor the initial balance if provided
+                if db_account.balance is not None:
+                     db_account.last_synced_balance = db_account.balance
+                     db_account.last_synced_at = timezone.utcnow()
+                     if db_account.credit_limit:
+                         db_account.last_synced_limit = db_account.credit_limit
 
-        db.add(db_account)
-        db.flush() # Get ID for snapshot
-        
-        # Create initial snapshot
-        if db_account.balance is not None:
-            snapshot = models.BalanceSnapshot(
-                account_id=str(db_account.id),
-                tenant_id=tenant_id,
-                balance=db_account.balance,
-                credit_limit=db_account.credit_limit,
-                timestamp=db_account.last_synced_at,
-                source="INITIAL_CREATION"
-            )
-            db.add(snapshot)
-        db.commit()
-        db.refresh(db_account)
+                db.add(db_account)
+                db.flush() # Get ID for snapshot
+                
+                # Create initial snapshot
+                if db_account.balance is not None:
+                    snapshot = models.BalanceSnapshot(
+                        account_id=str(db_account.id),
+                        tenant_id=tenant_id,
+                        balance=db_account.balance,
+                        credit_limit=db_account.credit_limit,
+                        timestamp=db_account.last_synced_at,
+                        source="INITIAL_CREATION"
+                    )
+                    db.add(snapshot)
+                db.commit()
+                db.refresh(db_account)
+            except Exception:
+                db.rollback()
+                raise
         
         # Trigger Notification
         try:
@@ -129,20 +133,21 @@ class AccountService:
             if field in update_data:
                 del update_data[field]
                 
-        for key, value in update_data.items():
-            if key in ['tenant_id', 'owner_id'] and value:
-                value = str(value)
-            setattr(db_account, key, value)
-        
-        try:
-            db.commit()
-            db.refresh(db_account)
-            return db_account
-        except Exception as e:
-            db.rollback()
-            # DuckDB limitation: Cannot update accounts that have transactions
-            pass
-            raise
+        with db_write_lock:
+            for key, value in update_data.items():
+                if key in ['tenant_id', 'owner_id'] and value:
+                    value = str(value)
+                setattr(db_account, key, value)
+            
+            try:
+                db.commit()
+                db.refresh(db_account)
+                return db_account
+            except Exception as e:
+                db.rollback()
+                # DuckDB limitation: Cannot update accounts that have transactions
+                pass
+                raise
 
     @staticmethod
     def delete_account(db: Session, account_id: str, tenant_id: str) -> bool:
@@ -154,37 +159,47 @@ class AccountService:
         if not db_account:
             return False
             
-        db.delete(db_account)
-        db.commit()
+        with db_write_lock:
+            try:
+                db.delete(db_account)
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+        return True
     @staticmethod
     def override_balance(db: Session, account_id: str, balance: float, timestamp: datetime, tenant_id: str, 
                          credit_limit: Optional[float] = None, source: str = "MANUAL") -> models.Account:
         with db_write_lock:
-            db_account = db.query(models.Account).filter(
-            models.Account.id == account_id,
-            models.Account.tenant_id == tenant_id
-        ).first()
-        
-        if not db_account:
-            raise ValueError("Account not found")
-        
-        # 1. Update Account anchoring
-        db_account.balance = balance
-        db_account.last_synced_balance = balance
-        db_account.last_synced_at = timestamp
-        if credit_limit is not None:
-            db_account.credit_limit = credit_limit
-            db_account.last_synced_limit = credit_limit
-        
-        # 2. Add Snapshot
-        snapshot = models.BalanceSnapshot(
-            account_id=account_id,
-            tenant_id=tenant_id,
-            balance=balance,
-            timestamp=timestamp,
-            source=source
-        )
-        db.add(snapshot)
-        db.commit()
-        db.refresh(db_account)
+            try:
+                db_account = db.query(models.Account).filter(
+                    models.Account.id == account_id,
+                    models.Account.tenant_id == tenant_id
+                ).first()
+                
+                if not db_account:
+                    raise ValueError("Account not found")
+                
+                # 1. Update Account anchoring
+                db_account.balance = balance
+                db_account.last_synced_balance = balance
+                db_account.last_synced_at = timestamp
+                if credit_limit is not None:
+                    db_account.credit_limit = credit_limit
+                    db_account.last_synced_limit = credit_limit
+                
+                # 2. Add Snapshot
+                snapshot = models.BalanceSnapshot(
+                    account_id=account_id,
+                    tenant_id=tenant_id,
+                    balance=balance,
+                    timestamp=timestamp,
+                    source=source
+                )
+                db.add(snapshot)
+                db.commit()
+                db.refresh(db_account)
+            except Exception:
+                db.rollback()
+                raise
         return db_account

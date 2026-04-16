@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+from backend.app.core.database import db_write_lock
 from backend.app.modules.finance import models, schemas
 
 class CategoryService:
@@ -43,11 +44,16 @@ class CategoryService:
                  ("Other", "📦")
             ]
             new_cats = []
-            for name, icon in defaults:
-                c = models.Category(tenant_id=tenant_id, name=name, icon=icon)
-                db.add(c)
-                new_cats.append(c)
-            db.commit()
+            with db_write_lock:
+                try:
+                    for name, icon in defaults:
+                        c = models.Category(tenant_id=tenant_id, name=name, icon=icon)
+                        db.add(c)
+                        new_cats.append(c)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    raise
             return new_cats
         return cats
 
@@ -57,9 +63,14 @@ class CategoryService:
             **category.model_dump(),
             tenant_id=tenant_id
         )
-        db.add(db_cat)
-        db.commit()
-        db.refresh(db_cat)
+        with db_write_lock:
+            try:
+                db.add(db_cat)
+                db.commit()
+                db.refresh(db_cat)
+            except Exception:
+                db.rollback()
+                raise
         return db_cat
 
     @staticmethod
@@ -68,19 +79,28 @@ class CategoryService:
         if not db_cat: return None
         
         data = update.model_dump(exclude_unset=True)
-        for k, v in data.items():
-            setattr(db_cat, k, v)
-            
-        db.commit()
-        db.refresh(db_cat)
+        with db_write_lock:
+            try:
+                for k, v in data.items():
+                    setattr(db_cat, k, v)
+                db.commit()
+                db.refresh(db_cat)
+            except Exception:
+                db.rollback()
+                raise
         return db_cat
 
     @staticmethod
     def delete_category(db: Session, category_id: str, tenant_id: str) -> bool:
         db_cat = db.query(models.Category).filter(models.Category.id == category_id, models.Category.tenant_id == tenant_id).first()
         if not db_cat: return False
-        db.delete(db_cat)
-        db.commit()
+        with db_write_lock:
+            try:
+                db.delete(db_cat)
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
         return True
 
     @staticmethod
@@ -101,34 +121,39 @@ class CategoryService:
     def import_categories(db: Session, categories_data: List[dict], tenant_id: str):
         # First pass: Create all categories
         name_map = {}
-        for c_data in categories_data:
-            existing = db.query(models.Category).filter(
-                models.Category.tenant_id == tenant_id,
-                models.Category.name == c_data["name"]
-            ).first()
-            
-            if not existing:
-                cat = models.Category(
-                    tenant_id=tenant_id,
-                    name=c_data["name"],
-                    icon=c_data.get("icon", "🏷️"),
-                    color=c_data.get("color", "#3B82F6"),
-                    type=c_data.get("type", "expense")
-                )
-                db.add(cat)
-                db.flush() # Get ID
-                name_map[cat.name] = cat
-            else:
-                name_map[existing.name] = existing
-        
-        # Second pass: Link parents
-        for c_data in categories_data:
-            parent_name = c_data.get("parent_name")
-            if parent_name and parent_name in name_map:
-                cat = name_map[c_data["name"]]
-                cat.parent_id = name_map[parent_name].id
-        
-        db.commit()
+        with db_write_lock:
+            try:
+                for c_data in categories_data:
+                    existing = db.query(models.Category).filter(
+                        models.Category.tenant_id == tenant_id,
+                        models.Category.name == c_data["name"]
+                    ).first()
+                    
+                    if not existing:
+                        cat = models.Category(
+                            tenant_id=tenant_id,
+                            name=c_data["name"],
+                            icon=c_data.get("icon", "🏷️"),
+                            color=c_data.get("color", "#3B82F6"),
+                            type=c_data.get("type", "expense")
+                        )
+                        db.add(cat)
+                        db.flush() # Get ID
+                        name_map[cat.name] = cat
+                    else:
+                        name_map[existing.name] = existing
+                
+                # Second pass: Link parents
+                for c_data in categories_data:
+                    parent_name = c_data.get("parent_name")
+                    if parent_name and parent_name in name_map:
+                        cat = name_map[c_data["name"]]
+                        cat.parent_id = name_map[parent_name].id
+                
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
 
     # --- Rules ---
     @staticmethod
@@ -142,9 +167,14 @@ class CategoryService:
             tenant_id=tenant_id
         )
              
-        db.add(db_rule)
-        db.commit()
-        db.refresh(db_rule)
+        with db_write_lock:
+            try:
+                db.add(db_rule)
+                db.commit()
+                db.refresh(db_rule)
+            except Exception:
+                db.rollback()
+                raise
         
         # Manually deserialize keywords for Pydantic response
         db_rule.is_valid = True
@@ -159,8 +189,11 @@ class CategoryService:
         return db_rule
 
     @staticmethod
-    def get_category_rules(db: Session, tenant_id: str) -> List[models.CategoryRule]:
-        rules = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id).order_by(models.CategoryRule.priority.desc()).all()
+    def get_category_rules(db: Session, tenant_id: str, skip: int = 0, limit: int = 50) -> dict:
+        query = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id)
+        total = query.count()
+        rules = query.order_by(models.CategoryRule.priority.desc()).offset(skip).limit(limit).all()
+        
         for r in rules:
              r.is_valid = True
              r.validation_error = None
@@ -177,7 +210,7 @@ class CategoryService:
                  r.is_valid = False
                  r.validation_error = f"Malformed JSON in keywords: {str(e)}"
                  r.keywords = []
-        return rules
+        return {"data": rules, "total": total}
 
     @staticmethod
     def update_category_rule(db: Session, rule_id: str, rule_update: schemas.CategoryRuleUpdate, tenant_id: str) -> Optional[models.CategoryRule]:
@@ -190,14 +223,19 @@ class CategoryService:
             return None
             
         update_data = rule_update.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            if key == 'keywords' and value is not None:
-                setattr(db_rule, key, json.dumps(value))
-            else:
-                setattr(db_rule, key, value)
-                
-        db.commit()
-        db.refresh(db_rule)
+        with db_write_lock:
+            try:
+                for key, value in update_data.items():
+                    if key == 'keywords' and value is not None:
+                        setattr(db_rule, key, json.dumps(value))
+                    else:
+                        setattr(db_rule, key, value)
+                        
+                db.commit()
+                db.refresh(db_rule)
+            except Exception:
+                db.rollback()
+                raise
         
         # Deserialize for response
         db_rule.is_valid = True
@@ -224,8 +262,13 @@ class CategoryService:
         if not db_rule:
             return False
             
-        db.delete(db_rule)
-        db.commit()
+        with db_write_lock:
+            try:
+                db.delete(db_rule)
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
         return True
 
     @staticmethod
@@ -235,8 +278,13 @@ class CategoryService:
             models.IgnoredSuggestion.pattern == pattern
         ).first()
         if not exists:
-            db.add(models.IgnoredSuggestion(tenant_id=tenant_id, pattern=pattern))
-            db.commit()
+            with db_write_lock:
+                try:
+                    db.add(models.IgnoredSuggestion(tenant_id=tenant_id, pattern=pattern))
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    raise
             
     @staticmethod
     def get_rule_suggestions(db: Session, tenant_id: str) -> List[dict]:
@@ -352,34 +400,39 @@ class CategoryService:
 
     @staticmethod
     def import_category_rules(db: Session, rules_data: List[dict], tenant_id: str):
-        for r_data in rules_data:
-            existing = db.query(models.CategoryRule).filter(
-                models.CategoryRule.tenant_id == tenant_id,
-                models.CategoryRule.name == r_data["name"]
-            ).first()
-            
-            keywords = r_data.get("keywords", [])
-            if isinstance(keywords, list):
-                keywords = json.dumps(keywords)
+        with db_write_lock:
+            try:
+                for r_data in rules_data:
+                    existing = db.query(models.CategoryRule).filter(
+                        models.CategoryRule.tenant_id == tenant_id,
+                        models.CategoryRule.name == r_data["name"]
+                    ).first()
+                    
+                    keywords = r_data.get("keywords", [])
+                    if isinstance(keywords, list):
+                        keywords = json.dumps(keywords)
 
-            if not existing:
-                rule = models.CategoryRule(
-                    tenant_id=tenant_id,
-                    name=r_data["name"],
-                    category=r_data["category"],
-                    keywords=keywords,
-                    priority=r_data.get("priority", 0),
-                    exclude_from_reports=r_data.get("exclude_from_reports", False),
-                    is_transfer=r_data.get("is_transfer", False),
-                    to_account_id=r_data.get("to_account_id")
-                )
-                db.add(rule)
-            else:
-                existing.category = r_data["category"]
-                existing.keywords = keywords
-                existing.priority = r_data.get("priority", existing.priority)
-                existing.exclude_from_reports = r_data.get("exclude_from_reports", existing.exclude_from_reports)
-                existing.is_transfer = r_data.get("is_transfer", existing.is_transfer)
-                existing.to_account_id = r_data.get("to_account_id", existing.to_account_id)
-        
-        db.commit()
+                    if not existing:
+                        rule = models.CategoryRule(
+                            tenant_id=tenant_id,
+                            name=r_data["name"],
+                            category=r_data["category"],
+                            keywords=keywords,
+                            priority=r_data.get("priority", 0),
+                            exclude_from_reports=r_data.get("exclude_from_reports", False),
+                            is_transfer=r_data.get("is_transfer", False),
+                            to_account_id=r_data.get("to_account_id")
+                        )
+                        db.add(rule)
+                    else:
+                        existing.category = r_data["category"]
+                        existing.keywords = keywords
+                        existing.priority = r_data.get("priority", existing.priority)
+                        existing.exclude_from_reports = r_data.get("exclude_from_reports", existing.exclude_from_reports)
+                        existing.is_transfer = r_data.get("is_transfer", existing.is_transfer)
+                        existing.to_account_id = r_data.get("to_account_id", existing.to_account_id)
+                
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise

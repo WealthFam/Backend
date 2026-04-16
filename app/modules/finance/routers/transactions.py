@@ -105,7 +105,9 @@ def smart_categorize_transaction(
         str(current_user.tenant_id),
         create_rule=payload.create_rule,
         apply_to_similar=payload.apply_to_similar,
-        exclude_from_reports=payload.exclude_from_reports
+        exclude_from_reports=payload.exclude_from_reports,
+        is_transfer=payload.is_transfer,
+        to_account_id=payload.to_account_id
     )
 
 @router.post("/transactions/rules/{rule_id}/apply-retrospective")

@@ -6,9 +6,8 @@ from backend.app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Global lock for DuckDB writes to prevent "database is locked" errors
-# during concurrent mutations across different threads/tasks.
-db_write_lock = threading.Lock()
+# Global re-entrant lock for DuckDB writes to prevent deadlocks during nested service calls.
+db_write_lock = threading.RLock()
 
 # DuckDB is primarily a synchronous in-process database.
 # We will use the standard synchronous engine.

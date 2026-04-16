@@ -339,6 +339,8 @@ class SmartCategorizeRequest(BaseModel):
     create_rule: bool = False
     apply_to_similar: bool = False
     exclude_from_reports: bool = False
+    is_transfer: Optional[bool] = False
+    to_account_id: Optional[str] = None
 
 class Frequency(str): 
     # Helper for frontend types, though we validated via Enum in models
