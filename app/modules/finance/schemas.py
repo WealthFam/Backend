@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import List, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.app.modules.finance.models import AccountType, TransactionType
 
@@ -144,13 +144,15 @@ class BulkDeleteRequest(BaseModel):
 
 
 class CategoryRuleBase(BaseModel):
-    name: str
-    category: str
-    keywords: List[str]
-    priority: int = 0
-    is_transfer: bool = False
-    to_account_id: Optional[str] = None
-    exclude_from_reports: bool = False
+    model_config = ConfigDict(from_attributes=True, strict=True)
+
+    name: str = Field(description="Human-readable name for the rule")
+    category: str = Field(description="The category to assign if matched")
+    keywords: List[str] = Field(description="List of strings to match against transaction text")
+    priority: int = Field(default=0, description="Execution priority (higher numbers run first)")
+    is_transfer: bool = Field(default=False, description="If true, marks matched transactions as transfers")
+    to_account_id: Optional[str] = Field(default=None, description="Optional destination account for transfers")
+    exclude_from_reports: bool = Field(default=False, description="If true, matched transactions are hidden from reports")
 
     @field_validator('keywords')
     @classmethod
@@ -181,12 +183,14 @@ class CategoryRuleUpdate(BaseModel):
 class CategoryRuleRead(CategoryRuleBase):
     id: UUID
     tenant_id: UUID
-    is_valid: bool = True
-    validation_error: Optional[str] = None
+    is_valid: bool = Field(default=True, description="Indicates if the rule is currently functional")
+    validation_error: Optional[str] = Field(default=None, description="Human-readable reason for validation failure")
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+class CategoryRulePagination(BaseModel):
+    model_config = ConfigDict(strict=True)
+    data: List[CategoryRuleRead]
+    total: int
 
 class RuleSuggestion(BaseModel):
     name: str

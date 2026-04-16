@@ -7,7 +7,6 @@ from typing import List, Optional
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
-logger = logging.getLogger(__name__)
 
 from backend.app.core.database import db_write_lock
 from backend.app.core.timezone import ensure_utc
@@ -17,6 +16,8 @@ from backend.app.modules.finance.services.category_service import CategoryServic
 from backend.app.modules.finance.services.transfer_service import TransferService
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.deduplicator import TransactionDeduplicator
+
+logger = logging.getLogger(__name__)
 
 class TransactionService:
     @staticmethod
@@ -889,6 +890,7 @@ class TransactionService:
             return {"success": True, "affected": affected_count, "rule_created": False}
 
         if create_rule:
+            # Inline import to break circular dependency: AIService -> CategoryService -> TransactionService
             from backend.app.modules.ingestion.ai_service import AIService
             
             # Use heuristic cleaning to get a "generic but unique" keyword (No AI tokens used)

@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
@@ -81,12 +81,14 @@ def create_rule(
 ):
     return CategoryService.create_category_rule(db, rule, str(current_user.tenant_id))
 
-@router.get("/rules", response_model=List[schemas.CategoryRuleRead])
+@router.get("/rules", response_model=schemas.CategoryRulePagination)
 def get_rules(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return CategoryService.get_category_rules(db, str(current_user.tenant_id))
+    return CategoryService.get_category_rules(db, str(current_user.tenant_id), skip=skip, limit=limit)
 
 @router.get("/rules/suggestions", response_model=List[schemas.RuleSuggestion])
 def get_rule_suggestions(
