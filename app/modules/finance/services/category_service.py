@@ -9,6 +9,18 @@ from sqlalchemy import func
 from backend.app.modules.finance import models, schemas
 
 class CategoryService:
+    @staticmethod
+    def _safe_load_keywords(keywords_str):
+        if not keywords_str:
+            return []
+        if not isinstance(keywords_str, str):
+            return keywords_str
+        try:
+            val = json.loads(keywords_str)
+            return val if isinstance(val, list) else []
+        except:
+            return []
+
     # --- Category Management ---
     @staticmethod
     def get_categories(db: Session, tenant_id: str, tree: bool = False) -> List[models.Category]:
@@ -135,10 +147,14 @@ class CategoryService:
         db.refresh(db_rule)
         
         # Manually deserialize keywords for Pydantic response
+        db_rule.is_valid = True
+        db_rule.validation_error = None
         try:
              db_rule.keywords = json.loads(db_rule.keywords)
         except:
              db_rule.keywords = []
+             db_rule.is_valid = False
+             db_rule.validation_error = "Malformed JSON"
              
         return db_rule
 
@@ -146,9 +162,20 @@ class CategoryService:
     def get_category_rules(db: Session, tenant_id: str) -> List[models.CategoryRule]:
         rules = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id).order_by(models.CategoryRule.priority.desc()).all()
         for r in rules:
+             r.is_valid = True
+             r.validation_error = None
              try:
-                 r.keywords = json.loads(r.keywords)
-             except:
+                 keywords = json.loads(r.keywords)
+                 r.keywords = keywords
+                 if not isinstance(keywords, list):
+                     r.is_valid = False
+                     r.validation_error = "Keywords must be a JSON list"
+                 elif len(keywords) == 0:
+                     r.is_valid = False
+                     r.validation_error = "Rule has no keywords"
+             except Exception as e:
+                 r.is_valid = False
+                 r.validation_error = f"Malformed JSON in keywords: {str(e)}"
                  r.keywords = []
         return rules
 
@@ -173,10 +200,17 @@ class CategoryService:
         db.refresh(db_rule)
         
         # Deserialize for response
+        db_rule.is_valid = True
+        db_rule.validation_error = None
         try:
              db_rule.keywords = json.loads(db_rule.keywords)
+             if not isinstance(db_rule.keywords, list) or len(db_rule.keywords) == 0:
+                 db_rule.is_valid = False
+                 db_rule.validation_error = "Rule must have at least one keyword"
         except:
              db_rule.keywords = []
+             db_rule.is_valid = False
+             db_rule.validation_error = "Malformed JSON"
              
         return db_rule
 
@@ -307,7 +341,7 @@ class CategoryService:
             {
                 "name": r.name,
                 "category": r.category,
-                "keywords": json.loads(r.keywords) if isinstance(r.keywords, str) else r.keywords,
+                "keywords": CategoryService._safe_load_keywords(r.keywords),
                 "priority": int(r.priority),
                 "exclude_from_reports": r.exclude_from_reports,
                 "is_transfer": r.is_transfer,

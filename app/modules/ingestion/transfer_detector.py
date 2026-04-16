@@ -23,7 +23,13 @@ class TransferDetector:
         if rules:
             for rule in rules:
                 if not rule.is_transfer: continue
-                keywords = json.loads(rule.keywords)
+                try:
+                    keywords = json.loads(rule.keywords)
+                    if not isinstance(keywords, list):
+                        continue
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                    
                 if any(k.lower() in text for k in keywords):
                     return True, rule.to_account_id
 

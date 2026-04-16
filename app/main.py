@@ -1,6 +1,7 @@
 import logging
 import os
 import asyncio
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from backend.app.api.v1.router import api_router as api_v1_router
 from backend.app.core.config import settings
-from backend.app.core.database import SessionLocal, Base, engine
+from backend.app.core.database import SessionLocal, Base, engine, shutdown_db
 from backend.app.core.exceptions import generic_exception_handler, http_exception_handler
 from backend.app.core.migrations.manager import run_schema_sync
 from backend.app.core.scheduler import start_scheduler, stop_scheduler
@@ -29,9 +30,45 @@ from backend.app.modules.notifications.routers.alerts import router as notificat
 from backend.app.modules.vault.router import router as vault_router
 
 def create_application() -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # --- Startup ---
+        # Set the event loop for the connection manager to enable thread-safe broadcasts
+        manager.set_loop(asyncio.get_event_loop())
+        
+        # 1. Ensure all ORM-defined tables exist (CREATE TABLE IF NOT EXISTS)
+        logger.info("Running Base.metadata.create_all...")
+        Base.metadata.create_all(bind=engine)
+        
+        # 2. Run modular migrations for schema evolution (DuckDB safe)
+        logger.info("Running auto-migrations...")
+        try:
+            run_schema_sync(engine)
+        except Exception as e:
+            logger.error(f"Auto-migration failed: {e}")
+            logger.exception(e)
+            # Fail early if migrations are broken to prevent inconsistent data states
+            raise e
+        
+        # 3. Start Scheduler (Handles both recurring checks and email auto-sync)
+        start_scheduler()
+        
+        yield
+        
+        # --- Shutdown ---
+        logger.info("Shutting down Backend App...")
+        stop_scheduler()
+        
+        # 4. Graceful Database Shutdown (Checkpoint WAL)
+        try:
+            shutdown_db()
+        except Exception as e:
+            logger.error(f"Error during shutdown database checkpoint: {e}")
+
     application = FastAPI(
         title=settings.PROJECT_NAME,
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
+        lifespan=lifespan
     )
 
     # Middleware
@@ -80,30 +117,6 @@ def create_application() -> FastAPI:
     # Standardized API V1 Router (currently includes mobile)
     application.include_router(api_v1_router, prefix=settings.API_V1_STR)
 
-    @application.on_event("startup")
-    async def startup_event():
-        # Set the event loop for the connection manager to enable thread-safe broadcasts
-        manager.set_loop(asyncio.get_event_loop())
-        
-        # 1. Ensure all ORM-defined tables exist (CREATE TABLE IF NOT EXISTS)
-        logger.info("Running Base.metadata.create_all...")
-        Base.metadata.create_all(bind=engine)
-        
-        # 2. Run modular migrations for schema evolution (DuckDB safe)
-        logger.info("Running auto-migrations...")
-        try:
-            run_schema_sync(engine)
-        except Exception as e:
-            logger.error(f"Auto-migration failed: {e}")
-            logger.exception(e)
-            # Fail early if migrations are broken to prevent inconsistent data states
-            raise e
-        
-        # 3. Start Scheduler (Handles both recurring checks and email auto-sync)
-        start_scheduler()
-    @application.on_event("shutdown")
-    async def stop_scheduler_event():
-        stop_scheduler()
 
     return application
 

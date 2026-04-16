@@ -889,17 +889,27 @@ class TransactionService:
             return {"success": True, "affected": affected_count, "rule_created": False}
 
         if create_rule:
+            from backend.app.modules.ingestion.ai_service import AIService
+            
+            # Use heuristic cleaning to get a "generic but unique" keyword (No AI tokens used)
+            clean_pattern = AIService.heuristic_clean_merchant(pattern)
+            
+            # Skip auto-creation if the result is too generic or invalid
+            if clean_pattern == "Unknown" or len(clean_pattern) < 3:
+                db.commit()
+                return {"success": True, "affected": affected_count, "rule_created": False}
+
             existing_rule = db.query(models.CategoryRule).filter(
                 models.CategoryRule.tenant_id == tenant_id,
-                models.CategoryRule.name == f"Auto: {pattern}"
+                models.CategoryRule.name == f"Auto: {clean_pattern}"
             ).first()
             
             if not existing_rule:
                 new_rule = models.CategoryRule(
                     tenant_id=tenant_id,
-                    name=f"Auto: {pattern}",
+                    name=f"Auto: {clean_pattern}",
                     category=category,
-                    keywords=json.dumps([pattern]),
+                    keywords=json.dumps([clean_pattern]),
                     priority=1,
                     exclude_from_reports=exclude_from_reports
                 )

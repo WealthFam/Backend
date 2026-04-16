@@ -6,7 +6,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
 from backend.app.core import timezone
-from backend.app.core.database import SessionLocal, db_write_lock
+from backend.app.core.database import SessionLocal, db_write_lock, force_checkpoint
 from backend.app.modules.finance import models
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.finance.services.recurring_service import RecurringService
@@ -181,6 +181,19 @@ def prune_expired_tokens():
     finally:
         db.close()
 
+def periodic_checkpoint_job():
+    """
+    Periodic job to force a DuckDB checkpoint.
+    Ensures that even if the 2MB threshold is not met, 
+    data is persisted to the main file every 30 minutes.
+    """
+    with db_write_lock:
+        logger.info("[Maintenance] Starting periodic database checkpoint...")
+        if force_checkpoint():
+            logger.info("[Maintenance] Periodic database checkpoint complete.")
+        else:
+            logger.error("[Maintenance] Periodic database checkpoint failed.")
+
 def start_scheduler():
     # Run daily at 00:01 UTC (or server time)
     trigger = CronTrigger(hour=0, minute=1)
@@ -204,6 +217,9 @@ def start_scheduler():
     
     # NEW: Run token pruning daily at 03:00 UTC
     scheduler.add_job(prune_expired_tokens, CronTrigger(hour=3, minute=0), id="prune_expired_tokens", replace_existing=True)
+    
+    # NEW: Frequent DuckDB Checkpoints (every 30 minutes)
+    scheduler.add_job(periodic_checkpoint_job, 'interval', minutes=30, id="periodic_checkpoint_job", replace_existing=True)
     
     scheduler.start()
     logger.info("APScheduler started.")

@@ -533,17 +533,38 @@ class AIService:
     @staticmethod
     def heuristic_clean_merchant(description: str) -> str:
         if not description: return "Unknown"
-        # Remove UPI/ prefixes
-        clean = re.sub(r'^UPI/', '', description, flags=re.I)
-        # Remove everything after the second / if it exists
-        parts = clean.split('/')
-        if len(parts) > 1:
-            clean = parts[0]
-        # Remove common Junk
-        clean = re.sub(r'[0-9]{5,}', '', clean) # long numbers
+        
+        # 1. Remove common noise patterns
+        # Handle "Vpa Q12345..." and similar UPI prefixes
+        clean = re.sub(r'^(UPI/|VPA\s*Q[0-9]{3,}\s*|IMPS/|NEFT/|RTGS/|TRANSFER\s+TO\s+|TRANSFER\s+FROM\s+)', '', description, flags=re.I)
+        
+        # 2. Handle common bank formats like "NAME/TXN123/BANK"
+        if '/' in clean:
+            parts = clean.split('/')
+            # Use the longest alphabetical part or first part if alphabetical
+            valid_parts = [p.strip() for p in parts if len(p.strip()) >= 3 and not p.strip().isdigit()]
+            if valid_parts:
+                clean = valid_parts[0]
+            else:
+                clean = parts[0]
+
+        # 3. Remove common Junk (trailing IDs, stars, long numbers)
+        clean = re.sub(r'[0-9]{8,}', '', clean) # long numbers
+        clean = re.sub(r'\s+[0-9]{4,}\s+', ' ', clean) # mid-string numbers
         clean = re.sub(r'\*.*', '', clean) # remove content after *
-        # Clean special chars but keep space
-        clean = re.sub(r'[^a-zA-Z\s]', ' ', clean)
-        # Trim and Title
+        
+        # 4. Final string cleanup
+        clean = re.sub(r'[^a-zA-Z0-9\s]', ' ', clean)
         clean = ' '.join(clean.split()).title()
-        return clean or "Unknown"
+        
+        # Minimum characters check
+        if len(clean) < 3:
+            # Fallback to original description but stripped of special chars if it's too aggressive
+            alt = re.sub(r'[^a-zA-Z0-9\s]', ' ', description)
+            alt = ' '.join(alt.split()).title()
+            # If fallback is still purely numeric or too short, return Unknown
+            if len(alt) < 3 or alt.replace(' ', '').isdigit():
+                return "Unknown"
+            return alt
+            
+        return clean

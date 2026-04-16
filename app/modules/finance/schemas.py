@@ -147,11 +147,24 @@ class CategoryRuleBase(BaseModel):
     name: str
     category: str
     keywords: List[str]
-    # only_uncategorized removed as it's not in DB model
     priority: int = 0
     is_transfer: bool = False
     to_account_id: Optional[str] = None
     exclude_from_reports: bool = False
+
+    @field_validator('keywords')
+    @classmethod
+    def validate_keywords(cls, v):
+        if not v:
+            raise ValueError("Keywords list cannot be empty")
+        
+        cleaned = []
+        for kw in v:
+            val = kw.strip()
+            if len(val) < 3:
+                raise ValueError(f"Keyword '{val}' is too short (min 3 characters)")
+            cleaned.append(val)
+        return cleaned
 
 class CategoryRuleCreate(CategoryRuleBase):
     pass
@@ -168,6 +181,8 @@ class CategoryRuleUpdate(BaseModel):
 class CategoryRuleRead(CategoryRuleBase):
     id: UUID
     tenant_id: UUID
+    is_valid: bool = True
+    validation_error: Optional[str] = None
     created_at: datetime
 
     class Config:
