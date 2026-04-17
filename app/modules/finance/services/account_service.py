@@ -193,6 +193,7 @@ class AccountService:
                     account_id=account_id,
                     tenant_id=tenant_id,
                     balance=balance,
+                    credit_limit=credit_limit,
                     timestamp=timestamp,
                     source=source
                 )
