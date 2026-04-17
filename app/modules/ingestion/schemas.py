@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 class IngestionBase(BaseModel):
-    model_config = ConfigDict(strict=True, from_attributes=True)
+    model_config = ConfigDict(strict=False, from_attributes=True)
 
 class SmsPayload(IngestionBase):
     sender: str
