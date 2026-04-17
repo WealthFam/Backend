@@ -476,12 +476,16 @@ class TransactionService:
                                  db.delete(old_linked)
                         
                         import uuid
+                        target_txn_id = str(uuid.uuid4())
+                        target_amount = -db_txn.amount if 'amount' not in update_data else -update_data['amount']
+                        target_date = db_txn.date if 'date' not in update_data else update_data['date']
+                        
                         target_txn = models.Transaction(
-                            id=str(uuid.uuid4()),
+                            id=target_txn_id,
                             tenant_id=tenant_id,
                             account_id=to_account_id,
-                            amount=-db_txn.amount if 'amount' not in update_data else -update_data['amount'],
-                            date=db_txn.date if 'date' not in update_data else update_data['date'],
+                            amount=target_amount,
+                            date=target_date,
                             description=f"Transfer from {db_txn.account_id} (Linked)",
                             recipient=db_txn.recipient,
                             category="Transfer",
@@ -494,6 +498,24 @@ class TransactionService:
                         db_txn.linked_transaction_id = target_txn.id
                         db_txn.category = "Transfer"
                         update_data['category'] = "Transfer"
+
+                        # UPDATE TARGET ACCOUNT BALANCE
+                        target_acc = db.query(models.Account).filter(models.Account.id == to_account_id).first()
+                        if target_acc:
+                            from backend.app.core import timezone
+                            t_anchor = timezone.ensure_utc(target_acc.last_synced_at)
+                            t_txn_date = timezone.ensure_utc(target_date)
+                            if not t_anchor or t_txn_date > t_anchor:
+                                t_bal_change = 0
+                                if target_acc.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                                    t_bal_change = -target_amount
+                                else:
+                                    t_bal_change = target_amount
+                                
+                                if t_bal_change != 0:
+                                    db.query(models.Account).filter(models.Account.id == to_account_id).update({
+                                        "balance": models.Account.balance + t_bal_change
+                                    })
         
                 elif is_transfer_update is False:
                     db_txn.is_transfer = False
