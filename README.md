@@ -2,10 +2,10 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-2.2.15-4338ca?style=for-the-badge)](https://github.com/WealthFam/backend)
+[![Version](https://img.shields.io/badge/Version-2.2.15-4338ca?style=for-the-badge)](https://github.com/WealthFam/Backend)
 [![Framework](https://img.shields.io/badge/FastAPI-0.109+-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Database](https://img.shields.io/badge/DuckDB-Serverless-FFF000?style=for-the-badge&logo=duckdb&logoColor=black)](https://duckdb.org/)
-[![Build Status](https://github.com/WealthFam/backend/actions/workflows/docker-build.yml/badge.svg)](https://github.com/WealthFam/backend/actions)
+[![Build Status](https://github.com/WealthFam/Backend/actions/workflows/docker-build.yml/badge.svg?branch=master)](https://github.com/WealthFam/Backend/actions)
 [![Docker Hub](https://img.shields.io/docker/v/wglabz/wealthfam-backend?logo=docker&style=for-the-badge&color=0db7ed)](https://hub.docker.com/r/wglabz/wealthfam-backend)
 [![Docs](https://img.shields.io/badge/Docs-Technical_Hub-e11d48?style=for-the-badge)](https://wealthfam.github.io/docs)
 
