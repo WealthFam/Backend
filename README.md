@@ -5,8 +5,9 @@
 [![Version](https://img.shields.io/badge/Version-2.2.15-4338ca?style=for-the-badge)](https://github.com/WealthFam/backend)
 [![Framework](https://img.shields.io/badge/FastAPI-0.109+-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Database](https://img.shields.io/badge/DuckDB-Serverless-FFF000?style=for-the-badge&logo=duckdb&logoColor=black)](https://duckdb.org/)
-[![Status](https://img.shields.io/badge/Docs-Technical_Hub-e11d48?style=for-the-badge)](https://wealthfam.github.io/docs)
-[![Docker Hub](https://img.shields.io/badge/Docker_Hub-wglabz/wealthfam--backend-blue?style=for-the-badge&logo=docker)](https://hub.docker.com/r/wglabz/wealthfam-backend)
+[![Build Status](https://github.com/WealthFam/backend/actions/workflows/docker-build.yml/badge.svg)](https://github.com/WealthFam/backend/actions)
+[![Docker Hub](https://img.shields.io/docker/v/wglabz/wealthfam-backend?logo=docker&style=for-the-badge&color=0db7ed)](https://hub.docker.com/r/wglabz/wealthfam-backend)
+[![Docs](https://img.shields.io/badge/Docs-Technical_Hub-e11d48?style=for-the-badge)](https://wealthfam.github.io/docs)
 
 **High-performance REST API for financial orchestration and AI intelligence.**  
 *Built for speed, security, and local-first data privacy.*
@@ -24,7 +25,7 @@ The WealthFam Backend is the central nervous system of the ecosystem. It manages
 ## 🛠️ Technical Stack at a Glance
 
 For a detailed breakdown of our technical choices, see:  
-[**📖 Deep Dive: The WealthFam Stack**](../Docs/technical/stack.md)
+[**📖 Deep Dive: The WealthFam Stack**](https://wealthfam.github.io/docs/technical/stack)
 
 | Category | Technology |
 | :--- | :--- |
@@ -39,8 +40,8 @@ For a detailed breakdown of our technical choices, see:
 
 The backend follows a modular service pattern, ensuring that parsing, persistence, and presentation are strictly decoupled.
 
-- **[🏛️ System Overview](../Docs/technical/architecture/system_overview.md)**
-- **[🔄 Ingestion Logic](../Docs/technical/architecture/ingestion.md)**
+- **[🏛️ System Overview](https://wealthfam.github.io/docs/technical/architecture/system_overview)**
+- **[🔄 Ingestion Logic](https://wealthfam.github.io/docs/technical/architecture/ingestion)**
 
 ---
 
@@ -48,9 +49,9 @@ The backend follows a modular service pattern, ensuring that parsing, persistenc
 
 To run the backend locally or contribute to the core services:
 
-[**🛠️ Master Setup Guide**](../Docs/technical/getting_started.md)
+[**🛠️ Master Setup Guide**](https://wealthfam.github.io/docs/technical/getting_started)
 
 ---
 <div align="center">
-*Maintained by the WealthFam Backend Engineering Team*
+*Made with ❤️ by WGLabz*
 </div>
