@@ -143,6 +143,17 @@ def get_match_preview(
         db, payload.keywords, str(current_user.tenant_id), skip=skip, limit=limit, only_uncategorized=payload.only_uncategorized
     )
 
+@router.delete("/transactions/{transaction_id}")
+def delete_transaction(
+    transaction_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    count = TransactionService.bulk_delete_transactions(db, [transaction_id], str(current_user.tenant_id))
+    if count == 0:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return {"status": "success"}
+
 @router.post("/transactions/bulk-rename")
 def bulk_rename_transactions(
     payload: schemas.BulkRenameRequest,

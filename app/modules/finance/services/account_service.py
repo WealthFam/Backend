@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.database import db_write_lock
 from backend.app.core import timezone
 from backend.app.modules.finance import models, schemas
+from backend.app.modules.ingestion import models as ingestion_models
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +79,9 @@ class AccountService:
         if owner_id:
             query = query.filter((models.Account.owner_id == owner_id) | (models.Account.owner_id == None))
         
-        # Role-based restriction: Kids can't see Investments or Credit Cards
+        # Role-based restriction: Kids can't see Investments, Credit Cards, or Loans
         if user_role == "CHILD":
-            query = query.filter(models.Account.type.notin_(["INVESTMENT", "CREDIT"]))
+            query = query.filter(models.Account.type.notin_(["INVESTMENT", "CREDIT_CARD", "LOAN"]))
             
         accounts = query.all()
         
@@ -155,18 +156,96 @@ class AccountService:
             models.Account.id == account_id,
             models.Account.tenant_id == tenant_id
         ).first()
-        
+
         if not db_account:
             return False
+
+        # ── USER Safeguard: Check for higher-level dependencies ─────────────────────
+        
+        # 1. Check if account is used in any Investment Goals
+        linked_goal = db.query(models.InvestmentGoal.name)\
+            .join(models.GoalAsset, models.GoalAsset.goal_id == models.InvestmentGoal.id)\
+            .filter(models.GoalAsset.linked_account_id == account_id)\
+            .first()
             
+        if linked_goal:
+            raise ValueError(
+                f"Cannot delete account '{db_account.name}' because it is linked to investment goal '{linked_goal[0]}'. "
+                "Please remove the account from the goal first."
+            )
+
+        # 2. Check if account has an associated Loan (is a loan account itself)
+        if db_account.type == models.AccountType.LOAN or db_account.loan_details:
+             raise ValueError(
+                f"Cannot delete account '{db_account.name}' because it contains an active loan. "
+                "Please close or delete the loan details first."
+            )
+
+        # 3. Check if account is used as an EMI source for other loans
+        linked_loan_id = db.query(models.Loan.id).filter(models.Loan.bank_account_id == account_id).first()
+        if linked_loan_id:
+            raise ValueError(
+                f"Cannot delete account '{db_account.name}' because it is used for EMI deductions for a loan. "
+                "Please update the loan's bank account first."
+            )
+
         with db_write_lock:
             try:
-                db.delete(db_account)
+                # ── Phase 1: Explicit Cleanup of children + COMMIT ───────────────────
+                # This satisfy DuckDB's requirement that FK references must be 
+                # committed-gone before the parent record is deleted.
+
+                # 1. Nullify linked_transaction_id on transfer twins in OTHER accounts
+                db.execute(
+                    models.Transaction.__table__.update()
+                    .where(models.Transaction.linked_transaction_id.in_(
+                        db.query(models.Transaction.id).filter(models.Transaction.account_id == account_id)
+                    ))
+                    .values(linked_transaction_id=None)
+                )
+
+                # 2. Delete transactions
+                db.query(models.Transaction).filter(
+                    models.Transaction.account_id == account_id
+                ).delete(synchronize_session='fetch')
+
+                # 3. Delete balance snapshots (FK to accounts.id)
+                db.query(models.BalanceSnapshot).filter(
+                    models.BalanceSnapshot.account_id == account_id
+                ).delete(synchronize_session='fetch')
+
+                # 4. Delete pending and recurring transactions
+                db.query(ingestion_models.PendingTransaction).filter(
+                    ingestion_models.PendingTransaction.account_id == account_id
+                ).delete(synchronize_session='fetch')
+
+                db.query(models.RecurringTransaction).filter(
+                    models.RecurringTransaction.account_id == account_id
+                ).delete(synchronize_session='fetch')
+
+                # Commit Phase 1: DuckDB now sees children as definitively GONE.
                 db.commit()
-            except Exception:
+
+                # ── Phase 2: Parent Deletion + COMMIT ────────────────────────────────
+                # Re-fetch the account to get a clean ORM object for the second commit.
+                db_account = db.query(models.Account).filter(
+                    models.Account.id == account_id,
+                    models.Account.tenant_id == tenant_id
+                ).first()
+                
+                if db_account:
+                    db.delete(db_account)
+                    db.commit()
+
+            except Exception as e:
                 db.rollback()
-                raise
+                logger.error(f"Failed to delete account {account_id}: {e}")
+                raise e
+
         return True
+
+
+
     @staticmethod
     def override_balance(db: Session, account_id: str, balance: float, timestamp: datetime, tenant_id: str, 
                          credit_limit: Optional[float] = None, source: str = "MANUAL") -> models.Account:

@@ -11,6 +11,7 @@ from backend.app.modules.finance.services.budget_service import BudgetService
 router = APIRouter()
 
 @router.get("/budgets", response_model=List[schemas.CategoryBudgetProgress])
+@router.get("/budgets/progress", response_model=List[schemas.CategoryBudgetProgress])
 def get_budgets(
     year: int = None,
     month: int = None,

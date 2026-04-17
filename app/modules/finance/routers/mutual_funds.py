@@ -397,3 +397,13 @@ def trigger_cas_email_import(
         txn['import_source'] = 'EMAIL'
         
     return confirm_import(mapped_txns, user_id, current_user, db)
+
+@router.get("/analytics/timeline")
+async def get_portfolio_timeline(
+    days: int = 30,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get historical performance trend for the portfolio"""
+    # Baseline implementation
+    return {"trend": [], "days": days}

@@ -198,8 +198,8 @@ class BudgetService:
         budget_map = {b.category: b for b in budgets}
         results = []
         
-        # Process all categories
-        active_cat_names = set(cat_map.keys()) | set(raw_spending_map.keys())
+        # Process all categories (Include Master Cats, Cats with spending, AND Cats with budgets)
+        active_cat_names = set(cat_map.keys()) | set(raw_spending_map.keys()) | set(budget_map.keys())
         active_cat_names.discard('OVERALL')
         
         for name in sorted(list(active_cat_names)):

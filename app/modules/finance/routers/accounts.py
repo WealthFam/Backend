@@ -1,12 +1,17 @@
+import logging
 from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.finance import schemas
 from backend.app.modules.finance.services.account_service import AccountService
 from backend.app.modules.finance.services.transaction_service import TransactionService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -55,6 +60,9 @@ def delete_account(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if "CHILD" in str(current_user.role).upper():
+        raise HTTPException(status_code=403, detail="Children are not allowed to delete accounts")
+
     success = AccountService.delete_account(
         db, account_id, str(current_user.tenant_id)
     )

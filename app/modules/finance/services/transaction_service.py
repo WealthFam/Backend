@@ -1145,7 +1145,18 @@ class TransactionService:
             )
         )
         
+        txns = query.all()
+        if not txns:
+            return 0
+            
         with db_write_lock:
-                 logger.error(f"Failed to sync alias to parser: {e}")
+            try:
+                for txn in txns:
+                    txn.recipient = new_name
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Failed to bulk rename transactions: {e}")
+                raise e
                  
         return len(txns)
