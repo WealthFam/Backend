@@ -59,5 +59,8 @@ def apply_patches(connection):
     utils.safe_add_column(connection, "mutual_fund_orders", "transaction_hash", "VARCHAR")
     utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmark_value", "DOUBLE")
 
+    # [2026-04-16] Add credit_limit to balance snapshots for better anchoring
+    utils.safe_add_column(connection, "balance_snapshots", "credit_limit", "DECIMAL(15, 2)")
+
     # TODO: Add schema evolution logic here as the app grows.
     pass

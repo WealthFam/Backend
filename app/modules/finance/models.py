@@ -23,6 +23,7 @@ class BalanceSnapshot(Base):
     account_id = Column(String, ForeignKey("accounts.id"), nullable=False, index=True)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     balance = Column(Numeric(15, 2), nullable=False)
+    credit_limit = Column(Numeric(15, 2), nullable=True)
     timestamp = Column(UTCDateTime, default=timezone.utcnow, nullable=False)
     source = Column(String, default="MANUAL") # SMS, EMAIL, MANUAL, CSV
     
