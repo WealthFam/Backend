@@ -21,7 +21,7 @@ class AccountBase(BaseModel):
     import_config: Optional[str] = None
 
 class AccountCreate(AccountBase):
-    owner_id: Optional[UUID] = None
+    owner_id: Optional[Union[UUID, str]] = None
 
     tenant_id: Optional[Union[UUID, str]] = None # Allow specifying a tenant
 
@@ -31,7 +31,7 @@ class AccountUpdate(BaseModel):
     currency: Optional[str] = None
     account_mask: Optional[str] = None
 
-    owner_id: Optional[UUID] = None
+    owner_id: Optional[Union[UUID, str]] = None
     balance: Optional[Decimal] = None
     credit_limit: Optional[Decimal] = None
     billing_day: Optional[int] = None
@@ -83,7 +83,7 @@ class TransactionBase(BaseModel):
         return v or []
 
 class TransactionCreate(TransactionBase):
-    account_id: UUID
+    account_id: Union[UUID, str]
     external_id: Optional[str] = None
     source: Optional[str] = "MANUAL"
     is_transfer: bool = False
@@ -97,7 +97,7 @@ class TransactionUpdate(BaseModel):
     tags: Optional[List[str]] = None
     date: Optional[datetime] = None
     amount: Optional[Decimal] = None
-    account_id: Optional[UUID] = None
+    account_id: Optional[Union[UUID, str]] = None
     is_transfer: Optional[bool] = None
     to_account_id: Optional[str] = None
     linked_transaction_id: Optional[str] = None
@@ -124,7 +124,7 @@ class TransactionRead(TransactionBase):
     source: Optional[str] = "MANUAL"
     external_id: Optional[str] = None
     content_hash: Optional[str] = None
-    transfer_account_id: Optional[UUID] = None
+    transfer_account_id: Optional[Union[UUID, str]] = None
     exclude_from_reports: bool = False
     is_emi: bool = False
     loan_id: Optional[str] = None
@@ -182,8 +182,8 @@ class CategoryRuleUpdate(BaseModel):
     exclude_from_reports: Optional[bool] = None
 
 class CategoryRuleRead(CategoryRuleBase):
-    id: UUID
-    tenant_id: UUID
+    id: Union[UUID, str]
+    tenant_id: Union[UUID, str]
     is_valid: bool = Field(default=True, description="Indicates if the rule is currently functional")
     validation_error: Optional[str] = Field(default=None, description="Human-readable reason for validation failure")
     created_at: datetime
