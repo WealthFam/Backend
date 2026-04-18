@@ -670,7 +670,7 @@ class TransactionService:
             query = query.outerjoin(finance_models.Account, ingestion_models.PendingTransaction.account_id == finance_models.Account.id)\
                          .filter(or_(finance_models.Account.owner_id == user_id, finance_models.Account.owner_id == None))
         
-        # Filter by source (SMS, EMAIL, etc.) with support for forensic labels
+        # Filter by source (SMS, EMAIL, etc.) with support for precision labels
         if source:
             if source == 'SMS':
                 query = query.filter(ingestion_models.PendingTransaction.source.like('SMS%'))

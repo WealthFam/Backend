@@ -172,11 +172,8 @@ def generate_insights(
     if not summary_data:
         raise HTTPException(status_code=400, detail="Missing summary_data")
     
-    try:
-        insights = AIService.generate_summary_insights(db, str(current_user.tenant_id), summary_data)
-        return {"insights": insights}
-    except Exception as e:
-        raise handle_ai_error(e)
+    insights = AIService.generate_summary_insights(db, str(current_user.tenant_id), summary_data)
+    return {"insights": insights}
 
 @router.get("/aliases")
 def get_merchant_aliases(

@@ -1,7 +1,22 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import List, Optional, Any, Dict
+from pydantic import BaseModel, ConfigDict, Field, field_validator, BeforeValidator
+from typing import List, Optional, Any, Dict, Annotated
 from datetime import datetime
 from decimal import Decimal
+
+# --- Ingestion Coercion Utilities ---
+# Ensures high-precision timestamps from mobile devices are parsed 
+# correctly even when strict validation is enabled.
+
+def coerce_datetime(v: Any) -> Any:
+    """Proactively convert ISO strings from mobile payloads into datetime objects."""
+    if v is None: return None
+    if isinstance(v, str):
+        try:
+            # Handle standard ISO format and 'Z' suffix
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except:
+            return v
+    return v
 
 class IngestionBase(BaseModel):
     model_config = ConfigDict(strict=False, from_attributes=True)
@@ -12,13 +27,13 @@ class SmsPayload(IngestionBase):
     device_id: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    received_at: Optional[datetime] = None
+    received_at: Optional[Annotated[datetime, BeforeValidator(coerce_datetime)]] = None
 
 class EmailPayload(IngestionBase):
     subject: str
     body: str
     sender: str = "Manual Input"
-    received_at: Optional[datetime] = None
+    received_at: Optional[Annotated[datetime, BeforeValidator(coerce_datetime)]] = None
 
 class EmailSyncPayload(IngestionBase):
     imap_server: str = "imap.gmail.com"

@@ -11,7 +11,7 @@ class AlertSchema(BaseModel):
     created_at: datetime
     is_read: bool
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class AlertList(BaseModel):
     data: List[AlertSchema]

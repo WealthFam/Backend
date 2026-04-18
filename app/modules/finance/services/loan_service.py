@@ -1,9 +1,20 @@
+from decimal import Decimal
+from typing import Any, Dict, Optional
+
 from sqlalchemy.orm import Session
-from backend.app.modules.finance.models import Account, AccountType, Loan, Transaction, TransactionType
+
+from backend.app.modules.finance.models import (
+    Account,
+    AccountType,
+    Loan,
+    Transaction,
+    TransactionType,
+)
 from backend.app.modules.finance import models, schemas
 from backend.app.core import timezone
 import uuid
 from dateutil.relativedelta import relativedelta
+from backend.app.modules.finance.utils import financial_math
 
 class LoanService:
     def create_loan(self, db: Session, loan_data: schemas.LoanCreate, tenant_id: str, owner_id: str = None) -> schemas.LoanRead:
@@ -133,6 +144,51 @@ class LoanService:
             **base_read.dict(),
             amortization_schedule=schedule
         )
+
+    def get_prepayment_simulations(
+        self, db: Session, loan_id: str, tenant_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Runs strategic prepayment simulations against the current outstanding balance."""
+        loan = db.query(Loan).filter(Loan.id == loan_id, Loan.tenant_id == tenant_id).first()
+        if not loan:
+            return None
+
+        account = db.query(Account).filter(Account.id == loan.account_id).first()
+        return financial_math.run_loan_scenarios(
+            principal=Decimal(str(account.balance)),
+            annual_interest_rate=Decimal(str(loan.interest_rate)),
+            emi_amount=Decimal(str(loan.emi_amount)),
+        )
+
+    def run_custom_simulation(
+        self, db: Session, loan_id: str, tenant_id: str,
+        extra_monthly: Decimal, one_time: Decimal
+    ) -> Optional[Dict[str, Any]]:
+        """Runs a custom prepayment simulation and calculates savings."""
+        loan = db.query(Loan).filter(Loan.id == loan_id, Loan.tenant_id == tenant_id).first()
+        if not loan:
+            return None
+
+        account = db.query(Account).filter(Account.id == loan.account_id).first()
+        principal = Decimal(str(account.balance))
+        rate = Decimal(str(loan.interest_rate))
+        emi = Decimal(str(loan.emi_amount))
+
+        standard = financial_math.simulate_loan_repayment(principal, rate, emi)
+        custom = financial_math.simulate_loan_repayment(
+            principal, rate, emi,
+            extra_monthly_payment=extra_monthly,
+            one_time_prepayment=one_time
+        )
+
+        return {
+            "months_saved": standard["months"] - custom["months"],
+            "interest_saved": round(Decimal(str(standard["total_interest"])) - Decimal(str(custom["total_interest"])), 2),
+            "new_total_interest": Decimal(str(custom["total_interest"])),
+            "new_months": custom["months"],
+            "custom_schedule": custom["schedule"],
+            "standard_schedule": standard["schedule"]
+        }
 
     def _map_to_read_schema(self, loan: Loan, account: Account) -> schemas.LoanRead:
         outstanding = account.balance

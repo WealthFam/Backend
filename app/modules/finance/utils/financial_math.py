@@ -1,5 +1,6 @@
 from datetime import datetime
-from typing import List, Tuple
+from decimal import Decimal
+from typing import Any, Dict, List, Tuple
 
 def xirr(cash_flows: List[Tuple[datetime, float]], guess: float = 0.1) -> float:
     """
@@ -139,3 +140,116 @@ def add_months(source_date, months: int):
     """Add months to a date."""
     from dateutil.relativedelta import relativedelta
     return source_date + relativedelta(months=months)
+
+
+def simulate_loan_repayment(
+    principal: Decimal,
+    annual_interest_rate: Decimal,
+    emi_amount: Decimal,
+    extra_monthly_payment: Decimal = Decimal("0"),
+    one_time_prepayment: Decimal = Decimal("0")
+) -> Dict[str, Any]:
+    """
+    Simulates a single loan repayment path and returns summary statistics.
+
+    Converts Decimal inputs to float internally for iterative performance;
+    monetary outputs are rounded to 2 decimal places.
+    """
+    balance = float(principal - one_time_prepayment)
+    if balance < 0:
+        balance = 0.0
+
+    monthly_rate = float(annual_interest_rate) / 100 / 12
+    effective_payment = float(emi_amount + extra_monthly_payment)
+    total_interest = 0.0
+    months = 0
+    schedule = []
+
+    # Safety cap: prevent infinite loops when payment cannot cover interest
+    max_months = 600
+
+    while balance > 0 and months < max_months:
+        months += 1
+        interest = balance * monthly_rate
+        total_interest += interest
+        principal_part = effective_payment - interest
+
+        if principal_part <= 0:
+            return {"total_interest": float("inf"), "months": max_months, "is_viable": False, "schedule": []}
+
+        balance -= principal_part
+        if balance < 0:
+            balance = 0.0
+        
+        schedule.append({
+            "month": months,
+            "balance": round(balance, 2),
+            "interest_payment": round(interest, 2),
+            "principal_payment": round(principal_part, 2)
+        })
+
+    return {
+        "total_interest": round(total_interest, 2),
+        "months": months,
+        "is_viable": True,
+        "schedule": schedule
+    }
+
+
+def run_loan_scenarios(
+    principal: Decimal,
+    annual_interest_rate: Decimal,
+    emi_amount: Decimal,
+) -> Dict[str, Any]:
+    """Runs three strategic prepayment scenarios against the standard baseline."""
+    standard = simulate_loan_repayment(principal, annual_interest_rate, emi_amount)
+
+    aggressive = simulate_loan_repayment(
+        principal, annual_interest_rate, emi_amount,
+        extra_monthly_payment=emi_amount * Decimal("0.1"),
+    )
+    bulk = simulate_loan_repayment(
+        principal, annual_interest_rate, emi_amount,
+        one_time_prepayment=principal * Decimal("0.1"),
+    )
+    anniversary = simulate_loan_repayment(
+        principal, annual_interest_rate, emi_amount,
+        extra_monthly_payment=emi_amount / Decimal("12"),
+    )
+
+    emi_float = float(emi_amount)
+    principal_float = float(principal)
+
+    return {
+        "standard": standard,
+        "scenarios": [
+            {
+                "name": "Aggressive (+10% EMI)",
+                "description": f"Increasing your EMI by {round(emi_float * 0.1, 0):,.0f}",
+                "interest_saved": round(
+                    standard["total_interest"] - aggressive["total_interest"], 2
+                ),
+                "months_saved": standard["months"] - aggressive["months"],
+                "total_interest": aggressive["total_interest"],
+                "months": aggressive["months"],
+            },
+            {
+                "name": "Strategic Bulk (10% Principal)",
+                "description": f"One-time prepayment of {round(principal_float * 0.1, 0):,.0f}",
+                "interest_saved": round(standard["total_interest"] - bulk["total_interest"], 2),
+                "months_saved": standard["months"] - bulk["months"],
+                "total_interest": bulk["total_interest"],
+                "months": bulk["months"],
+            },
+            {
+                "name": "Anniversary Boost (1 Extra EMI/Year)",
+                "description": "Paying one extra EMI every year (distributed monthly)",
+                "interest_saved": round(
+                    standard["total_interest"] - anniversary["total_interest"], 2
+                ),
+                "months_saved": standard["months"] - anniversary["months"],
+                "total_interest": anniversary["total_interest"],
+                "months": anniversary["months"],
+            },
+        ],
+    }

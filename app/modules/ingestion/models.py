@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Numeric
+from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Numeric, Integer
 from sqlalchemy.orm import relationship
 from backend.app.core.database import Base
 from backend.app.core import timezone
@@ -31,7 +31,7 @@ class EmailSyncLog(Base):
     started_at = Column(UTCDateTime, default=timezone.utcnow)
     completed_at = Column(UTCDateTime, nullable=True)
     status = Column(String, default="running") # running, completed, error
-    items_processed = Column(Numeric(10, 0), default=0)
+    items_processed = Column(Integer, default=0)
     message = Column(String, nullable=True) # JSON or text log
 
 class PendingTransaction(Base):
@@ -174,5 +174,5 @@ class SpamFilter(Base):
     sender = Column(String, nullable=True, index=True)
     subject = Column(String, nullable=True, index=True)
     source = Column(String, nullable=True) # SMS, EMAIL, ALL
-    count_blocked = Column(Numeric(10, 0), default=0) # Track how many were caught
+    count_blocked = Column(Integer, default=0) # Track how many were caught
     created_at = Column(UTCDateTime, default=timezone.utcnow)

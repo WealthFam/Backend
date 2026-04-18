@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Numeric, Boolean
+from sqlalchemy import Column, String, DateTime, ForeignKey, Numeric, Boolean, Integer
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.orm import relationship, backref
 from backend.app.core.database import Base
@@ -47,8 +47,8 @@ class Account(Base):
     last_synced_at = Column(UTCDateTime, nullable=True)
     last_synced_limit = Column(Numeric(15, 2), nullable=True)
 
-    billing_day = Column(Numeric(2, 0), nullable=True) # 1-31
-    due_day = Column(Numeric(2, 0), nullable=True) # 1-31
+    billing_day = Column(Integer, nullable=True) # 1-31
+    due_day = Column(Integer, nullable=True) # 1-31
     is_verified = Column(Boolean, default=True, nullable=False) # False = Auto-detected from SMS
     import_config = Column(String, nullable=True) # JSON config for CSV/Excel mapping
     created_at = Column(UTCDateTime, default=timezone.utcnow)
@@ -130,7 +130,7 @@ class CategoryRule(Base):
     name = Column(String, nullable=False) # e.g. "Food Apps"
     category = Column(String, nullable=False) # Target Category e.g. "Food"
     keywords = Column(String, nullable=False) # JSON List of strings e.g. '["Zomato", "Swiggy"]'
-    priority = Column(Numeric(5,0), default=0) # Higher priority runs first
+    priority = Column(Integer, default=0) # Higher priority runs first
     is_transfer = Column(Boolean, default=False, nullable=False)
     to_account_id = Column(String, nullable=True) # Destination Account ID if it's a transfer rule
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
@@ -246,10 +246,10 @@ class Loan(Base):
     principal_amount = Column(Numeric(15, 2), nullable=False)
     interest_rate = Column(Numeric(5, 2), nullable=False) # Annual Interest Rate %
     start_date = Column(UTCDateTime, nullable=False)
-    tenure_months = Column(Numeric(5,0), nullable=False)
+    tenure_months = Column(Integer, nullable=False)
     
     emi_amount = Column(Numeric(15, 2), nullable=False)
-    emi_date = Column(Numeric(2, 0), nullable=False) # Day of month (1-31)
+    emi_date = Column(Integer, nullable=False) # Day of month (1-31)
     
     bank_account_id = Column(String, nullable=True) # Source account for EMI deduction
     loan_type = Column(SqlEnum(LoanType), default=LoanType.OTHER, nullable=False)

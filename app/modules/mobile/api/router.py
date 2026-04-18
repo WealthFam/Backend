@@ -1307,21 +1307,21 @@ def list_mobile_accounts(
     db: Session = Depends(get_db)
 ):
     """
-    List accounts for mobile forensic annotation.
+    List accounts for mobile precision annotation.
     """
     from backend.app.modules.finance.services.account_service import AccountService
     accounts = AccountService.get_accounts(db, str(current_user.tenant_id), user_role=current_user.role)
     return {"data": accounts}
 
-@router.get("/ai/forensic-parse")
-def ai_forensic_parse(
+@router.get("/ai/precision-parse")
+def ai_precision_parse(
     content: str,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     AI-driven transaction extraction from raw SMS content.
-    Used for mobile forensic annotation.
+    Used for mobile strategic annotation.
     """
     try:
         result = AIService.auto_parse_transaction(db, str(current_user.tenant_id), content)
@@ -1345,7 +1345,7 @@ def ai_forensic_parse(
             detail = "AI quota exceeded. Please try again in a few seconds."
             logger.warning(f"AI Quota Exceeded for user {current_user.id}")
         else:
-            logger.error(f"AI Forensic Parse Error: {e}")
+            logger.error(f"AI Precision Parse Error: {e}")
             logger.error(traceback.format_exc())
             
         raise HTTPException(status_code=status_code, detail=detail)

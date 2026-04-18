@@ -1,10 +1,35 @@
 import json
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union, Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, BeforeValidator
+from typing import List, Optional, Union, Annotated
+
+# --- Finance Coercion Utilities (PRACTICES.md Section 11.2) ---
+# Critical for parsing financial data from UI sliders or legacy CSV inputs 
+# where numeric types might arrive as strings or floats.
+
+def coerce_int(v: Any) -> Any:
+    """Ensure integer types are coerced correctly before strict validation."""
+    if v is None: return None
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return v
+
+StrictInt = Annotated[int, BeforeValidator(coerce_int)]
+
+def coerce_decimal(v: Any) -> Any:
+    """Proactively convert floats/ints to Decimals to prevent precision loss."""
+    if v is None: return None
+    if isinstance(v, (int, float)):
+        return Decimal(str(v))
+    return v
+
+# Hardened Financial Types: Maintains high-precision math while allowing API flexibility.
+StrictDecimal = Annotated[Decimal, BeforeValidator(coerce_decimal)]
 
 from backend.app.modules.finance.models import AccountType, TransactionType
 
@@ -15,8 +40,8 @@ class AccountBase(BaseModel):
     account_mask: Optional[str] = None
     balance: Optional[Decimal] = Decimal('0.0')
     credit_limit: Optional[Decimal] = None
-    billing_day: Optional[int] = None
-    due_day: Optional[int] = None
+    billing_day: Optional[StrictInt] = None
+    due_day: Optional[StrictInt] = None
     is_verified: bool = True
     import_config: Optional[str] = None
 
@@ -34,8 +59,8 @@ class AccountUpdate(BaseModel):
     owner_id: Optional[Union[UUID, str]] = None
     balance: Optional[Decimal] = None
     credit_limit: Optional[Decimal] = None
-    billing_day: Optional[int] = None
-    due_day: Optional[int] = None
+    billing_day: Optional[StrictInt] = None
+    due_day: Optional[StrictInt] = None
     is_verified: Optional[bool] = None
     import_config: Optional[str] = None
     tenant_id: Optional[Union[UUID, str]] = None
@@ -53,8 +78,7 @@ class AccountRead(AccountBase):
     last_synced_at: Optional[datetime] = None
     last_synced_limit: Optional[Decimal] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class TransactionBase(BaseModel):
     amount: Decimal
@@ -113,8 +137,7 @@ class Transaction(TransactionBase):
     type: TransactionType
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class TransactionRead(TransactionBase):
     id: Union[UUID, str]
@@ -130,8 +153,7 @@ class TransactionRead(TransactionBase):
     loan_id: Optional[str] = None
     expense_group_id: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class TransactionPagination(BaseModel):
     data: List[TransactionRead]
@@ -144,7 +166,7 @@ class BulkDeleteRequest(BaseModel):
 
 
 class CategoryRuleBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True, strict=False)
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
     name: str = Field(description="Human-readable name for the rule")
     category: str = Field(description="The category to assign if matched")
@@ -189,7 +211,7 @@ class CategoryRuleRead(CategoryRuleBase):
     created_at: datetime
 
 class CategoryRulePagination(BaseModel):
-    model_config = ConfigDict(strict=False)
+    model_config = ConfigDict(strict=True)
     data: List[CategoryRuleRead]
     total: int
 
@@ -232,8 +254,7 @@ class CategoryRead(CategoryBase):
     parent_name: Optional[str] = None
     subcategories: List['CategoryRead'] = []
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 # Expense Groups
 class ExpenseGroupBase(BaseModel):
@@ -263,8 +284,7 @@ class ExpenseGroupRead(ExpenseGroupBase):
     created_at: datetime
     total_spend: Optional[float] = 0.0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class BulkLinkTransactionsRequest(BaseModel):
     transaction_ids: List[str]
@@ -292,8 +312,7 @@ class BudgetRead(BudgetBase):
     parent_id: Optional[str] = None
     category_id: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class BudgetProgress(BudgetRead):
     spent: Decimal
@@ -383,8 +402,7 @@ class RecurringTransactionRead(RecurringTransactionBase):
     last_run_date: Optional[datetime] = None
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class RecurringSuggestion(BaseModel):
     name: str
@@ -405,9 +423,9 @@ class LoanBase(BaseModel):
     principal_amount: Decimal
     interest_rate: Decimal
     start_date: datetime
-    tenure_months: int
+    tenure_months: StrictInt
     emi_amount: Decimal
-    emi_date: int
+    emi_date: StrictInt
     loan_type: str = "OTHER"
     bank_account_id: Optional[Union[UUID, str]] = None
 
@@ -427,8 +445,7 @@ class LoanRead(LoanBase):
     
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class AmortizationScheduleItem(BaseModel):
     installment_no: int
@@ -445,10 +462,26 @@ class LoanDetail(LoanRead):
 
 class LoanRepayment(BaseModel):
     bank_account_id: Union[UUID, str]
-    amount: Decimal
+    amount: StrictDecimal
     date: datetime
     installment_no: Optional[int] = None
     description: Optional[str] = None
+
+class LoanSimulationRequest(BaseModel):
+    extra_monthly_payment: StrictDecimal = Field(default=Decimal("0"))
+    one_time_prepayment: StrictDecimal = Field(default=Decimal("0"))
+
+    model_config = ConfigDict(strict=True)
+
+class LoanSimulationResult(BaseModel):
+    months_saved: int
+    interest_saved: StrictDecimal
+    new_total_interest: StrictDecimal
+    new_months: int
+    custom_schedule: List[Any] = []
+    standard_schedule: List[Any] = []
+
+    model_config = ConfigDict(strict=True)
 
 # Investment Goals
 class InvestmentGoalBase(BaseModel):
@@ -489,8 +522,7 @@ class GoalAssetRead(GoalAssetBase):
     current_value: Decimal = Decimal('0.0')
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class GoalHoldingRead(BaseModel):
     id: str
@@ -498,8 +530,7 @@ class GoalHoldingRead(BaseModel):
     folio_number: Optional[str] = None
     current_value: Decimal = Decimal('0.0')
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class InvestmentGoalRead(InvestmentGoalBase):
     id: str
@@ -508,8 +539,7 @@ class InvestmentGoalRead(InvestmentGoalBase):
     created_at: datetime
     assets: List[GoalAssetRead] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class InvestmentGoalProgress(InvestmentGoalRead):
     holdings: List[GoalHoldingRead] = []
@@ -540,8 +570,7 @@ class BalanceSnapshotRead(BalanceSnapshotBase):
     id: Union[UUID, str]
     tenant_id: Union[UUID, str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class SpendingForecastDay(BaseModel):
     date: str

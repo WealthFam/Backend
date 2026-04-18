@@ -1,6 +1,8 @@
 from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
@@ -88,7 +90,9 @@ def generate_portfolio_insights(
             "start_date": l.start_date.isoformat()
         })
     
-    insight_text = AIService.generate_loans_overview_insights(db, str(current_user.tenant_id), loans_data)
+    insight_text = AIService.generate_loans_overview_insights(
+        db, str(current_user.tenant_id), loans_data
+    )
     return {"insights": insight_text}
 
 @router.post("/loans/{loan_id}/insights")
@@ -114,9 +118,36 @@ def generate_loan_insights(
         "emi": float(details.emi_amount),
         "outstanding": float(details.outstanding_balance),
         "start_date": details.start_date.isoformat(),
-        "total_interest_payable": sum(float(x.interest_component) for x in details.amortization_schedule)
+        "total_interest_payable_standard": sum(
+            float(x.interest_component) for x in details.amortization_schedule
+        ),
+        "prepayment_simulations": service.get_prepayment_simulations(
+            db, loan_id, str(current_user.tenant_id)
+        ),
     }
     
     insight_text = AIService.generate_loan_insights(db, str(current_user.tenant_id), loan_data)
-    return {"insights": insight_text}
+    
+    return {
+        "insights": insight_text,
+        "simulations": loan_data["prepayment_simulations"]
+    }
+
+@router.post("/loans/{loan_id}/simulate", response_model=schemas.LoanSimulationResult)
+def simulate_loan(
+    loan_id: str,
+    req: schemas.LoanSimulationRequest,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Run a custom prepayment simulation for a loan.
+    """
+    result = service.run_custom_simulation(
+        db, loan_id, str(current_user.tenant_id),
+        req.extra_monthly_payment, req.one_time_prepayment
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    return result
 

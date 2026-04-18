@@ -18,7 +18,7 @@ class DeviceResponse(DeviceBase):
     user_name: Optional[str] = None
     user_avatar: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class DeviceRegister(BaseModel):
     device_id: str
@@ -181,7 +181,7 @@ class Category(BaseModel):
     parent_id: Optional[str] = None
     subcategories: List['Category'] = []
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, strict=True)
 
 class UpdateTransactionCategoryRequest(BaseModel):
     category: str

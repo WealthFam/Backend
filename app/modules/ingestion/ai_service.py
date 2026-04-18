@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.core import timezone
+from backend.app.core.database import db_write_lock
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,20 @@ class GeminiProvider:
 
                 return None
             elif e.code in [400, 401, 403]:
-                logger.error(f"Gemini structured insights: Auth error {e.code}")
+                logger.error(f"Gemini structured insights: Auth error {e.code}, checking cache fallback")
+                cached = db.query(ingestion_models.AIInsightCache).filter(
+                    ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                    ingestion_models.AIInsightCache.insight_type == "dashboard_summary"
+                ).first()
+                if cached and cached.content:
+                    try:
+                        insights = json.loads(cached.content)
+                        if isinstance(insights, list) and len(insights) > 0:
+                            for insight in insights:
+                                insight['is_cached'] = True
+                            return insights
+                    except: pass
+
                 return [{
                     "id": "ai_auth_error",
                     "type": "danger",
@@ -193,7 +207,20 @@ class GeminiProvider:
             
             return None
         except (InvalidArgument, Unauthenticated):
-            logger.error("Gemini structured insights: InvalidArgument or Unauthenticated")
+            logger.error("Gemini structured insights: Auth exception, checking cache fallback")
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == "dashboard_summary"
+            ).first()
+            if cached and cached.content:
+                try:
+                    insights = json.loads(cached.content)
+                    if isinstance(insights, list) and len(insights) > 0:
+                        for insight in insights:
+                            insight['is_cached'] = True
+                        return insights
+                except: pass
+
             return [{
                 "id": "ai_auth_error",
                 "type": "danger",
@@ -207,38 +234,52 @@ class GeminiProvider:
             logger.error(traceback.format_exc())
         return None
 
-    def generate_loan_advice(self, config: ingestion_models.AIConfiguration, loan_details: str) -> Optional[str]:
+    def generate_loan_advice(
+        self, config: ingestion_models.AIConfiguration, loan_details: str
+    ) -> Optional[str]:
         if not config.api_key:
             return None
-        
+
         client = genai.Client(api_key=config.api_key)
         model_id = config.model_name or "gemini-1.5-flash"
         if not model_id.startswith("models/"):
             model_id = f"models/{model_id}"
-        
+
         prompt = (
-            "You are a sophisticated financial planner. Analyze the following loan details provided by the user. "
-            "Provide a comprehensive assessment including:\n"
-            "1. Interest Rate Analysis: Is it high/low compared to current market standards (assume India region)?\n"
-            "2. Prepayment Strategy: Suggest if/how they should prepay to save interest.\n"
-            "3. Repayment Burden: Comment on the EMI burden if any salary info is implied (or give generic advice).\n"
-            "4. Actionable Tips: Specific steps to close this loan faster.\n"
-            "Format the output as clean Markdown with headers."
-            f"\n\nLOAN DETAILS:\n{loan_details}"
+            "You are a top-tier financial strategist and 'Wealth Shredder'. "
+            "Your goal is to help the user eliminate their debt as aggressively "
+            "and efficiently as possible. "
+            "Analyze the provided loan details and, CRITICALLY, the strategic "
+            "prepayment simulations.\n\n"
+            "Provide a high-impact, mathematically-driven assessment including:\n"
+            "1. THE SHREDDER STRATEGY: Compare the 'Standard' path with the provided "
+            "'Scenarios'. Identify which scenario offers the best "
+            "'Interest Savings per Rupee Invested'.\n"
+            "2. THE COST OF DELAY: Calculate how much interest is literally being "
+            "thrown away every day/month if they do NOT take action.\n"
+            "3. STRATEGIC TIP: One non-obvious, mathematically sound tip to close "
+            "this specific loan faster.\n"
+            "4. CALL TO ACTION: A punchy, definitive closing statement on how many "
+            "months and how much money they will reclaim.\n\n"
+            "Format the output as clean Markdown. Use bolding for numbers. "
+            "Be direct, aggressive towards debt, and highly precise."
+            f"\n\nLOAN & SIMULATION DATA:\n{loan_details}"
         )
-        
+
         try:
             logger.info(f"Generating Gemini loan advice with model: {model_id}")
             response = client.models.generate_content(
                 model=model_id,
                 contents=prompt
             )
-            return response.text if response else None
+            return response.text if response else "No response from AI."
         except Exception as e:
             logger.error(f"Gemini loan advice error: {e}")
-            return None
+            raise e
 
-    def generate_loans_overview_advice(self, config: ingestion_models.AIConfiguration, loans_data: str) -> Optional[str]:
+    def generate_loans_overview_advice(
+        self, config: ingestion_models.AIConfiguration, loans_data: str
+    ) -> Optional[str]:
         if not config.api_key:
             return None
         
@@ -264,10 +305,10 @@ class GeminiProvider:
                 model=model_id,
                 contents=prompt
             )
-            return response.text if response else None
+            return response.text if response else "No response from AI."
         except Exception as e:
             logger.error(f"Gemini loans overview advice error: {e}")
-            return None
+            raise e
 
     def batch_clean_merchant_names(self, config: ingestion_models.AIConfiguration, descriptions: List[str]) -> Optional[Dict[str, str]]:
         if not config.api_key or not descriptions:
@@ -391,24 +432,74 @@ class AIService:
         return provider.list_models(api_key)
 
     @classmethod
-    def generate_summary_insights(cls, db: Session, tenant_id: str, summary_data: Dict[str, Any]) -> Optional[str]:
-        config = db.query(ingestion_models.AIConfiguration).filter(
-            ingestion_models.AIConfiguration.tenant_id == tenant_id,
-            ingestion_models.AIConfiguration.is_enabled == True
-        ).first()
-
-        if not config:
-            return "AI Insights are currently disabled in settings."
-
-        provider = cls._providers.get(config.provider.lower())
-        if not provider or not hasattr(provider, 'generate_analysis'):
-            logger.error(f"AIService: Provider {config.provider} not found or invalid")
-            return "AI Provider not configured correctly."
-
-        summary_str = json.dumps(summary_data, indent=2, default=str)
+    def generate_summary_insights(cls, db: Session, tenant_id: str, summary_data: Dict[str, Any], force_refresh: bool = False) -> Optional[str]:
+        cache_type = "dashboard_summary_text"
         
-        logger.info(f"AIService: Generating AI analysis for tenant {tenant_id}")
-        return provider.generate_analysis(config, summary_str)
+        # 1. Cache Check
+        if not force_refresh:
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == cache_type
+            ).first()
+            if cached:
+                return cached.content
+
+        # 2. Provider Fetch
+        try:
+            config = db.query(ingestion_models.AIConfiguration).filter(
+                ingestion_models.AIConfiguration.tenant_id == tenant_id,
+                ingestion_models.AIConfiguration.is_enabled == True
+            ).first()
+
+            if not config:
+                return "Dashboard intelligence is currently disabled."
+
+            provider = cls._providers.get(config.provider.lower())
+            if not provider or not hasattr(provider, 'generate_analysis'):
+                return "AI Consultant not configured."
+
+            summary_str = json.dumps(summary_data, indent=2, default=str)
+            logger.info(f"AIService: Generating AI analysis for tenant {tenant_id}")
+            result = provider.generate_analysis(config, summary_str)
+
+            if result:
+                with db_write_lock:
+                    try:
+                        # Update Cache
+                        cached = db.query(ingestion_models.AIInsightCache).filter(
+                            ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                            ingestion_models.AIInsightCache.insight_type == cache_type
+                        ).first()
+                        if cached:
+                            cached.content = result
+                            cached.updated_at = timezone.utcnow()
+                        else:
+                            new_cache = ingestion_models.AIInsightCache(
+                                tenant_id=tenant_id,
+                                insight_type=cache_type,
+                                content=result
+                            )
+                            db.add(new_cache)
+                        db.commit()
+                        return result
+                    except Exception as catch_err:
+                        db.rollback()
+                        logger.error(f"Error caching summary insights: {catch_err}")
+                        return result
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"AI Refresh failed for dashboard summary: {e}")
+            # Fallback to cache
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == cache_type
+            ).first()
+            if cached:
+                return cached.content
+            
+            return "Strategy Advisor: System is currently analyzing offline. Check your AI key or quota for fresh insights."
+
+        return None
 
     @classmethod
     def generate_structured_insights(cls, db: Session, tenant_id: str, summary_data: Dict[str, Any], force_refresh: bool = False) -> Optional[List[Dict[str, Any]]]:
@@ -430,65 +521,168 @@ class AIService:
         
         # Cache successful results
         if result and len(result) > 0 and result[0].get('id') != 'ai_quota' and result[0].get('id') != 'ai_auth_error':
-            try:
-                cached = db.query(ingestion_models.AIInsightCache).filter(
-                    ingestion_models.AIInsightCache.tenant_id == tenant_id,
-                    ingestion_models.AIInsightCache.insight_type == "dashboard_summary"
-                ).first()
-                
-                content_str = json.dumps(result)
-                if cached:
-                    cached.content = content_str
-                    cached.updated_at = timezone.utcnow()
-                else:
-                    new_cache = ingestion_models.AIInsightCache(
-                        tenant_id=tenant_id,
-                        insight_type="dashboard_summary",
-                        content=content_str
-                    )
-                    db.add(new_cache)
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Error caching structured insights: {e}")
+            with db_write_lock:
+                try:
+                    cached = db.query(ingestion_models.AIInsightCache).filter(
+                        ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                        ingestion_models.AIInsightCache.insight_type == "dashboard_summary"
+                    ).first()
+                    
+                    content_str = json.dumps(result)
+                    if cached:
+                        cached.content = content_str
+                        cached.updated_at = timezone.utcnow()
+                    else:
+                        new_cache = ingestion_models.AIInsightCache(
+                            tenant_id=tenant_id,
+                            insight_type=dashboard_cache_type if 'dashboard_cache_type' in locals() else "dashboard_summary",
+                            content=content_str
+                        )
+                        db.add(new_cache)
+                    db.commit()
+                except Exception as e:
+                    db.rollback()
+                    logger.error(f"Error caching structured insights: {e}")
                 
         return result
 
     @classmethod
-    def generate_loan_insights(cls, db: Session, tenant_id: str, loan_data: Dict[str, Any]) -> Optional[str]:
-        config = db.query(ingestion_models.AIConfiguration).filter(
-            ingestion_models.AIConfiguration.tenant_id == tenant_id,
-            ingestion_models.AIConfiguration.is_enabled == True
-        ).first()
-
-        if not config:
-            return "AI Insights are currently disabled in settings."
-
-        provider = cls._providers.get(config.provider.lower())
-        if not provider or not hasattr(provider, 'generate_loan_advice'):
-            return "AI Provider not configured correctly."
-
-        details_str = json.dumps(loan_data, indent=2, default=str)
+    def generate_loan_insights(cls, db: Session, tenant_id: str, loan_data: Dict[str, Any], force_refresh: bool = False) -> Optional[str]:
+        cache_type = f"loan_details_{loan_data.get('id')}"
         
-        return provider.generate_loan_advice(config, details_str)
+        # 1. Cache Check
+        if not force_refresh:
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == cache_type
+            ).first()
+            if cached:
+                return cached.content
+
+        # 2. Provider Fetch
+        try:
+            config = db.query(ingestion_models.AIConfiguration).filter(
+                ingestion_models.AIConfiguration.tenant_id == tenant_id,
+                ingestion_models.AIConfiguration.is_enabled == True
+            ).first()
+
+            if not config:
+                return "Strategic insights are disabled."
+
+            provider = cls._providers.get(config.provider.lower())
+            if not provider or not hasattr(provider, 'generate_loan_advice'):
+                return "AI Strategic Planner not configured."
+
+            details_str = json.dumps(loan_data, indent=2, default=str)
+            result = provider.generate_loan_advice(config, details_str)
+
+            if result:
+                with db_write_lock:
+                    try:
+                        # Update Cache
+                        cached = db.query(ingestion_models.AIInsightCache).filter(
+                            ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                            ingestion_models.AIInsightCache.insight_type == cache_type
+                        ).first()
+                        if cached:
+                            cached.content = result
+                            cached.updated_at = timezone.utcnow()
+                        else:
+                            new_cache = ingestion_models.AIInsightCache(
+                                tenant_id=tenant_id,
+                                insight_type=cache_type,
+                                content=result
+                            )
+                            db.add(new_cache)
+                        db.commit()
+                        return result
+                    except Exception as catch_err:
+                        db.rollback()
+                        logger.error(f"Error caching loan insights: {catch_err}")
+                        return result # Still return the result even if cache fails
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"AI Refresh failed for loan {loan_data.get('id')}: {e}")
+            # Fallback to cache even if it's stale
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == cache_type
+            ).first()
+            if cached:
+                return cached.content
+            
+            return "Precision Plan: AI Strategist is currently offline. Your mathematical simulations are valid below."
+
+        return None
 
     @classmethod
-    def generate_loans_overview_insights(cls, db: Session, tenant_id: str, loans_data: List[Dict[str, Any]]) -> Optional[str]:
-        config = db.query(ingestion_models.AIConfiguration).filter(
-            ingestion_models.AIConfiguration.tenant_id == tenant_id,
-            ingestion_models.AIConfiguration.is_enabled == True
-        ).first()
-
-        if not config:
-            return "AI Insights are currently disabled in settings."
-
-        provider = cls._providers.get(config.provider.lower())
-        if not provider or not hasattr(provider, 'generate_loans_overview_advice'):
-            return "AI Provider not configured correctly."
-
-        data_str = json.dumps(loans_data, indent=2, default=str)
+    def generate_loans_overview_insights(cls, db: Session, tenant_id: str, loans_data: List[Dict[str, Any]], force_refresh: bool = False) -> Optional[str]:
+        cache_type = "loans_overview"
         
-        return provider.generate_loans_overview_advice(config, data_str)
+        # 1. Cache Check
+        if not force_refresh:
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == cache_type
+            ).first()
+            if cached:
+                return cached.content
+
+        # 2. Provider Fetch
+        try:
+            config = db.query(ingestion_models.AIConfiguration).filter(
+                ingestion_models.AIConfiguration.tenant_id == tenant_id,
+                ingestion_models.AIConfiguration.is_enabled == True
+            ).first()
+
+            if not config:
+                return "Wealth Shredder analysis is currently disabled."
+
+            provider = cls._providers.get(config.provider.lower())
+            if not provider or not hasattr(provider, 'generate_loans_overview_advice'):
+                return "AI Wealth Strategist not configured."
+
+            data_str = json.dumps(loans_data, indent=2, default=str)
+            result = provider.generate_loans_overview_advice(config, data_str)
+
+            if result:
+                with db_write_lock:
+                    try:
+                        # Update Cache
+                        cached = db.query(ingestion_models.AIInsightCache).filter(
+                            ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                            ingestion_models.AIInsightCache.insight_type == cache_type
+                        ).first()
+                        if cached:
+                            cached.content = result
+                            cached.updated_at = timezone.utcnow()
+                        else:
+                            new_cache = ingestion_models.AIInsightCache(
+                                tenant_id=tenant_id,
+                                insight_type=cache_type,
+                                content=result
+                            )
+                            db.add(new_cache)
+                        db.commit()
+                        return result
+                    except Exception as catch_err:
+                        db.rollback()
+                        logger.error(f"Error caching loans overview: {catch_err}")
+                        return result
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"AI Refresh failed for loans overview: {e}")
+            # Fallback to cache
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == cache_type
+            ).first()
+            if cached:
+                return cached.content
+            
+            return "Strategic Portfolio Analysis: AI Analyst is currently resting. Please verify your credentials or quota."
+
+        return None
 
     @classmethod
     def auto_parse_transaction(cls, db: Session, tenant_id: str, content: str) -> Optional[Dict[str, Any]]:
