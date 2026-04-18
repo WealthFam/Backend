@@ -1,5 +1,6 @@
 import threading
 import httpx
+import re
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
@@ -11,6 +12,10 @@ MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 from backend.app.core.database import db_write_lock
 
 class MutualFundService:
+    # Standardized transaction keywords for categorization
+    MF_WITHDRAWAL_KEYWORDS = ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"]
+    MF_INVESTMENT_KEYWORDS = ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"]
+
 
     @staticmethod
     def get_latest_sync_status(db: Session, tenant_id: str):
@@ -577,11 +582,16 @@ class MutualFundService:
             if folio_number:
                 holding.folio_number = folio_number
         
-        # Update Balance with inclusive keyword matching
+        # Update Balance with hardened regex matching
         o_type = str(order.type).upper().strip()
-        is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
-        is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
-
+        
+        # Regex patterns for word-boundary matching
+        withdrawal_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_WITHDRAWAL_KEYWORDS) + r')\b'
+        investment_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_INVESTMENT_KEYWORDS) + r')\b'
+        
+        is_withdrawal = bool(re.search(withdrawal_pattern, o_type))
+        is_investment = not is_withdrawal and bool(re.search(investment_pattern, o_type))
+        
         if is_investment:
             current_units = float(holding.units or 0.0)
             current_avg = float(holding.average_price or 0.0)
@@ -595,9 +605,13 @@ class MutualFundService:
             
             holding.average_price = total_cost / total_units if total_units > 0 else 0.0
             holding.units = total_units
+            holding.invested_value = total_units * float(holding.average_price)
         elif is_withdrawal:
             current_units = float(holding.units or 0.0)
-            holding.units = max(0, current_units - float(order.units))
+            new_units = max(0, current_units - float(order.units))
+            holding.units = new_units
+            # For withdrawals, invested value (cost) reduces proportionally to units
+            holding.invested_value = new_units * float(holding.average_price or 0.0)
         
         # Update NAV Info
         if not holding.last_nav or float(holding.last_nav) == 0:
@@ -1509,8 +1523,13 @@ class MutualFundService:
                 order_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
                 
                 o_type = str(order.type).upper().strip()
-                is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
-                is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
+                
+                # Regex patterns for word-boundary matching
+                withdrawal_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_WITHDRAWAL_KEYWORDS) + r')\b'
+                investment_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_INVESTMENT_KEYWORDS) + r')\b'
+                
+                is_withdrawal = bool(re.search(withdrawal_pattern, o_type))
+                is_investment = not is_withdrawal and bool(re.search(investment_pattern, o_type))
 
                 if is_investment:
                     cash_flows.append((order_date, -amount))  # Outflow is negative

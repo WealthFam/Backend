@@ -18,7 +18,47 @@ def run_schema_sync(engine: Engine):
     with engine.begin() as connection:
         apply_patches(connection)
     
+    # 3. Run one-time data repairs (Self-healing)
+    run_data_repair_v1_mf(engine)
+    
     logger.info("Schema sync completed.")
+
+def run_data_repair_v1_mf(engine: Engine):
+    """
+    [2026-04-18] Self-healing logic for Mutual Fund holdings.
+    Identifies tenants with 0 invested_value and triggers a recalculation.
+    """
+    from sqlalchemy import text
+    try:
+        # 1. Identify affected tenants (where holdings have 0 invested but potentially have orders)
+        with engine.connect() as conn:
+            query = text("""
+                SELECT DISTINCT tenant_id 
+                FROM mutual_fund_holdings 
+                WHERE invested_value = 0 OR invested_value IS NULL OR average_price IS NULL
+            """)
+            tenants = [row[0] for row in conn.execute(query).fetchall()]
+        
+        if not tenants:
+            return
+
+        logger.info(f"Detected {len(tenants)} tenants requiring Mutual Fund data repair...")
+        
+        # 2. Lazy imports to avoid circular dependencies
+        from backend.app.core.database import SessionLocal
+        from backend.app.modules.finance.services.mutual_funds import MutualFundService
+        
+        # 3. Trigger repair for each tenant
+        for t_id in tenants:
+            try:
+                with SessionLocal() as db:
+                    count = MutualFundService.recalculate_holdings(db, t_id)
+                    logger.info(f"✅ Data repair completed for tenant {t_id}: Processed {count} orders.")
+            except Exception as e:
+                logger.error(f"❌ Failed to repair data for tenant {t_id}: {e}")
+                
+    except Exception as e:
+        logger.warning(f"Skipping Mutual Fund data repair: {e}")
 
 def apply_patches(connection):
     """
@@ -58,6 +98,9 @@ def apply_patches(connection):
     # [2026-04-15] Legacy patches migrated from upgrade_mf_schema.py
     utils.safe_add_column(connection, "mutual_fund_orders", "transaction_hash", "VARCHAR")
     utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmark_value", "DOUBLE")
+
+    # [2026-04-18] Fix 0 invested metrics 
+    utils.safe_add_column(connection, "mutual_fund_holdings", "invested_value", "DECIMAL(15, 2) DEFAULT 0")
 
     # [2026-04-17] Hardened fix for account creation snapshots
     utils.safe_add_column(connection, "balance_snapshots", "credit_limit", "DECIMAL(15, 2)")

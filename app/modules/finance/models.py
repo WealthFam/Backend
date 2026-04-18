@@ -344,6 +344,7 @@ class MutualFundHolding(Base):
     units = Column(Numeric(15, 4), default=0)
     average_price = Column(Numeric(15, 4), default=0)
     current_value = Column(Numeric(15, 2), nullable=True)
+    invested_value = Column(Numeric(15, 2), default=0)
     last_nav = Column(Numeric(15, 4), nullable=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
     goal_id = Column(String, ForeignKey("investment_goals.id"), nullable=True)
