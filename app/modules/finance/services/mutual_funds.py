@@ -390,8 +390,12 @@ class MutualFundService:
                         
                         def normalize_type(t_str):
                             t = str(t_str).upper().strip()
-                            if t in ["BUY", "DEBIT", "PURCHASE", "PURCHASE_SIP", "SWITCH_IN", "SIP", "STP_IN"]: return "BUY"
-                            if t in ["SELL", "CREDIT", "REDEMPTION", "SWITCH_OUT", "STP_OUT"]: return "SELL"
+                            
+                            withdrawal_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_WITHDRAWAL_KEYWORDS) + r')\b'
+                            investment_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_INVESTMENT_KEYWORDS) + r')\b'
+                            
+                            if re.search(withdrawal_pattern, t): return "SELL"
+                            if re.search(investment_pattern, t): return "BUY"
                             return t
 
                         # Python-side robust matching
