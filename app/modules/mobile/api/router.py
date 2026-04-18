@@ -1313,42 +1313,46 @@ def list_mobile_accounts(
     accounts = AccountService.get_accounts(db, str(current_user.tenant_id), user_role=current_user.role)
     return {"data": accounts}
 
-@router.get("/ai/precision-parse")
-def ai_precision_parse(
-    content: str,
+class ForensicExtractionRequest(BaseModel):
+    content: str
+
+@router.post("/ai/forensic-parse")
+def forensic_parse_transaction(
+    payload: ForensicExtractionRequest,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    AI-driven transaction extraction from raw SMS content.
-    Used for mobile strategic annotation.
+    Forensic AI extraction: Deep-parses a raw transaction string using advanced logic.
+    Used for triage and strategic debugging of ingestion failures.
     """
     try:
-        result = AIService.auto_parse_transaction(db, str(current_user.tenant_id), content)
+        result = AIService.auto_parse_transaction(db, str(current_user.tenant_id), payload.content)
         if not result:
-            return {"amount": 0.0, "description": "", "category": "Uncategorized", "type": "DEBIT"}
+            return {"amount": 0.0, "description": "AI Extraction Failed", "category": "Uncategorized", "type": "DEBIT"}
         
         return {
             "amount": result.get("amount", 0.0),
-            "description": result.get("recipient", ""),
+            "description": result.get("recipient", result.get("description", "Unknown")),
             "category": result.get("category", "Uncategorized"),
             "type": result.get("type", "DEBIT"),
             "date": result.get("date"),
             "account_mask": result.get("account_mask")
         }
     except Exception as e:
-        detail = str(e)
+        detail = str(e).upper()
         status_code = 500
         
         if "RESOURCE_EXHAUSTED" in detail or "429" in detail:
             status_code = 429
-            detail = "AI quota exceeded. Please try again in a few seconds."
+            error_detail = "AI quota exceeded. Please try again in a few seconds."
             logger.warning(f"AI Quota Exceeded for user {current_user.id}")
         else:
-            logger.error(f"AI Precision Parse Error: {e}")
+            error_detail = str(e)
+            logger.error(f"AI Forensic Parse Error: {e}")
             logger.error(traceback.format_exc())
             
-        raise HTTPException(status_code=status_code, detail=detail)
+        raise HTTPException(status_code=status_code, detail=error_detail)
 
 @router.get("/heatmap/calendar")
 def get_mobile_calendar_heatmap(
