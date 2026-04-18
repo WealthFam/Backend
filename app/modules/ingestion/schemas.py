@@ -11,10 +11,30 @@ def coerce_datetime(v: Any) -> Any:
     """Proactively convert ISO strings from mobile payloads into datetime objects."""
     if v is None: return None
     if isinstance(v, str):
+        # Clean the string for common ISO variations
+        cleaned = v.replace("Z", "+00:00").replace(" ", "T")
         try:
-            # Handle standard ISO format and 'Z' suffix
-            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+            # Try native first
+            return datetime.fromisoformat(cleaned)
         except:
+            try:
+                # Handle cases with too many sub-seconds or other oddities
+                # Often occurs on Android/Flutter JSON encoding
+                if "." in cleaned:
+                    base, rest = cleaned.split(".", 1)
+                    # Keep only first 6 digits of sub-seconds for Python's %f (microseconds)
+                    sub = ""
+                    tz = ""
+                    for i, char in enumerate(rest):
+                        if char.isdigit():
+                            if i < 6: sub += char
+                        else:
+                            tz = rest[i:]
+                            break
+                    # Reconstruct: YYYY-MM-DDTHH:MM:SS.ffffff+HH:MM
+                    return datetime.fromisoformat(f"{base}.{sub.ljust(6, '0')}{tz}")
+            except:
+                pass
             return v
     return v
 
