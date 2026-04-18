@@ -5,7 +5,7 @@ import traceback
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -1316,9 +1316,11 @@ def list_mobile_accounts(
 class ForensicExtractionRequest(BaseModel):
     content: str
 
+@router.get("/ai/forensic-parse")
 @router.post("/ai/forensic-parse")
 def forensic_parse_transaction(
-    payload: ForensicExtractionRequest,
+    payload: Optional[ForensicExtractionRequest] = None,
+    content: Optional[str] = Query(None),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1326,8 +1328,15 @@ def forensic_parse_transaction(
     Forensic AI extraction: Deep-parses a raw transaction string using advanced logic.
     Used for triage and strategic debugging of ingestion failures.
     """
+    actual_content = content
+    if payload:
+        actual_content = payload.content
+
+    if not actual_content:
+        raise HTTPException(status_code=400, detail="Content is required")
+
     try:
-        result = AIService.auto_parse_transaction(db, str(current_user.tenant_id), payload.content)
+        result = AIService.auto_parse_transaction(db, str(current_user.tenant_id), actual_content)
         if not result:
             return {"amount": 0.0, "description": "AI Extraction Failed", "category": "Uncategorized", "type": "DEBIT"}
         
