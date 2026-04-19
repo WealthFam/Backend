@@ -302,6 +302,33 @@ class MutualFundService:
         return AIService.generate_portfolio_insights(db, tenant_id, ai_data, force_refresh)
 
     @staticmethod
+    def get_holding_insights(db: Session, tenant_id: str, holding_id: str, force_refresh: bool = False):
+        """
+        Generates fund-specific AI insights.
+        Checks cache first unless force_refresh is true.
+        """
+        # Fetch holding details
+        details = MutualFundService.get_holding_details(db, tenant_id, holding_id)
+        if not details:
+            return None
+            
+        # Standardized Data for AI Deep-Dive
+        ai_data = {
+            "fund_name": details.get("scheme_name"),
+            "category": details.get("category"),
+            "invested": float(details.get("invested_value", 0)),
+            "current": float(details.get("current_value", 0)),
+            "profit_loss": float(details.get("profit_loss", 0)),
+            "profit_loss_pct": float(details.get("profit_loss_pct", 0)),
+            "units": float(details.get("units", 0)),
+            "avg_price": float(details.get("average_price", 0)),
+            "xirr": float(details.get("xirr", 0)) if details.get("xirr") else None,
+            "last_nav": float(details.get("last_nav", 0)) if details.get("last_nav") else None
+        }
+        
+        return AIService.generate_holding_insights(db, tenant_id, holding_id, ai_data, force_refresh)
+
+    @staticmethod
     def get_fund_nav(scheme_code: str):
         try:
             response = httpx.get(f"{MFAPI_BASE_URL}/{scheme_code}")

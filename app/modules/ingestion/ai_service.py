@@ -363,6 +363,57 @@ class GeminiProvider:
             logger.error(f"Gemini mutual fund brief error: {e}")
             raise e
 
+    def generate_holding_insights(
+        self, config: ingestion_models.AIConfiguration, holding_data: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Generates a deep-dive advisor brief for a specific mutual fund holding.
+        """
+        if not config.api_key:
+            return None
+
+        client = genai.Client(api_key=config.api_key)
+        model_id = config.model_name or "gemini-1.5-flash"
+        if not model_id.startswith("models/"):
+            model_id = f"models/{model_id}"
+
+        prompt = (
+            "You are an elite 'AI Advisor' conducting a deep-dive audit of a specific mutual fund holding.\n"
+            "Analyze the fund NAV history, returns, and personal XIRR provided.\n\n"
+            "MANDATORY SYMBOLS (Use for Markdown headers):\n"
+            "🎯 FUND AUDIT\n"
+            "📈 PERFORMANCE vs CATEGORY\n"
+            "🛡️ RISK & VOLATILITY\n"
+            "⚖️ ADVISOR VERDICT\n\n"
+            "RULES:\n"
+            "1. Bold all metrics: **+18.3%**, **₹5.2L**, **1.2% expense ratio**.\n"
+            "2. Provide 3 high-impact summary cards for the highlights section.\n"
+            "3. Provide 2-3 specific suggestions based on the fund's health.\n\n"
+            "JSON STRUCTURE:\n"
+            "{ 'summary': 'Markdown text', 'highlights': [{id, type, title, content, icon}], 'suggestions': [{id, title, content, priority}] }\n"
+            f"\nFUND TELEMETRY:\n{holding_data}"
+        )
+
+        try:
+            logger.info(f"Generating Fund Deep-Dive with model: {model_id}")
+            response = client.models.generate_content(
+                model=model_id,
+                contents=f"{prompt}\n\nRESPONSE FORMAT: Valid JSON Object with 'summary', 'highlights', and 'suggestions' keys."
+            )
+            if not response or not response.text:
+                return {"summary": "Strategist is auditing the NAV history...", "highlights": [], "suggestions": []}
+            
+            text = response.text
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            if start != -1 and end != 0:
+                return json.loads(text[start:end])
+            
+            return {"summary": text, "highlights": [], "suggestions": []}
+        except Exception as e:
+            logger.error(f"Gemini fund deep-dive error: {e}")
+            raise e
+
     def batch_clean_merchant_names(self, config: ingestion_models.AIConfiguration, descriptions: List[str]) -> Optional[Dict[str, str]]:
         if not config.api_key or not descriptions:
             return None
@@ -748,6 +799,8 @@ class AIService:
             
             return "Strategic Portfolio Analysis: Your Portfolio Strategist is currently analyzing offline. Please verify your credentials or quota."
 
+        return None
+
     @classmethod
     def check_cache(cls, db: Session, tenant_id: str, cache_type: str) -> Optional[Dict[str, Any]]:
         """Helper to quickly check for existing cached insights."""
@@ -762,6 +815,24 @@ class AIService:
             except:
                 pass
         return None
+
+    @classmethod
+    def update_cache(cls, db: Session, tenant_id: str, cache_type: str, content_str: str):
+        """Helper to update or create a cache entry."""
+        cached = db.query(ingestion_models.AIInsightCache).filter(
+            ingestion_models.AIInsightCache.tenant_id == tenant_id,
+            ingestion_models.AIInsightCache.insight_type == cache_type
+        ).first()
+        if cached:
+            cached.content = content_str
+            cached.updated_at = timezone.utcnow()
+        else:
+            new_cache = ingestion_models.AIInsightCache(
+                tenant_id=tenant_id,
+                insight_type=cache_type,
+                content=content_str
+            )
+            db.add(new_cache)
 
     @classmethod
     def generate_portfolio_insights(cls, db: Session, tenant_id: str, portfolio_data: List[Dict[str, Any]], force_refresh: bool = False) -> Optional[Dict[str, Any]]:
@@ -793,21 +864,7 @@ class AIService:
                 with db_write_lock:
                     try:
                         content_str = json.dumps(result)
-                        # Update Cache
-                        cached = db.query(ingestion_models.AIInsightCache).filter(
-                            ingestion_models.AIInsightCache.tenant_id == tenant_id,
-                            ingestion_models.AIInsightCache.insight_type == cache_type
-                        ).first()
-                        if cached:
-                            cached.content = content_str
-                            cached.updated_at = timezone.utcnow()
-                        else:
-                            new_cache = ingestion_models.AIInsightCache(
-                                tenant_id=tenant_id,
-                                insight_type=cache_type,
-                                content=content_str
-                            )
-                            db.add(new_cache)
+                        cls.update_cache(db, tenant_id, cache_type, content_str)
                         db.commit()
                         return result
                     except Exception as catch_err:
@@ -830,6 +887,49 @@ class AIService:
                 return cached.content
             
             return "Portfolio Intelligence: Your Strategic Architect is currently offline. Please verify your credentials or quota."
+
+        return None
+
+    @classmethod
+    def generate_holding_insights(cls, db: Session, tenant_id: str, holding_id: str, holding_data: Dict[str, Any], force_refresh: bool = False) -> Optional[Dict[str, Any]]:
+        cache_type = f"fund_holding_{holding_id}_v1"
+        
+        # 1. Cache Check (Default behavior)
+        if not force_refresh:
+            cached = cls.check_cache(db, tenant_id, cache_type)
+            if cached:
+                return cached
+
+        # 2. Intelligence Synthesis
+        try:
+            config = db.query(ingestion_models.AIConfiguration).filter(
+                ingestion_models.AIConfiguration.tenant_id == tenant_id,
+                ingestion_models.AIConfiguration.is_enabled == True
+            ).first()
+
+            if not config: return None
+
+            provider = cls._providers.get(config.provider.lower())
+            if not provider or not hasattr(provider, 'generate_holding_insights'):
+                return None
+
+            data_str = json.dumps(holding_data, indent=2, default=str)
+            result = provider.generate_holding_insights(config, data_str)
+
+            if result:
+                with db_write_lock:
+                    try:
+                        content_str = json.dumps(result)
+                        cls.update_cache(db, tenant_id, cache_type, content_str)
+                        db.commit()
+                        return result
+                    except Exception as catch_err:
+                        db.rollback()
+                        logger.error(f"Error caching fund insights: {catch_err}")
+                        return result
+        except Exception as e:
+            logger.warning(f"Fund intelligence synthesis failed: {e}")
+            return None
 
         return None
 

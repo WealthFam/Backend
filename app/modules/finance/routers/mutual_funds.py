@@ -187,6 +187,20 @@ def get_holding_details(
         raise HTTPException(status_code=404, detail="Holding not found")
     return details
 
+@router.get("/holdings/{holding_id}/insights")
+def get_holding_insights(
+    holding_id: str,
+    force_refresh: bool = Query(False),
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Generate AI insights for a specific mutual fund holding"""
+    tenant_id = str(current_user.tenant_id)
+    insights = MutualFundService.get_holding_insights(db, tenant_id, holding_id, force_refresh)
+    if not insights:
+        raise HTTPException(status_code=404, detail="Insights unavailable for this holding")
+    return {"insights": insights}
+
 @router.get("/schemes/{scheme_code}/details")
 def get_scheme_details(
     scheme_code: str,
