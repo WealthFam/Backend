@@ -834,6 +834,37 @@ class MutualFundService:
     @staticmethod
     def delete_holding(db: Session, tenant_id: str, holding_id: str):
         with db_write_lock:
+            # Handle Aggregate (Grouped) Deletion
+            if holding_id.startswith("group-") or holding_id.startswith("group_"):
+                # Extract scheme_code (supports both hyphen and underscore)
+                delimiter = "-" if "-" in holding_id else "_"
+                scheme_code = holding_id.split(delimiter)[1]
+                
+                holdings = db.query(MutualFundHolding).filter(
+                    MutualFundHolding.tenant_id == tenant_id,
+                    MutualFundHolding.scheme_code == scheme_code,
+                    MutualFundHolding.is_deleted == False
+                ).all()
+                
+                if not holdings:
+                    raise Exception("No holdings found for this fund")
+                
+                for h in holdings:
+                    h.is_deleted = True
+                    h.deleted_at = timezone.utcnow()
+                    # Soft delete all associated orders for this specific holding
+                    db.query(MutualFundOrder).filter(
+                        MutualFundOrder.holding_id == h.id,
+                        MutualFundOrder.tenant_id == tenant_id
+                    ).update({
+                        "is_deleted": True,
+                        "deleted_at": timezone.utcnow()
+                    }, synchronize_session=False)
+                
+                MutualFundService._safe_commit(db)
+                return True
+
+            # Handle Single Folio Deletion
             holding = db.query(MutualFundHolding).filter(
                 MutualFundHolding.id == holding_id,
                 MutualFundHolding.tenant_id == tenant_id,
@@ -1344,7 +1375,7 @@ class MutualFundService:
                 user_avatar = u.avatar
 
         return {
-            "id": f"group_{scheme_code}", 
+            "id": f"group-{scheme_code}", 
             "scheme_name": meta.scheme_name if meta else "Unknown Fund",
             "scheme_code": scheme_code,
             "isin_growth": meta.isin_growth if meta else None,
