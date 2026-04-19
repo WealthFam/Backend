@@ -349,6 +349,8 @@ class MutualFundHolding(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
     goal_id = Column(String, ForeignKey("investment_goals.id"), nullable=True)
     last_updated_at = Column(UTCDateTime, default=timezone.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
     goal = relationship("InvestmentGoal", back_populates="holdings")
     meta = relationship("MutualFundsMeta", foreign_keys=[scheme_code], primaryjoin="MutualFundHolding.scheme_code == MutualFundsMeta.scheme_code")
@@ -380,6 +382,8 @@ class MutualFundOrder(Base):
     import_source = Column(String, default="MANUAL")
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
 class PortfolioTimelineCache(Base):
     """Cache for portfolio timeline snapshots to avoid recalculating historical data"""

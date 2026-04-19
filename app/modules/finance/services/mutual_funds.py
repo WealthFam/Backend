@@ -1,15 +1,28 @@
-import threading
+import asyncio
+import hashlib
 import httpx
 import re
+import threading
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from typing import Any, List, Optional
+
+from sqlalchemy import func
 from sqlalchemy.orm import Session
-from datetime import datetime
-from typing import List, Optional
+
 from backend.app.core import timezone
-from backend.app.modules.finance.models import MutualFundsMeta, MutualFundHolding, MutualFundOrder, MutualFundSyncLog
+from backend.app.core.database import SessionLocal, db_write_lock
+from backend.app.modules.finance.models import (
+    MutualFundHolding,
+    MutualFundOrder,
+    MutualFundSyncLog,
+    MutualFundsMeta,
+)
+from backend.app.modules.auth.models import User
+from ..models import PortfolioTimelineCache, InvestmentGoal
+from ..utils.financial_math import xirr, calculate_start_date, add_months
 
 MFAPI_BASE_URL = "https://api.mfapi.in/mf"
-
-from backend.app.core.database import db_write_lock
 
 class MutualFundService:
     # Standardized transaction keywords for categorization
@@ -32,7 +45,6 @@ class MutualFundService:
         # Close-at-end flag if we create our own session
         created_local_db = False
         if db is None:
-            from backend.app.core.database import SessionLocal
             db = SessionLocal()
             created_local_db = True
 
@@ -46,7 +58,10 @@ class MutualFundService:
             db.commit()
 
             # 2. Get all holdings for the tenant
-            holdings = db.query(MutualFundHolding).filter(MutualFundHolding.tenant_id == tenant_id).all()
+            holdings = db.query(MutualFundHolding).filter(
+                MutualFundHolding.tenant_id == tenant_id,
+                MutualFundHolding.is_deleted == False
+            ).all()
             if not holdings:
                 sync_log.status = "completed"
                 sync_log.completed_at = timezone.utcnow()
@@ -54,12 +69,11 @@ class MutualFundService:
                 return {"status": "completed", "updated": 0}
 
             # 3. Fetch NAVs (using the same logic as get_portfolio but cleaner)
-            import asyncio
             
             async def fetch_nav_simple(scheme_code):
                 try:
                     async with httpx.AsyncClient() as client:
-                        response = await client.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=10.0)
+                        response = await client.get(f"{MFAPI_BASE_URL}/{scheme_code}", timeout=10.0)
                     if response.status_code == 200:
                         data = response.json()
                         raw = data.get("data", [])
@@ -68,7 +82,7 @@ class MutualFundService:
                             latest = raw[0]
                             return {
                                 "scheme_code": scheme_code,
-                                "nav": float(latest.get("nav", 0.0)),
+                                "nav": Decimal(str(latest.get("nav", 0.0))),
                                 "date": datetime.strptime(latest.get("date"), "%d-%m-%Y")
                             }
                 except: pass
@@ -89,9 +103,9 @@ class MutualFundService:
                     # Find all holdings for this scheme (could be multiple users/folios)
                     h_list = [h for h in holdings if h.scheme_code == nav_data["scheme_code"]]
                     for h in h_list:
-                        h.last_nav = nav_data["nav"]
+                        h.last_nav = Decimal(str(nav_data["nav"]))
                         h.last_updated_at = nav_data["date"]
-                        h.current_value = float(h.units) * nav_data["nav"]
+                        h.current_value = Decimal(str(h.units)) * Decimal(str(nav_data["nav"]))
                         updated_count += 1
                 
                 # 5. Commit Updates
@@ -323,7 +337,8 @@ class MutualFundService:
                         existing = db.query(MutualFundOrder.id).filter(
                             MutualFundOrder.tenant_id == tenant_id,
                             MutualFundOrder.user_id == user_id,
-                            MutualFundOrder.external_id == external_id
+                            MutualFundOrder.external_id == external_id,
+                            MutualFundOrder.is_deleted == False
                         ).first()
                         if existing:
                             is_duplicate = True
@@ -339,7 +354,8 @@ class MutualFundService:
                         # Check for existing holding balance regardless of user_id (if it belongs to tenant)
                         existing_holding = db.query(MutualFundHolding).filter(
                             MutualFundHolding.tenant_id == tenant_id,
-                            MutualFundHolding.scheme_code == scheme_code_str
+                            MutualFundHolding.scheme_code == scheme_code_str,
+                            MutualFundHolding.is_deleted == False
                         ).first()
                         
                         if existing_holding:
@@ -385,7 +401,8 @@ class MutualFundService:
                         candidates = db.query(MutualFundOrder).filter(
                             MutualFundOrder.tenant_id == tenant_id,
                             (MutualFundOrder.user_id == user_id) | (MutualFundOrder.user_id.is_(None)),
-                            MutualFundOrder.scheme_code == scheme_code_str
+                            MutualFundOrder.scheme_code == scheme_code_str,
+                            MutualFundOrder.is_deleted == False
                         ).all()
                         
                         def normalize_type(t_str):
@@ -495,7 +512,8 @@ class MutualFundService:
             existing_order = db.query(MutualFundOrder).filter(
                 MutualFundOrder.tenant_id == tenant_id,
                 MutualFundOrder.user_id == user_id,
-                MutualFundOrder.external_id == external_id
+                MutualFundOrder.external_id == external_id,
+                MutualFundOrder.is_deleted == False
             ).first()
             if existing_order:
                 return existing_order
@@ -522,7 +540,8 @@ class MutualFundService:
             MutualFundOrder.scheme_code == scheme_code,
             func.date(MutualFundOrder.order_date) == txn_date,
             func.round(func.abs(MutualFundOrder.units), 4) == rounded_units,
-            func.round(func.abs(MutualFundOrder.amount), 2) == rounded_amount
+            func.round(func.abs(MutualFundOrder.amount), 2) == rounded_amount,
+            MutualFundOrder.is_deleted == False
         ).first()
 
         if existing_order:
@@ -597,32 +616,32 @@ class MutualFundService:
         is_investment = not is_withdrawal and bool(re.search(investment_pattern, o_type))
         
         if is_investment:
-            current_units = float(holding.units or 0.0)
-            current_avg = float(holding.average_price or 0.0)
+            current_units = Decimal(str(holding.units or 0.0))
+            current_avg = Decimal(str(holding.average_price or 0.0))
             
-            order_units = float(order.units)
-            order_amount = float(order.amount)
-            txn_cost = order_amount if order_amount > 0 else (float(order.nav) * order_units)
+            order_units = Decimal(str(order.units))
+            order_amount = Decimal(str(order.amount))
+            txn_cost = order_amount if order_amount > 0 else (Decimal(str(order.nav)) * order_units)
             
             total_cost = (current_avg * current_units) + txn_cost
             total_units = current_units + order_units
             
-            holding.average_price = total_cost / total_units if total_units > 0 else 0.0
+            holding.average_price = total_cost / total_units if total_units > 0 else Decimal("0.0")
             holding.units = total_units
-            holding.invested_value = total_units * float(holding.average_price)
+            holding.invested_value = total_units * Decimal(str(holding.average_price))
         elif is_withdrawal:
-            current_units = float(holding.units or 0.0)
-            new_units = max(0, current_units - float(order.units))
+            current_units = Decimal(str(holding.units or 0.0))
+            new_units = max(Decimal("0.0"), current_units - Decimal(str(order.units)))
             holding.units = new_units
             # For withdrawals, invested value (cost) reduces proportionally to units
-            holding.invested_value = new_units * float(holding.average_price or 0.0)
+            holding.invested_value = new_units * Decimal(str(holding.average_price or 0.0))
         
         # Update NAV Info
-        if not holding.last_nav or float(holding.last_nav) == 0:
+        if not holding.last_nav or Decimal(str(holding.last_nav)) == 0:
             holding.last_nav = order.nav
             holding.last_updated_at = order.order_date
         
-        holding.current_value = float(holding.units) * float(holding.last_nav or 0.0)
+        holding.current_value = Decimal(str(holding.units)) * Decimal(str(holding.last_nav or 0.0))
 
         # Ensure holding has an ID before linking
         if not holding.id:
@@ -687,28 +706,55 @@ class MutualFundService:
     @staticmethod
     def _recalculate_holdings_logic(db: Session, tenant_id: str, user_id: Optional[str] = None):
         """Internal logic without lock for nested calls"""
-        # 1. Get all orders sorted by date
-        query = db.query(MutualFundOrder).filter(MutualFundOrder.tenant_id == tenant_id)
+        # 1. Get all active orders sorted by date
+        query = db.query(MutualFundOrder).filter(
+            MutualFundOrder.tenant_id == tenant_id,
+            MutualFundOrder.is_deleted == False
+        )
         if user_id:
             query = query.filter(MutualFundOrder.user_id == user_id)
         
         orders = query.order_by(MutualFundOrder.order_date).all()
         
-        # 2. Delete existing holdings
-        h_query = db.query(MutualFundHolding).filter(MutualFundHolding.tenant_id == tenant_id)
+        # 2. Reset existing holdings instead of deleting (Preserves UUIDs)
+        h_query = db.query(MutualFundHolding).filter(
+            MutualFundHolding.tenant_id == tenant_id,
+            MutualFundHolding.is_deleted == False
+        )
         if user_id:
             h_query = h_query.filter(MutualFundHolding.user_id == user_id)
         
-        h_query.delete(synchronize_session=False)
+        # We reset metrics to 0 and then rebuild. This allows _update_holding_with_order 
+        # to find and update the existing record based on (scheme_code, folio_number).
+        h_query.update({
+            "units": 0,
+            "average_price": 0,
+            "invested_value": 0,
+            "current_value": 0
+        }, synchronize_session=False)
         db.flush()
         
-        # 3. Process each order
+        # 3. Process each order (rebuilds the metrics on the same UUIDs)
         processed_orders = []
         for order in orders:
             MutualFundService._update_holding_with_order(db, tenant_id, order, order.folio_number)
             processed_orders.append(order)
         
-        # 4. Special Commit
+        # 4. Clean up: Soft-delete holdings that ended up with zero units and no non-deleted orders
+        # (This handles the case where all transactions for a fund were deleted)
+        zero_holdings = h_query.filter(MutualFundHolding.units == 0).all()
+        for h in zero_holdings:
+            # Final check: does it have ANY active orders?
+            active_order_count = db.query(MutualFundOrder).filter(
+                MutualFundOrder.holding_id == h.id,
+                MutualFundOrder.is_deleted == False
+            ).count()
+            
+            if active_order_count == 0:
+                h.is_deleted = True
+                h.deleted_at = timezone.utcnow()
+        
+        # 5. Special Commit
         MutualFundService._safe_commit(db)
         return len(processed_orders)
 
@@ -717,21 +763,26 @@ class MutualFundService:
         with db_write_lock:
             holding = db.query(MutualFundHolding).filter(
                 MutualFundHolding.id == holding_id,
-                MutualFundHolding.tenant_id == tenant_id
+                MutualFundHolding.tenant_id == tenant_id,
+                MutualFundHolding.is_deleted == False
             ).first()
             
             if not holding:
                 raise Exception("Holding not found")
             
-            # First, delete all associated orders
-            deleted_orders = db.query(MutualFundOrder).filter(
+            # Soft delete the holding
+            holding.is_deleted = True
+            holding.deleted_at = timezone.utcnow()
+            
+            # Soft delete all associated orders
+            db.query(MutualFundOrder).filter(
                 MutualFundOrder.holding_id == holding_id,
                 MutualFundOrder.tenant_id == tenant_id
-            ).delete(synchronize_session=False)
+            ).update({
+                "is_deleted": True,
+                "deleted_at": timezone.utcnow()
+            }, synchronize_session=False)
             
-            
-            # Then delete the holding itself
-            db.delete(holding)
             MutualFundService._safe_commit(db)
             return True
 
@@ -739,7 +790,10 @@ class MutualFundService:
     def get_portfolio(db: Session, tenant_id: str, user_id: Optional[str] = None):
         import asyncio
         
-        query = db.query(MutualFundHolding).filter(MutualFundHolding.tenant_id == tenant_id)
+        query = db.query(MutualFundHolding).filter(
+            MutualFundHolding.tenant_id == tenant_id,
+            MutualFundHolding.is_deleted == False
+        )
         if user_id:
             query = query.filter(MutualFundHolding.user_id == user_id)
         
@@ -770,11 +824,11 @@ class MutualFundService:
                     sorted_data = sorted(raw_data, key=lambda x: parse_date(x.get("date", "")), reverse=True)
                     
                     # Latest NAV
-                    latest_nav = 0.0
+                    latest_nav = Decimal("0.0")
                     nav_date_str = ""
                     if sorted_data:
                         latest_nav_data = sorted_data[0]
-                        latest_nav = float(latest_nav_data.get("nav", 0.0))
+                        latest_nav = Decimal(str(latest_nav_data.get("nav", 0.0)))
                         nav_date_str = latest_nav_data.get("date", "")
                     
                     # Sparkline (last 30 days)
@@ -788,9 +842,9 @@ class MutualFundService:
                         "sparkline": sparkline
                     }
                 else:
-                    return {"latest_nav": 0.0, "nav_date": "", "sparkline": []}
+                    return {"latest_nav": Decimal("0.0"), "nav_date": "", "sparkline": []}
             except Exception as e:
-                return {"latest_nav": 0.0, "nav_date": "", "sparkline": []}
+                return {"latest_nav": Decimal("0.0"), "nav_date": "", "sparkline": []}
         
         # Fetch all NAV data concurrently
         async def fetch_all_nav_data():
@@ -804,20 +858,20 @@ class MutualFundService:
         with db_write_lock:
             try:
                 for h, nav_data in zip(holdings, nav_data_list):
-                    latest_nav = nav_data.get("latest_nav", 0.0)
+                    latest_nav = nav_data.get("latest_nav", Decimal("0.0"))
                     nav_date_str = nav_data.get("nav_date", "")
                     
                     if latest_nav > 0:
                         has_changed = False
                         # NAV Update
-                        if not h.last_nav or abs(float(h.last_nav) - latest_nav) > 0.0001:
+                        if not h.last_nav or abs(Decimal(str(h.last_nav)) - latest_nav) > Decimal("0.0001"):
                             h.last_nav = latest_nav
                             has_changed = True
                         
                         # Value Update
-                        current_units = float(h.units or 0.0)
+                        current_units = Decimal(str(h.units or 0.0))
                         new_value = current_units * latest_nav
-                        if not h.current_value or abs(float(h.current_value) - new_value) > 0.01:
+                        if not h.current_value or abs(Decimal(str(h.current_value)) - new_value) > Decimal("0.01"):
                             h.current_value = new_value
                             has_changed = True
                         
@@ -841,38 +895,48 @@ class MutualFundService:
                 db.rollback()
 
         # Phase 2: Build Results (Read-Only)
-        # Objects might be expired after commit, so accessing properties will trigger refresh (SELECT)
-        # This is safe as we are outside the write lock and transaction.
+        from sqlalchemy.orm.exc import ObjectDeletedError
+        
         for h, nav_data in zip(holdings, nav_data_list):
-            sparkline = nav_data.get("sparkline", [])
-            
-            # Accessing properties triggers reload if needed
-            units = float(h.units or 0.0)
-            avg_price = float(h.average_price or 0.0)
-            current_val = float(h.current_value or 0.0)
-            invested = units * avg_price
-            pl = (current_val - invested) if current_val > 0 else 0.0
-            last_updated_str = h.last_updated_at.strftime("%d-%b-%Y") if h.last_updated_at else "N/A"
-            
-            # Fetch meta (Autoflush irrelevant now as no pending changes)
-            meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == h.scheme_code).first()
+            try:
+                sparkline = nav_data.get("sparkline", [])
+                
+                # Accessing properties triggers reload if needed. 
+                # Catch ObjectDeletedError if a concurrent process removed the record.
+                units = Decimal(str(h.units or 0.0))
+                avg_price = Decimal(str(h.average_price or 0.0))
+                current_val = Decimal(str(h.current_value or 0.0))
+                invested = units * avg_price
+                pl = (current_val - invested) if current_val > 0 else Decimal("0.0")
+                last_updated_str = h.last_updated_at.strftime("%d-%b-%Y") if h.last_updated_at else "N/A"
+                
+                # Fetch meta
+                meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == h.scheme_code).first()
+                
+                # Latest NAV handling
+                last_nav = Decimal(str(h.last_nav or 0.0))
+                
+            except (ObjectDeletedError, Exception):
+                # Skip if record was deleted concurrently
+                continue
 
             results.append({
-                "id": h.id,
+                "id": str(h.id),
+                "scheme_name": h.scheme_name,
                 "scheme_code": h.scheme_code,
-                "scheme_name": meta.scheme_name if meta else "Unknown Fund",
                 "category": meta.category if meta else "Other",
                 "folio_number": h.folio_number,
-                "units": units,
-                "average_price": avg_price,
-                "current_value": current_val,
-                "invested_value": invested,
-                "last_nav": float(h.last_nav or 0.0),
-                "profit_loss": pl,
-                "last_updated": last_updated_str,
-                "sparkline": sparkline,
-                "user_id": h.user_id,
-                "goal_id": h.goal_id
+                "units": round(units, 4),
+                "average_price": round(float(avg_price), 4),
+                "current_value": round(float(current_val), 2),
+                "invested_value": round(float(invested), 2),
+                "profit_loss": round(float(pl), 2),
+                "profit_loss_pct": round(float(pl / invested * 100) if invested > 0 else 0, 2),
+                "last_nav": float(last_nav),
+                "last_updated_at": last_updated_str,
+                "goal_id": str(h.goal_id) if h.goal_id else None,
+                "goal_name": h.goal.name if h.goal else None,
+                "sparkline": sparkline
             })
             
         return results
@@ -886,7 +950,8 @@ class MutualFundService:
             User, MutualFundHolding.user_id == User.id
         ).filter(
             MutualFundHolding.id == holding_id,
-            MutualFundHolding.tenant_id == tenant_id
+            MutualFundHolding.tenant_id == tenant_id,
+            MutualFundHolding.is_deleted == False
         ).first()
         
         if not result:
@@ -913,7 +978,8 @@ class MutualFundService:
         # Get all transactions for this holding
         orders = db.query(MutualFundOrder).filter(
             MutualFundOrder.holding_id == holding.id,
-            MutualFundOrder.tenant_id == tenant_id
+            MutualFundOrder.tenant_id == tenant_id,
+            MutualFundOrder.is_deleted == False
         ).order_by(MutualFundOrder.order_date.desc()).all()
         
         # Calculate XIRR for this specific fund
@@ -1031,7 +1097,6 @@ class MutualFundService:
 
     @staticmethod
     def get_scheme_details(db: Session, tenant_id: str, scheme_code: str):
-        from backend.app.modules.auth.models import User
         
         # 1. Fetch Metadata
         meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == scheme_code).first()
@@ -1039,13 +1104,15 @@ class MutualFundService:
         # 2. Fetch All Holdings for this Scheme
         holdings = db.query(MutualFundHolding).filter(
             MutualFundHolding.tenant_id == tenant_id,
-            MutualFundHolding.scheme_code == scheme_code
+            MutualFundHolding.scheme_code == scheme_code,
+            MutualFundHolding.is_deleted == False
         ).all()
             
         # 3. Fetch All Orders for this Scheme
         orders = db.query(MutualFundOrder).filter(
             MutualFundOrder.tenant_id == tenant_id,
-            MutualFundOrder.scheme_code == scheme_code
+            MutualFundOrder.scheme_code == scheme_code,
+            MutualFundOrder.is_deleted == False
         ).order_by(MutualFundOrder.order_date.desc()).all()
         
         # 4. Aggregation Logic
@@ -1262,7 +1329,7 @@ class MutualFundService:
                         if d_obj >= start_date:
                             valid_history.append({
                                 "date": d_obj.strftime("%Y-%m-%d"),
-                                "value": float(entry['nav'])
+                                "value": Decimal(str(entry['nav']))
                             })
                     except: continue
                 nav_history = sorted(valid_history, key=lambda x: x['date'])
@@ -1295,7 +1362,7 @@ class MutualFundService:
             "trending": trending,
             "rating": rating,
             "returns_3y": returns_3y,
-            "last_nav": float(nav_history[-1]['value']) if nav_history else 0.0,
+            "last_nav": Decimal(str(nav_history[-1]['value'])) if nav_history else Decimal("0.0"),
             "nav_history": nav_history,
             "is_aggregate": False
         }
@@ -1348,8 +1415,6 @@ class MutualFundService:
 
     @staticmethod
     def get_market_indices():
-        import asyncio
-        
         async def fetch_index_data(idx):
             try:
                 url = f"https://query1.finance.yahoo.com/v8/finance/chart/{idx['symbol']}?interval=5m&range=1d"
@@ -1405,7 +1470,10 @@ class MutualFundService:
         from backend.app.modules.finance.utils.financial_math import xirr, categorize_fund
         
         # Get portfolio data
-        query = db.query(MutualFundHolding).filter(MutualFundHolding.tenant_id == tenant_id)
+        query = db.query(MutualFundHolding).filter(
+            MutualFundHolding.tenant_id == tenant_id,
+            MutualFundHolding.is_deleted == False
+        )
         if user_id:
             query = query.filter(MutualFundHolding.user_id == user_id)
         holdings = query.all()
@@ -1422,17 +1490,20 @@ class MutualFundService:
             }
         
         # Calculate asset allocation
-        allocation = {"equity": 0.0, "debt": 0.0, "hybrid": 0.0, "other": 0.0}
+        allocation = {
+            "equity": Decimal("0.0"),
+            "debt": Decimal("0.0"),
+            "hybrid": Decimal("0.0"),
+            "other": Decimal("0.0")
+        }
         category_allocation = {}
-        total_value = 0.0
+        total_value = Decimal("0.0")
         
         # Portfolio Sparkline + Day Change — read directly from cache (fast, no computation)
         sparkline = []
-        day_change = 0.0
-        day_change_percent = 0.0
+        day_change = Decimal("0.0")
+        day_change_percent = Decimal("0.0")
         try:
-            from ..models import PortfolioTimelineCache
-            from datetime import date, timedelta
             cutoff = timezone.utcnow().date() - timedelta(days=30)
             cached_points = (
                 db.query(PortfolioTimelineCache)
@@ -1446,10 +1517,10 @@ class MutualFundService:
             if cached_points:
                 sparkline = [float(p.portfolio_value) for p in cached_points]
                 if len(sparkline) >= 2:
-                    prev_val = sparkline[-2]
-                    curr_val = sparkline[-1]
+                    prev_val = Decimal(str(sparkline[-2]))
+                    curr_val = Decimal(str(sparkline[-1]))
                     day_change = round(curr_val - prev_val, 2)
-                    day_change_percent = round((day_change / prev_val) * 100, 2) if prev_val > 0 else 0.0
+                    day_change_percent = round((day_change / prev_val) * 100, 2) if prev_val > 0 else Decimal("0.0")
         except Exception:
             pass
 
@@ -1462,30 +1533,30 @@ class MutualFundService:
             meta = meta_map.get(h.scheme_code)
             raw_category = meta.category if meta else "Other"
             asset_type = categorize_fund(raw_category)
-            current_val = float(h.current_value or 0.0)
+            current_val = Decimal(str(h.current_value or 0.0))
             
             allocation[asset_type] += current_val
             
             # Category-wise (Sector proxy)
             if raw_category not in category_allocation:
-                category_allocation[raw_category] = 0.0
+                category_allocation[raw_category] = Decimal("0.0")
             category_allocation[raw_category] += current_val
             
             total_value += current_val
         
         # Convert to percentages
         if total_value > 0:
-            allocation = {k: round((v / total_value) * 100, 2) for k, v in allocation.items()}
-            category_allocation = {k: round((v / total_value) * 100, 2) for k, v in category_allocation.items()}
+            allocation = {k: round(float((v / total_value) * 100), 2) for k, v in allocation.items()}
+            category_allocation = {k: round(float((v / total_value) * 100), 2) for k, v in category_allocation.items()}
         
         # Get portfolio with P/L for top performers
         portfolio_data = MutualFundService.get_portfolio(db, tenant_id, user_id)
         
         # Calculate P/L percentage for sorting
         for item in portfolio_data:
-            invested = item.get('invested_value', 0)
+            invested = Decimal(str(item.get('invested_value', 0)))
             if invested > 0:
-                item['pl_percent'] = round((item['profit_loss'] / invested) * 100, 2)
+                item['pl_percent'] = round(float((Decimal(str(item['profit_loss'])) / invested) * 100), 2)
             else:
                 item['pl_percent'] = 0
         
@@ -1504,7 +1575,8 @@ class MutualFundService:
         
         o_q = db.query(MutualFundOrder).filter(
             MutualFundOrder.tenant_id == tenant_id,
-            MutualFundOrder.holding_id.in_(active_holding_ids)
+            MutualFundOrder.holding_id.in_(active_holding_ids),
+            MutualFundOrder.is_deleted == False
         )
         if user_id:
             o_q = o_q.filter(MutualFundOrder.user_id == user_id)
@@ -1512,16 +1584,15 @@ class MutualFundService:
         orders = o_q.all()
         
         xirr_value = None
-        total_invested = 0.0
+        total_invested = Decimal("0.0")
         
         if orders and len(orders) > 0:
-            from datetime import date
             cash_flows = []
             for order in orders:
                 # Use units * nav if amount is 0 (fallback for older imports)
-                amount = float(order.amount)
+                amount = Decimal(str(order.amount))
                 if amount <= 0:
-                    amount = float(order.units) * float(order.nav)
+                    amount = Decimal(str(order.units)) * Decimal(str(order.nav))
                 
                 # Convert order_date to date if it's datetime
                 order_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
@@ -1561,12 +1632,12 @@ class MutualFundService:
             "top_gainers": top_gainers,
             "top_losers": top_losers,
             "xirr": xirr_value,
-            "total_invested": round(total_invested, 2),
-            "current_value": round(total_value, 2),
-            "profit_loss": round(total_value - total_invested, 2),
+            "total_invested": round(float(total_invested), 2),
+            "current_value": round(float(total_value), 2),
+            "profit_loss": round(float(total_value - total_invested), 2),
             "sparkline": sparkline,
-            "day_change": day_change,
-            "day_change_percent": day_change_percent
+            "day_change": float(day_change),
+            "day_change_percent": float(day_change_percent)
         }
     
     @staticmethod
@@ -1579,8 +1650,6 @@ class MutualFundService:
             tenant_id: Tenant ID
             from_date: Clear cache from this date onwards (defaults to all)
         """
-        from ..models import PortfolioTimelineCache
-        
         query = db.query(PortfolioTimelineCache).filter(
             PortfolioTimelineCache.tenant_id == tenant_id
         )
@@ -1601,10 +1670,6 @@ class MutualFundService:
         
         Returns timeline data with portfolio value and invested amount at weekly intervals.
         """
-        from datetime import date, timedelta
-        from ..utils.financial_math import calculate_start_date, add_months
-        from ..models import PortfolioTimelineCache
-        import hashlib
         
         # Get all transactions for EXISTING holdings only
         # This prevents orphaned orders from deleted holdings from inflating the timeline
@@ -1621,7 +1686,8 @@ class MutualFundService:
         
         orders_query = db.query(MutualFundOrder).filter(
             MutualFundOrder.tenant_id == tenant_id,
-            MutualFundOrder.holding_id.in_(active_holding_ids)
+            MutualFundOrder.holding_id.in_(active_holding_ids),
+            MutualFundOrder.is_deleted == False
         )
         if user_id:
             orders_query = orders_query.filter(MutualFundOrder.user_id == user_id)
@@ -1856,4 +1922,77 @@ class MutualFundService:
             "granularity": granularity,
             "total_return_percent": round(total_return_percent, 2)
         }
+
+    # --------------------------------------------------------------------------
+    # Management & Correction Logic (Modular Extensions)
+    # --------------------------------------------------------------------------
+
+    @staticmethod
+    def bulk_delete_transactions(db: Session, tenant_id: str, transaction_ids: list[str]):
+        """
+        Soft-delete multiple transactions and trigger holding recalculation.
+        """
+        with db_write_lock:
+            # 1. Fetch relevant orders to find affected holdings
+            orders = db.query(MutualFundOrder).filter(
+                MutualFundOrder.id.in_(transaction_ids),
+                MutualFundOrder.tenant_id == tenant_id
+            ).all()
+
+            if not orders:
+                return 0
+
+            affected_tenant_ids = {o.tenant_id for o in orders}
+            affected_user_ids = {o.user_id for o in orders if o.user_id}
+
+            # 2. Perform soft-delete
+            now = timezone.utcnow()
+            for order in orders:
+                order.is_deleted = True
+                order.deleted_at = now
+
+            MutualFundService._safe_commit(db)
+
+            # 3. Trigger recalculation for all affected users/tenants
+            for t_id in affected_tenant_ids:
+                if affected_user_ids:
+                    for u_id in affected_user_ids:
+                        MutualFundService._recalculate_holdings_logic(db, t_id, u_id)
+                else:
+                    MutualFundService._recalculate_holdings_logic(db, t_id)
+
+            return len(orders)
+
+    @staticmethod
+    def update_transaction(db: Session, tenant_id: str, transaction_id: str, data: dict):
+        """
+        Update a historical transaction and trigger holding recalculation.
+        """
+        with db_write_lock:
+            order = db.query(MutualFundOrder).filter(
+                MutualFundOrder.id == transaction_id,
+                MutualFundOrder.tenant_id == tenant_id,
+                MutualFundOrder.is_deleted == False
+            ).first()
+
+            if not order:
+                raise Exception("Transaction not found")
+
+            # Update fields
+            if "date" in data:
+                order.order_date = datetime.fromisoformat(data["date"].replace('Z', '+00:00'))
+            if "units" in data:
+                order.units = float(data["units"])
+            if "nav" in data:
+                order.nav = float(data["nav"])
+            if "amount" in data:
+                order.amount = float(data["amount"])
+            if "type" in data:
+                order.type = data["type"].upper()
+
+            MutualFundService._safe_commit(db)
+
+            # Recalculate holding impact
+            MutualFundService._recalculate_holdings_logic(db, tenant_id, order.user_id)
+            return order
     

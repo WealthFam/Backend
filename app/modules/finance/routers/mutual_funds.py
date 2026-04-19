@@ -1,30 +1,45 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
-from sqlalchemy.orm import Session
-from typing import List, Optional
-from datetime import datetime
-from pydantic import BaseModel
+import os
 import shutil
 import tempfile
-import os
+from datetime import datetime
+from decimal import Decimal
+from typing import List, Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
+from backend.app.core import timezone
 from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
-from backend.app.core import timezone
-from backend.app.modules.ingestion.cas_parser import CASParser
 from backend.app.modules.ingestion import models as ingestion_models
+from backend.app.modules.ingestion.cas_parser import CASParser
 
 router = APIRouter(prefix="/mutual-funds", tags=["Mutual Funds"])
 
 class TransactionCreate(BaseModel):
+    model_config = ConfigDict(strict=True)
     scheme_code: str
     type: str = "BUY" # BUY, SELL
-    amount: float
-    units: float
-    nav: float
+    amount: Decimal
+    units: Decimal
+    nav: Decimal
     date: datetime
     folio_number: Optional[str] = None
+
+class TransactionUpdate(BaseModel):
+    model_config = ConfigDict(strict=True)
+    date: Optional[str] = None
+    type: Optional[str] = None
+    amount: Optional[Decimal] = None
+    units: Optional[Decimal] = None
+    nav: Optional[Decimal] = None
+
+class BulkDeleteRequest(BaseModel):
+    model_config = ConfigDict(strict=True)
+    transaction_ids: List[str]
 
 @router.post("/sync/refresh")
 async def trigger_sync(
@@ -221,6 +236,37 @@ def add_transaction(
             
         order = MutualFundService.add_transaction(db, str(current_user.tenant_id), data)
         return {"status": "success", "order_id": order.id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/transactions/{transaction_id}")
+def update_transaction(
+    transaction_id: str,
+    payload: TransactionUpdate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update a specific transaction and trigger recalculation"""
+    try:
+        MutualFundService.update_transaction(
+            db, str(current_user.tenant_id), transaction_id, payload.dict(exclude_unset=True)
+        )
+        return {"status": "success", "message": "Transaction updated and holdings recalculated"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/transactions/bulk-delete")
+def bulk_delete_transactions(
+    payload: BulkDeleteRequest,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Soft-delete multiple transactions and trigger recalculate"""
+    try:
+        count = MutualFundService.bulk_delete_transactions(
+            db, str(current_user.tenant_id), payload.transaction_ids
+        )
+        return {"status": "success", "deleted_count": count}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
