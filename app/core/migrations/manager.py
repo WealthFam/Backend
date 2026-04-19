@@ -105,5 +105,11 @@ def apply_patches(connection):
     # [2026-04-17] Hardened fix for account creation snapshots
     utils.safe_add_column(connection, "balance_snapshots", "credit_limit", "DECIMAL(15, 2)")
 
+    # [2026-04-19] Add soft-delete columns for Mutual Funds
+    utils.safe_add_column(connection, "mutual_fund_holdings", "is_deleted", "BOOLEAN DEFAULT FALSE")
+    utils.safe_add_column(connection, "mutual_fund_holdings", "deleted_at", "TIMESTAMP")
+    utils.safe_add_column(connection, "mutual_fund_orders", "is_deleted", "BOOLEAN DEFAULT FALSE")
+    utils.safe_add_column(connection, "mutual_fund_orders", "deleted_at", "TIMESTAMP")
+
     # TODO: Add schema evolution logic here as the app grows.
     pass
