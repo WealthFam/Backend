@@ -435,9 +435,9 @@ class MutualFundService:
         with db_write_lock:
             for idx, txn in enumerate(transactions):
                 try:
-                    if txn.get('is_duplicate'):
-                        continue
-                        
+                    # We proceed with all passed transactions; _add_transaction_logic handles 
+                    # the actual DB-level deduplication to prevent real duplicates.
+                    # This allows users to force-select transactions marked as "HINT: Duplicate" in preview.
                     result = MutualFundService._add_transaction_logic(db, tenant_id, txn)
                     
                     if result and hasattr(result, 'id'):
