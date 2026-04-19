@@ -15,6 +15,7 @@ from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.ingestion import models as ingestion_models
+from backend.app.modules.ingestion.ai_service import AIService
 from backend.app.modules.ingestion.cas_parser import CASParser
 
 router = APIRouter(prefix="/mutual-funds", tags=["Mutual Funds"])
@@ -453,3 +454,16 @@ async def get_portfolio_timeline(
     """Get historical performance trend for the portfolio"""
     # Baseline implementation
     return {"trend": [], "days": days}
+
+@router.post("/portfolio/insights")
+def generate_portfolio_insights(
+    user_id: Optional[str] = Query(None),
+    force_refresh: bool = Query(False),
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Generate AI insights for the mutual fund portfolio"""
+    tenant_id = str(current_user.tenant_id)
+    return {
+        "insights": MutualFundService.get_portfolio_insights(db, tenant_id, user_id, force_refresh)
+    }

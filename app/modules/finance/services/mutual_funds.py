@@ -21,6 +21,7 @@ from backend.app.modules.finance.models import (
 from backend.app.modules.auth.models import User
 from ..models import PortfolioTimelineCache, InvestmentGoal
 from ..utils.financial_math import xirr, calculate_start_date, add_months
+from backend.app.modules.ingestion.ai_service import AIService
 
 MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 
@@ -244,7 +245,7 @@ class MutualFundService:
                 r['returns_3y'] = MutualFundService.get_mock_returns(scheme_code)
                 r['category'] = "Mutual Fund" 
                 
-                # New Metadata for Overhaul
+            # New Metadata for Overhaul
                 r['risk_level'] = ['Low', 'Moderate', 'High', 'Very High'][code_hash % 4]
                 r['aum'] = f"{(1000 + (code_hash % 9000)):,} Cr"
                 r['trending'] = (code_hash % 7 == 0) # ~14% funds are trending
@@ -254,6 +255,51 @@ class MutualFundService:
         except Exception as e:
             logger.error(f"Search error: {e}")
             return []
+
+    @staticmethod
+    def get_portfolio_insights(db: Session, tenant_id: str, user_id: Optional[str] = None, force_refresh: bool = False):
+        """
+        Adheres to Section 16 of PRACTICES.md:
+        1. Checks cache for instant return.
+        2. Aggregates portfolio data & benchmarks logic lazily.
+        """
+        # OPTIMIZATION: Check cache BEFORE fetching slow market benchmarks
+        if not force_refresh:
+            cached = AIService.check_cache(db, tenant_id, "mutual_fund_portfolio_v5")
+            if cached:
+                return cached
+
+        portfolio = MutualFundService.get_portfolio(db, tenant_id, user_id)
+        
+        if not portfolio:
+            return {
+                "summary": "No mutual fund holdings found to analyze.",
+                "highlights": [],
+                "suggestions": []
+            }
+            
+        # Get market indices for benchmarking
+        market_data = []
+        try:
+            market_data = MutualFundService.get_market_indices()
+        except: pass
+
+        # Standardized AI Data Mapping
+        ai_data = {
+            "holdings": [],
+            "benchmarks": market_data
+        }
+        
+        for item in portfolio:
+            ai_data["holdings"].append({
+                "fund": item.get("scheme_name"),
+                "category": item.get("category"),
+                "invested": float(item.get("invested_value", 0)),
+                "current": float(item.get("current_value", 0)),
+                "returns_pct": float(item.get("profit_loss_pct", 0))
+            })
+            
+        return AIService.generate_portfolio_insights(db, tenant_id, ai_data, force_refresh)
 
     @staticmethod
     def get_fund_nav(scheme_code: str):

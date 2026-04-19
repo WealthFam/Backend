@@ -310,6 +310,59 @@ class GeminiProvider:
             logger.error(f"Gemini loans overview advice error: {e}")
             raise e
 
+    def generate_mutual_fund_advice(
+        self, config: ingestion_models.AIConfiguration, portfolio_data: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Generates a hybrid strategic brief for mutual fund portfolios.
+        Returns a dict: { 'summary': 'Markdown text', 'highlights': [ {id, type, title, content, icon} ] }
+        """
+        if not config.api_key:
+            return None
+
+        client = genai.Client(api_key=config.api_key)
+        model_id = config.model_name or "gemini-1.5-flash"
+        if not model_id.startswith("models/"):
+            model_id = f"models/{model_id}"
+
+        prompt = (
+            "You are an elite 'AI Advisor' specializing in HNI mutual fund management. "
+            "Analyze the portfolio and benchmarks, then return a HYBRID advisor brief in JSON format.\n\n"
+            "1. MANDATORY SYMBOL MAPPING: Use these symbols for Markdown headers in the summary:\n"
+            "   - 🎯 EXECUTIVE SUMMARY\n"
+            "   - 📈 ALPHA & BENCHMARKING\n"
+            "   - ⚖️ RECOMMENDED ACTIONS\n"
+            "   - 🛡️ RISK GUARDRAILS\n"
+            "2. MATH PRECISION: Bold all financial amounts, percentages, and performance deltas (e.g., **+15.2%**, **₹1.2Cr**) to ensure high-contrast rendering.\n"
+            "3. ADVISE & SUGGEST: Provide 3-4 specific, actionable suggestions. These must be explicit, e.g., 'Consolidate redundant Large Cap funds'.\n\n"
+            "JSON STRUCTURE:\n"
+            "1. 'summary': A high-fidelity Markdown narrative (approx. 200 words). Include a '📈 ALPHA & BENCHMARKING' section comparing portfolio vs Nifty/Sensex.\n"
+            "2. 'highlights': 4-5 high-impact cards for current status. Each card needs: 'id' (unique), 'type' (success, warning, danger, info), 'title' (punchy), 'content' (1 direct sentence), 'icon' (relevant emoji).\n"
+            "3. 'suggestions': 3-4 action cards. Each needs: 'id' (unique), 'title' (action-oriented), 'content' (1 direct sentence rationale), 'priority' (high, medium, low).\n\n"
+            "Tone: Authoritative, Mathematically-Aggressive, and Precise."
+            f"\n\nPORTFOLIO & MARKET DATA:\n{portfolio_data}"
+        )
+
+        try:
+            logger.info(f"Generating Gemini hybrid brief with model: {model_id}")
+            response = client.models.generate_content(
+                model=model_id,
+                contents=f"{prompt}\n\nRESPONSE FORMAT: Valid JSON Object with 'summary' and 'highlights' keys."
+            )
+            if not response or not response.text:
+                return {"summary": "Strategist is synthesizing offline.", "highlights": []}
+            
+            text = response.text
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            if start != -1 and end != 0:
+                return json.loads(text[start:end])
+            
+            return {"summary": text, "highlights": []} # Fallback if JSON fails
+        except Exception as e:
+            logger.error(f"Gemini mutual fund brief error: {e}")
+            raise e
+
     def batch_clean_merchant_names(self, config: ingestion_models.AIConfiguration, descriptions: List[str]) -> Optional[Dict[str, str]]:
         if not config.api_key or not descriptions:
             return None
@@ -693,7 +746,90 @@ class AIService:
             if cached:
                 return cached.content
             
-            return "Strategic Portfolio Analysis: AI Analyst is currently resting. Please verify your credentials or quota."
+            return "Strategic Portfolio Analysis: Your Portfolio Strategist is currently analyzing offline. Please verify your credentials or quota."
+
+    @classmethod
+    def check_cache(cls, db: Session, tenant_id: str, cache_type: str) -> Optional[Dict[str, Any]]:
+        """Helper to quickly check for existing cached insights."""
+        cached = db.query(ingestion_models.AIInsightCache).filter(
+            ingestion_models.AIInsightCache.tenant_id == tenant_id,
+            ingestion_models.AIInsightCache.insight_type == cache_type
+        ).first()
+        if cached and cached.content:
+            try:
+                import json
+                return json.loads(cached.content)
+            except:
+                pass
+        return None
+
+    @classmethod
+    def generate_portfolio_insights(cls, db: Session, tenant_id: str, portfolio_data: List[Dict[str, Any]], force_refresh: bool = False) -> Optional[Dict[str, Any]]:
+        cache_type = "mutual_fund_portfolio_v5"
+        
+        # 1. Cache Check
+        cached = cls.check_cache(db, tenant_id, cache_type)
+        if not force_refresh and cached:
+            return cached
+
+        # 2. Provider Fetch
+        try:
+            config = db.query(ingestion_models.AIConfiguration).filter(
+                ingestion_models.AIConfiguration.tenant_id == tenant_id,
+                ingestion_models.AIConfiguration.is_enabled == True
+            ).first()
+
+            if not config:
+                return "Advisor Insights are currently disabled."
+
+            provider = cls._providers.get(config.provider.lower())
+            if not provider or not hasattr(provider, 'generate_mutual_fund_advice'):
+                return "AI Advisor not configured."
+
+            data_str = json.dumps(portfolio_data, indent=2, default=str)
+            result = provider.generate_mutual_fund_advice(config, data_str)
+
+            if result:
+                with db_write_lock:
+                    try:
+                        content_str = json.dumps(result)
+                        # Update Cache
+                        cached = db.query(ingestion_models.AIInsightCache).filter(
+                            ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                            ingestion_models.AIInsightCache.insight_type == cache_type
+                        ).first()
+                        if cached:
+                            cached.content = content_str
+                            cached.updated_at = timezone.utcnow()
+                        else:
+                            new_cache = ingestion_models.AIInsightCache(
+                                tenant_id=tenant_id,
+                                insight_type=cache_type,
+                                content=content_str
+                            )
+                            db.add(new_cache)
+                        db.commit()
+                        return result
+                    except Exception as catch_err:
+                        db.rollback()
+                        logger.error(f"Error caching portfolio insights: {catch_err}")
+                        return result
+                    except Exception as catch_err:
+                        db.rollback()
+                        logger.error(f"Error caching portfolio insights: {catch_err}")
+                        return result
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"AI Refresh failed for mutual fund portfolio: {e}")
+            # Fallback to cache
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == cache_type
+            ).first()
+            if cached:
+                return cached.content
+            
+            return "Portfolio Intelligence: Your Strategic Architect is currently offline. Please verify your credentials or quota."
 
         return None
 
