@@ -7,8 +7,11 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
+import logging
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core import timezone
 from backend.app.core.database import SessionLocal, db_write_lock
@@ -522,17 +525,18 @@ class MutualFundService:
         stats = {"processed": 0, "failed": 0, "details": {"imported": [], "failed": []}}
         
         
+        affected_schemes = set()
+        
         with db_write_lock:
             for idx, txn in enumerate(transactions):
                 try:
-                    # We proceed with all passed transactions; _add_transaction_logic handles 
-                    # the actual DB-level deduplication to prevent real duplicates.
-                    # This allows users to force-select transactions marked as "HINT: Duplicate" in preview.
                     result = MutualFundService._add_transaction_logic(db, tenant_id, txn)
                     
                     if result and hasattr(result, 'id'):
                         stats["processed"] += 1
                         stats["details"]["imported"].append(txn)
+                        if hasattr(result, 'scheme_code'):
+                            affected_schemes.add(result.scheme_code)
                     else:
                         stats["failed"] += 1
                         txn['error'] = "No order returned"
@@ -542,7 +546,20 @@ class MutualFundService:
                     stats["failed"] += 1
                     stats["details"]["failed"].append(txn)
             
+            # Recalculate affected holdings for data integrity
+            for scheme_code in affected_schemes:
+                try:
+                    MutualFundService._recalculate_holdings_logic(db, tenant_id, scheme_code)
+                except Exception as e:
+                    logger.error(f"Failed to recalculate holding for {scheme_code} after import: {e}")
+
             MutualFundService._safe_commit(db)
+            
+            # Force DuckDB checkpoint to ensure visibility for other sessions (readers)
+            try:
+                db.execute(text("PRAGMA force_checkpoint;"))
+            except Exception as e:
+                logger.warning(f"Failed to force DuckDB checkpoint: {e}")
             
         return stats
 
@@ -634,6 +651,9 @@ class MutualFundService:
                         h.is_deleted = False
                         h.deleted_at = None
                         db.flush()
+                
+                # NOTE: We return the revived order. import_mapped_transactions will handle 
+                # bulk recalculation of the holding balance at the end.
                 return existing_order
 
         # 3. Create Order

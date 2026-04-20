@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
@@ -17,6 +18,8 @@ from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.ai_service import AIService
 from backend.app.modules.ingestion.cas_parser import CASParser
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mutual-funds", tags=["Mutual Funds"])
 
@@ -108,7 +111,10 @@ def get_portfolio(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return MutualFundService.get_portfolio(db, str(current_user.tenant_id), user_id)
+    tenant_id = str(current_user.tenant_id)
+    holdings = MutualFundService.get_portfolio(db, tenant_id, user_id)
+    logger.info(f"Portfolio requested for tenant {tenant_id}. Found {len(holdings)} active holdings.")
+    return holdings
 
 @router.get("/analytics")
 def get_analytics(
