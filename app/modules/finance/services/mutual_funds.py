@@ -312,6 +312,11 @@ class MutualFundService:
         """
         # Fetch holding details
         details = MutualFundService.get_holding_details(db, tenant_id, holding_id)
+        
+        # Fallback: if holding_id is numeric, it's an aggregated scheme view
+        if not details and str(holding_id).isdigit():
+            details = MutualFundService.get_scheme_details(db, tenant_id, holding_id)
+            
         if not details:
             return None
             

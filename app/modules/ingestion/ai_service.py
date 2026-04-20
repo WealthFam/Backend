@@ -411,6 +411,25 @@ class GeminiProvider:
             
             return {"summary": text, "highlights": [], "suggestions": []}
         except Exception as e:
+            # Check for 503 or overload errors specifically
+            err_msg = str(e).upper()
+            if "503" in err_msg or "UNAVAILABLE" in err_msg or "OVERLOAD" in err_msg:
+                logger.warning(f"Primary AI model '{model_id}' overwhelmed (503). Retrying once with gemini-1.5-flash...")
+                try:
+                    # One-time secondary attempt with known stable model
+                    response = client.models.generate_content(
+                        model="models/gemini-1.5-flash",
+                        contents=f"{prompt}\n\nRESPONSE FORMAT: Valid JSON Object."
+                    )
+                    if response and response.text:
+                        text = response.text
+                        start = text.find('{')
+                        end = text.rfind('}') + 1
+                        if start != -1 and end != 0:
+                            return json.loads(text[start:end])
+                except Exception as e2:
+                    logger.error(f"Fallback AI generation also failed: {e2}")
+            
             logger.error(f"Gemini fund deep-dive error: {e}")
             raise e
 

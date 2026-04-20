@@ -14,6 +14,7 @@ from backend.app.core import timezone
 from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
+from backend.app.modules.finance.models import MutualFundHolding
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.ai_service import AIService
@@ -200,11 +201,34 @@ def get_holding_insights(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Generate AI insights for a specific mutual fund holding"""
     tenant_id = str(current_user.tenant_id)
+    
+    # 1. Distinguish between 404 (Missing Data) and 503 (AI Load/Failure)
+    # Check if holding or its aggregated scheme exists
+    is_valid_id = False
+    try:
+        # Check by UUID holding id
+        if db.query(MutualFundHolding).filter(MutualFundHolding.id == holding_id, MutualFundHolding.tenant_id == tenant_id, MutualFundHolding.is_deleted == False).first():
+            is_valid_id = True
+        # Check by scheme code (aggregated view)
+        elif holding_id.isdigit() and db.query(MutualFundHolding).filter(MutualFundHolding.scheme_code == holding_id, MutualFundHolding.tenant_id == tenant_id, MutualFundHolding.is_deleted == False).first():
+            is_valid_id = True
+    except Exception as e:
+        logger.error(f"Error validating holding existence for insights: {e}")
+        pass
+
+    if not is_valid_id:
+        raise HTTPException(status_code=404, detail="Mutual fund holding not found")
+
+    # 2. Attempt AI Generation
     insights = MutualFundService.get_holding_insights(db, tenant_id, holding_id, force_refresh)
+    
     if not insights:
-        raise HTTPException(status_code=404, detail="Insights unavailable for this holding")
+        raise HTTPException(
+            status_code=503, 
+            detail="AI Advisor is currently processing high volume or experiencing temporary downtime. Recent historical insights may be available in cache. Please try again in 1 minute."
+        )
+        
     return {"insights": insights}
 
 @router.get("/schemes/{scheme_code}/details")
