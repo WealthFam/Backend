@@ -606,15 +606,14 @@ class MutualFundService:
         rounded_amount = abs(round(float(data['amount']), 2))
         
         # Check for duplicates by looking for ANY order on same date/units/amount for this fund
-        # We use a broad match for type (normalized) to catch duplicates even if type string varies
+        # RECENT HARDENING: We search for ALL orders (including deleted ones) to support revival
         existing_order = db.query(MutualFundOrder).filter(
             MutualFundOrder.tenant_id == tenant_id,
             MutualFundOrder.user_id == user_id,
             MutualFundOrder.scheme_code == scheme_code,
             func.date(MutualFundOrder.order_date) == txn_date,
             func.round(func.abs(MutualFundOrder.units), 4) == rounded_units,
-            func.round(func.abs(MutualFundOrder.amount), 2) == rounded_amount,
-            MutualFundOrder.is_deleted == False
+            func.round(func.abs(MutualFundOrder.amount), 2) == rounded_amount
         ).first()
 
         if existing_order:
@@ -622,6 +621,19 @@ class MutualFundService:
             existing_type = str(existing_order.type).upper().strip()
             existing_is_withdrawal = any(kw in existing_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
             if existing_is_withdrawal == is_withdrawal:
+                # REVIVAL LOGIC: If the existing order was deleted, restore it instead of creating a duplicate
+                if existing_order.is_deleted:
+                    existing_order.is_deleted = False
+                    existing_order.deleted_at = None
+                    db.flush()
+
+                # SELF-HEALING: Ensure the holding for this existing order is revived if it was accidentally deleted
+                if existing_order.holding_id:
+                    h = db.query(MutualFundHolding).filter(MutualFundHolding.id == existing_order.holding_id).first()
+                    if h and h.is_deleted:
+                        h.is_deleted = False
+                        h.deleted_at = None
+                        db.flush()
                 return existing_order
 
         # 3. Create Order
@@ -675,6 +687,11 @@ class MutualFundService:
             db.add(holding)
             db.flush() 
         else:
+            # REVIVAL: If holding was soft-deleted, bring it back as we have an active order for it
+            if holding.is_deleted:
+                holding.is_deleted = False
+                holding.deleted_at = None
+            
             if folio_number:
                 holding.folio_number = folio_number
         
@@ -790,9 +807,9 @@ class MutualFundService:
         orders = query.order_by(MutualFundOrder.order_date).all()
         
         # 2. Reset existing holdings instead of deleting (Preserves UUIDs)
+        # We include deleted holdings here to allow the clean logic to "revive" them
         h_query = db.query(MutualFundHolding).filter(
-            MutualFundHolding.tenant_id == tenant_id,
-            MutualFundHolding.is_deleted == False
+            MutualFundHolding.tenant_id == tenant_id
         )
         if user_id:
             h_query = h_query.filter(MutualFundHolding.user_id == user_id)
@@ -834,32 +851,37 @@ class MutualFundService:
     @staticmethod
     def delete_holding(db: Session, tenant_id: str, holding_id: str):
         with db_write_lock:
-            # Handle Aggregate (Grouped) Deletion
-            if holding_id.startswith("group-") or holding_id.startswith("group_"):
-                # Extract scheme_code (supports both hyphen and underscore)
-                delimiter = "-" if "-" in holding_id else "_"
-                scheme_code = holding_id.split(delimiter)[1]
+            # Detect Aggregate (Grouped) Deletion (group- prefix OR numeric scheme_code)
+            is_aggregate = holding_id.startswith("group-") or holding_id.startswith("group_") or holding_id.isdigit()
+            
+            if is_aggregate:
+                # Extract scheme_code (supports both hyphen, underscore, and raw numeric formats)
+                if holding_id.isdigit():
+                    scheme_code = holding_id
+                else:
+                    delimiter = "-" if "-" in holding_id else "_"
+                    scheme_code = holding_id.split(delimiter)[1]
                 
+                # HARDENING: Find ALL holdings for this scheme to ensure we clear the state completely
                 holdings = db.query(MutualFundHolding).filter(
                     MutualFundHolding.tenant_id == tenant_id,
-                    MutualFundHolding.scheme_code == scheme_code,
-                    MutualFundHolding.is_deleted == False
+                    MutualFundHolding.scheme_code == scheme_code
                 ).all()
-                
-                if not holdings:
-                    raise Exception("No holdings found for this fund")
                 
                 for h in holdings:
                     h.is_deleted = True
                     h.deleted_at = timezone.utcnow()
-                    # Soft delete all associated orders for this specific holding
-                    db.query(MutualFundOrder).filter(
-                        MutualFundOrder.holding_id == h.id,
-                        MutualFundOrder.tenant_id == tenant_id
-                    ).update({
-                        "is_deleted": True,
-                        "deleted_at": timezone.utcnow()
-                    }, synchronize_session=False)
+                
+                # HARDENING: Delete EVERY active order for this scheme/tenant.
+                # This catches orphaned transactions that might not have a holding_id.
+                db.query(MutualFundOrder).filter(
+                    MutualFundOrder.scheme_code == scheme_code,
+                    MutualFundOrder.tenant_id == tenant_id,
+                    MutualFundOrder.is_deleted == False
+                ).update({
+                    "is_deleted": True,
+                    "deleted_at": timezone.utcnow()
+                }, synchronize_session=False)
                 
                 MutualFundService._safe_commit(db)
                 return True
@@ -867,22 +889,39 @@ class MutualFundService:
             # Handle Single Folio Deletion
             holding = db.query(MutualFundHolding).filter(
                 MutualFundHolding.id == holding_id,
-                MutualFundHolding.tenant_id == tenant_id,
-                MutualFundHolding.is_deleted == False
+                MutualFundHolding.tenant_id == tenant_id
             ).first()
             
             if not holding:
                 raise Exception("Holding not found")
             
+            scheme_code = holding.scheme_code
+            folio_number = holding.folio_number
+
             # Soft delete the holding
             holding.is_deleted = True
             holding.deleted_at = timezone.utcnow()
             
-            # Soft delete all associated orders
-            db.query(MutualFundOrder).filter(
-                MutualFundOrder.holding_id == holding_id,
-                MutualFundOrder.tenant_id == tenant_id
-            ).update({
+            # HARDENING: Delete associated orders by holding_id OR folio/scheme match.
+            # This ensures orphaned/mislinked orders for this folio are also cleared.
+            order_query = db.query(MutualFundOrder).filter(
+                MutualFundOrder.tenant_id == tenant_id,
+                MutualFundOrder.scheme_code == scheme_code,
+                MutualFundOrder.is_deleted == False
+            )
+            
+            if folio_number:
+                order_query = order_query.filter(
+                    (MutualFundOrder.holding_id == holding_id) | 
+                    (MutualFundOrder.folio_number == folio_number)
+                )
+            else:
+                order_query = order_query.filter(
+                    (MutualFundOrder.holding_id == holding_id) | 
+                    (MutualFundOrder.folio_number.is_(None))
+                )
+
+            order_query.update({
                 "is_deleted": True,
                 "deleted_at": timezone.utcnow()
             }, synchronize_session=False)
@@ -1777,7 +1816,10 @@ class MutualFundService:
         
         # Get all transactions for EXISTING holdings only
         # This prevents orphaned orders from deleted holdings from inflating the timeline
-        holdings_query = db.query(MutualFundHolding.id).filter(MutualFundHolding.tenant_id == tenant_id)
+        holdings_query = db.query(MutualFundHolding.id).filter(
+            MutualFundHolding.tenant_id == tenant_id,
+            MutualFundHolding.is_deleted == False
+        )
         if user_id:
             holdings_query = holdings_query.filter(MutualFundHolding.user_id == user_id)
         if scheme_code:
