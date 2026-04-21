@@ -126,14 +126,16 @@ def calculate_start_date(period: str, first_transaction_date) -> datetime:
         'all': None
     }
     
+    from datetime import timedelta
     if period == 'all' or period not in period_map:
-        return first_date
+        return first_date - timedelta(days=10)
     
     delta = period_map[period]
     calculated_start = today - delta
     
-    # Don't go before first transaction
-    return max(calculated_start, first_date)
+    # Don't go before first transaction - add 10 days buffer for visual context
+    from datetime import timedelta
+    return max(calculated_start, first_date - timedelta(days=10))
 
 
 def add_months(source_date, months: int):

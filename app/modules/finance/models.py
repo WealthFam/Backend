@@ -396,6 +396,7 @@ class PortfolioTimelineCache(Base):
     portfolio_value = Column(Numeric(15, 2), nullable=False)
     invested_value = Column(Numeric(15, 2), nullable=False)
     benchmark_value = Column(Numeric(15, 2), nullable=True)
+    benchmarks_json = Column(String, nullable=True) # JSON dictionary of multiple benchmarks
     created_at = Column(UTCDateTime, default=timezone.utcnow)
     
     # Composite index for fast lookups
@@ -414,5 +415,32 @@ class MutualFundSyncLog(Base):
     status = Column(String, default="running") # running, completed, error
     num_funds_updated = Column(Numeric(10, 0), default=0)
     error_message = Column(String, nullable=True)
+
+class MutualFundBenchmark(Base):
+    __tablename__ = "mutual_fund_benchmarks"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    category = Column(String, unique=True, nullable=False)
+    benchmark_symbol = Column(String, nullable=False) # MFAPI scheme code
+    benchmark_label = Column(String, nullable=False)
+    is_default = Column(Boolean, default=False)
+    styling_color = Column(String, nullable=True)
+    styling_style = Column(String, nullable=True, default="solid")
+    styling_dash_array = Column(String, nullable=True)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
+
+class MutualFundBenchmarkRule(Base):
+    __tablename__ = "mutual_fund_benchmark_rules"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    priority = Column(Integer, default=0) # Lower is higher priority
+    keyword = Column(String, nullable=False) # e.g. "mid cap"
+    benchmark_symbol = Column(String, nullable=False) # MFAPI code
+    benchmark_label = Column(String, nullable=False)
+    styling_color = Column(String, nullable=True)
+    styling_style = Column(String, nullable=True, default="solid")
+    styling_dash_array = Column(String, nullable=True)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 

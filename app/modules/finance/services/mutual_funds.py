@@ -20,11 +20,14 @@ from backend.app.modules.finance.models import (
     MutualFundOrder,
     MutualFundSyncLog,
     MutualFundsMeta,
+    MutualFundBenchmark,
 )
 from backend.app.modules.auth.models import User
 from ..models import PortfolioTimelineCache, InvestmentGoal
 from ..utils.financial_math import xirr, calculate_start_date, add_months
 from backend.app.modules.ingestion.ai_service import AIService
+
+from .benchmarks import BenchmarkService
 
 MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 
@@ -32,6 +35,7 @@ class MutualFundService:
     # Standardized transaction keywords for categorization
     MF_WITHDRAWAL_KEYWORDS = ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"]
     MF_INVESTMENT_KEYWORDS = ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"]
+
 
 
     @staticmethod
@@ -1260,8 +1264,85 @@ class MutualFundService:
             "last_updated_at": holding.last_updated_at.strftime("%Y-%m-%d") if holding.last_updated_at else None,
             "xirr": xirr_value,
             "transactions": orders_list,
+            "nav_history": nav_history,
+            "benchmarks": [] # Placeholder for now, see below for real logic
+        }
+
+        # --- Benchmark Comparison Logic ---
+        holding_response = {
+            "id": holding.id,
+            "scheme_name": meta.scheme_name if meta else "Unknown Fund",
+            "scheme_code": holding.scheme_code,
+            "isin_growth": meta.isin_growth if meta else None,
+            "isin_reinvest": meta.isin_reinvest if meta else None,
+            "fund_house": meta.fund_house if meta else None,
+            "folio_number": holding.folio_number,
+            "category": meta.category if meta else "Other",
+            "user_id": holding.user_id,
+            "user_name": user_name or "Unassigned",
+            "user_avatar": user_avatar,
+            "goal": goal_info,
+            "units": float(holding.units or 0),
+            "average_price": float(holding.average_price or 0),
+            "current_value": float(holding.current_value or 0),
+            "invested_value": float(holding.units or 0) * float(holding.average_price or 0),
+            "profit_loss": float(holding.current_value or 0) - (float(holding.units or 0) * float(holding.average_price or 0)),
+            "last_nav": float(holding.last_nav or 0),
+            "last_updated_at": holding.last_updated_at.strftime("%Y-%m-%d") if holding.last_updated_at else None,
+            "xirr": xirr_value,
+            "transactions": orders_list,
             "nav_history": nav_history
         }
+
+        # Fetch Category Benchmark for comparison
+        benchmarks_list = []
+        if meta and meta.category:
+            bm = BenchmarkService.get_or_create_benchmark_mapping(db, meta.category)
+            if bm:
+                style = {
+                    "color": bm.styling_color,
+                    "style": bm.styling_style,
+                    "dashArray": bm.styling_dash_array,
+                }
+                try:
+                    bm_resp = httpx.get(f"https://api.mfapi.in/mf/{bm.benchmark_symbol}", timeout=5.0)
+                    if bm_resp.status_code == 200:
+                        bm_raw = bm_resp.json().get("data", [])
+                        valid_bm = []
+                        
+                        # Use same start_date as fund history
+                        fund_start_date = None
+                        if nav_history:
+                            fund_start_date = datetime.strptime(nav_history[0]['date'], "%Y-%m-%d").date()
+                        
+                        for entry in bm_raw:
+                            try:
+                                d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
+                                if fund_start_date is None or d_obj >= fund_start_date:
+                                    valid_bm.append({
+                                        "date": d_obj.strftime("%Y-%m-%d"),
+                                        "value": float(entry['nav'])
+                                    })
+                            except: continue
+                        
+                        valid_bm = sorted(valid_bm, key=lambda x: x['date'])
+                        
+                        # Add to benchmarks
+                        benchmarks_list.append({
+                            "label": bm.benchmark_label,
+                            "symbol": bm.benchmark_symbol,
+                            "styling": {
+                                "color": style.get("color"),
+                                "style": style.get("style"),
+                                "dashArray": style.get("dashArray"),
+                            },
+                            "history": valid_bm
+                        })
+                except Exception as e:
+                    logger.warning(f"Failed to fetch benchmark history for {bm.benchmark_label}: {e}")
+
+        holding_response["benchmarks"] = benchmarks_list
+        return holding_response
 
     @staticmethod
     def get_scheme_details(db: Session, tenant_id: str, scheme_code: str):
@@ -1461,8 +1542,74 @@ class MutualFundService:
             "transactions": enriched_orders,
             "nav_history": nav_history,
             "is_aggregate": True,
+            "owners": owners_list,
+            "benchmarks": [] # Added below
+        }
+
+        # --- Aggregate Benchmark Logic ---
+        scheme_response = {
+            "id": f"group-{scheme_code}", 
+            "scheme_name": meta.scheme_name if meta else "Unknown Fund",
+            "scheme_code": scheme_code,
+            "isin_growth": meta.isin_growth if meta else None,
+            "isin_reinvest": meta.isin_reinvest if meta else None,
+            "fund_house": meta.fund_house if meta else None,
+            "folio_number": f"{len(folio_numbers)} Folios" if len(folio_numbers) > 1 else (list(folio_numbers)[0] if folio_numbers else "N/A"),
+            "category": meta.category if meta else "Other",
+            "user_id": list(user_ids)[0] if len(user_ids) == 1 else "multi",
+            "user_name": user_name or "Unassigned",
+            "user_avatar": user_avatar,
+            "units": total_units,
+            "average_price": avg_price,
+            "current_value": total_current_value,
+            "invested_value": total_invested_value,
+            "profit_loss": profit_loss,
+            "last_nav": float(holdings[0].last_nav or 0) if holdings else 0.0,
+            "last_updated_at": holdings[0].last_updated_at.strftime("%Y-%m-%d") if holdings and holdings[0].last_updated_at else None,
+            "xirr": xirr_value,
+            "transactions": enriched_orders,
+            "nav_history": nav_history,
+            "is_aggregate": True,
             "owners": owners_list
         }
+
+        # Fetch Category Benchmark
+        benchmarks_list = []
+        if meta and meta.category:
+            bm = BenchmarkService.get_or_create_benchmark_mapping(db, meta.category)
+            if bm:
+                style = BenchmarkService.get_benchmark_styling(bm.benchmark_label)
+                try:
+                    bm_resp = httpx.get(f"https://api.mfapi.in/mf/{bm.benchmark_symbol}", timeout=5.0)
+                    if bm_resp.status_code == 200:
+                        bm_raw = bm_resp.json().get("data", [])
+                        valid_bm = []
+                        
+                        fund_start_date = None
+                        if nav_history:
+                            fund_start_date = datetime.strptime(nav_history[0]['date'], "%Y-%m-%d").date()
+                            
+                        for entry in bm_raw:
+                            try:
+                                d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
+                                if fund_start_date is None or d_obj >= fund_start_date:
+                                    valid_bm.append({"date": d_obj.strftime("%Y-%m-%d"), "value": float(entry['nav'])})
+                            except: continue
+                        
+                        benchmarks_list.append({
+                            "label": bm.benchmark_label,
+                            "symbol": bm.benchmark_symbol,
+                            "styling": {
+                                "color": style.get("color"),
+                                "style": style.get("style"),
+                                "dashArray": style.get("dashArray"),
+                            },
+                            "history": valid_bm
+                        })
+                except Exception: pass
+        
+        scheme_response["benchmarks"] = benchmarks_list
+        return scheme_response
 
     @staticmethod
     def get_scheme_info(db: Session, tenant_id: str, scheme_code: str):
@@ -1922,13 +2069,52 @@ class MutualFundService:
             # Self-Healing: Ignore cached entries with 0 value if investment exists (indicates failed NAV fetch previously)
             if snap.portfolio_value == 0 and snap.invested_value > 0:
                 continue
+            
+            import json
+            benchmarks_data = {}
+            if snap.benchmarks_json:
+                try:
+                    benchmarks_data = json.loads(snap.benchmarks_json)
+                except: pass
+            
+            # Legacy fallback
+            if not benchmarks_data and snap.benchmark_value:
+                benchmarks_data = {"120716": float(snap.benchmark_value)}
                 
             cache_dict[snap.snapshot_date.date()] = {
                 "date": snap.snapshot_date.date().isoformat(),
                 "value": float(snap.portfolio_value),
                 "invested": float(snap.invested_value),
-                "benchmark_value": float(snap.benchmark_value or 0.0)
+                "benchmarks": benchmarks_data
             }
+        
+        # Identify benchmarks to track
+        # Always track Nifty 50
+        primary_bm_code = "120716"
+        tracked_benchmarks = {
+            primary_bm_code: {
+                "label": "Nifty 50 Index",
+                "styling": {"color": "#10B981", "style": "solid", "dashArray": ""}
+            }
+        }
+        
+        # Get category benchmarks for all unique schemes in this timeline
+        scheme_metas = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code.in_(unique_schemes)).all()
+        scheme_to_bm = {} # {scheme_code: bm_code}
+        
+        for m in scheme_metas:
+            bm = BenchmarkService.get_or_create_benchmark_mapping(db, m.category)
+            if bm:
+                scheme_to_bm[m.scheme_code] = bm.benchmark_symbol
+                if bm.benchmark_symbol not in tracked_benchmarks:
+                    tracked_benchmarks[bm.benchmark_symbol] = {
+                        "label": bm.benchmark_label,
+                        "styling": {
+                            "color": bm.styling_color,
+                            "style": bm.styling_style,
+                            "dashArray": bm.styling_dash_array
+                        }
+                    }
         
         # Generate snapshots
         timeline = []
@@ -1937,7 +2123,8 @@ class MutualFundService:
         # Linear-time performance variables
         running_holdings = {} # {scheme_code: units}
         running_invested = 0.0
-        running_bm_units = 0.0
+        # Multi-benchmark shadow units
+        running_bm_units = {code: 0.0 for code in tracked_benchmarks.keys()}
         order_idx = 0
         
         # Bulk NAV data cache to avoid repeated API calls per scheme
@@ -1967,8 +2154,7 @@ class MutualFundService:
             return next(iter(nav_map.values())) if nav_map else 0.0
         
         while current_date <= end_date:
-            # IMPORTANT: We must always advance the transaction state to the current date,
-            # even if we are loading from raw cache, to keep running_invested and running_bm_units in sync.
+            # IMPORTANT: Advance transaction state
             while order_idx < len(orders):
                 o = orders[order_idx]
                 o_date = o.order_date.date() if hasattr(o.order_date, 'date') else o.order_date
@@ -1978,7 +2164,6 @@ class MutualFundService:
                     if amt <= 0: amt = float(o.units) * float(o.nav)
                     
                     o_type = str(o.type).upper().strip()
-                    # More precise keyword matching to avoid 'IN' matching 'REDEMPTION'
                     is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
                     is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
                     
@@ -1989,26 +2174,25 @@ class MutualFundService:
                         running_holdings[s_code] = running_holdings.get(s_code, 0) - float(o.units)
                         running_invested -= amt
                         
-                    # Accumulate Benchmark Shadow Units
-                    try:
-                        bm_code = "120716"
-                        if bm_code not in bulk_nav_data: get_nav_bulk(bm_code)
-                        hist_bm_nav = find_closest_nav(bulk_nav_data.get(bm_code, {}), o_date)
-                        if hist_bm_nav > 0:
-                            if is_investment: 
-                                running_bm_units += (amt / hist_bm_nav)
-                            elif is_withdrawal: 
-                                running_bm_units -= (amt / hist_bm_nav)
-                    except: pass
+                    # Accumulate ALL tracked benchmarks Shadow Units
+                    for bm_code in tracked_benchmarks.keys():
+                        try:
+                            if bm_code not in bulk_nav_data: get_nav_bulk(bm_code)
+                            hist_bm_nav = find_closest_nav(bulk_nav_data.get(bm_code, {}), o_date)
+                            if hist_bm_nav > 0:
+                                if is_investment: 
+                                    running_bm_units[bm_code] += (amt / hist_bm_nav)
+                                elif is_withdrawal: 
+                                    running_bm_units[bm_code] -= (amt / hist_bm_nav)
+                        except: pass
                     order_idx += 1
                 else:
                     break
 
             if current_date in cache_dict and current_date < end_date:
-                # Use cached value (but we already advanced running_invested/holdings above!)
                 timeline.append(cache_dict[current_date])
             else:
-                # Calculate portfolio and benchmark values for new snapshot
+                # Calculate portfolio value
                 portfolio_value = 0.0
                 for s_code, units in running_holdings.items():
                     if units > 1e-6:
@@ -2016,48 +2200,48 @@ class MutualFundService:
                         nav = find_closest_nav(bulk_nav_data.get(s_code, {}), current_date)
                         portfolio_value += units * nav
                 
-                # Benchmark Value
-                benchmark_value = 0.0
-                try:
-                    bm_code = "120716"
-                    if bm_code not in bulk_nav_data: get_nav_bulk(bm_code)
-                    bm_nav = find_closest_nav(bulk_nav_data.get(bm_code, {}), current_date)
-                    benchmark_value = max(0, running_bm_units * bm_nav)
-                except: pass
+                # Multi-Benchmark Values
+                benchmarks_values = {}
+                for bm_code in tracked_benchmarks.keys():
+                    try:
+                        if bm_code not in bulk_nav_data: get_nav_bulk(bm_code)
+                        bm_nav = find_closest_nav(bulk_nav_data.get(bm_code, {}), current_date)
+                        benchmarks_values[bm_code] = round(max(0, running_bm_units[bm_code] * bm_nav), 2)
+                    except: 
+                        benchmarks_values[bm_code] = 0.0
 
                 snapshot_data = {
                     "date": current_date.isoformat(),
                     "value": round(portfolio_value, 2),
                     "invested": round(running_invested, 2),
-                    "benchmark_value": round(benchmark_value, 2)
+                    "benchmarks": benchmarks_values
                 }
                 timeline.append(snapshot_data)
                 
                 # Save to cache if not today
                 if current_date < end_date:
-                    # Sanity Check: Don't cache if value is 0 but we have investment (means NAV fetch failed)
-                    if portfolio_value == 0 and running_invested > 0:
-                        pass
-                    else:
+                    if not (portfolio_value == 0 and running_invested > 0):
                         from datetime import datetime as dt
+                        import json
+                        
+                        primary_bm_val = benchmarks_values.get(primary_bm_code, 0.0)
+                        
                         cache_entry = PortfolioTimelineCache(
                             tenant_id=tenant_id,
                             snapshot_date=dt.combine(current_date, dt.min.time()),
                             portfolio_hash=portfolio_hash,
                             portfolio_value=round(portfolio_value, 2),
                             invested_value=round(running_invested, 2),
-                            benchmark_value=round(benchmark_value, 2)
+                            benchmark_value=primary_bm_val, # For backward compatibility
+                            benchmarks_json=json.dumps(benchmarks_values)
                         )
                         db.add(cache_entry)
             
-            # Move to next snapshot date
-            # Move to next date based on granularity
             if granularity == "1m":
                 current_date = add_months(current_date, 1)
             else:
                 current_date = current_date + timedelta(days=snapshot_days)
             
-            # Don't overshoot end date
             if current_date > end_date:
                 break
         
@@ -2069,26 +2253,36 @@ class MutualFundService:
                 timeline[-1]["invested"] * 100
             )
         
-        # Commit cache entries to database
+        # Commit cache
         try:
             with db_write_lock:
                 MutualFundService._safe_commit(db)
-        except Exception as e:
-            # Silent fail or log properly
+        except:
             db.rollback()
         
-        # Consolidate benchmark timeline from snapshot results
-        benchmark_timeline = []
-        for p in timeline:
-            if "benchmark_value" in p:
-                benchmark_timeline.append({
-                    "date": p["date"],
-                    "value": p["benchmark_value"]
-                })
+        # Consolidate benchmark timelines
+        benchmarks_response = {} # {bm_label: [{date, value}, ...]}
+        for bm_code, info in tracked_benchmarks.items():
+            bm_label = info["label"]
+            style = info["styling"]
+            
+            benchmarks_response[bm_label] = {
+                "label": bm_label,
+                "symbol": bm_code,
+                "styling": style,
+                "data": []
+            }
+            
+            for p in timeline:
+                if "benchmarks" in p and bm_code in p["benchmarks"]:
+                    benchmarks_response[bm_label]["data"].append({
+                        "date": p["date"],
+                        "value": p["benchmarks"][bm_code]
+                    })
         
         return {
             "timeline": timeline,
-            "benchmark": benchmark_timeline,
+            "benchmarks": list(benchmarks_response.values()),
             "period": period,
             "granularity": granularity,
             "total_return_percent": round(total_return_percent, 2)

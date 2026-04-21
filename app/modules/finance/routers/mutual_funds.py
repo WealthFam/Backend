@@ -14,8 +14,9 @@ from backend.app.core import timezone
 from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
-from backend.app.modules.finance.models import MutualFundHolding
+from backend.app.modules.finance.models import MutualFundHolding, MutualFundBenchmarkRule
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
+from backend.app.modules.finance.services.benchmarks import BenchmarkService
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.ai_service import AIService
 from backend.app.modules.ingestion.cas_parser import CASParser
@@ -45,6 +46,16 @@ class TransactionUpdate(BaseModel):
 class BulkDeleteRequest(BaseModel):
     model_config = ConfigDict(strict=True)
     transaction_ids: List[str]
+
+class BenchmarkRuleCreate(BaseModel):
+    model_config = ConfigDict(strict=True)
+    priority: int = 0
+    keyword: str
+    benchmark_symbol: str
+    benchmark_label: str
+    styling_color: Optional[str] = None
+    styling_style: Optional[str] = "solid"
+    styling_dash_array: Optional[str] = None
 
 @router.post("/sync/refresh")
 async def trigger_sync(
@@ -511,3 +522,41 @@ def generate_portfolio_insights(
     return {
         "insights": MutualFundService.get_portfolio_insights(db, tenant_id, user_id, force_refresh)
     }
+
+@router.get("/benchmarks/rules", summary="Fetch benchmark rules", description="Retrieve all category-to-benchmark resolution rules ordered by priority.")
+def get_benchmark_rules(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(MutualFundBenchmarkRule).order_by(MutualFundBenchmarkRule.priority.asc()).all()
+
+@router.post("/benchmarks/rules", summary="Save benchmark rule", description="Create a new or update an existing benchmark resolution rule.")
+def save_benchmark_rule(
+    payload: BenchmarkRuleCreate,
+    rule_id: Optional[str] = Query(None, description="ID of the rule to update"),
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return BenchmarkService.save_rule(db, payload.model_dump(), rule_id)
+
+@router.delete("/benchmarks/rules/{rule_id}", summary="Delete benchmark rule", description="Remove a benchmark resolution rule from the database.")
+def delete_benchmark_rule(
+    rule_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        BenchmarkService.delete_rule(db, rule_id)
+        return {"status": "success"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@router.post("/benchmarks/rules/sync", summary="Sync benchmarks", description="Re-calculate benchmark mappings for all funds based on current rules.")
+def sync_benchmark_mappings(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    count = BenchmarkService.recalculate_all_mappings(db)
+    # Clear timeline cache as benchmarks have changed
+    MutualFundService.clear_timeline_cache(db, str(current_user.tenant_id))
+    return {"status": "success", "updated_count": count}
