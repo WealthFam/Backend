@@ -34,7 +34,7 @@ MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 class MutualFundService:
     # Standardized transaction keywords for categorization
     MF_WITHDRAWAL_KEYWORDS = ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"]
-    MF_INVESTMENT_KEYWORDS = ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"]
+    MF_INVESTMENT_KEYWORDS = ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL", "SUMMARY BALANCE"]
 
 
 
@@ -375,6 +375,16 @@ class MutualFundService:
             matched_scheme = None
             amfi_code = txn.get('amfi')
             
+            # Normalize confusing bank terminology for Preview UI
+            if txn.get('is_synthesized'):
+                txn['type'] = 'SUMMARY BALANCE'
+            elif 'type' in txn:
+                raw_type = str(txn['type']).upper().strip()
+                if raw_type == 'DEBIT':
+                    txn['type'] = 'BUY'
+                elif raw_type == 'CREDIT':
+                    txn['type'] = 'SELL'
+            
             # 1. Try AMFI lookup
             if amfi_code and str(amfi_code) in amfi_map:
                 matched_scheme = amfi_map[str(amfi_code)]
@@ -395,6 +405,18 @@ class MutualFundService:
             
             # Mark as duplicate (will be checked by endpoints that have db access)
             txn['is_duplicate'] = False  # Default, will be updated by endpoint
+            
+            # Standardize date format using dayfirst=True for Indian mapping
+            if 'date' in txn:
+                from dateutil import parser as date_parser
+                try:
+                    if isinstance(txn['date'], str):
+                        parsed = date_parser.parse(txn['date'], dayfirst=True)
+                        txn['date'] = parsed.strftime("%Y-%m-%d")
+                    elif hasattr(txn['date'], 'strftime'):
+                        txn['date'] = txn['date'].strftime("%Y-%m-%d")
+                except Exception:
+                    pass
             
             mapped_results.append(txn)
             
@@ -621,11 +643,32 @@ class MutualFundService:
         # Use rounding to avoid float representation issues in DuckDB/Python
         from sqlalchemy import func
         
-        txn_date = data['date'].date() if isinstance(data['date'], datetime) else data['date']
-        # Preserve original type but use normalized for robust duplication check
-        raw_type = str(data.get('type', 'BUY')).upper().strip()
+        from dateutil import parser as date_parser
         
-        is_withdrawal = any(kw in raw_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
+        try:
+            date_str = str(data['date'])
+            # If the date is explicitly YYYY-MM-DD, parsing with dayfirst=True artificially swaps MM and DD
+            if '-' in date_str and len(date_str.split('-')[0]) == 4:
+                parsed_date = date_parser.parse(date_str)
+            elif 'T' in date_str:
+                parsed_date = date_parser.parse(date_str) # ISO format
+            else:
+                # Parse raw string using dayfirst=True for Indian format
+                parsed_date = date_parser.parse(date_str, dayfirst=True)
+            txn_date = parsed_date.date()
+        except Exception:
+            txn_date = data['date'].date() if isinstance(data['date'], datetime) else data['date']
+
+        # Fix confusing bank type labels before saving
+        raw_type = str(data.get('type', 'BUY')).upper().strip()
+        if data.get('is_synthesized'):
+            raw_type = 'SUMMARY BALANCE'
+        elif raw_type == 'DEBIT':
+            raw_type = 'BUY'
+        elif raw_type == 'CREDIT':
+            raw_type = 'SELL'
+            
+        is_withdrawal = any(kw in raw_type for kw in MutualFundService.MF_WITHDRAWAL_KEYWORDS)
         normalized_type = "SELL" if is_withdrawal else "BUY"
         
         rounded_units = abs(round(float(data['units']), 4))
@@ -674,7 +717,7 @@ class MutualFundService:
             amount=abs(float(data['amount'])),
             units=abs(float(data['units'])),
             nav=abs(float(data['nav'])),
-            order_date=data['date'],
+            order_date=txn_date,
             external_id=external_id,
             folio_number=data.get('folio_number'),
             import_source=data.get('import_source', 'MANUAL')
