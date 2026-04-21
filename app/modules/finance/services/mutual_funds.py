@@ -36,6 +36,67 @@ class MutualFundService:
     MF_WITHDRAWAL_KEYWORDS = ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"]
     MF_INVESTMENT_KEYWORDS = ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL", "SUMMARY BALANCE"]
 
+    @staticmethod
+    def _parse_date_safely(date_input: Any) -> Optional[date]:
+        """
+        Standardizes date parsing for Indian formats (DD-MM-YYYY) vs ISO formats (YYYY-MM-DD).
+        Ensures ISO strings are NOT parsed with dayfirst=True to prevent flip errors.
+        """
+        if not date_input:
+            return None
+        
+        if isinstance(date_input, (date, datetime)):
+            # If it's already a date/datetime object, just return the date part
+            return date_input.date() if hasattr(date_input, 'date') else date_input
+            
+        from dateutil import parser as date_parser
+        date_str = str(date_input).strip()
+        
+        try:
+            # 1. Check if it's already an ISO string (YYYY-MM-DD)
+            # YYYY-MM-DD always has '-' at index 4
+            if len(date_str) >= 10 and date_str[4] == '-' and date_str[:4].isdigit():
+                return date_parser.parse(date_str).date()
+            
+            # 2. Check for ISO T format (2026-04-12T00:00:00Z)
+            if 'T' in date_str:
+                return date_parser.parse(date_str).date()
+                
+            # 3. Fallback to ambiguous format with dayfirst=True for Indian context
+            # dateutil is smart enough to handle DD-MMM-YYYY (12-Apr-2026) with dayfirst=True too
+            return date_parser.parse(date_str, dayfirst=True).date()
+        except Exception:
+            # Final fallback: generic parse
+            try:
+                return date_parser.parse(date_str).date()
+            except:
+                return None
+
+
+    @staticmethod
+    def _normalize_txn_type(raw_type: Any) -> str:
+        """
+        Unified normalization for transaction types.
+        Maps Bank-Centric labels (DEBIT/CREDIT) to Investment-Centric ones (BUY/SELL).
+        """
+        if not raw_type:
+            return "BUY"
+            
+        t = str(raw_type).upper().strip()
+        
+        # 1. Bank-Centric Normalization
+        if "DEBIT" in t:
+            return "BUY"
+        if "CREDIT" in t:
+            return "SELL"
+            
+        # 2. Investment-Centric Normalization (Withdrawals)
+        is_withdrawal = any(kw in t for kw in MutualFundService.MF_WITHDRAWAL_KEYWORDS)
+        if is_withdrawal:
+            return "SELL"
+            
+        # 3. Default to current value if not explicitly a withdrawal
+        return t
 
 
     @staticmethod
@@ -376,14 +437,14 @@ class MutualFundService:
             amfi_code = txn.get('amfi')
             
             # Normalize confusing bank terminology for Preview UI
+            original_type = txn.get('type')
             if txn.get('is_synthesized'):
                 txn['type'] = 'SUMMARY BALANCE'
-            elif 'type' in txn:
-                raw_type = str(txn['type']).upper().strip()
-                if raw_type == 'DEBIT':
-                    txn['type'] = 'BUY'
-                elif raw_type == 'CREDIT':
-                    txn['type'] = 'SELL'
+            else:
+                txn['type'] = MutualFundService._normalize_txn_type(original_type)
+            
+            if original_type != txn['type']:
+                logger.info(f"[MAPPER] Normalized Type: {original_type} -> {txn['type']}")
             
             # 1. Try AMFI lookup
             if amfi_code and str(amfi_code) in amfi_map:
@@ -406,17 +467,11 @@ class MutualFundService:
             # Mark as duplicate (will be checked by endpoints that have db access)
             txn['is_duplicate'] = False  # Default, will be updated by endpoint
             
-            # Standardize date format using dayfirst=True for Indian mapping
+            # Standardize date format using safe parsing for Indian context
             if 'date' in txn:
-                from dateutil import parser as date_parser
-                try:
-                    if isinstance(txn['date'], str):
-                        parsed = date_parser.parse(txn['date'], dayfirst=True)
-                        txn['date'] = parsed.strftime("%Y-%m-%d")
-                    elif hasattr(txn['date'], 'strftime'):
-                        txn['date'] = txn['date'].strftime("%Y-%m-%d")
-                except Exception:
-                    pass
+                parsed_date = MutualFundService._parse_date_safely(txn['date'])
+                if parsed_date:
+                    txn['date'] = parsed_date.strftime("%Y-%m-%d")
             
             mapped_results.append(txn)
             
@@ -477,21 +532,9 @@ class MutualFundService:
                 
                 # Priority 3: Check by field match (For historical transactions)
                 if not is_duplicate:
-                    txn_date_raw = txn.get('date')
-                    if isinstance(txn_date_raw, str):
-                        # Handle ISO format with T
-                        if 'T' in txn_date_raw:
-                             txn_date_raw = txn_date_raw.split('T')[0]
-                        
-                        # Parse string date
-                        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%Y-%m-%d %H:%M:%S"):
-                            try:
-                                txn_date_raw = datetime.strptime(txn_date_raw, fmt)
-                                break
-                            except: continue
+                    txn_date = MutualFundService._parse_date_safely(txn.get('date'))
                     
-                    if isinstance(txn_date_raw, (datetime, date)):
-                        txn_date = txn_date_raw.date() if isinstance(txn_date_raw, datetime) else txn_date_raw
+                    if txn_date:
                         # Fix: Normalize type and sign for comparison
                         txn_type = txn.get('type', 'BUY')
                         if txn_type == "DEBIT": txn_type = "BUY"
@@ -643,32 +686,18 @@ class MutualFundService:
         # Use rounding to avoid float representation issues in DuckDB/Python
         from sqlalchemy import func
         
-        from dateutil import parser as date_parser
-        
-        try:
-            date_str = str(data['date'])
-            # If the date is explicitly YYYY-MM-DD, parsing with dayfirst=True artificially swaps MM and DD
-            if '-' in date_str and len(date_str.split('-')[0]) == 4:
-                parsed_date = date_parser.parse(date_str)
-            elif 'T' in date_str:
-                parsed_date = date_parser.parse(date_str) # ISO format
-            else:
-                # Parse raw string using dayfirst=True for Indian format
-                parsed_date = date_parser.parse(date_str, dayfirst=True)
-            txn_date = parsed_date.date()
-        except Exception:
-            txn_date = data['date'].date() if isinstance(data['date'], datetime) else data['date']
+        txn_date = MutualFundService._parse_date_safely(data['date'])
+        if not txn_date:
+            raise ValueError(f"Could not parse transaction date: {data['date']}")
 
         # Fix confusing bank type labels before saving
-        raw_type = str(data.get('type', 'BUY')).upper().strip()
-        if data.get('is_synthesized'):
-            raw_type = 'SUMMARY BALANCE'
-        elif raw_type == 'DEBIT':
-            raw_type = 'BUY'
-        elif raw_type == 'CREDIT':
-            raw_type = 'SELL'
+        original_type = data.get('type', 'BUY')
+        raw_type = MutualFundService._normalize_txn_type(original_type) if not data.get('is_synthesized') else 'SUMMARY BALANCE'
+        
+        if str(original_type).upper().strip() != raw_type:
+            logger.info(f"[INGESTION] Normalized Type for {scheme_code}: {original_type} -> {raw_type}")
             
-        is_withdrawal = any(kw in raw_type for kw in MutualFundService.MF_WITHDRAWAL_KEYWORDS)
+        is_withdrawal = (raw_type == "SELL")
         normalized_type = "SELL" if is_withdrawal else "BUY"
         
         rounded_units = abs(round(float(data['units']), 4))
@@ -688,7 +717,9 @@ class MutualFundService:
         if existing_order:
             # Check if existing order type is logically the same
             existing_type = str(existing_order.type).upper().strip()
-            existing_is_withdrawal = any(kw in existing_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
+            # Robust Type Check: Compare normalized withdrawal status to prevent cross-type revival
+            existing_is_withdrawal = (MutualFundService._normalize_txn_type(existing_type) == "SELL")
+            
             if existing_is_withdrawal == is_withdrawal:
                 # REVIVAL LOGIC: If the existing order was deleted, restore it instead of creating a duplicate
                 if existing_order.is_deleted:
@@ -1246,7 +1277,7 @@ class MutualFundService:
         for o in orders:
             orders_list.append({
                 "id": o.id,
-                "type": o.type,
+                "type": MutualFundService._normalize_txn_type(o.type),
                 "amount": float(o.amount),
                 "units": float(o.units),
                 "nav": float(o.nav),
@@ -1478,7 +1509,7 @@ class MutualFundService:
         for o in orders:
             orders_list.append({
                 "id": o.id,
-                "type": o.type,
+                "type": MutualFundService._normalize_txn_type(o.type),
                 "amount": float(o.amount),
                 "units": float(o.units),
                 "nav": float(o.nav),
@@ -1552,7 +1583,7 @@ class MutualFundService:
 
             enriched_orders.append({
                 "id": o.id,
-                "type": o.type,
+                "type": MutualFundService._normalize_txn_type(o.type),
                 "amount": float(o.amount),
                 "units": float(o.units),
                 "nav": float(o.nav),
@@ -2404,7 +2435,7 @@ class MutualFundService:
             if "amount" in data:
                 order.amount = float(data["amount"])
             if "type" in data:
-                order.type = data["type"].upper()
+                order.type = MutualFundService._normalize_txn_type(data["type"])
 
             MutualFundService._safe_commit(db)
 
