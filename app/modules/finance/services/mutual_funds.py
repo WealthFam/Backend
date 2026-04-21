@@ -558,7 +558,7 @@ class MutualFundService:
             # Recalculate affected holdings for data integrity
             for scheme_code in affected_schemes:
                 try:
-                    MutualFundService._recalculate_holdings_logic(db, tenant_id, scheme_code)
+                    MutualFundService._recalculate_holdings_logic(db, tenant_id, scheme_code=scheme_code)
                 except Exception as e:
                     logger.error(f"Failed to recalculate holding for {scheme_code} after import: {e}")
 
@@ -720,6 +720,10 @@ class MutualFundService:
             if holding.is_deleted:
                 holding.is_deleted = False
                 holding.deleted_at = None
+                holding.units = 0
+                holding.average_price = 0
+                holding.invested_value = 0
+                holding.current_value = 0
             
             if folio_number:
                 holding.folio_number = folio_number
@@ -823,7 +827,7 @@ class MutualFundService:
             return MutualFundService._recalculate_holdings_logic(db, tenant_id, user_id)
 
     @staticmethod
-    def _recalculate_holdings_logic(db: Session, tenant_id: str, user_id: Optional[str] = None):
+    def _recalculate_holdings_logic(db: Session, tenant_id: str, user_id: Optional[str] = None, scheme_code: Optional[str] = None):
         """Internal logic without lock for nested calls"""
         # 1. Get all active orders sorted by date
         query = db.query(MutualFundOrder).filter(
@@ -832,6 +836,8 @@ class MutualFundService:
         )
         if user_id:
             query = query.filter(MutualFundOrder.user_id == user_id)
+        if scheme_code:
+            query = query.filter(MutualFundOrder.scheme_code == scheme_code)
         
         orders = query.order_by(MutualFundOrder.order_date).all()
         
@@ -842,6 +848,8 @@ class MutualFundService:
         )
         if user_id:
             h_query = h_query.filter(MutualFundHolding.user_id == user_id)
+        if scheme_code:
+            h_query = h_query.filter(MutualFundHolding.scheme_code == scheme_code)
         
         # We reset metrics to 0 and then rebuild. This allows _update_holding_with_order 
         # to find and update the existing record based on (scheme_code, folio_number).
