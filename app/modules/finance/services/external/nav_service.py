@@ -152,3 +152,41 @@ class NAVService:
             return [float(r.nav) for r in results]
         finally:
             db.close()
+    @staticmethod
+    def fetch_live_nav_history(scheme_code: str, days: int = 365) -> Dict[str, Any]:
+        """
+        Fetches NAV history directly from API without touching the market database.
+        Used for Explore mode where we don't want to cache data for funds the user doesn't own.
+        """
+        try:
+            response = httpx.get(f"{MFAPI_BASE_URL}/{scheme_code}", timeout=15.0)
+            if response.status_code != 200:
+                return {"meta": {}, "history": []}
+            
+            data = response.json()
+            raw_history = data.get("data", [])
+            meta = data.get("meta", {})
+            
+            start_date = (timezone.utcnow() - timedelta(days=days)).date()
+            valid_history = []
+            
+            for entry in raw_history:
+                try:
+                    # MFAPI format is DD-MM-YYYY
+                    d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
+                    if d_obj >= start_date:
+                        valid_history.append({
+                            "date": d_obj.strftime("%Y-%m-%d"),
+                            "value": Decimal(str(entry['nav']))
+                        })
+                except:
+                    continue
+            
+            # Sort ascending for chart (MFAPI is descending)
+            return {
+                "meta": meta,
+                "history": sorted(valid_history, key=lambda x: x['date'])
+            }
+        except Exception as e:
+            logger.error(f"Live NAV fetch failed for {scheme_code}: {e}")
+            return {"meta": {}, "history": []}
