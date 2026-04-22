@@ -258,24 +258,30 @@ class MutualFundService:
             cat_low = category.lower() if category else None
             amc_low = amc.lower() if amc else None
 
-            # Optimization: Direct filter if possible, otherwise iterate
+            # Common inactive keywords to filter out (PRACTICES.md Section 10)
+            inactive_keywords = ["(matured)", "(redeemed)", "liquidated", "terminated", "suspended"]
+
+            # Filter and Paginate
             filtered_funds = []
             for f in all_funds:
-                scheme_name = f.get('schemeName', '').lower()
+                scheme_name = f.get('schemeName', '')
+                scheme_name_low = scheme_name.lower()
                 
-                # Filtering logic
+                # Rule: Proactively filter out inactive/matured funds to reduce search noise
+                if any(kw in scheme_name_low for kw in inactive_keywords):
+                    continue
+
+                # Standard filtering logic
                 match = True
-                if query_low and query_low not in scheme_name:
+                if query_low and query_low not in scheme_name_low:
                     match = False
                 
-                # Category filter - usually contained in name or we might need better classification
                 if cat_low:
-                    # Common terms: Equity, Debt, Hybrid, ELSS, Index, Liquid
                     if cat_low == "index funds": cat_low = "index"
-                    if cat_low not in scheme_name:
+                    if cat_low not in scheme_name_low:
                         match = False
                         
-                if amc_low and amc_low not in scheme_name: 
+                if amc_low and amc_low not in scheme_name_low: 
                     match = False
                     
                 if match:
