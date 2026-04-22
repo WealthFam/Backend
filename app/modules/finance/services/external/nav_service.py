@@ -137,6 +137,45 @@ class NAVService:
             db.close()
             
     @staticmethod
+    def get_latest_nav_delta(scheme_code: str) -> Dict[str, Any]:
+        """
+        Returns the delta between the latest and previous NAV from cache.
+        """
+        db = MarketSessionLocal()
+        try:
+            results = db.query(MutualFundNAVHistory).filter(
+                MutualFundNAVHistory.scheme_code == str(scheme_code)
+            ).order_by(MutualFundNAVHistory.nav_date.desc()).limit(2).all()
+            
+            if len(results) < 2:
+                # Fallback: if only one record exists, delta is zero
+                latest_nav = Decimal(str(results[0].nav)) if results else Decimal("0.0")
+                return {
+                    "delta": Decimal("0.0"), 
+                    "percent": Decimal("0.0"), 
+                    "latest": latest_nav,
+                    "previous": latest_nav
+                }
+            
+            latest = results[0]
+            previous = results[1]
+            
+            n1 = Decimal(str(latest.nav))
+            n0 = Decimal(str(previous.nav))
+            
+            delta = n1 - n0
+            percent = (delta / n0 * 100) if n0 > 0 else Decimal("0.0")
+            
+            return {
+                "delta": delta,
+                "percent": percent,
+                "latest": n1,
+                "previous": n0
+            }
+        finally:
+            db.close()
+
+    @staticmethod
     def get_sparkline(scheme_code: str, days: int = 30) -> List[float]:
         """
         Returns the last N days of NAVs for a sparkline.

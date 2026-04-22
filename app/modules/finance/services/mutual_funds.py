@@ -1700,36 +1700,13 @@ class MutualFundService:
         category_allocation = {}
         total_value = Decimal("0.0")
         
-        # Portfolio Sparkline + Day Change — read directly from cache (fast, no computation)
-        sparkline = []
-        day_change = Decimal("0.0")
-        day_change_percent = Decimal("0.0")
-        try:
-            cutoff = timezone.utcnow().date() - timedelta(days=30)
-            cached_points = (
-                db.query(PortfolioTimelineCache)
-                .filter(
-                    PortfolioTimelineCache.tenant_id == tenant_id,
-                    PortfolioTimelineCache.snapshot_date >= cutoff,
-                )
-                .order_by(PortfolioTimelineCache.snapshot_date.asc())
-                .all()
-            )
-            if cached_points:
-                sparkline = [float(p.portfolio_value) for p in cached_points]
-                if len(sparkline) >= 2:
-                    prev_val = Decimal(str(sparkline[-2]))
-                    curr_val = Decimal(str(sparkline[-1]))
-                    day_change = round(curr_val - prev_val, 2)
-                    day_change_percent = round((day_change / prev_val) * 100, 2) if prev_val > 0 else Decimal("0.0")
-        except Exception:
-            pass
 
         # Bulk fetch metas for all holdings to avoid N+1 queries
         scheme_codes = list(set(h.scheme_code for h in holdings))
         metas = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code.in_(scheme_codes)).all()
         meta_map = {m.scheme_code: m for m in metas}
 
+        # 1. Standard aggregations (Allocation + Total Value)
         for h in holdings:
             meta = meta_map.get(h.scheme_code)
             raw_category = meta.category if meta else "Other"
@@ -1745,7 +1722,55 @@ class MutualFundService:
             
             total_value += current_val
         
-        # Convert to percentages
+        # 2. Portfolio Sparkline (Historical Trend)
+        sparkline = []
+        try:
+            cutoff = timezone.utcnow().date() - timedelta(days=30)
+            cached_points = (
+                db.query(PortfolioTimelineCache)
+                .filter(
+                    PortfolioTimelineCache.tenant_id == tenant_id,
+                    PortfolioTimelineCache.snapshot_date >= cutoff,
+                )
+                .order_by(PortfolioTimelineCache.snapshot_date.asc())
+                .all()
+            )
+            if cached_points:
+                sparkline = [float(p.portfolio_value) for p in cached_points]
+                # Append today's real-time value to sparkline for UI completeness
+                sparkline.append(float(total_value))
+        except Exception:
+            pass
+
+        # 3. Robust Day Change (Latest NAV vs Previous NAV for each holding)
+        # This handles the case where Today vs Yesterday in cache might be 0 due to 
+        # NAV only updating at midnight.
+        day_change = Decimal("0.0")
+        day_change_percent = Decimal("0.0")
+        scheme_deltas = {} # Cache deltas to avoid N+1 queries if multiple holdings/folios exist for same scheme
+        
+        for h in holdings:
+            s_code = h.scheme_code
+            if s_code not in scheme_deltas:
+                try:
+                    # Fetches delta between N1 (latest) and N0 (previous)
+                    delta_info = NAVService.get_latest_nav_delta(s_code)
+                    scheme_deltas[s_code] = delta_info.get("delta", Decimal("0.0"))
+                except Exception:
+                    scheme_deltas[s_code] = Decimal("0.0")
+            
+            units = Decimal(str(h.units or 0.0))
+            day_change += (units * scheme_deltas[s_code])
+        
+        if total_value > 0:
+            # We calculate percentage based on the "previous" value (Current - Change)
+            prev_total_value = total_value - day_change
+            if prev_total_value > 0:
+                day_change_percent = (day_change / prev_total_value) * 100
+            else:
+                day_change_percent = Decimal("0.0")
+
+        # Convert allocation to percentages
         if total_value > 0:
             allocation = {k: round(float((v / total_value) * 100), 2) for k, v in allocation.items()}
             category_allocation = {k: round(float((v / total_value) * 100), 2) for k, v in category_allocation.items()}
@@ -1858,8 +1883,8 @@ class MutualFundService:
             "profit_loss": round(float(total_value - total_invested), 2),
             "profit_loss_percent": round(float(((total_value - total_invested) / total_invested * 100) if total_invested > 0 else 0), 2),
             "sparkline": sparkline,
-            "day_change": float(day_change),
-            "day_change_percent": float(day_change_percent),
+            "day_change": round(float(day_change), 2),
+            "day_change_percent": round(float(day_change_percent), 2),
             "active_schemes_count": len(holdings)
         }
     
