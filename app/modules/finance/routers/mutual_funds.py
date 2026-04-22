@@ -17,6 +17,7 @@ from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.finance.models import MutualFundHolding, MutualFundBenchmarkRule
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.finance.services.benchmarks import BenchmarkService
+from backend.app.modules.finance.services.external.market_data import MarketDataService
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.ai_service import AIService
 from backend.app.modules.ingestion.cas_parser import CASParser
@@ -101,8 +102,8 @@ def search_funds(
     return MutualFundService.search_funds(query=q, category=category, amc=amc, limit=limit, offset=offset, sort_by=sort_by)
 
 @router.get("/indices")
-def get_market_indices():
-    return MutualFundService.get_market_indices()
+async def get_market_indices(period: str = Query("1d")):
+    return await MarketDataService.get_market_indices(period)
 
 @router.get("/{scheme_code}/nav")
 def get_nav(scheme_code: str):

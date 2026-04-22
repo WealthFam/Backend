@@ -1,15 +1,15 @@
 import asyncio
 import hashlib
-import httpx
+import logging
 import re
 import threading
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, List, Optional
 
+import httpx
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ from ..utils.financial_math import xirr, calculate_start_date, add_months
 from backend.app.modules.ingestion.ai_service import AIService
 
 from .benchmarks import BenchmarkService
+from .external.market_data import MarketDataService
 
 MFAPI_BASE_URL = "https://api.mfapi.in/mf"
 
@@ -1810,54 +1811,6 @@ class MutualFundService:
             MutualFundService._safe_commit(db)
             return holding
 
-    @staticmethod
-    def get_market_indices():
-        async def fetch_index_data(idx):
-            try:
-                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{idx['symbol']}?interval=5m&range=1d"
-                headers = {'User-Agent': 'Mozilla/5.0'}
-                
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(url, headers=headers, timeout=5.0)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    meta = data['chart']['result'][0]['meta']
-                    current_price = meta['regularMarketPrice']
-                    previous_close = meta['chartPreviousClose']
-                    change = current_price - previous_close
-                    percent = (change / previous_close) * 100
-                    
-                    indicators = data['chart']['result'][0]['indicators']['quote'][0]
-                    closes = indicators.get('close', [])
-                    valid_closes = [c for c in closes if c is not None]
-                    sparkline = valid_closes[-20:] if len(valid_closes) > 20 else valid_closes
-
-                    return {
-                        "name": idx['name'],
-                        "value": f"{current_price:,.2f}",
-                        "change": f"{change:+.2f}",
-                        "percent": f"{percent:+.2f}%",
-                        "isUp": change >= 0,
-                        "sparkline": sparkline
-                    }
-                else:
-                    return {"name": idx['name'], "value": "Unavailable", "change": "0.00", "percent": "0.00%", "isUp": True}
-            except Exception as e:
-                pass
-                return {"name": idx['name'], "value": "Error", "change": "0.00", "percent": "0.00%", "isUp": True}
-        
-        async def fetch_all():
-            indices = [
-                {"name": "NIFTY 50", "symbol": "^NSEI"},
-                {"name": "SENSEX", "symbol": "^BSESN"},
-                {"name": "BANK NIFTY", "symbol": "^NSEBANK"}
-            ]
-            tasks = [fetch_index_data(idx) for idx in indices]
-            return await asyncio.gather(*tasks)
-        
-        # Run async tasks
-        return asyncio.run(fetch_all())
 
     @staticmethod
     def get_portfolio_analytics(db: Session, tenant_id: str, user_id: Optional[str] = None):
@@ -2032,9 +1985,11 @@ class MutualFundService:
             "total_invested": round(float(total_invested), 2),
             "current_value": round(float(total_value), 2),
             "profit_loss": round(float(total_value - total_invested), 2),
+            "profit_loss_percent": round(float(((total_value - total_invested) / total_invested * 100) if total_invested > 0 else 0), 2),
             "sparkline": sparkline,
             "day_change": float(day_change),
-            "day_change_percent": float(day_change_percent)
+            "day_change_percent": float(day_change_percent),
+            "active_schemes_count": len(holdings)
         }
     
     @staticmethod
