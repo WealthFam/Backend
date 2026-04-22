@@ -629,7 +629,7 @@ class AnalyticsService:
             today_query = today_query.join(Account, Transaction.account_id == Account.id)\
                                      .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
         
-        today_total = abs(float(today_query.scalar() or 0))
+        today_total = abs(Decimal(str(today_query.scalar() or 0)))
         
         # 2. Month's total spending
         now = timezone.utcnow()
@@ -646,7 +646,7 @@ class AnalyticsService:
             month_query = month_query.join(Account, Transaction.account_id == Account.id)\
                                      .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
         
-        monthly_total = abs(float(month_query.scalar() or 0))
+        monthly_total = abs(Decimal(str(month_query.scalar() or 0)))
         
         # 3. Latest transaction
         latest_query = db.query(Transaction).filter(
@@ -677,9 +677,9 @@ class AnalyticsService:
         budget_health = None
         if overall:
             budget_health = {
-                "percentage": float(overall['percentage']),
-                "limit": float(overall['amount_limit']),
-                "spent": float(overall['spent'])
+                "percentage": Decimal(str(overall['percentage'])),
+                "limit": Decimal(str(overall['amount_limit'])),
+                "spent": Decimal(str(overall['spent']))
             }
         
         # 5. Currency
@@ -740,11 +740,11 @@ class AnalyticsService:
         txn_map = {}
         for row in transactions:
             if row.account_id not in txn_map: txn_map[row.account_id] = {}
-            txn_map[row.account_id][row.d] = float(row.total)
+            txn_map[row.account_id][row.d] = Decimal(str(row.total))
             
         for i in range(days):
             target_date = (now - timedelta(days=i)).date()
-            total_liquid = 0
+            total_liquid = Decimal("0.0")
             
             for acc in accounts:
                 acc_id = str(acc.id)
@@ -753,21 +753,20 @@ class AnalyticsService:
                 
                 if anchor_snap:
                     # Balance = Anchor + Sum(Transactions from AnchorDate+1 to TargetDate)
-                    # Note: Using float for simplicity here
-                    balance = float(anchor_snap.balance)
+                    balance = Decimal(str(anchor_snap.balance))
                     snap_date = anchor_snap.timestamp.date()
                     
                     # Forward track if target_date > snap_date
                     curr = snap_date + timedelta(days=1)
                     while curr <= target_date:
-                        balance += txn_map.get(acc_id, {}).get(curr, 0)
+                        balance += txn_map.get(acc_id, {}).get(curr, Decimal("0.0"))
                         curr += timedelta(days=1)
                 else:
                     # Fallback to current balance and backtrack (original logic)
-                    balance = float(acc.balance or 0)
+                    balance = Decimal(str(acc.balance or 0))
                     curr = now.date()
                     while curr > target_date:
-                        balance -= txn_map.get(acc_id, {}).get(curr, 0)
+                        balance -= txn_map.get(acc_id, {}).get(curr, Decimal("0.0"))
                         curr -= timedelta(days=1)
                 
                 if acc.type in ['BANK', 'WALLET']:
@@ -775,16 +774,20 @@ class AnalyticsService:
                 elif acc.type in ['CREDIT_CARD', 'LOAN']:
                     total_liquid -= balance
             
-            mf_val = mf_map.get(target_date, 0)
+            mf_val = mf_map.get(target_date, Decimal("0.0"))
             if not mf_val and mf_timeline:
                 past_dates = [d for d in mf_map.keys() if d <= target_date]
-                mf_val = mf_map[max(past_dates)] if past_dates else (mf_timeline[0]["value"] if mf_timeline else 0)
+                mf_val = mf_map[max(past_dates)] if past_dates else (Decimal(str(mf_timeline[0]["value"])) if mf_timeline else Decimal("0.0"))
+
+            # Strict coercion to Decimal for aggregation safety
+            d_total_liquid = Decimal(str(total_liquid))
+            d_mf_val = Decimal(str(mf_val))
 
             timeline.append({
                 "date": target_date.isoformat(),
-                "liquid": round(total_liquid, 2),
-                "investments": round(mf_val, 2),
-                "total": round(total_liquid + mf_val, 2)
+                "liquid": round(d_total_liquid, 2),
+                "investments": round(d_mf_val, 2),
+                "total": round(d_total_liquid + d_mf_val, 2)
             })
             
         return timeline[::-1]
@@ -1005,7 +1008,7 @@ class AnalyticsService:
         metrics = AnalyticsService.get_summary_metrics(
             db, tenant_id, start_date=month_start, end_date=month_end, user_id=user_id, exclude_hidden=True
         )
-        daily_limit = metrics["budget_health"]["limit"] / last_day if metrics["budget_health"]["limit"] > 0 else 0
+        daily_limit = Decimal(str(metrics["budget_health"]["limit"])) / Decimal(last_day) if metrics["budget_health"]["limit"] > 0 else Decimal("0.0")
 
         # Query daily totals
         from backend.app.modules.finance.models import Transaction, Account

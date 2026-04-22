@@ -99,11 +99,13 @@ def search_funds(
     sort_by: str = Query('relevance')
 ):
     # Allow empty query to fetch popular/trending funds for the Explore tab
-    return MutualFundService.search_funds(query=q, category=category, amc=amc, limit=limit, offset=offset, sort_by=sort_by)
+    funds = MutualFundService.search_funds(query=q, category=category, amc=amc, limit=limit, offset=offset, sort_by=sort_by)
+    return {"data": funds, "total": len(funds)}
 
 @router.get("/indices")
 async def get_market_indices(period: str = Query("1d")):
-    return await MarketDataService.get_market_indices(period)
+    indices = await MarketDataService.get_market_indices(period)
+    return {"data": indices, "total": len(indices)}
 
 @router.get("/{scheme_code}/nav")
 def get_nav(scheme_code: str):
@@ -120,14 +122,19 @@ def get_nav(scheme_code: str):
 
 @router.get("/portfolio")
 def get_portfolio(
+    background_tasks: BackgroundTasks,
     user_id: Optional[str] = Query(None),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     tenant_id = str(current_user.tenant_id)
+    # Trigger background sync to keep cache fresh. 
+    # refresh_tenant_navs handles its own staleness checks inside.
+    background_tasks.add_task(MutualFundService.refresh_tenant_navs, tenant_id)
+    
     holdings = MutualFundService.get_portfolio(db, tenant_id, user_id)
     logger.info(f"Portfolio requested for tenant {tenant_id}. Found {len(holdings)} active holdings.")
-    return holdings
+    return {"data": holdings, "total": len(holdings)}
 
 @router.get("/analytics")
 def get_analytics(
@@ -139,6 +146,7 @@ def get_analytics(
 
 @router.get("/analytics/performance-timeline")
 def get_performance_timeline(
+    background_tasks: BackgroundTasks,
     period: str = "1y",
     granularity: str = "1w",
     user_id: Optional[str] = Query(None),
@@ -149,15 +157,13 @@ def get_performance_timeline(
 ):
     """
     Get portfolio performance timeline.
-    
-    Query params:
-    - period: One of '1m', '3m', '6m', '1y', 'all'
-    - granularity: One of '1d', '1w', '1m'
-    - user_id: Filter by specific family member
-    - scheme_code: Filter by specific fund scheme
-    - holding_id: Filter by specific holding
     """
-    return MutualFundService.get_performance_timeline(db, str(current_user.tenant_id), period, granularity, user_id, scheme_code, holding_id)
+    tenant_id = str(current_user.tenant_id)
+    
+    # Ensure NAV history is being synced in background
+    background_tasks.add_task(MutualFundService.refresh_tenant_navs, tenant_id)
+    
+    return MutualFundService.get_performance_timeline(db, tenant_id, period, granularity, user_id, scheme_code, holding_id)
 
 @router.delete("/analytics/cache")
 def clear_timeline_cache(
@@ -529,7 +535,8 @@ def get_benchmark_rules(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return db.query(MutualFundBenchmarkRule).order_by(MutualFundBenchmarkRule.priority.asc()).all()
+    rules = db.query(MutualFundBenchmarkRule).order_by(MutualFundBenchmarkRule.priority.asc()).all()
+    return {"data": rules, "total": len(rules)}
 
 @router.post("/benchmarks/rules", summary="Save benchmark rule", description="Create a new or update an existing benchmark resolution rule.")
 def save_benchmark_rule(
