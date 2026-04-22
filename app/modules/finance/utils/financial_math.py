@@ -32,26 +32,47 @@ def xirr(cash_flows: List[Tuple[datetime, float]], guess: float = 0.1) -> float:
     max_iterations = 100
     
     for _ in range(max_iterations):
-        # Calculate NPV and its derivative
-        npv = sum(amt / ((1 + rate) ** (day / 365.0)) for day, amt in zip(days, amounts))
-        dnpv = sum(-amt * day / 365.0 / ((1 + rate) ** (day / 365.0 + 1)) for day, amt in zip(days, amounts))
-        
-        if abs(npv) < epsilon:
-            return rate
-        
-        if dnpv == 0:
-            return 0.0
-        
-        # Newton-Raphson update
-        rate = rate - npv / dnpv
-        
-        # Prevent extreme values
-        if rate < -0.99:
-            rate = -0.99
-        elif rate > 10:
-            rate = 10
+        try:
+            # Calculate NPV and its derivative
+            # We use a protected power function to avoid OverflowError or complex numbers
+            npv = 0.0
+            dnpv = 0.0
+            for day, amt in zip(days, amounts):
+                # Using (1+rate)**(day/365)
+                # If 1+rate is negative and day/365 is not an integer, this will crash.
+                # However, rate > -1 is expected for financial returns.
+                if rate <= -1:
+                    return None
+                
+                term = (1 + rate) ** (day / 365.0)
+                npv += amt / term
+                dnpv += -amt * (day / 365.0) / ((1 + rate) * term)
+            
+            if abs(npv) < epsilon:
+                return rate
+            
+            if dnpv == 0:
+                return None
+            
+            # Newton-Raphson update
+            new_rate = rate - npv / dnpv
+            
+            # Check for convergence failure or extreme values
+            if abs(new_rate - rate) < epsilon / 100:
+                return new_rate
+                
+            rate = new_rate
+            
+            # Clamp rate to reasonable bounds for Newton-Raphson
+            if rate < -0.999:
+                rate = -0.999
+            elif rate > 100: # 10,000% return is enough of a cap
+                rate = 100
+        except (OverflowError, ZeroDivisionError, ValueError):
+            return None
     
-    return rate
+    # If we reached here, it didn't converge within max_iterations
+    return None
 
 
 def categorize_fund(scheme_category: str) -> str:

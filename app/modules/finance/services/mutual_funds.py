@@ -41,6 +41,12 @@ class MutualFundService:
     # Standardized transaction keywords for categorization
     MF_WITHDRAWAL_KEYWORDS = ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"]
     MF_INVESTMENT_KEYWORDS = ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL", "SUMMARY BALANCE"]
+    
+    # Internal keywords that don't represent external capital flows (for portfolio-wide XIRR)
+    MF_INTERNAL_KEYWORDS = ["SWITCH", "STP", "SWP", "MERGER", "CONSOLIDATION"]
+    
+    # Reinvestment keywords (to be excluded from cash flow calculations)
+    MF_REINVESTMENT_KEYWORDS = ["REINV", "DIVIDEND REINVESTMENT", "DIV REINV"]
 
     @staticmethod
     def _parse_date_safely(date_input: Any) -> Optional[date]:
@@ -1171,6 +1177,7 @@ class MutualFundService:
         
         # Fetch Goal info if linked
         goal_info = None
+        # 1. Fetch Metadata & Orders
         if holding.goal_id:
             goal = db.query(InvestmentGoal).filter(InvestmentGoal.id == holding.goal_id).first()
             if goal:
@@ -1183,35 +1190,75 @@ class MutualFundService:
                     "is_completed": goal.is_completed
                 }
         
-        # Get all transactions for this holding
         orders = db.query(MutualFundOrder).filter(
             MutualFundOrder.holding_id == holding.id,
             MutualFundOrder.tenant_id == tenant_id,
             MutualFundOrder.is_deleted == False
         ).order_by(MutualFundOrder.order_date.desc()).all()
-        
-        # Calculate XIRR for this specific fund
+
+        # 2. Fetch Full NAV History (with Cache-First + Live Fallback)
+        nav_history = []
+        try:
+            start_date = None
+            if orders:
+                earliest_order = orders[-1].order_date
+                start_date = earliest_order.date()
+            else:
+                start_date = (timezone.utcnow() - timedelta(days=365)).date()
+
+            today = timezone.utcnow().date()
+            nav_history = NAVService.get_nav_history(holding.scheme_code, start_date, today)
+            
+            # If cache is empty, use fetch_live_nav_history as fallback
+            if not nav_history:
+                live_data = NAVService.fetch_live_nav_history(holding.scheme_code, days=365*5) # 5y fallback
+                nav_history = live_data.get("history", [])
+                
+                # Still trigger a background sync to populate the database cache
+                threading.Thread(target=NAVService.sync_nav_history, args=(holding.scheme_code,)).start()
+
+        except Exception as e:
+            logger.error(f"Failed to fetch NAV history for {holding.scheme_code}: {e}")
+
+        # 3. Calculate current value based on latest NAV if missing/stale
+        current_value = Decimal(str(holding.current_value or 0))
+        if nav_history and (current_value == 0 or holding.last_updated_at < timezone.utcnow() - timedelta(hours=24)):
+            latest_nav = Decimal(str(nav_history[-1]['value']))
+            current_value = Decimal(str(holding.units or 0)) * latest_nav
+
+        # 4. Calculate XIRR for this specific fund
         cash_flows = []
         total_invested = Decimal('0.0')
         for order in orders:
+            o_type = str(order.type).upper().strip()
+            
+            # Rule: Skip Reinvestments (They are not fresh capital flows)
+            if any(kw in o_type for kw in MutualFundService.MF_REINVESTMENT_KEYWORDS):
+                continue
+            
+            # Note: For fund-specific XIRR, internal switches ARE included 
+            # because they represent capital entry/exit for THIS fund.
+            
             amount = Decimal(str(order.amount))
             if amount <= 0:
                 amount = Decimal(str(order.units)) * Decimal(str(order.nav))
             
             order_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
             
-            o_type = str(order.type).upper().strip()
-            is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
-            is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
+            withdrawal_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_WITHDRAWAL_KEYWORDS) + r')\b'
+            investment_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_INVESTMENT_KEYWORDS) + r')\b'
+            
+            is_withdrawal = bool(re.search(withdrawal_pattern, o_type))
+            is_investment = not is_withdrawal and bool(re.search(investment_pattern, o_type))
 
             if is_investment:
-                cash_flows.append((order_date, -amount))
+                cash_flows.append((order_date, -float(amount)))
                 total_invested += amount
             elif is_withdrawal:
-                cash_flows.append((order_date, amount))
+                cash_flows.append((order_date, float(amount)))
         
-        if Decimal(str(holding.current_value or 0)) > 0:
-            cash_flows.append((timezone.utcnow().date(), Decimal(str(holding.current_value))))
+        if current_value > 0:
+            cash_flows.append((timezone.utcnow().date(), float(current_value)))
             
         xirr_value = None
         try:
@@ -1219,7 +1266,10 @@ class MutualFundService:
                 sum_out = sum(cf[1] for cf in cash_flows if cf[1] < 0)
                 if abs(sum_out) > 0.01:
                     xirr_decimal = xirr(cash_flows)
-                    xirr_value = round(xirr_decimal * 100, 2)
+                    if xirr_decimal is not None and -0.99 < xirr_decimal < 10:
+                        xirr_value = round(xirr_decimal * 100, 2)
+                    else:
+                        xirr_value = None
         except:
             xirr_value = None
 
@@ -1236,71 +1286,7 @@ class MutualFundService:
                 "status": o.status
             })
 
-        # Fetch Full NAV History from MFAPI
-        nav_history = []
-        try:
-            
-            # Re-using the simplified fetch logic
-            response = httpx.get(f"https://api.mfapi.in/mf/{holding.scheme_code}", timeout=5.0)
-            
-            if response.status_code == 200:
-                mf_data = response.json()
-                raw_history = mf_data.get("data", [])
-                
-                # If we have orders, get history from first order date only
-                start_date = None
-                if orders:
-                    # Orders are desc sorted in query above, so last element is earliest
-                    earliest_order = orders[-1].order_date
-                    start_date = earliest_order.date()
-                
-                valid_history = []
-                for entry in raw_history:
-                    try:
-                        d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
-                        # Include if no start date (no orders) or date >= start_date
-                        if start_date is None or d_obj >= start_date:
-                            valid_history.append({
-                                "date": d_obj.strftime("%Y-%m-%d"),
-                                "value": float(entry['nav'])
-                            })
-                    except Exception:
-                        # Skip malformed or missing data point to maintain loop integrity
-                        continue
-                
-                # Sort ascending for chart
-                nav_history = sorted(valid_history, key=lambda x: x['date'])
-
-        except Exception as e:
-            pass
-
-        return {
-            "id": holding.id,
-            "scheme_name": meta.scheme_name if meta else "Unknown Fund",
-            "scheme_code": holding.scheme_code,
-            "isin_growth": meta.isin_growth if meta else None,
-            "isin_reinvest": meta.isin_reinvest if meta else None,
-            "fund_house": meta.fund_house if meta else None,
-            "folio_number": holding.folio_number,
-            "category": meta.category if meta else "Other",
-            "user_id": holding.user_id,
-            "user_name": user_name or "Unassigned",
-            "user_avatar": user_avatar,
-            "goal": goal_info,
-            "units": float(holding.units or 0),
-            "average_price": float(holding.average_price or 0),
-            "current_value": float(holding.current_value or 0),
-            "invested_value": float(holding.units or 0) * float(holding.average_price or 0),
-            "profit_loss": float(holding.current_value or 0) - (float(holding.units or 0) * float(holding.average_price or 0)),
-            "last_nav": float(holding.last_nav or 0),
-            "last_updated_at": holding.last_updated_at.strftime("%Y-%m-%d") if holding.last_updated_at else None,
-            "xirr": xirr_value,
-            "transactions": orders_list,
-            "nav_history": nav_history,
-            "benchmarks": [] # Placeholder for now, see below for real logic
-        }
-
-        # --- Benchmark Comparison Logic ---
+        # 5. Build Response Object
         holding_response = {
             "id": holding.id,
             "scheme_name": meta.scheme_name if meta else "Unknown Fund",
@@ -1316,17 +1302,17 @@ class MutualFundService:
             "goal": goal_info,
             "units": Decimal(str(holding.units or 0)),
             "average_price": Decimal(str(holding.average_price or 0)),
-            "current_value": Decimal(str(holding.current_value or 0)),
+            "current_value": current_value,
             "invested_value": Decimal(str(holding.units or 0)) * Decimal(str(holding.average_price or 0)),
-            "profit_loss": Decimal(str(holding.current_value or 0)) - (Decimal(str(holding.units or 0)) * Decimal(str(holding.average_price or 0))),
-            "last_nav": Decimal(str(holding.last_nav or 0)),
+            "profit_loss": current_value - (Decimal(str(holding.units or 0)) * Decimal(str(holding.average_price or 0))),
+            "last_nav": Decimal(str(nav_history[-1]['value'])) if nav_history else Decimal(str(holding.last_nav or 0)),
             "last_updated_at": holding.last_updated_at.strftime("%Y-%m-%d") if holding.last_updated_at else None,
             "xirr": xirr_value,
             "transactions": orders_list,
             "nav_history": nav_history
         }
 
-        # Fetch Category Benchmark for comparison
+        # 6. Benchmark Comparison Logic
         benchmarks_list = []
         if meta and meta.category:
             bm = BenchmarkService.get_or_create_benchmark_mapping(db, meta.category)
@@ -1337,41 +1323,25 @@ class MutualFundService:
                     "dashArray": bm.styling_dash_array,
                 }
                 try:
-                    bm_resp = httpx.get(f"https://api.mfapi.in/mf/{bm.benchmark_symbol}", timeout=5.0)
-                    if bm_resp.status_code == 200:
-                        bm_raw = bm_resp.json().get("data", [])
-                        valid_bm = []
-                        
-                        # Use same start_date as fund history
-                        fund_start_date = None
-                        if nav_history:
-                            fund_start_date = datetime.strptime(nav_history[0]['date'], "%Y-%m-%d").date()
-                        
-                        for entry in bm_raw:
-                            try:
-                                d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
-                                if fund_start_date is None or d_obj >= fund_start_date:
-                                    valid_bm.append({
-                                        "date": d_obj.strftime("%Y-%m-%d"),
-                                        "value": float(entry['nav'])
-                                    })
-                            except: continue
-                        
-                        valid_bm = sorted(valid_bm, key=lambda x: x['date'])
-                        
-                        # Add to benchmarks
+                    # Use same start_date as fund history
+                    fund_start_date = None
+                    if nav_history:
+                        fund_start_date = datetime.strptime(nav_history[0]['date'], "%Y-%m-%d").date()
+
+                    # Use Cached Benchmark History
+                    bm_history = NAVService.get_nav_history(bm.benchmark_symbol, fund_start_date or start_date, today)
+                    
+                    if not bm_history:
+                        threading.Thread(target=NAVService.sync_nav_history, args=(bm.benchmark_symbol,)).start()
+                    else:
                         benchmarks_list.append({
-                            "label": bm.benchmark_label,
                             "symbol": bm.benchmark_symbol,
-                            "styling": {
-                                "color": style.get("color"),
-                                "style": style.get("style"),
-                                "dashArray": style.get("dashArray"),
-                            },
-                            "history": valid_bm
+                            "label": bm.benchmark_label,
+                            "styling": style,
+                            "history": bm_history
                         })
                 except Exception as e:
-                    logger.warning(f"Failed to fetch benchmark history for {bm.benchmark_label}: {e}")
+                    logger.warning(f"Failed to fetch cached benchmark history for {bm.benchmark_label}: {e}")
 
         holding_response["benchmarks"] = benchmarks_list
         return holding_response
@@ -1396,7 +1366,27 @@ class MutualFundService:
             MutualFundOrder.is_deleted == False
         ).order_by(MutualFundOrder.order_date.desc()).all()
         
-        # 4. Aggregation Logic
+        # 4. Fetch Full NAV History (with Cache-First + Live Fallback)
+        nav_history = []
+        try:
+            start_date = None
+            if orders:
+                earliest_order = orders[-1].order_date
+                start_date = earliest_order.date() if hasattr(earliest_order, 'date') else earliest_order
+            else:
+                start_date = (timezone.utcnow() - timedelta(days=365)).date()
+            
+            today = timezone.utcnow().date()
+            nav_history = NAVService.get_nav_history(scheme_code, start_date, today)
+            
+            if not nav_history:
+                live_data = NAVService.fetch_live_nav_history(scheme_code, days=365*5)
+                nav_history = live_data.get("history", [])
+                threading.Thread(target=NAVService.sync_nav_history, args=(scheme_code,)).start()
+        except Exception as e:
+            logger.error(f"Failed to fetch NAV history for scheme {scheme_code}: {e}")
+
+        # 5. Aggregation Logic
         total_units = Decimal('0.0')
         total_current_value = Decimal('0.0')
         total_invested_value = Decimal('0.0')
@@ -1407,39 +1397,51 @@ class MutualFundService:
         for h in holdings:
             u = Decimal(str(h.units or 0))
             avg = Decimal(str(h.average_price or 0))
-            curr = Decimal(str(h.current_value or 0))
-            
             total_units += u
-            total_current_value += curr
             total_invested_value += (u * avg)
             
             if h.user_id: user_ids.add(h.user_id)
             if h.folio_number: folio_numbers.add(h.folio_number)
-            
+
+        # Update total_current_value based on latest NAV from history
+        if nav_history:
+            latest_nav = Decimal(str(nav_history[-1]['value']))
+            total_current_value = total_units * latest_nav
+        else:
+            total_current_value = sum(Decimal(str(h.current_value or 0)) for h in holdings)
+        
         # Weighted Average Price
         avg_price = total_invested_value / total_units if total_units > 0 else Decimal('0.0')
         profit_loss = total_current_value - total_invested_value
         
-        # 5. XIRR Calculation (Combined)
+        # 6. XIRR Calculation (Combined)
         cash_flows = []
         for order in orders:
+            o_type = str(order.type).upper().strip()
+            
+            # Rule: Skip Reinvestments
+            if any(kw in o_type for kw in MutualFundService.MF_REINVESTMENT_KEYWORDS):
+                continue
+            
             amount = Decimal(str(order.amount))
             if amount <= 0:
                 amount = Decimal(str(order.units)) * Decimal(str(order.nav))
             
             order_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
             
-            o_type = str(order.type).upper().strip()
-            is_withdrawal = any(kw in o_type for kw in ["SELL", "CREDIT", "REDEMP", "PAYOUT", "OUT", "SWITCH-OUT", "STP-OUT", "STP - OUT", "SWITCH - OUT"])
-            is_investment = not is_withdrawal and any(kw in o_type for kw in ["BUY", "DEBIT", "SIP", "TOPUP", "PURCHASE", "INVEST", "REINV", "SWITCH-IN", "STP-IN", "STP - IN", "SWITCH - IN", "ADDITIONAL"])
+            withdrawal_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_WITHDRAWAL_KEYWORDS) + r')\b'
+            investment_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_INVESTMENT_KEYWORDS) + r')\b'
+            
+            is_withdrawal = bool(re.search(withdrawal_pattern, o_type))
+            is_investment = not is_withdrawal and bool(re.search(investment_pattern, o_type))
 
             if is_investment:
-                cash_flows.append((order_date, -amount))
+                cash_flows.append((order_date, -float(amount)))
             elif is_withdrawal:
-                cash_flows.append((order_date, amount))
+                cash_flows.append((order_date, float(amount)))
         
         if total_current_value > 0:
-            cash_flows.append((timezone.utcnow().date(), total_current_value))
+            cash_flows.append((timezone.utcnow().date(), float(total_current_value)))
             
         xirr_value = None
         try:
@@ -1447,56 +1449,14 @@ class MutualFundService:
                 sum_out = sum(cf[1] for cf in cash_flows if cf[1] < 0)
                 if abs(sum_out) > 0.01:
                     xirr_decimal = xirr(cash_flows)
-                    xirr_value = round(xirr_decimal * 100, 2)
+                    if xirr_decimal is not None and -0.99 < xirr_decimal < 10:
+                        xirr_value = round(xirr_decimal * 100, 2)
+                    else:
+                        xirr_value = None
         except:
             xirr_value = None
 
-        # 6. Format Transcations
-        orders_list = []
-        for o in orders:
-            orders_list.append({
-                "id": o.id,
-                "type": MutualFundService._normalize_txn_type(o.type),
-                "amount": float(o.amount),
-                "units": float(o.units),
-                "nav": float(o.nav),
-                "date": o.order_date.strftime("%Y-%m-%d"),
-                "status": o.status
-            })
-            
-        # 7. NAV History (Same as before)
-        nav_history = []
-        try:
-            import httpx
-            from datetime import datetime, timedelta
-            
-            response = httpx.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=5.0)
-            if response.status_code == 200:
-                mf_data = response.json()
-                raw_history = mf_data.get("data", [])
-                
-                start_date = None
-                if orders:
-                    earliest_order = orders[-1].order_date
-                    start_date = earliest_order.date() if hasattr(earliest_order, 'date') else earliest_order
-                else:
-                    start_date = (timezone.utcnow() - timedelta(days=365)).date()
-                
-                valid_history = []
-                for entry in raw_history:
-                    try:
-                        d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
-                        if start_date is None or d_obj >= start_date:
-                            valid_history.append({
-                                "date": d_obj.strftime("%Y-%m-%d"),
-                                "value": float(entry['nav'])
-                            })
-                    except: continue
-                nav_history = sorted(valid_history, key=lambda x: x['date'])
-        except Exception as e:
-            pass
-
-        # 8. User Info & Owners List
+        # 7. Formatting & User Info
         owners_map = {}
         all_users = db.query(User).filter(User.tenant_id == tenant_id).all()
         user_lookup = {str(u.id): u for u in all_users}
@@ -1548,34 +1508,6 @@ class MutualFundService:
                 user_name = u.full_name
                 user_avatar = u.avatar
 
-        return {
-            "id": f"group-{scheme_code}", 
-            "scheme_name": meta.scheme_name if meta else "Unknown Fund",
-            "scheme_code": scheme_code,
-            "isin_growth": meta.isin_growth if meta else None,
-            "isin_reinvest": meta.isin_reinvest if meta else None,
-            "fund_house": meta.fund_house if meta else None,
-            "folio_number": f"{len(folio_numbers)} Folios" if len(folio_numbers) > 1 else (list(folio_numbers)[0] if folio_numbers else "N/A"),
-            "category": meta.category if meta else "Other",
-            "user_id": list(user_ids)[0] if len(user_ids) == 1 else "multi",
-            "user_name": user_name or "Unassigned",
-            "user_avatar": user_avatar,
-            "units": total_units,
-            "average_price": avg_price,
-            "current_value": total_current_value,
-            "invested_value": total_invested_value,
-            "profit_loss": profit_loss,
-            "last_nav": Decimal(str(holdings[0].last_nav or 0)) if holdings else Decimal('0.0'),
-            "last_updated_at": holdings[0].last_updated_at.strftime("%Y-%m-%d") if holdings and holdings[0].last_updated_at else None,
-            "xirr": xirr_value,
-            "transactions": enriched_orders,
-            "nav_history": nav_history,
-            "is_aggregate": True,
-            "owners": owners_list,
-            "benchmarks": [] # Added below
-        }
-
-        # --- Aggregate Benchmark Logic ---
         scheme_response = {
             "id": f"group-{scheme_code}", 
             "scheme_name": meta.scheme_name if meta else "Unknown Fund",
@@ -1602,43 +1534,35 @@ class MutualFundService:
             "owners": owners_list
         }
 
-        # Fetch Category Benchmark
+        # --- Aggregate Benchmark Logic ---
         benchmarks_list = []
         if meta and meta.category:
             bm = BenchmarkService.get_or_create_benchmark_mapping(db, meta.category)
             if bm:
-                style = BenchmarkService.get_benchmark_styling(bm.benchmark_label)
+                style = {
+                    "color": bm.styling_color,
+                    "style": bm.styling_style,
+                    "dashArray": bm.styling_dash_array,
+                }
                 try:
-                    bm_resp = httpx.get(f"https://api.mfapi.in/mf/{bm.benchmark_symbol}", timeout=5.0)
-                    if bm_resp.status_code == 200:
-                        bm_raw = bm_resp.json().get("data", [])
-                        valid_bm = []
-                        
-                        fund_start_date = None
-                        if nav_history:
-                            fund_start_date = datetime.strptime(nav_history[0]['date'], "%Y-%m-%d").date()
-                            
-                        for entry in bm_raw:
-                            try:
-                                d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
-                                if fund_start_date is None or d_obj >= fund_start_date:
-                                    valid_bm.append({"date": d_obj.strftime("%Y-%m-%d"), "value": float(entry['nav'])})
-                            except: continue
-                        
+                    fund_start_date = None
+                    if nav_history:
+                        fund_start_date = datetime.strptime(nav_history[0]['date'], "%Y-%m-%d").date()
+                    
+                    bm_history = NAVService.get_nav_history(bm.benchmark_symbol, fund_start_date or start_date, today)
+                    
+                    if not bm_history:
+                        threading.Thread(target=NAVService.sync_nav_history, args=(bm.benchmark_symbol,)).start()
+                    else:
                         benchmarks_list.append({
                             "label": bm.benchmark_label,
                             "symbol": bm.benchmark_symbol,
-                            "styling": {
-                                "color": style.get("color"),
-                                "style": style.get("style"),
-                                "dashArray": style.get("dashArray"),
-                            },
-                            "history": valid_bm
+                            "styling": style,
+                            "history": bm_history
                         })
                 except Exception: 
-                    # Silent fallback if benchmark data fetching fails for details view
                     pass
-        
+
         scheme_response["benchmarks"] = benchmarks_list
         return scheme_response
 
@@ -1865,7 +1789,26 @@ class MutualFundService:
         
         if orders and len(orders) > 0:
             cash_flows = []
+            
+            # Check if we have history or just summary balances
+            non_summary_count = sum(1 for o in orders if "SUMMARY BALANCE" not in str(o.type).upper())
+            
             for order in orders:
+                o_type = str(order.type).upper().strip()
+                
+                # Rule: Skip Reinvestments (They are not fresh capital flows)
+                if any(kw in o_type for kw in MutualFundService.MF_REINVESTMENT_KEYWORDS):
+                    continue
+                
+                # Rule: Skip Summary Balances if we have real history (prevent double counting)
+                if "SUMMARY BALANCE" in o_type and non_summary_count > 0:
+                    continue
+
+                # Rule: Skip internal transfers for Portfolio-wide XIRR
+                # (They net out anyway if both sides exist, but this is safer for partial data)
+                if any(kw in o_type for kw in MutualFundService.MF_INTERNAL_KEYWORDS):
+                    continue
+
                 # Use units * nav if amount is 0 (fallback for older imports)
                 amount = Decimal(str(order.amount))
                 if amount <= 0:
@@ -1873,8 +1816,6 @@ class MutualFundService:
                 
                 # Convert order_date to date if it's datetime
                 order_date = order.order_date.date() if hasattr(order.order_date, 'date') else order.order_date
-                
-                o_type = str(order.type).upper().strip()
                 
                 # Regex patterns for word-boundary matching
                 withdrawal_pattern = r'\b(' + '|'.join(re.escape(k) for k in MutualFundService.MF_WITHDRAWAL_KEYWORDS) + r')\b'
@@ -1884,22 +1825,25 @@ class MutualFundService:
                 is_investment = not is_withdrawal and bool(re.search(investment_pattern, o_type))
 
                 if is_investment:
-                    cash_flows.append((order_date, -amount))  # Outflow is negative
+                    cash_flows.append((order_date, -float(amount)))  # Outflow is negative
                     total_invested += amount
                 elif is_withdrawal:
-                    cash_flows.append((order_date, amount))  # Inflow is positive
+                    cash_flows.append((order_date, float(amount)))  # Inflow is positive
             
             # Add current value as final inflow at today's date
             if total_value > 0:
-                cash_flows.append((timezone.utcnow().date(), total_value))
-            
+                cash_flows.append((timezone.utcnow().date(), float(total_value)))
             
             try:
                 # Need at least one negative (outflow) and one positive (inflow) for XIRR
                 sum_out = sum(cf[1] for cf in cash_flows if cf[1] < 0)
                 if len(cash_flows) >= 2 and abs(sum_out) > 0.01:
                     xirr_decimal = xirr(cash_flows)
-                    xirr_value = round(xirr_decimal * 100, 2)  # Convert to percentage
+                    # Sanitize result (Newton-Raphson can return extreme values if it fails to converge)
+                    if xirr_decimal is not None and -0.99 < xirr_decimal < 10:
+                        xirr_value = round(xirr_decimal * 100, 2)
+                    else:
+                        xirr_value = None
             except Exception:
                 xirr_value = None
         
