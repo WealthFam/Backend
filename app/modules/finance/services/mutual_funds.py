@@ -220,6 +220,10 @@ class MutualFundService:
 
     @staticmethod
     def search_funds(query: Optional[str] = None, category: Optional[str] = None, amc: Optional[str] = None, limit: int = 20, offset: int = 0, sort_by: str = 'relevance', all_funds_cache: Optional[List[dict]] = None):
+        """
+        Search for mutual funds with server-side pagination.
+        Returns Tuple[List[dict], int] containing the results and total count.
+        """
         try:
             # Fetch the main list from MFAPI if not provided
             if all_funds_cache:
@@ -229,7 +233,7 @@ class MutualFundService:
                 if response.status_code == 200:
                     all_funds = response.json()
                 else:
-                    return []
+                    return [], 0
             
             # Default recommendations if no query/filter
             if not any([query, category, amc]) and not all_funds_cache:
@@ -245,7 +249,10 @@ class MutualFundService:
                     '103175', # HDFC Index Fund-NIFTY 50 Plan
                 ]
                 featured = [f for f in all_funds if str(f.get('schemeCode')) in featured_codes]
-                if featured: return featured[:limit]
+                if featured: 
+                    # If we only show featured, the total is the featured count
+                    # though usually we want to allow scrolling through all if query is empty
+                    pass 
 
             query_low = query.lower() if query else None
             cat_low = category.lower() if category else None
@@ -263,7 +270,6 @@ class MutualFundService:
                 
                 # Category filter - usually contained in name or we might need better classification
                 if cat_low:
-                    # MFAPI doesn't have a category field in the search list, so we check the name
                     # Common terms: Equity, Debt, Hybrid, ELSS, Index, Liquid
                     if cat_low == "index funds": cat_low = "index"
                     if cat_low not in scheme_name:
@@ -274,6 +280,8 @@ class MutualFundService:
                     
                 if match:
                     filtered_funds.append(f)
+
+            total_count = len(filtered_funds)
 
             # Sorting
             if sort_by == 'returns_desc':
@@ -293,20 +301,24 @@ class MutualFundService:
                 # Mock metadata based on scheme code hash for consistency
                 code_hash = sum(ord(c) for c in scheme_code)
                 
-                r['nav'] = 100.0 + (int(r.get('schemeCode', 0)) % 500) / 10.0
-                r['returns_3y'] = MutualFundService.get_mock_returns(scheme_code)
+                r['nav'] = Decimal(str(100.0 + (int(r.get('schemeCode', 0)) % 500) / 10.0))
+                r['returns_3y'] = Decimal(str(MutualFundService.get_mock_returns(scheme_code)))
                 r['category'] = "Mutual Fund" 
                 
-            # New Metadata for Overhaul
+                # New Metadata for Overhaul
                 r['risk_level'] = ['Low', 'Moderate', 'High', 'Very High'][code_hash % 4]
                 r['aum'] = f"{(1000 + (code_hash % 9000)):,} Cr"
                 r['trending'] = (code_hash % 7 == 0) # ~14% funds are trending
                 r['rating'] = 3 + (code_hash % 3) # 3, 4, or 5 stars
+                
+                # Normalize keys for Pydantic (schemeCode -> scheme_code)
+                r['scheme_code'] = r.pop('schemeCode', None)
+                r['scheme_name'] = r.pop('schemeName', None)
                             
-            return results
+            return results, total_count
         except Exception as e:
             logger.error(f"Search error: {e}")
-            return []
+            return [], 0
 
     @staticmethod
     def get_portfolio_insights(db: Session, tenant_id: str, user_id: Optional[str] = None, force_refresh: bool = False):
@@ -438,7 +450,7 @@ class MutualFundService:
             
             # 2. Fallback to Name Search - Pass cache to avoid redundant fetches
             if not matched_scheme:
-                results = MutualFundService.search_funds(txn['scheme_name'], all_funds_cache=all_funds)
+                results, _ = MutualFundService.search_funds(txn['scheme_name'], all_funds_cache=all_funds)
                 if results:
                     matched_scheme = results[0]
             
@@ -1117,18 +1129,19 @@ class MutualFundService:
                 "scheme_code": h.scheme_code,
                 "category": meta.category if meta else "Other",
                 "folio_number": h.folio_number,
-                "units": round(units, 4),
-                "average_price": round(float(avg_price), 4),
-                "current_value": round(float(current_val), 2),
-                "invested_value": round(float(invested), 2),
-                "profit_loss": round(float(pl), 2),
+                "units": units,
+                "average_price": avg_price,
+                "current_value": current_val,
+                "invested_value": invested,
+                "profit_loss": pl,
                 "profit_loss_pct": round(float(pl / invested * 100) if invested > 0 else 0, 2),
-                "last_nav": float(last_nav),
+                "last_nav": last_nav,
                 "last_updated_at": last_updated_str,
                 "goal_id": str(h.goal_id) if h.goal_id else None,
                 "goal_name": h.goal.name if h.goal else None,
                 "sparkline": sparkline
             })
+
             
         return results
 

@@ -138,6 +138,11 @@ class BenchmarkService:
                 raise e
 
     @staticmethod
+    def get_all_rules(db: Session) -> List[MutualFundBenchmarkRule]:
+        """Fetch all benchmark rules ordered by priority."""
+        return db.query(MutualFundBenchmarkRule).order_by(MutualFundBenchmarkRule.priority.asc()).all()
+
+    @staticmethod
     def save_rule(db: Session, payload: dict, rule_id: Optional[str] = None) -> MutualFundBenchmarkRule:
         """Creates or updates a benchmark resolution rule with transactional safety."""
         with db_write_lock:

@@ -583,4 +583,97 @@ class SpendingForecastResponse(BaseModel):
     daily_burn_rate: Decimal
     forecast_total: Decimal
 
+class MutualFundBenchmarkRuleBase(BaseModel):
+    priority: int = Field(default=0, description="Execution priority (lower is higher)")
+    keyword: str = Field(description="Keyword to match against fund category/name")
+    benchmark_symbol: str = Field(description="MFAPI scheme code for the benchmark index")
+    benchmark_label: str = Field(description="Display label for the benchmark index")
+    styling_color: Optional[str] = Field(default="#3B82F6", description="Hex color for the benchmark line")
+    styling_style: str = Field(default="solid", description="Line style: solid, dashed, dotted")
+    styling_dash_array: Optional[str] = Field(default=None, description="SVG dash array for dashed lines")
+
+class MutualFundBenchmarkRuleCreate(MutualFundBenchmarkRuleBase):
+    pass
+
+class MutualFundBenchmarkRuleUpdate(BaseModel):
+    priority: Optional[int] = None
+    keyword: Optional[str] = None
+    benchmark_symbol: Optional[str] = None
+    benchmark_label: Optional[str] = None
+    styling_color: Optional[str] = None
+    styling_style: Optional[str] = None
+    styling_dash_array: Optional[str] = None
+
+class MutualFundBenchmarkRuleRead(MutualFundBenchmarkRuleBase):
+    id: Union[UUID, str]
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True, strict=True)
+
+class MutualFundBenchmarkRulePagination(BaseModel):
+    data: List[MutualFundBenchmarkRuleRead]
+    total: int
+    model_config = ConfigDict(strict=True)
+
+class MarketIndexItem(BaseModel):
+    name: str
+    value: str
+    change: str
+    percent: str
+    isUp: bool
+    sparkline: List[float] = []
+    labels: List[str] = []
+
+class MarketIndexResponse(BaseModel):
+    data: List[MarketIndexItem]
+    model_config = ConfigDict(strict=True)
+
+class MutualFundMasterRead(BaseModel):
+    scheme_code: Union[str, int]
+    scheme_name: str
+    isin_growth: Optional[str] = None
+    fund_house: Optional[str] = None
+    category: Optional[str] = None
+    nav: Optional[Decimal] = None
+    returns_3y: Optional[Decimal] = None
+    risk_level: str = "Moderate"
+    aum: Optional[str] = None
+    trending: bool = False
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class MutualFundSearchResponse(BaseModel):
+    data: List[MutualFundMasterRead]
+    total: int
+    page: int
+    limit: int
+    model_config = ConfigDict()
+
+class MutualFundHoldingRead(BaseModel):
+    id: Union[UUID, str]
+    scheme_code: Union[str, int]
+    scheme_name: str
+    folio_number: Optional[str] = None
+    units: Decimal
+    average_price: Decimal
+    current_value: Decimal
+    invested_value: Decimal
+    last_nav: Optional[Decimal] = None
+    category: Optional[str] = None
+    profit_loss: Decimal
+    profit_loss_pct: float
+    last_updated_at: Union[datetime, str]
+    has_multiple: bool = False
+    children: List[Any] = []
+    sparkline: List[float] = []
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class PortfolioOverviewResponse(BaseModel):
+    data: List[MutualFundHoldingRead]
+    total_invested: Decimal
+    total_current: Decimal
+    total_pl: Decimal
+    overall_xirr: Optional[float] = None
+    model_config = ConfigDict()
+
 CategoryRead.model_rebuild()

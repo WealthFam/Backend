@@ -14,49 +14,17 @@ from backend.app.core import timezone
 from backend.app.core.database import get_db
 from backend.app.modules.auth import models as auth_models
 from backend.app.modules.auth.dependencies import get_current_user
-from backend.app.modules.finance.models import MutualFundHolding, MutualFundBenchmarkRule
+from backend.app.modules.finance import schemas as finance_schemas
+from backend.app.modules.finance.models import MutualFundHolding
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
 from backend.app.modules.finance.services.benchmarks import BenchmarkService
 from backend.app.modules.finance.services.external.market_data import MarketDataService
-from backend.app.modules.ingestion import models as ingestion_models
-from backend.app.modules.ingestion.ai_service import AIService
 from backend.app.modules.ingestion.cas_parser import CASParser
-
-logger = logging.getLogger(__name__)
+from backend.app.modules.ingestion import models as ingestion_models
 
 router = APIRouter(prefix="/mutual-funds", tags=["Mutual Funds"])
 
-class TransactionCreate(BaseModel):
-    model_config = ConfigDict(strict=True)
-    scheme_code: str
-    type: str = "BUY" # BUY, SELL
-    amount: Decimal
-    units: Decimal
-    nav: Decimal
-    date: datetime
-    folio_number: Optional[str] = None
 
-class TransactionUpdate(BaseModel):
-    model_config = ConfigDict(strict=True)
-    date: Optional[str] = None
-    type: Optional[str] = None
-    amount: Optional[Decimal] = None
-    units: Optional[Decimal] = None
-    nav: Optional[Decimal] = None
-
-class BulkDeleteRequest(BaseModel):
-    model_config = ConfigDict(strict=True)
-    transaction_ids: List[str]
-
-class BenchmarkRuleCreate(BaseModel):
-    model_config = ConfigDict(strict=True)
-    priority: int = 0
-    keyword: str
-    benchmark_symbol: str
-    benchmark_label: str
-    styling_color: Optional[str] = None
-    styling_style: Optional[str] = "solid"
-    styling_dash_array: Optional[str] = None
 
 @router.post("/sync/refresh")
 async def trigger_sync(
@@ -89,7 +57,7 @@ async def get_sync_status(
         "error": log.error_message
     }
 
-@router.get("/search")
+@router.get("/search", response_model=finance_schemas.MutualFundSearchResponse)
 def search_funds(
     q: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
@@ -99,13 +67,18 @@ def search_funds(
     sort_by: str = Query('relevance')
 ):
     # Allow empty query to fetch popular/trending funds for the Explore tab
-    funds = MutualFundService.search_funds(query=q, category=category, amc=amc, limit=limit, offset=offset, sort_by=sort_by)
-    return {"data": funds, "total": len(funds)}
+    funds, total = MutualFundService.search_funds(query=q, category=category, amc=amc, limit=limit, offset=offset, sort_by=sort_by)
+    return {
+        "data": funds, 
+        "total": total,
+        "page": (offset // limit) + 1,
+        "limit": limit
+    }
 
-@router.get("/indices")
+@router.get("/indices", response_model=finance_schemas.MarketIndexResponse)
 async def get_market_indices(period: str = Query("1d")):
     indices = await MarketDataService.get_market_indices(period)
-    return {"data": indices, "total": len(indices)}
+    return {"data": indices}
 
 @router.get("/{scheme_code}/nav")
 def get_nav(scheme_code: str):
@@ -120,7 +93,7 @@ def get_nav(scheme_code: str):
     
     raise HTTPException(status_code=404, detail="NAV data unavailable")
 
-@router.get("/portfolio")
+@router.get("/portfolio", response_model=finance_schemas.PortfolioOverviewResponse)
 def get_portfolio(
     background_tasks: BackgroundTasks,
     user_id: Optional[str] = Query(None),
@@ -133,8 +106,24 @@ def get_portfolio(
     background_tasks.add_task(MutualFundService.refresh_tenant_navs, tenant_id)
     
     holdings = MutualFundService.get_portfolio(db, tenant_id, user_id)
-    logger.info(f"Portfolio requested for tenant {tenant_id}. Found {len(holdings)} active holdings.")
-    return {"data": holdings, "total": len(holdings)}
+    
+    # Accurate Decimal aggregation (PRACTICES.md Section 11.2)
+    total_invested = sum((Decimal(str(h.get('invested_value', '0'))) for h in holdings), Decimal('0'))
+    total_current = sum((Decimal(str(h.get('current_value', '0'))) for h in holdings), Decimal('0'))
+    total_pl = total_current - total_invested
+
+    # Integrate overall performance metrics
+    analytics = MutualFundService.get_portfolio_analytics(db, tenant_id, user_id)
+    overall_xirr = analytics.get('xirr') if analytics else None
+    
+    return {
+        "data": holdings,
+        "total_invested": total_invested,
+        "total_current": total_current,
+        "total_pl": total_pl,
+        "overall_xirr": overall_xirr
+    }
+
 
 @router.get("/analytics")
 def get_analytics(
@@ -287,12 +276,12 @@ def update_holding(
 
 @router.post("/transaction")
 def add_transaction(
-    payload: TransactionCreate,
+    payload: finance_schemas.TransactionCreate,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     try:
-        data = payload.dict()
+        data = payload.model_dump()
         # Default attribution to the user who added it
         if "user_id" not in data or not data["user_id"]:
             data["user_id"] = current_user.id
@@ -305,14 +294,14 @@ def add_transaction(
 @router.put("/transactions/{transaction_id}")
 def update_transaction(
     transaction_id: str,
-    payload: TransactionUpdate,
+    payload: finance_schemas.TransactionUpdate,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update a specific transaction and trigger recalculation"""
     try:
         MutualFundService.update_transaction(
-            db, str(current_user.tenant_id), transaction_id, payload.dict(exclude_unset=True)
+            db, str(current_user.tenant_id), transaction_id, payload.model_dump(exclude_unset=True)
         )
         return {"status": "success", "message": "Transaction updated and holdings recalculated"}
     except Exception as e:
@@ -320,7 +309,7 @@ def update_transaction(
 
 @router.post("/transactions/bulk-delete")
 def bulk_delete_transactions(
-    payload: BulkDeleteRequest,
+    payload: finance_schemas.BulkDeleteRequest,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -530,17 +519,17 @@ def generate_portfolio_insights(
         "insights": MutualFundService.get_portfolio_insights(db, tenant_id, user_id, force_refresh)
     }
 
-@router.get("/benchmarks/rules", summary="Fetch benchmark rules", description="Retrieve all category-to-benchmark resolution rules ordered by priority.")
+@router.get("/benchmarks/rules", response_model=finance_schemas.MutualFundBenchmarkRulePagination, summary="Fetch benchmark rules", description="Retrieve all category-to-benchmark resolution rules ordered by priority.")
 def get_benchmark_rules(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    rules = db.query(MutualFundBenchmarkRule).order_by(MutualFundBenchmarkRule.priority.asc()).all()
+    rules = BenchmarkService.get_all_rules(db)
     return {"data": rules, "total": len(rules)}
 
-@router.post("/benchmarks/rules", summary="Save benchmark rule", description="Create a new or update an existing benchmark resolution rule.")
+@router.post("/benchmarks/rules", response_model=finance_schemas.MutualFundBenchmarkRuleRead, summary="Save benchmark rule", description="Create a new or update an existing benchmark resolution rule.")
 def save_benchmark_rule(
-    payload: BenchmarkRuleCreate,
+    payload: finance_schemas.MutualFundBenchmarkRuleCreate,
     rule_id: Optional[str] = Query(None, description="ID of the rule to update"),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
