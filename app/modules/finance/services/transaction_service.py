@@ -48,7 +48,13 @@ class TransactionService:
                 data['tenant_id'] = tenant_id
                 
                 # Remove fields that exist in schema but not in the Transaction model
-                data.pop('to_account_id', None)
+                # This prevents TypeErrors during model instantiation.
+                fields_to_remove = [
+                    'to_account_id', 'scheme_code', 'folio_number', 
+                    'nav', 'units', 'type'
+                ]
+                for field in fields_to_remove:
+                    data.pop(field, None)
                 
                 # Use UUID if not provided
                 if not data.get('id'):
@@ -77,7 +83,9 @@ class TransactionService:
                         anchor_date = timezone.ensure_utc(db_account.last_synced_at)
                         txn_date = timezone.ensure_utc(db_transaction.date)
                         
-                        if not anchor_date or txn_date > anchor_date:
+                        # HARDENING: Use >= to ensure transactions created at the same time as 
+                        # an initial balance sync (common in tests) are correctly applied.
+                        if not anchor_date or txn_date >= anchor_date:
                             balance_change = 0
                             if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
                                 balance_change = -db_transaction.amount

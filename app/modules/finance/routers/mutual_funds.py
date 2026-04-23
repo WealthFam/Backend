@@ -282,9 +282,8 @@ def add_transaction(
 ):
     try:
         data = payload.model_dump()
-        # Default attribution to the user who added it
-        if "user_id" not in data or not data["user_id"]:
-            data["user_id"] = current_user.id
+        # Ensure user_id is passed for correct holding attribution
+        data["user_id"] = str(current_user.id)
             
         order = MutualFundService.add_transaction(db, str(current_user.tenant_id), data)
         return {"status": "success", "order_id": order.id}

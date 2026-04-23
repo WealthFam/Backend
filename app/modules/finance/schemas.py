@@ -113,6 +113,13 @@ class TransactionCreate(TransactionBase):
     is_transfer: bool = False
     to_account_id: Optional[str] = None
     content_hash: Optional[str] = None
+    
+    # Mutual Fund Specific Fields
+    scheme_code: Optional[str] = None
+    folio_number: Optional[str] = None
+    nav: Optional[Decimal] = None
+    units: Optional[Decimal] = None
+    type: Optional[str] = None
 
 class TransactionUpdate(BaseModel):
     description: Optional[str] = None
