@@ -16,8 +16,9 @@ def run_schema_sync(engine: Engine):
     """
     logger.info("Initializing Schema Sync Scaffholding...")
     
-    with engine.begin() as connection:
-        apply_patches(connection)
+    # DuckDB can be sensitive to multiple DDL operations on the same table within a single transaction.
+    # We pass the engine to apply_patches to allow it to manage transaction boundaries.
+    apply_patches(engine)
     
     # 3. Run one-time data repairs (Self-healing)
     run_data_repair_v1_mf(engine)
@@ -64,95 +65,108 @@ def run_data_repair_v1_mf(engine: Engine):
     except Exception as e:
         logger.warning(f"Skipping Mutual Fund data repair: {e}")
 
-def apply_patches(connection):
+def apply_patches(engine: Engine):
     """
     PLACEHOLDER FOR FUTURE SCHEMA EVOLUTION.
     
-    If you need to add a column, create an index, or rebuild a table in the future,
-    add the logic here using the 'utils' helpers.
-    
-    Example:
-    utils.safe_add_column(connection, "users", "new_feature_enabled", "BOOLEAN DEFAULT FALSE")
+    Each patch is executed in its own isolated transaction to satisfy DuckDB's 
+    strict requirement for clear transaction boundaries during DDL operations.
     """
     
-    # -------------------------------------------------------------------------
-    # SCAFFOLD: Put future ad-hoc migrations below this line
-    # -------------------------------------------------------------------------
-    
     logger.info("Applying ad-hoc schema patches...")
-    
+
+    # DuckDB Hardening: Force a checkpoint before starting patches to ensure
+    # all previous operations (like metadata.create_all) are fully flushed.
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA force_checkpoint;"))
+
     # [2026-04-14] Fix column name mismatch in mutual_fund_holdings
-    utils.safe_rename_column(connection, "mutual_fund_holdings", "last_updated", "last_updated_at")
+    with engine.begin() as connection:
+        utils.safe_rename_column(connection, "mutual_fund_holdings", "last_updated", "last_updated_at")
     
-    # [2026-04-15] Add missing latitude and longitude columns to ingestion and transactions
-    utils.safe_add_column(connection, "unparsed_messages", "latitude", "DECIMAL(10, 8)")
-    utils.safe_add_column(connection, "unparsed_messages", "longitude", "DECIMAL(11, 8)")
-    utils.safe_add_column(connection, "pending_transactions", "latitude", "DECIMAL(10, 8)")
-    utils.safe_add_column(connection, "pending_transactions", "longitude", "DECIMAL(11, 8)")
-    utils.safe_add_column(connection, "transactions", "latitude", "DECIMAL(10, 8)")
-    utils.safe_add_column(connection, "transactions", "longitude", "DECIMAL(11, 8)")
+    # [2026-04-15] Add missing latitude and longitude columns
+    for table in ["unparsed_messages", "pending_transactions", "transactions"]:
+        with engine.begin() as connection:
+            utils.safe_add_column(connection, table, "latitude", "DECIMAL(10, 8)")
+        with engine.begin() as connection:
+            utils.safe_add_column(connection, table, "longitude", "DECIMAL(11, 8)")
     
     # [2026-04-15] Add missing mutual fund columns 
-    utils.safe_add_column(connection, "mutual_fund_holdings", "average_price", "DECIMAL(15, 4)")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "current_value", "DECIMAL(15, 2)")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "last_nav", "DECIMAL(15, 4)")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "user_id", "VARCHAR")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "goal_id", "VARCHAR")
+    for col, col_type in [
+        ("average_price", "DECIMAL(15, 4)"),
+        ("current_value", "DECIMAL(15, 2)"),
+        ("last_nav", "DECIMAL(15, 4)"),
+        ("user_id", "VARCHAR"),
+        ("goal_id", "VARCHAR"),
+        ("invested_value", "DECIMAL(15, 2) DEFAULT 0") # [2026-04-18]
+    ]:
+        with engine.begin() as connection:
+            utils.safe_add_column(connection, "mutual_fund_holdings", col, col_type)
     
-    # [2026-04-15] Legacy patches migrated from upgrade_mf_schema.py
-    utils.safe_add_column(connection, "mutual_fund_orders", "transaction_hash", "VARCHAR")
-    utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmark_value", "DOUBLE")
-
-    # [2026-04-18] Fix 0 invested metrics 
-    utils.safe_add_column(connection, "mutual_fund_holdings", "invested_value", "DECIMAL(15, 2) DEFAULT 0")
+    # [2026-04-15] Legacy patches
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_orders", "transaction_hash", "VARCHAR")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmark_value", "DOUBLE")
 
     # [2026-04-17] Hardened fix for account creation snapshots
-    utils.safe_add_column(connection, "balance_snapshots", "credit_limit", "DECIMAL(15, 2)")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "balance_snapshots", "credit_limit", "DECIMAL(15, 2)")
 
+    # [2026-04-21] Add Mutual Fund Benchmarks table
+    # We split drop and create to avoid transaction conflicts
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS mutual_fund_benchmarks"))
     
-    # [2026-04-21] Add Mutual Fund Benchmarks table (Harmonized Schema)
-    # We drop and recreate once to ensure column names are synchronized (benchmark_symbol, benchmark_label)
-    # This is safe as BenchmarkService automatically repopulates these mappings on first run.
-    connection.execute(text("DROP TABLE IF EXISTS mutual_fund_benchmarks"))
-    connection.execute(text("""
-        CREATE TABLE IF NOT EXISTS mutual_fund_benchmarks (
-            id VARCHAR PRIMARY KEY,
-            category VARCHAR UNIQUE,
-            benchmark_symbol VARCHAR,
-            benchmark_label VARCHAR,
-            is_default BOOLEAN DEFAULT FALSE,
-            styling_color VARCHAR,
-            styling_style VARCHAR,
-            styling_dash_array VARCHAR,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """))
-    # [2026-04-21] Add multi-benchmark support to cache
-    utils.safe_add_column(connection, "mutual_fund_holdings", "is_deleted", "BOOLEAN DEFAULT FALSE")
-    utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmarks_json", "TEXT")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "deleted_at", "TIMESTAMP")
-    utils.safe_add_column(connection, "mutual_fund_orders", "is_deleted", "BOOLEAN DEFAULT FALSE")
-    utils.safe_add_column(connection, "mutual_fund_orders", "deleted_at", "TIMESTAMP")
+    with engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS mutual_fund_benchmarks (
+                id VARCHAR PRIMARY KEY,
+                category VARCHAR UNIQUE,
+                benchmark_symbol VARCHAR,
+                benchmark_label VARCHAR,
+                is_default BOOLEAN DEFAULT FALSE,
+                styling_color VARCHAR,
+                styling_style VARCHAR,
+                styling_dash_array VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
 
-    # [2026-04-21] Align benchmark field names
-    utils.safe_rename_column(connection, "mutual_fund_benchmarks", "benchmark_scheme_code", "benchmark_symbol")
-    utils.safe_rename_column(connection, "mutual_fund_benchmarks", "benchmark_name", "benchmark_label")
+    # [2026-04-21] Add multi-benchmark support to cache
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_holdings", "is_deleted", "BOOLEAN DEFAULT FALSE")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmarks_json", "TEXT")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_holdings", "deleted_at", "TIMESTAMP")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_orders", "is_deleted", "BOOLEAN DEFAULT FALSE")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_orders", "deleted_at", "TIMESTAMP")
+
+    # [2026-04-21] Align benchmark field names (Idempotent renames)
+    with engine.begin() as connection:
+        utils.safe_rename_column(connection, "mutual_fund_benchmarks", "benchmark_scheme_code", "benchmark_symbol")
+    with engine.begin() as connection:
+        utils.safe_rename_column(connection, "mutual_fund_benchmarks", "benchmark_name", "benchmark_label")
 
     # [2026-04-21] Add Mutual Fund Benchmark Rules table
-    connection.execute(text("""
-        CREATE TABLE IF NOT EXISTS mutual_fund_benchmark_rules (
-            id VARCHAR PRIMARY KEY,
-            priority INTEGER DEFAULT 0,
-            keyword VARCHAR NOT NULL,
-            benchmark_symbol VARCHAR NOT NULL,
-            benchmark_label VARCHAR NOT NULL,
-            styling_color VARCHAR,
-            styling_style VARCHAR DEFAULT 'solid',
-            styling_dash_array VARCHAR,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """))
+    with engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS mutual_fund_benchmark_rules (
+                id VARCHAR PRIMARY KEY,
+                priority INTEGER DEFAULT 0,
+                keyword VARCHAR NOT NULL,
+                benchmark_symbol VARCHAR NOT NULL,
+                benchmark_label VARCHAR NOT NULL,
+                styling_color VARCHAR,
+                styling_style VARCHAR DEFAULT 'solid',
+                styling_dash_array VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
 
     # TODO: Add schema evolution logic here as the app grows.
     pass
