@@ -452,26 +452,41 @@ class TransactionService:
                     if update_data.get('linked_transaction_id'):
                         # Unlink old if exists
                         if db_txn.linked_transaction_id:
-                             old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                             old_linked = db.query(models.Transaction).filter(
+                                 models.Transaction.id == db_txn.linked_transaction_id,
+                                 models.Transaction.tenant_id == tenant_id
+                             ).first()
                              if old_linked:
                                 old_linked.linked_transaction_id = None
                                 db.add(old_linked)
         
                         target_id = update_data['linked_transaction_id']
-                        target_txn = db.query(models.Transaction).filter(models.Transaction.id == target_id).first()
+                        target_txn = db.query(models.Transaction).filter(
+                            models.Transaction.id == target_id,
+                            models.Transaction.tenant_id == tenant_id
+                        ).first()
                         
                         if target_txn:
                             db_txn.linked_transaction_id = target_txn.id
+                            db_txn.is_transfer = True
+                            db_txn.exclude_from_reports = True
+                            
                             target_txn.linked_transaction_id = db_txn.id
                             target_txn.is_transfer = True
                             target_txn.category = "Transfer"
                             target_txn.exclude_from_reports = True 
                             db.add(target_txn)
+                            
+                            db_txn.category = "Transfer"
+                            update_data['category'] = "Transfer"
         
                     elif to_account_id:
                         # Auto-create target if account provided
                         if db_txn.linked_transaction_id:
-                             old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                             old_linked = db.query(models.Transaction).filter(
+                                 models.Transaction.id == db_txn.linked_transaction_id,
+                                 models.Transaction.tenant_id == tenant_id
+                             ).first()
                              if old_linked: 
                                  db.delete(old_linked)
                         
@@ -498,6 +513,7 @@ class TransactionService:
                         db_txn.linked_transaction_id = target_txn.id
                         db_txn.category = "Transfer"
                         update_data['category'] = "Transfer"
+                        update_data.pop('linked_transaction_id', None)
 
                         # UPDATE TARGET ACCOUNT BALANCE
                         target_acc = db.query(models.Account).filter(models.Account.id == to_account_id).first()
