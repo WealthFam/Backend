@@ -45,22 +45,23 @@ class NAVService:
         Syncs NAV history from MFAPI to the market database.
         Runs in a background thread.
         """
-        db = MarketSessionLocal()
-        try:
-            scheme_code_str = str(scheme_code)
-            
-            # Optimization: If we have data from "yesterday" or today, skip unless forced.
-            latest = db.query(MutualFundNAVHistory).filter(
-                MutualFundNAVHistory.scheme_code == scheme_code_str
-            ).order_by(MutualFundNAVHistory.nav_date.desc()).first()
-            
-            today = timezone.utcnow().date()
-            if not force and latest and latest.nav_date.date() >= (today - timedelta(days=1)):
-                logger.info(f"NAV History for {scheme_code} is up to date (Latest: {latest.nav_date.date()}).")
-                return
-
-            logger.info(f"Syncing NAV History for {scheme_code} from API...")
+        scheme_code_str = str(scheme_code)
+        
+        # Acquire lock BEFORE session to ensure we see the latest committed data
+        with market_db_write_lock:
+            db = MarketSessionLocal()
             try:
+                # Re-check latest date inside the lock
+                latest = db.query(MutualFundNAVHistory).filter(
+                    MutualFundNAVHistory.scheme_code == scheme_code_str
+                ).order_by(MutualFundNAVHistory.nav_date.desc()).first()
+                
+                today = timezone.utcnow().date()
+                if not force and latest and latest.nav_date.date() >= (today - timedelta(days=1)):
+                    logger.info(f"NAV History for {scheme_code} is up to date (Latest: {latest.nav_date.date()}).")
+                    return
+
+                logger.info(f"Syncing NAV History for {scheme_code} from API...")
                 response = httpx.get(f"{MFAPI_BASE_URL}/{scheme_code}", timeout=20.0)
                 if response.status_code != 200:
                     logger.error(f"Failed to fetch NAV for {scheme_code}: {response.status_code}")
@@ -71,49 +72,51 @@ class NAVService:
                 if not raw_entries:
                     return
 
-                # Acquire lock before modifying the DB
-                with market_db_write_lock:
-                    # 1. Re-query existing dates INSIDE the lock to handle race conditions 
-                    # from concurrent sync tasks for the same scheme.
-                    existing_dates = {
-                        r[0].date() for r in db.query(MutualFundNAVHistory.nav_date).filter(
-                            MutualFundNAVHistory.scheme_code == scheme_code_str
-                        ).all()
-                    }
+                # 3. Efficient sync: Since MFAPI is sorted latest-first, we stop
+                # as soon as we encounter a date already in the database.
+                latest_db_dt = latest.nav_date if latest else None
+                new_records = []
+                added_dates = set()
 
-                    added_dates = set()
-                    new_count = 0
-                    
-                    for entry in raw_entries:
-                        try:
-                            d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
-                            # Double check against DB and locally added dates
-                            if d_obj not in existing_dates and d_obj not in added_dates:
-                                nav_val = Decimal(str(entry['nav']))
-                                record = MutualFundNAVHistory(
-                                    scheme_code=scheme_code_str,
-                                    nav_date=datetime.combine(d_obj, datetime.min.time()),
-                                    nav=nav_val
-                                )
-                                db.add(record)
-                                added_dates.add(d_obj)
-                                new_count += 1
-                                
-                                if new_count % 500 == 0:
-                                    db.flush()
-                        except:
+                for entry in raw_entries:
+                    try:
+                        d_obj = datetime.strptime(entry['date'], "%d-%m-%Y").date()
+                        d_dt = datetime.combine(d_obj, datetime.min.time())
+                        
+                        # Stop early if we hit existing data
+                        if latest_db_dt and d_dt <= latest_db_dt:
+                            break
+                        
+                        # Prevent duplicates within the same API response
+                        if d_obj in added_dates:
                             continue
+                            
+                        nav_val = Decimal(str(entry['nav']))
+                        record = MutualFundNAVHistory(
+                            scheme_code=scheme_code_str,
+                            nav_date=d_dt,
+                            nav=nav_val
+                        )
+                        new_records.append(record)
+                        added_dates.add(d_obj)
+                    except Exception as parse_err:
+                        logger.warning(f"Skipping malformed NAV entry for {scheme_code}: {parse_err}")
+                        continue
+                
+                if new_records:
+                    # Insert in reverse (chronological order) to maintain logical flow
+                    new_records.reverse()
+                    db.add_all(new_records)
+                    db.commit()
+                    logger.info(f"Cached {len(new_records)} new NAV records for {scheme_code}.")
+                else:
+                    logger.info(f"No new records found for {scheme_code} after API fetch.")
                     
-                    if new_count > 0:
-                        db.commit()
-                        logger.info(f"Cached {new_count} new NAV records for {scheme_code}.")
-                    else:
-                        logger.info(f"No new records found for {scheme_code} after API fetch.")
             except Exception as e:
                 logger.error(f"Error during NAV sync for {scheme_code}: {e}")
                 db.rollback()
-        finally:
-            db.close()
+            finally:
+                db.close()
 
     @staticmethod
     def get_latest_nav(scheme_code: str) -> Optional[Dict[str, Any]]:
