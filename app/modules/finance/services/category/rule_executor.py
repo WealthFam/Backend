@@ -443,10 +443,9 @@ class RuleExecutor:
                     "category": rule.category
                 })
 
-        # Get pending triage count
-        pending_count = db.query(ingestion_models.PendingTransaction).filter(
-            ingestion_models.PendingTransaction.tenant_id == tenant_id
-        ).count()
+        # Get pending triage count (Thorough: Only count transactions matching existing rules)
+        scan_results = RuleExecutor.scan_all_triage(db, tenant_id)
+        matched_count = scan_results.get("total_matches", 0)
 
         return {
             "total_rules": total_rules,
@@ -454,7 +453,7 @@ class RuleExecutor:
             "rules_with_zero_hits": rules_with_zero_hits,
             "avg_hit_rate": round(avg_hit_rate, 1),
             "top_rules": top_rules,
-            "pending_triage": pending_count
+            "pending_triage": matched_count
         }
 
     @staticmethod
