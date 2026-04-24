@@ -457,24 +457,36 @@ class CategoryService:
             logger.warning(f"AI cleaning failed for suggestions, falling back to heuristic: {e}")
 
         # 3. Aggregate by clean name
-        aggregated = {} 
+        from backend.app.modules.finance.services.category.rule_executor import RuleExecutor
         
-        existing_rules = CategoryService.get_category_rules(db, tenant_id)
+        rules_objects = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id).all()
         ignored = db.query(models.IgnoredSuggestion).filter(models.IgnoredSuggestion.tenant_id == tenant_id).all()
+        ignored_patterns = [i.pattern.lower() for i in ignored]
         
-        # Flatten existing keywords for exclusion
-        exclusion_set = set()
-        for r in existing_rules["data"]:
-            for kw in (r.keywords or []): 
-                if isinstance(kw, str): exclusion_set.add(kw.lower())
-        for i in ignored:
-            exclusion_set.add(i.pattern.lower())
-
+        aggregated = {} 
         for c in candidates:
             clean_name = clean_map.get(c.description, AIService.heuristic_clean_merchant(c.description))
+            desc_lower = c.description.lower()
+            clean_lower = clean_name.lower()
             
-            # Skip if already ruled or ignored
-            if clean_name.lower() in exclusion_set or c.description.lower() in exclusion_set:
+            # Check if ignored
+            if any(p in desc_lower or p in clean_lower for p in ignored_patterns):
+                continue
+                
+            # Check if already covered by an existing rule
+            is_covered = False
+            for r in rules_objects:
+                # 1. Exact Name match (Suggested name matches rule name)
+                if r.name and r.name.lower() == clean_lower:
+                    is_covered = True
+                    break
+                # 2. Keyword match (Does the rule apply to this description?)
+                kws = RuleExecutor._parse_keywords(r)
+                if any(kw.lower() in desc_lower for kw in kws):
+                    is_covered = True
+                    break
+            
+            if is_covered:
                 continue
 
             if clean_name not in aggregated:
