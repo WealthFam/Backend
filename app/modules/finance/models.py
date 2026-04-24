@@ -136,6 +136,17 @@ class CategoryRule(Base):
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
 
+class RuleHitLog(Base):
+    """Tracks rule execution statistics without modifying the CategoryRule table."""
+    __tablename__ = "rule_hit_logs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    rule_id = Column(String, nullable=False, index=True)
+    hit_count = Column(Integer, default=0)
+    last_hit_at = Column(UTCDateTime, nullable=True)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+
 class IgnoredRecurringPattern(Base):
     __tablename__ = "ignored_recurring_patterns"
 

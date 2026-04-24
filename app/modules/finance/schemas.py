@@ -215,12 +215,38 @@ class CategoryRuleRead(CategoryRuleBase):
     tenant_id: Union[UUID, str]
     is_valid: bool = Field(default=True, description="Indicates if the rule is currently functional")
     validation_error: Optional[str] = Field(default=None, description="Human-readable reason for validation failure")
+    hit_count: int = Field(default=0, description="Total number of transactions matched by this rule")
+    last_hit_at: Optional[datetime] = Field(default=None, description="Timestamp of last successful rule application")
     created_at: datetime
 
 class CategoryRulePagination(BaseModel):
     model_config = ConfigDict(strict=True)
     data: List[CategoryRuleRead]
     total: int
+
+# --- Triage Detection Schemas ---
+class TriageScanResult(BaseModel):
+    """Result of scanning a single rule against the triage queue."""
+    rule_id: str
+    rule_name: str
+    category: str
+    matching_count: int
+    preview: List[dict] = []
+
+class TriageScanSummary(BaseModel):
+    """Aggregate result of scanning all rules against the triage queue."""
+    total_pending: int
+    total_matches: int
+    rules_with_matches: List[TriageScanResult]
+
+class RuleStatsResponse(BaseModel):
+    """Aggregate rule performance statistics."""
+    total_rules: int
+    total_hits: int
+    rules_with_zero_hits: int
+    avg_hit_rate: float
+    top_rules: List[dict] = []
+    pending_triage: int = 0
 
 class RuleSuggestion(BaseModel):
     name: str

@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from backend.app.core.database import db_write_lock
 from backend.app.modules.finance import models, schemas
+from backend.app.modules.ingestion import models as ingestion_models
+from fastapi import HTTPException
 
 class CategoryService:
     @staticmethod
@@ -78,11 +80,42 @@ class CategoryService:
         db_cat = db.query(models.Category).filter(models.Category.id == category_id, models.Category.tenant_id == tenant_id).first()
         if not db_cat: return None
         
+        old_name = db_cat.name
         data = update.model_dump(exclude_unset=True)
+        new_name = data.get("name")
+        
         with db_write_lock:
             try:
+                # 1. If name changed, update all linked entities (Cascade Update)
+                if new_name and new_name != old_name:
+                    # Update Ledger Transactions
+                    db.query(models.Transaction).filter(
+                        models.Transaction.tenant_id == tenant_id,
+                        models.Transaction.category == old_name
+                    ).update({models.Transaction.category: new_name}, synchronize_session=False)
+
+                    # Update Triage Transactions
+                    db.query(ingestion_models.PendingTransaction).filter(
+                        ingestion_models.PendingTransaction.tenant_id == tenant_id,
+                        ingestion_models.PendingTransaction.category == old_name
+                    ).update({ingestion_models.PendingTransaction.category: new_name}, synchronize_session=False)
+
+                    # Update Classification Rules
+                    db.query(models.CategoryRule).filter(
+                        models.CategoryRule.tenant_id == tenant_id,
+                        models.CategoryRule.category == old_name
+                    ).update({models.CategoryRule.category: new_name}, synchronize_session=False)
+
+                    # Update Budgets
+                    db.query(models.Budget).filter(
+                        models.Budget.tenant_id == tenant_id,
+                        models.Budget.category == old_name
+                    ).update({models.Budget.category: new_name}, synchronize_session=False)
+
+                # 2. Update the Category itself
                 for k, v in data.items():
                     setattr(db_cat, k, v)
+                
                 db.commit()
                 db.refresh(db_cat)
             except Exception:
@@ -91,9 +124,82 @@ class CategoryService:
         return db_cat
 
     @staticmethod
+    def get_category_usage(db: Session, category_id: str, tenant_id: str) -> dict:
+        db_cat = db.query(models.Category).filter(models.Category.id == category_id, models.Category.tenant_id == tenant_id).first()
+        if not db_cat:
+            raise HTTPException(status_code=404, detail="Category not found")
+            
+        reasons = []
+        
+        # Check subcategories
+        child_count = db.query(models.Category).filter(models.Category.parent_id == category_id).count()
+        if child_count > 0:
+            reasons.append(f"Contains {child_count} active sub-folder(s)")
+            
+        # Check transactions
+        txn_count = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.category == db_cat.name
+        ).count()
+        if txn_count > 0:
+            reasons.append(f"Linked to {txn_count} existing transaction(s)")
+            
+        # Check pending transactions
+        pending_count = db.query(ingestion_models.PendingTransaction).filter(
+            ingestion_models.PendingTransaction.tenant_id == tenant_id,
+            ingestion_models.PendingTransaction.category == db_cat.name
+        ).count()
+        if pending_count > 0:
+            reasons.append(f"Used in {pending_count} pending triage item(s)")
+            
+        # Check rules
+        rule_count = db.query(models.CategoryRule).filter(
+            models.CategoryRule.tenant_id == tenant_id,
+            models.CategoryRule.category == db_cat.name
+        ).count()
+        if rule_count > 0:
+            reasons.append(f"Linked to {rule_count} classification rule(s)")
+            
+        return {
+            "is_safe": len(reasons) == 0,
+            "reasons": reasons,
+            "category_name": db_cat.name
+        }
+
+    @staticmethod
     def delete_category(db: Session, category_id: str, tenant_id: str) -> bool:
         db_cat = db.query(models.Category).filter(models.Category.id == category_id, models.Category.tenant_id == tenant_id).first()
         if not db_cat: return False
+        
+        # 1. Check for subcategories
+        has_children = db.query(models.Category).filter(models.Category.parent_id == category_id).first()
+        if has_children:
+            raise HTTPException(status_code=400, detail="This category contains sub-folders. Please delete or move them first.")
+
+        # 2. Check for active transactions (Ledger)
+        has_txns = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.category == db_cat.name
+        ).first()
+        if has_txns:
+            raise HTTPException(status_code=400, detail="This category is linked to existing transactions. Please re-categorize them first.")
+
+        # 3. Check for pending transactions (Triage)
+        has_pending = db.query(ingestion_models.PendingTransaction).filter(
+            ingestion_models.PendingTransaction.tenant_id == tenant_id,
+            ingestion_models.PendingTransaction.category == db_cat.name
+        ).first()
+        if has_pending:
+            raise HTTPException(status_code=400, detail="This category is currently being used in the Triage queue.")
+
+        # 4. Check for active rules
+        has_rules = db.query(models.CategoryRule).filter(
+            models.CategoryRule.tenant_id == tenant_id,
+            models.CategoryRule.category == db_cat.name
+        ).first()
+        if has_rules:
+            raise HTTPException(status_code=400, detail="An active classification rule is using this category.")
+
         with db_write_lock:
             try:
                 db.delete(db_cat)
@@ -197,6 +303,17 @@ class CategoryService:
         total = query.count()
         rules = query.order_by(models.CategoryRule.priority.desc()).offset(skip).limit(limit).all()
         
+        # Batch-load hit logs for enrichment
+        rule_ids = [str(r.id) for r in rules]
+        hit_logs = {}
+        if rule_ids:
+            logs = db.query(models.RuleHitLog).filter(
+                models.RuleHitLog.tenant_id == tenant_id,
+                models.RuleHitLog.rule_id.in_(rule_ids)
+            ).all()
+            for log in logs:
+                hit_logs[log.rule_id] = log
+
         for r in rules:
              r.is_valid = True
              r.validation_error = None
@@ -216,6 +333,11 @@ class CategoryService:
              
              # Cast Numeric to int for strict validation
              r.priority = int(r.priority)
+
+             # Enrich with hit stats from RuleHitLog
+             hit_log = hit_logs.get(str(r.id))
+             r.hit_count = hit_log.hit_count if hit_log else 0
+             r.last_hit_at = hit_log.last_hit_at if hit_log else None
              
         return {"data": rules, "total": total}
 
