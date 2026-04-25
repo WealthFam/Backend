@@ -169,10 +169,11 @@ def generate_insights(
 ):
     from backend.app.modules.ingestion.ai_service import AIService
     summary_data = payload.get("summary_data")
+    force_refresh = payload.get("force_refresh", False)
     if not summary_data:
         raise HTTPException(status_code=400, detail="Missing summary_data")
     
-    insights = AIService.generate_summary_insights(db, str(current_user.tenant_id), summary_data)
+    insights = AIService.generate_summary_insights(db, str(current_user.tenant_id), summary_data, force_refresh=force_refresh)
     return {"insights": insights}
 
 @router.get("/aliases")

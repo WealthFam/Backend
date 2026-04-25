@@ -1198,7 +1198,7 @@ class AnalyticsService:
             
         return forecast
     @staticmethod
-    def get_budget_history(db: Session, tenant_id: str, months: int = 6, user_id: str = None, target_date: datetime = None):
+    def get_budget_history(db: Session, tenant_id: str, months: int = 6, user_id: str = None, target_date: datetime = None, account_id: str = None):
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
             
@@ -1221,6 +1221,9 @@ class AnalyticsService:
             if user_id:
                  top_cats_query = top_cats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
                                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+            
+            if account_id:
+                top_cats_query = top_cats_query.filter(models.Transaction.account_id == account_id)
             
             top_cats = top_cats_query.group_by(models.Transaction.category)\
                                      .order_by(func.sum(models.Transaction.amount).asc())\
@@ -1296,6 +1299,9 @@ class AnalyticsService:
             monthly_stats_query = monthly_stats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
                                                       .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
             
+        if account_id:
+            monthly_stats_query = monthly_stats_query.filter(models.Transaction.account_id == account_id)
+            
         monthly_stats = monthly_stats_query.all()
         
         # Organize statistics into a map for easy lookup: {month_start_date: {category: amount}}
@@ -1324,6 +1330,9 @@ class AnalyticsService:
                 overall_stats_query = overall_stats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
                                                           .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
             
+            if account_id:
+                overall_stats_query = overall_stats_query.filter(models.Transaction.account_id == account_id)
+            
             overall_stats = overall_stats_query.group_by(
                 text('month_start')
             ).all()
@@ -1344,7 +1353,7 @@ class AnalyticsService:
                 y_target -= 1
             
             m_start_val = date(y_target, m_target, 1)
-            month_label = m_start_val.strftime("%b %Y")
+            month_label = m_start_val.strftime("%Y-%m")
             
             entry = {
                 "month": month_label,

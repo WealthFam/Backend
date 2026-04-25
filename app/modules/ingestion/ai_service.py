@@ -603,8 +603,12 @@ class AIService:
                 ingestion_models.AIInsightCache.tenant_id == tenant_id,
                 ingestion_models.AIInsightCache.insight_type == cache_type
             ).first()
-            if cached:
-                return cached.content
+            if cached and cached.content:
+                # Standard 24-hour age check
+                if cached.updated_at:
+                    age = (timezone.utcnow() - cached.updated_at).total_seconds()
+                    if age < 86400: # 24 hours
+                        return cached.content
 
         # 2. Provider Fetch
         try:
@@ -627,21 +631,7 @@ class AIService:
             if result:
                 with db_write_lock:
                     try:
-                        # Update Cache
-                        cached = db.query(ingestion_models.AIInsightCache).filter(
-                            ingestion_models.AIInsightCache.tenant_id == tenant_id,
-                            ingestion_models.AIInsightCache.insight_type == cache_type
-                        ).first()
-                        if cached:
-                            cached.content = result
-                            cached.updated_at = timezone.utcnow()
-                        else:
-                            new_cache = ingestion_models.AIInsightCache(
-                                tenant_id=tenant_id,
-                                insight_type=cache_type,
-                                content=result
-                            )
-                            db.add(new_cache)
+                        cls.update_cache(db, tenant_id, cache_type, result)
                         db.commit()
                         return result
                     except Exception as catch_err:
@@ -651,7 +641,7 @@ class AIService:
         except Exception as e:
             db.rollback()
             logger.warning(f"AI Refresh failed for dashboard summary: {e}")
-            # Fallback to cache
+            # Fallback to cache even if stale
             cached = db.query(ingestion_models.AIInsightCache).filter(
                 ingestion_models.AIInsightCache.tenant_id == tenant_id,
                 ingestion_models.AIInsightCache.insight_type == cache_type

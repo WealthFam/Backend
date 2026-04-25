@@ -52,6 +52,7 @@ def get_forecast(
 def get_budget_history(
     months: int = 6,
     user_id: str = None,
+    account_id: str = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -59,7 +60,8 @@ def get_budget_history(
         db, 
         str(current_user.tenant_id), 
         months=months,
-        user_id=user_id
+        user_id=user_id,
+        account_id=account_id
     )
 @router.get("/net-worth-timeline")
 def get_net_worth_timeline(
