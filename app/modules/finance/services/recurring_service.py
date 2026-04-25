@@ -1,6 +1,7 @@
 from typing import List, Optional
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
+from backend.app.core.database import db_write_lock
 from backend.app.modules.finance import models, schemas
 from backend.app.core import timezone
 import statistics
@@ -10,14 +11,19 @@ from datetime import datetime
 class RecurringService:
     @staticmethod
     def create_recurring_transaction(db: Session, recurrence: schemas.RecurringTransactionCreate, tenant_id: str) -> models.RecurringTransaction:
-        db_rec = models.RecurringTransaction(
-            **recurrence.model_dump(),
-            tenant_id=tenant_id
-        )
-        db.add(db_rec)
-        db.commit()
-        db.refresh(db_rec)
-        return db_rec
+        with db_write_lock:
+            try:
+                db_rec = models.RecurringTransaction(
+                    **recurrence.model_dump(),
+                    tenant_id=tenant_id
+                )
+                db.add(db_rec)
+                db.commit()
+                db.refresh(db_rec)
+                return db_rec
+            except Exception as e:
+                db.rollback()
+                raise e
 
     @staticmethod
     def get_recurring_transactions(db: Session, tenant_id: str, user_id: str = None) -> List[models.RecurringTransaction]:
@@ -35,32 +41,42 @@ class RecurringService:
 
     @staticmethod
     def update_recurring_transaction(db: Session, recurrence_id: str, update: schemas.RecurringTransactionUpdate, tenant_id: str) -> Optional[models.RecurringTransaction]:
-        db_rec = db.query(models.RecurringTransaction).filter(
-            models.RecurringTransaction.id == recurrence_id,
-            models.RecurringTransaction.tenant_id == tenant_id
-        ).first()
-        
-        if not db_rec: return None
-        
-        data = update.model_dump(exclude_unset=True)
-        for k, v in data.items():
-            setattr(db_rec, k, v)
-            
-        db.commit()
-        db.refresh(db_rec)
-        return db_rec
+        with db_write_lock:
+            try:
+                db_rec = db.query(models.RecurringTransaction).filter(
+                    models.RecurringTransaction.id == recurrence_id,
+                    models.RecurringTransaction.tenant_id == tenant_id
+                ).first()
+                
+                if not db_rec: return None
+                
+                data = update.model_dump(exclude_unset=True)
+                for k, v in data.items():
+                    setattr(db_rec, k, v)
+                    
+                db.commit()
+                db.refresh(db_rec)
+                return db_rec
+            except Exception as e:
+                db.rollback()
+                raise e
 
     @staticmethod
     def delete_recurring_transaction(db: Session, recurrence_id: str, tenant_id: str) -> bool:
-        db_rec = db.query(models.RecurringTransaction).filter(
-            models.RecurringTransaction.id == recurrence_id,
-            models.RecurringTransaction.tenant_id == tenant_id
-        ).first()
-        
-        if not db_rec: return False
-        db.delete(db_rec)
-        db.commit()
-        return True
+        with db_write_lock:
+            try:
+                db_rec = db.query(models.RecurringTransaction).filter(
+                    models.RecurringTransaction.id == recurrence_id,
+                    models.RecurringTransaction.tenant_id == tenant_id
+                ).first()
+                
+                if not db_rec: return False
+                db.delete(db_rec)
+                db.commit()
+                return True
+            except Exception as e:
+                db.rollback()
+                raise e
 
     @staticmethod
     def process_recurring_transactions(db: Session, tenant_id: str) -> int:
@@ -190,7 +206,7 @@ class RecurringService:
             name = re.sub(r'\.(com|in|org|net)$', '', name, flags=re.IGNORECASE)
             return name.strip().upper()
 
-        # 4. Group by Merchant AND Amount (to handle multiple subscriptions/outliers)
+        # 4. Group by Merchant AND Amount AND Account (PRACTICES.md Section 16 constraint)
         # We allow a small 2% buffer in amount for "same amount" grouping
         groups = defaultdict(list)
         for t in transactions:
@@ -203,7 +219,7 @@ class RecurringService:
             
             # Use rounded amount as partial key to separate distinct subscriptions
             amt_key = round(float(t.amount), -1) # Round to nearest 10 for grouping
-            groups[(norm_name, amt_key)].append(t)
+            groups[(norm_name, amt_key, t.account_id)].append(t)
 
         suggestions = []
         
@@ -215,8 +231,8 @@ class RecurringService:
             ("YEARLY", 365, 20)
         ]
 
-        # 5. Analyze each (Merchant, Amount) group
-        for (merchant, _), txns in groups.items():
+        # 5. Analyze each (Merchant, Amount, Account) group
+        for (merchant, _, account_id), txns in groups.items():
             if len(txns) < 2: continue 
 
             txns.sort(key=lambda x: x.date)
@@ -300,17 +316,32 @@ class RecurringService:
                 if detected_freq == "YEARLY" and dom_std <= 2:
                     confidence += 0.2
 
+                # Refined Reason Generation
+                if detected_freq == "MONTHLY":
+                    day = txns[-1].date.day
+                    suffix = 'th' if 11 <= day <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
+                    reason = f"Paid on the {day}{suffix} of every month across {len(txns)} cycles."
+                elif detected_freq in ["WEEKLY", "BI-WEEKLY"]:
+                    weekday = txns[-1].date.strftime('%A')
+                    reason = f"Paid every {weekday} ({detected_freq.lower()}) across {len(txns)} cycles."
+                else:
+                    reason = f"Consistent {detected_freq.lower()} pattern detected across {len(txns)} payments."
+
                 suggestions.append(schemas.RecurringSuggestion(
                     name=merchant.title(),
                     amount=avg_amount,
                     frequency=detected_freq,
                     category=txns[-1].category,
-                    account_id=txns[-1].account_id,
+                    account_id=account_id,
                     confidence=min(0.98, confidence),
-                    reason=f"Consistent {detected_freq.lower()} pattern found across {len(txns)} payments.",
+                    reason=reason,
                     last_date=txns[-1].date,
                     pattern=merchant,
-                    detected_count=len(txns)
+                    detected_count=len(txns),
+                    recent_history=[
+                        schemas.HistoryPoint(date=t.date, amount=t.amount)
+                        for t in txns[-5:]
+                    ] # Last 5 payments with dates
                 ))
 
         return sorted(suggestions, key=lambda x: x.confidence, reverse=True)

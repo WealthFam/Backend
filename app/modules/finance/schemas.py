@@ -437,6 +437,10 @@ class RecurringTransactionRead(RecurringTransactionBase):
     
     model_config = ConfigDict(from_attributes=True, strict=True)
 
+class HistoryPoint(BaseModel):
+    date: datetime
+    amount: Decimal
+
 class RecurringSuggestion(BaseModel):
     name: str
     amount: Decimal
@@ -448,6 +452,7 @@ class RecurringSuggestion(BaseModel):
     last_date: datetime
     pattern: Optional[str] = None # The exact merchant/keyword detected
     detected_count: int = 0
+    recent_history: List[HistoryPoint] = []
         
 # --- Loan Schemas ---
 
