@@ -112,7 +112,7 @@ class HistoryAnalytics:
         ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
          .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.date >= start_range, models.Transaction.date <= end_range_full,
                  models.Transaction.amount < 0, models.Transaction.is_transfer == False,
-                 or_(models.Category.type == 'expense', models.Category.type == None))\
+                 or_(models.Category.type == 'expense', models.Category.type == 'investment', models.Category.type == None))\
          .group_by(models.Transaction.category, text('month_start'))
         
         if user_id: monthly_stats_query = monthly_stats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
@@ -134,11 +134,40 @@ class HistoryAnalytics:
             m_start = date(y, m, 1)
             
             month_data = {"month": m_start.strftime("%b %Y"), "data": []}
+            total_ops_spent = Decimal(0)
+            total_inv_spent = Decimal(0)
+            
+            # Fetch all categories for this month's stats
+            for cat, amt in stats_map.get(m_start, {}).items():
+                # We need to know the type of each category. 
+                # This is a bit expensive to do here if we have many categories, 
+                # but for budget history it's usually limited.
+                # For now, let's assume if it's not a budget category, we might need a lookup or just aggregate.
+                # Actually, we already filtered the query to include only expense/investment/none.
+                # Let's try to find if it's an investment.
+                cat_obj = db.query(models.Category).filter(
+                    (models.Category.id == cat) | (models.Category.name == cat),
+                    models.Category.tenant_id == tenant_id
+                ).first()
+                
+                if cat_obj and cat_obj.type == 'investment':
+                    total_inv_spent += amt
+                else:
+                    total_ops_spent += amt
+
             for b in budgets:
                 spent = stats_map.get(m_start, {}).get(b.category, Decimal(0))
                 month_data["data"].append({
                     "category": b.category, "limit": Decimal(b.amount_limit), "spent": spent
                 })
+            
+            # Add specific aggregate entries for the frontend
+            month_data["data"].append({
+                "category": "OVERALL", "limit": sum(Decimal(b.amount_limit) for b in budgets), "spent": total_ops_spent
+            })
+            month_data["data"].append({
+                "category": "INVESTMENT", "limit": 0, "spent": total_inv_spent
+            })
             history.append(month_data)
             
         return history

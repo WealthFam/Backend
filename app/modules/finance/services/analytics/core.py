@@ -123,6 +123,24 @@ class CoreAnalytics:
                                                  .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         last_month_spending = abs(Decimal(last_month_query.scalar() or 0))
 
+        # Last month investment comparison
+        last_month_invest_query = db.query(func.sum(models.Transaction.amount))\
+            .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+            .filter(
+                models.Transaction.tenant_id == tenant_id,
+                models.Transaction.amount < 0,
+                models.Transaction.is_transfer == False,
+                models.Transaction.exclude_from_reports == False,
+                models.Transaction.date >= last_month_start,
+                models.Transaction.date <= last_month_comparison_point,
+                models.Category.type == 'investment'
+            )
+        if account_id: last_month_invest_query = last_month_invest_query.filter(models.Transaction.account_id == account_id)
+        if user_id:
+            last_month_invest_query = last_month_invest_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                                             .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        last_month_investment = abs(Decimal(last_month_invest_query.scalar() or 0))
+
         # Monthly Income
         monthly_income_query = db.query(func.sum(models.Transaction.amount))\
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
@@ -208,7 +226,8 @@ class CoreAnalytics:
             "breakdown": breakdown, "total_income": float(monthly_income), "monthly_total": float(monthly_spending),
             "monthly_spending": float(monthly_spending), "monthly_investment": float(monthly_investment),
             "total_investment": float(monthly_investment), "avg_daily_spending": float(avg_daily),
-            "last_month_spending": float(last_month_spending), "budget_health": budget_health,
+            "last_month_spending": float(last_month_spending), "last_month_investment": float(last_month_investment),
+            "budget_health": budget_health,
             "credit_intelligence": credit_intelligence, "recent_transactions": enriched_txns,
             "top_spending_category": top_spending_category, "currency": accounts[0].currency if accounts else "INR",
             "savings_rate": savings_rate
