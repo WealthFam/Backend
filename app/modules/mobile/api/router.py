@@ -544,6 +544,8 @@ def get_dashboard_summary(
             "yesterday_total": metrics.get("yesterday_total", 0.0),
             "last_month_same_day_total": metrics.get("last_month_same_day_total", 0.0),
             "monthly_total": metrics.get("monthly_total", 0.0),
+            "monthly_investment": metrics.get("monthly_investment", 0.0),
+            "monthly_income": metrics.get("monthly_income", 0.0),
             "currency": metrics.get("currency", "INR"),
             "daily_budget_limit": metrics.get("daily_budget_limit", 0.0),
             "prorated_budget": metrics.get("prorated_budget", 0.0)

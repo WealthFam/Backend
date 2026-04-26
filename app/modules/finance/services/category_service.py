@@ -36,20 +36,23 @@ class CategoryService:
             
         cats = db.query(models.Category).filter(models.Category.tenant_id == tenant_id).all()
         if not cats:
-            # Seed defaults
+            # Seed defaults with proper types
+            # Format: (Name, Icon, Type)
             defaults = [
-                ("Food & Dining", "🍔"), ("Groceries", "🥦"), ("Transport", "🚌"), 
-                ("Shopping", "🛍️"), ("Utilities", "💡"), ("Housing", "🏠"),
-                ("Healthcare", "🏥"), ("Entertainment", "🎬"), ("Salary", "💰"),
-                ("Investment", "📈"), ("Education", "🎓"), ("Dividend", "💵"),
-                ("FD Matured", "🏦"), ("Rent", "🏘️"), ("Gift", "🎁"),
-                 ("Other", "📦")
+                ("Food & Dining", "🍔", "expense"), ("Groceries", "🥦", "expense"), 
+                ("Transport", "🚌", "expense"), ("Shopping", "🛍️", "expense"), 
+                ("Utilities", "💡", "expense"), ("Housing", "🏠", "expense"),
+                ("Healthcare", "🏥", "expense"), ("Entertainment", "🎬", "expense"), 
+                ("Salary", "💰", "income"), ("Investment", "📈", "investment"), 
+                ("Education", "🎓", "expense"), ("Dividend", "💵", "income"),
+                ("FD Matured", "🏦", "income"), ("Rent", "🏘️", "expense"), 
+                ("Gift", "🎁", "income"), ("Other", "📦", "expense")
             ]
             new_cats = []
             with db_write_lock:
                 try:
-                    for name, icon in defaults:
-                        c = models.Category(tenant_id=tenant_id, name=name, icon=icon)
+                    for name, icon, cat_type in defaults:
+                        c = models.Category(tenant_id=tenant_id, name=name, icon=icon, type=cat_type)
                         db.add(c)
                         new_cats.append(c)
                     db.commit()

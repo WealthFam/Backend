@@ -251,15 +251,21 @@ class TransactionService:
         total_count = query.count()
         
         # Stats are based on all transactions for this vendor
-        all_txns = query.all()
+        all_txns_query = query.outerjoin(models.Category, (models.Transaction.category == models.Category.name) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+            .add_columns(models.Category.type.label('cat_type'))
         
-        total_spent = sum(abs(t.amount) for t in all_txns if t.amount < 0)
-        total_income = sum(t.amount for t in all_txns if t.amount > 0)
+        results = all_txns_query.all()
+        all_txns = [r[0] for r in results]
+        txn_types = {r[0].id: r[1] for r in results}
         
-        debit_count = sum(1 for t in all_txns if t.amount < 0)
+        total_spent = sum(abs(t.amount) for t in all_txns if t.amount < 0 and txn_types.get(t.id) != 'investment')
+        total_income = sum(t.amount for t in all_txns if t.amount > 0 and txn_types.get(t.id) == 'income')
+        total_invested = sum(abs(t.amount) for t in all_txns if t.amount < 0 and txn_types.get(t.id) == 'investment')
+        
+        debit_count = sum(1 for t in all_txns if t.amount < 0 and txn_types.get(t.id) != 'investment')
         avg_txn = (total_spent / debit_count) if debit_count > 0 else 0
-
-        # Group by month for chart
+        
+        # Group by month for chart (Total Outflow: Spent + Invested)
         monthly_map = {}
         for i in range(6):
             dt = now - relativedelta(months=i)
@@ -281,6 +287,7 @@ class TransactionService:
             "vendor_name": vendor_name,
             "total_spent": total_spent,
             "total_income": total_income,
+            "total_invested": total_invested,
             "transaction_count": total_count,
             "average_transaction": avg_txn,
             "chart_data": chart_data,
