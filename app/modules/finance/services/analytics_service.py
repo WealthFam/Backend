@@ -1313,6 +1313,7 @@ class AnalyticsService:
             stats_map[m_date][row.category] = abs(Decimal(row.total))
             
         # Handle 'OVERALL' special case if it exists in categories
+        overall_stats = []
         if 'OVERALL' in categories:
             overall_stats_query = db.query(
                 func.date_trunc('month', models.Transaction.date).label('month_start'),
