@@ -21,12 +21,11 @@ class SpendingAnalytics:
         """
         from backend.app.modules.finance.models import Transaction, Category, Account
         
-        # Base filter
+        # Base filter (we join category to differentiate between expense and investment)
         filters = [
             Transaction.tenant_id == tenant_id,
             Transaction.is_transfer == False,
-            Transaction.exclude_from_reports == False,
-            Transaction.amount < 0
+            Transaction.exclude_from_reports == False
         ]
         
         if account_id:
@@ -36,7 +35,11 @@ class SpendingAnalytics:
         if end_date:
             filters.append(Transaction.date <= end_date)
             
-        query = db.query(Transaction).filter(*filters)
+        query = db.query(Transaction).outerjoin(
+            Category, 
+            (or_(Transaction.category == Category.id, Transaction.category == Category.name)) & 
+            (Transaction.tenant_id == Category.tenant_id)
+        ).filter(*filters)
         
         if user_id:
             query = query.join(Account, Transaction.account_id == Account.id)\
@@ -45,38 +48,66 @@ class SpendingAnalytics:
         # We take all relevant transactions for this period
         txns = query.all()
         
-        # Category Breakdown (Hierarchical)
+        # Pre-fetch categories for hierarchy mapping
         db_categories = db.query(Category).filter(Category.tenant_id == tenant_id).all()
+        cat_type_map = {c.name: c.type for c in db_categories}
+        cat_id_type_map = {str(c.id): c.type for c in db_categories}
         
-        cat_totals = {}
-        for t in txns:
-            cat_name = t.category or "Uncategorized"
-            cat_totals[cat_name] = cat_totals.get(cat_name, Decimal(0)) + abs(Decimal(t.amount or 0))
+        # Categorize into Expenses, Investments, and Income
+        # Expenses are negative and of type 'expense' or None
+        def get_cat_type(cat_val):
+            if not cat_val: return None
+            return cat_type_map.get(cat_val) or cat_id_type_map.get(str(cat_val))
+
+        expenses = [t for t in txns if t.amount < 0 and (get_cat_type(t.category) == 'expense' or get_cat_type(t.category) is None)]
+        # Investments are negative and of type 'investment'
+        investments = [t for t in txns if t.amount < 0 and get_cat_type(t.category) == 'investment']
+        # Income is positive
+        income_txns = [t for t in txns if t.amount > 0]
+        
+        # Totals
+        expense_total = sum(abs(Decimal(t.amount)) for t in expenses)
+        investment_total = sum(abs(Decimal(t.amount)) for t in investments)
+        income_total = sum(Decimal(t.amount) for t in income_txns)
+        
+        # Category Breakdown (Hierarchical)
+        def get_breakdown(transaction_list):
+            cat_totals = {}
+            for t in transaction_list:
+                cat_name = t.category or "Uncategorized"
+                # If cat_name is an ID, resolve it
+                resolved_name = cat_name
+                if cat_name in cat_id_type_map: # It's an ID
+                    cat_obj = next((c for c in db_categories if str(c.id) == cat_name), None)
+                    if cat_obj: resolved_name = cat_obj.name
+                
+                cat_totals[resolved_name] = cat_totals.get(resolved_name, Decimal(0)) + abs(Decimal(t.amount or 0))
             
-        # Roll up children to parents
-        final_categories = []
-        parents = [c for c in db_categories if not c.parent_id]
-        
-        for p in parents:
-            total = cat_totals.get(p.name, Decimal(0))
-            children = [c for c in db_categories if c.parent_id == p.id]
-            for c in children:
-                total += cat_totals.get(c.name, Decimal(0))
+            final_list = []
+            parents = [c for c in db_categories if not c.parent_id]
+            for p in parents:
+                total = cat_totals.get(p.name, Decimal(0))
+                children = [c for c in db_categories if c.parent_id == p.id]
+                for c in children:
+                    total += cat_totals.get(c.name, Decimal(0))
+                
+                if total > 0:
+                    final_list.append({"name": p.name, "value": float(round(total, 2))})
             
-            if total > 0:
-                final_categories.append({"name": p.name, "value": float(round(total, 2))})
+            final_list.sort(key=lambda x: x["value"], reverse=True)
+            if len(final_list) > 5:
+                top_5 = final_list[:5]
+                others_val = sum(Decimal(str(c["value"])) for c in final_list[5:])
+                top_5.append({"name": "Others", "value": float(round(others_val, 2))})
+                return top_5
+            return final_list
+
+        final_categories = get_breakdown(expenses)
+        investment_breakdown = get_breakdown(investments)
         
-        # Top 5 + Others
-        final_categories.sort(key=lambda x: x["value"], reverse=True)
-        if len(final_categories) > 5:
-            top_5 = final_categories[:5]
-            others_val = sum(Decimal(str(c["value"])) for c in final_categories[5:])
-            top_5.append({"name": "Others", "value": float(round(others_val, 2))})
-            final_categories = top_5
-        
-        # Merchant Breakdown
+        # Merchant Breakdown (Top merchants usually for expenses)
         merc_totals = {}
-        for t in txns:
+        for t in expenses:
             m_name = t.recipient or "Unknown"
             merc_totals[m_name] = merc_totals.get(m_name, Decimal(0)) + abs(Decimal(t.amount))
             
@@ -87,17 +118,24 @@ class SpendingAnalytics:
         final_merchants.sort(key=lambda x: x["value"], reverse=True)
         final_merchants = final_merchants[:6] # Top 6 merchants
 
-        # Temporal Heatmap (Category vs Hour)
+        # Temporal Heatmap (Category vs Hour) - Using all debits (expenses + investments)
+        all_debits = expenses + investments
         active_cats = [c["name"] for c in final_categories if c["name"] != "Others"]
         heatmap_grid = {cat: {h: Decimal(0) for h in range(24)} for cat in active_cats}
         max_heat = Decimal(0)
         
-        for t in txns:
-            if t.category in heatmap_grid:
+        for t in all_debits:
+            t_cat_name = t.category or "Uncategorized"
+            # Resolve ID if needed
+            if t_cat_name in cat_id_type_map:
+                cat_obj = next((c for c in db_categories if str(c.id) == t_cat_name), None)
+                if cat_obj: t_cat_name = cat_obj.name
+
+            if t_cat_name in heatmap_grid:
                 hour = t.date.hour
-                heatmap_grid[t.category][hour] += abs(Decimal(t.amount))
-                if heatmap_grid[t.category][hour] > max_heat:
-                    max_heat = heatmap_grid[t.category][hour]
+                heatmap_grid[t_cat_name][hour] += abs(Decimal(t.amount))
+                if heatmap_grid[t_cat_name][hour] > max_heat:
+                    max_heat = heatmap_grid[t_cat_name][hour]
 
         # Excluded/Shielded Transactions
         excluded_filters = [
@@ -124,7 +162,7 @@ class SpendingAnalytics:
             
         final_ex_cats = [{"name": k, "value": float(round(v, 2))} for k, v in ex_cat_map.items()]
 
-        # Trend Data (Daily)
+        # Trend Data (Daily) - Use expenses by default
         trend_filters = [
             Transaction.tenant_id == tenant_id,
             Transaction.is_transfer == False,
@@ -135,28 +173,28 @@ class SpendingAnalytics:
         if start_date: trend_filters.append(Transaction.date >= start_date)
         if end_date: trend_filters.append(Transaction.date <= end_date)
         
-        if category:
+        if not category:
+            # Main trend excludes investments
+            trend_query = db.query(
+                func.date(Transaction.date).label('day'),
+                func.sum(models.Transaction.amount).label('total')
+            ).outerjoin(
+                Category, 
+                (or_(Transaction.category == Category.id, Transaction.category == Category.name)) & 
+                (Transaction.tenant_id == Category.tenant_id)
+            ).filter(*trend_filters).filter(or_(Category.type == 'expense', Category.type == None))
+        else:
             sub_category_names = []
-            parent_cat = db.query(Category).filter(
-                Category.tenant_id == tenant_id,
-                Category.name == category,
-                Category.parent_id == None
-            ).first()
-            
+            parent_cat = next((c for c in db_categories if c.name == category and not c.parent_id), None)
             if parent_cat:
-                subs = db.query(Category).filter(Category.parent_id == parent_cat.id).all()
+                subs = [c for c in db_categories if c.parent_id == parent_cat.id]
                 sub_category_names = [s.name for s in subs]
             
-            if sub_category_names:
-                filter_list = [category] + sub_category_names
-                trend_filters.append(Transaction.category.in_(filter_list))
-            else:
-                trend_filters.append(Transaction.category == category)
-        
-        trend_query = db.query(
-            func.date(Transaction.date).label('day'),
-            func.sum(models.Transaction.amount).label('total')
-        ).filter(*trend_filters)
+            filter_list = [category] + sub_category_names if sub_category_names else [category]
+            trend_query = db.query(
+                func.date(Transaction.date).label('day'),
+                func.sum(models.Transaction.amount).label('total')
+            ).filter(*trend_filters).filter(Transaction.category.in_(filter_list))
         
         if user_id:
             trend_query = trend_query.join(Account, Transaction.account_id == Account.id)\
@@ -165,24 +203,9 @@ class SpendingAnalytics:
         trend_results = trend_query.group_by(func.date(Transaction.date)).order_by(func.date(Transaction.date)).all()
         final_trend = [{"date": str(r.day), "amount": float(abs(Decimal(r.total)))} for r in trend_results]
 
-        expense_total = sum(abs(Decimal(t.amount)) for t in txns)
-        income_query = db.query(func.sum(Transaction.amount)).filter(
-            Transaction.tenant_id == tenant_id,
-            Transaction.amount > 0,
-            Transaction.is_transfer == False,
-            Transaction.exclude_from_reports == False
-        )
-        if account_id: income_query = income_query.filter(Transaction.account_id == account_id)
-        if start_date: income_query = income_query.filter(Transaction.date >= start_date)
-        if end_date: income_query = income_query.filter(Transaction.date <= end_date)
-        if user_id:
-            income_query = income_query.join(Account, Transaction.account_id == Account.id)\
-                                       .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
-        
-        income_total = Decimal(income_query.scalar() or 0)
-
         return {
             "categories": final_categories,
+            "investment_breakdown": investment_breakdown,
             "merchants": final_merchants,
             "heatmap": {
                 "grid": {cat: {h: float(val) for h, val in hours.items()} for cat, hours in heatmap_grid.items()},
@@ -191,6 +214,7 @@ class SpendingAnalytics:
                 "max": float(round(max_heat, 2))
             },
             "expense_total": float(round(expense_total, 2)),
+            "investment_total": float(round(investment_total, 2)),
             "income": float(round(income_total, 2)),
             "net": float(round(income_total - expense_total, 2)),
             "excludedExpense": float(round(excluded_expense, 2)),
@@ -201,6 +225,9 @@ class SpendingAnalytics:
 
     @staticmethod
     def get_merchant_breakdown(db: Session, tenant_id: str, category: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, user_id: Optional[str] = None):
+        """
+        Consolidated merchant breakdown used by multiple views.
+        """
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
         if category in [None, "null", "undefined", "", "OVERALL"]:
@@ -231,27 +258,15 @@ class SpendingAnalytics:
         if category:
             # Hierarchical Category Filtering
             from backend.app.modules.finance.models import Category
-            sub_category_names = []
+            db_categories = db.query(Category).filter(Category.tenant_id == tenant_id).all()
             
-            if category == "Uncategorized":
-                query = query.filter(or_(models.Transaction.category == None, models.Transaction.category == "Uncategorized"))
+            parent_cat = next((c for c in db_categories if c.name == category and not c.parent_id), None)
+            if parent_cat:
+                subs = [c for c in db_categories if c.parent_id == parent_cat.id]
+                filter_list = [category] + [s.name for s in subs]
+                query = query.filter(models.Transaction.category.in_(filter_list))
             else:
-                parent_cat = db.query(Category).filter(
-                    Category.tenant_id == tenant_id,
-                    Category.name == category,
-                    Category.parent_id == None
-                ).first()
-                
-                
-                if parent_cat:
-                    subs = db.query(Category).filter(Category.parent_id == parent_cat.id).all()
-                    sub_category_names = [s.name for s in subs]
-                
-                if sub_category_names:
-                    filter_list = [category] + sub_category_names
-                    query = query.filter(models.Transaction.category.in_(filter_list))
-                else:
-                    query = query.filter(models.Transaction.category == category)
+                query = query.filter(models.Transaction.category == category)
 
         results = query.group_by(models.Transaction.recipient).order_by(func.sum(models.Transaction.amount).asc()).all()
         
@@ -259,75 +274,6 @@ class SpendingAnalytics:
             {"merchant": row.merchant or "Unknown", "amount": float(abs(Decimal(row.total)))}
             for row in results
         ]
-
-    @staticmethod
-    def get_spending_trend(db: Session, tenant_id: str, user_id: str = None):
-        now = timezone.utcnow()
-        start_date = timezone.ensure_utc(datetime(now.year, now.month, 1))
-        
-        query = db.query(
-            func.date(models.Transaction.date).label('day'),
-            func.sum(models.Transaction.amount).label('total')
-        ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
-         .filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.date >= start_date,
-            models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
-            models.Transaction.exclude_from_reports == False,
-            or_(models.Category.type == 'expense', models.Category.type == None)
-        )
-        
-        if user_id:
-            query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
-            
-        spending = query.group_by(func.date(models.Transaction.date)).order_by('day').all()
-        
-        trend = []
-        today = now.date()
-        current = start_date.date()
-        spend_map = {str(row.day): abs(float(row.total)) for row in spending}
-        
-        while current <= today:
-            trend.append({
-                "date": current.isoformat(),
-                "amount": spend_map.get(current.isoformat(), 0.0)
-            })
-            current += timedelta(days=1)
-            
-        return trend
-
-    @staticmethod
-    def get_merchant_breakdown(db: Session, tenant_id: str, user_id: str = None):
-        now = timezone.utcnow()
-        start_date = timezone.ensure_utc(datetime(now.year, now.month, 1))
-        
-        query = db.query(
-            models.Transaction.description,
-            func.sum(models.Transaction.amount).label('total'),
-            func.count(models.Transaction.id).label('count')
-        ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
-         .filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.date >= start_date,
-            models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
-            models.Transaction.exclude_from_reports == False,
-            or_(models.Category.type == 'expense', models.Category.type == None)
-        )
-        
-        if user_id:
-            query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
-            
-        results = query.group_by(models.Transaction.description).order_by(func.sum(models.Transaction.amount).asc()).limit(10).all()
-        
-        return [{
-            "merchant": row.description or "Unknown",
-            "amount": abs(Decimal(row.total)),
-            "count": row.count
-        } for row in results]
 
     @staticmethod
     def get_mobile_dashboard_trends(db: Session, tenant_id: str, target_year: int, target_month: int, user_id: str = None):
@@ -344,6 +290,7 @@ class SpendingAnalytics:
         ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
          .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.date >= month_start, models.Transaction.date <= month_end,
                  models.Transaction.amount < 0, models.Transaction.is_transfer == False,
+                 models.Transaction.exclude_from_reports == False,
                  or_(models.Category.type == 'expense', models.Category.type == None))
         
         if user_id: query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
@@ -370,6 +317,7 @@ class SpendingAnalytics:
         query = db.query(models.Transaction)\
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0, models.Transaction.is_transfer == False,
+                    models.Transaction.exclude_from_reports == False,
                     models.Transaction.date >= month_start, models.Transaction.date <= month_end,
                     or_(models.Category.type == 'expense', models.Category.type == None))
 
@@ -399,68 +347,8 @@ class SpendingAnalytics:
             others_val = sum(Decimal(str(d["value"])) for d in distribution[5:])
             top_5.append({"name": "Others", "value": float(round(others_val, 2))})
             distribution = top_5
-    @staticmethod
-    def get_merchant_breakdown(db: Session, tenant_id: str, category: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, user_id: Optional[str] = None):
-        if user_id in [None, "null", "undefined", ""]:
-            user_id = None
-        if category in [None, "null", "undefined", "", "OVERALL"]:
-            category = None
-            
-        if end_date:
-            end_date = timezone.ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
-
-        query = db.query(
-            models.Transaction.recipient.label('merchant'),
-            func.sum(models.Transaction.amount).label('total')
-        ).filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
-            models.Transaction.exclude_from_reports == False
-        )
         
-        if start_date:
-            query = query.filter(models.Transaction.date >= start_date)
-        if end_date:
-            query = query.filter(models.Transaction.date <= end_date)
-            
-        if user_id:
-            query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
-                         
-        if category:
-            # Hierarchical Category Filtering
-            from backend.app.modules.finance.models import Category
-            sub_category_names = []
-            
-            if category == "Uncategorized":
-                query = query.filter(or_(models.Transaction.category == None, models.Transaction.category == "Uncategorized"))
-            else:
-                parent_cat = db.query(Category).filter(
-                    Category.tenant_id == tenant_id,
-                    Category.name == category,
-                    Category.parent_id == None
-                ).first()
-                
-                
-                if parent_cat:
-                    subs = db.query(Category).filter(Category.parent_id == parent_cat.id).all()
-                    sub_category_names = [s.name for s in subs]
-                
-                if sub_category_names:
-                    filter_list = [category] + sub_category_names
-                    query = query.filter(models.Transaction.category.in_(filter_list))
-                else:
-                    query = query.filter(models.Transaction.category == category)
-
-        results = query.group_by(models.Transaction.recipient).order_by(func.sum(models.Transaction.amount).asc()).all()
-        
-        return [
-            {"merchant": row.merchant or "Unknown", "amount": float(abs(Decimal(row.total)))}
-            for row in results
-        ]
-
-        return {"category_distribution": distribution}
+        return distribution
 
     @staticmethod
     def get_spending_forecast(db: Session, tenant_id: str, user_id: str = None, start_date: datetime = None, end_date: datetime = None):
@@ -593,3 +481,4 @@ class SpendingAnalytics:
             "daily_burn_rate": daily_burn_rate,
             "forecast_total": forecast_sum
         }
+
