@@ -224,6 +224,44 @@ class SpendingAnalytics:
         }
 
     @staticmethod
+    def get_spending_trend(db: Session, tenant_id: str, user_id: str = None):
+        now = timezone.utcnow()
+        start_date = timezone.ensure_utc(datetime(now.year, now.month, 1))
+        
+        query = db.query(
+            func.date(models.Transaction.date).label('day'),
+            func.sum(models.Transaction.amount).label('total')
+        ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+         .filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.date >= start_date,
+            models.Transaction.amount < 0,
+            models.Transaction.is_transfer == False,
+            models.Transaction.exclude_from_reports == False,
+            or_(models.Category.type == 'expense', models.Category.type == None)
+        )
+        
+        if user_id:
+            query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+            
+        spending = query.group_by(func.date(models.Transaction.date)).order_by('day').all()
+        
+        trend = []
+        today = now.date()
+        current = start_date.date()
+        spend_map = {str(row.day): abs(float(row.total)) for row in spending}
+        
+        while current <= today:
+            trend.append({
+                "date": current.isoformat(),
+                "amount": spend_map.get(current.isoformat(), 0.0)
+            })
+            current += timedelta(days=1)
+            
+        return trend
+
+    @staticmethod
     def get_merchant_breakdown(db: Session, tenant_id: str, category: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, user_id: Optional[str] = None):
         """
         Consolidated merchant breakdown used by multiple views.
