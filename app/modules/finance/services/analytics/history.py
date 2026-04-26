@@ -1,9 +1,10 @@
 import calendar
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import List, Dict, Any, Optional
-from datetime import datetime, date, timedelta, time
-from sqlalchemy.orm import Session
+
 from sqlalchemy import func, or_, text
+from sqlalchemy.orm import Session
 
 from backend.app.modules.finance import models
 from backend.app.core import timezone
@@ -104,26 +105,44 @@ class HistoryAnalytics:
         last_day = calendar.monthrange(end_month_start.year, end_month_start.month)[1]
         end_range_full = datetime(end_month_start.year, end_month_start.month, last_day, 23, 59, 59)
 
-        # Monthly aggregation logic
+        # Monthly aggregation logic with strftime for absolute consistency across drivers
         monthly_stats_query = db.query(
             models.Transaction.category,
-            func.date_trunc('month', models.Transaction.date).label('month_start'),
+            models.Category.name.label('cat_name'),
+            models.Category.type.label('cat_type'),
+            func.strftime(models.Transaction.date, '%Y-%m-01').label('month_str'),
             func.sum(models.Transaction.amount).label('total')
         ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
-         .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.date >= start_range, models.Transaction.date <= end_range_full,
-                 models.Transaction.amount < 0, models.Transaction.is_transfer == False,
-                 or_(models.Category.type == 'expense', models.Category.type == 'investment', models.Category.type == None))\
-         .group_by(models.Transaction.category, text('month_start'))
+         .filter(models.Transaction.tenant_id == tenant_id, 
+                 models.Transaction.date >= start_range, 
+                 models.Transaction.date <= end_range_full,
+                 models.Transaction.amount < 0, 
+                 models.Transaction.is_transfer == False,
+                 models.Transaction.exclude_from_reports == False)\
+         .group_by(models.Transaction.category, models.Category.name, models.Category.type, text('month_str'))
         
-        if user_id: monthly_stats_query = monthly_stats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                          .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        if user_id: 
+            monthly_stats_query = monthly_stats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                                      .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         
+        if account_id:
+            monthly_stats_query = monthly_stats_query.filter(models.Transaction.account_id == account_id)
+
         monthly_stats = monthly_stats_query.all()
         stats_map = {}
         for row in monthly_stats:
-            m_date = row.month_start.date() if hasattr(row.month_start, 'date') else row.month_start
-            if m_date not in stats_map: stats_map[m_date] = {}
-            stats_map[m_date][row.category] = abs(Decimal(row.total))
+            try:
+                # Always convert to date object for internal map consistency
+                m_date = datetime.strptime(row.month_str, '%Y-%m-%d').date()
+                if m_date not in stats_map: stats_map[m_date] = {}
+                
+                amt = abs(Decimal(str(row.total)))
+                # Map by both ID and Name to be safe
+                stats_map[m_date][str(row.category)] = amt
+                if row.cat_name:
+                    stats_map[m_date][row.cat_name] = amt
+            except Exception as e:
+                print(f"Error parsing history row: {e}")
 
         history = []
         for i in range(months):
@@ -137,23 +156,17 @@ class HistoryAnalytics:
             total_ops_spent = Decimal(0)
             total_inv_spent = Decimal(0)
             
-            # Fetch all categories for this month's stats
-            for cat, amt in stats_map.get(m_start, {}).items():
-                # We need to know the type of each category. 
-                # This is a bit expensive to do here if we have many categories, 
-                # but for budget history it's usually limited.
-                # For now, let's assume if it's not a budget category, we might need a lookup or just aggregate.
-                # Actually, we already filtered the query to include only expense/investment/none.
-                # Let's try to find if it's an investment.
-                cat_obj = db.query(models.Category).filter(
-                    (models.Category.id == cat) | (models.Category.name == cat),
-                    models.Category.tenant_id == tenant_id
-                ).first()
-                
-                if cat_obj and cat_obj.type == 'investment':
-                    total_inv_spent += amt
-                else:
-                    total_ops_spent += amt
+            # Use the already fetched results to aggregate OVERALL and INVESTMENT
+            for row in monthly_stats:
+                try:
+                    row_date = datetime.strptime(row.month_str, '%Y-%m-%d').date()
+                    if row_date == m_start:
+                        amt = abs(Decimal(str(row.total)))
+                        if row.cat_type == 'investment':
+                            total_inv_spent += amt
+                        else:
+                            total_ops_spent += amt
+                except: continue
 
             for b in budgets:
                 spent = stats_map.get(m_start, {}).get(b.category, Decimal(0))
@@ -161,13 +174,26 @@ class HistoryAnalytics:
                     "category": b.category, "limit": Decimal(b.amount_limit), "spent": spent
                 })
             
-            # Add specific aggregate entries for the frontend
-            month_data["data"].append({
-                "category": "OVERALL", "limit": sum(Decimal(b.amount_limit) for b in budgets), "spent": total_ops_spent
-            })
-            month_data["data"].append({
-                "category": "INVESTMENT", "limit": 0, "spent": total_inv_spent
-            })
+            # Add or update specific aggregate entries for the frontend
+            # We must be careful not to double-count if the user has a budget named exactly 'OVERALL'
+            def update_or_append(cat_name, limit, spent):
+                existing = next((d for d in month_data["data"] if d["category"] == cat_name), None)
+                if existing:
+                    existing["limit"] = limit
+                    existing["spent"] = spent
+                else:
+                    month_data["data"].append({"category": cat_name, "limit": limit, "spent": spent})
+
+            # Calculate OVERALL limit: If an 'OVERALL' budget exists, use it. Otherwise, sum others.
+            overall_budget = next((b for b in budgets if b.category == "OVERALL"), None)
+            if overall_budget:
+                overall_limit = Decimal(overall_budget.amount_limit)
+            else:
+                overall_limit = sum(Decimal(b.amount_limit) for b in budgets)
+
+            update_or_append("OVERALL", overall_limit, total_ops_spent)
+            update_or_append("INVESTMENT", Decimal(0), total_inv_spent)
+            
             history.append(month_data)
             
         return history
