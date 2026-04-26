@@ -301,8 +301,20 @@ class CategoryService:
         return db_rule
 
     @staticmethod
-    def get_category_rules(db: Session, tenant_id: str, skip: int = 0, limit: int = 50) -> dict:
+    def get_category_rules(db: Session, tenant_id: str, skip: int = 0, limit: int = 50, category: Optional[str] = None, search: Optional[str] = None) -> dict:
         query = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id)
+        
+        if category and category != 'all':
+            query = query.filter(models.CategoryRule.category == category)
+            
+        if search:
+            search_query = f"%{search}%"
+            query = query.filter(
+                (models.CategoryRule.name.ilike(search_query)) |
+                (models.CategoryRule.category.ilike(search_query)) |
+                (models.CategoryRule.keywords.ilike(search_query))
+            )
+            
         total = query.count()
         rules = query.order_by(models.CategoryRule.priority.desc()).offset(skip).limit(limit).all()
         
