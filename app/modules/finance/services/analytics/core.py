@@ -159,6 +159,23 @@ class CoreAnalytics:
                                                  .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         monthly_income = Decimal(monthly_income_query.scalar() or 0)
         
+        # Unfiltered Income (including hidden for internal metrics like Savings Rate)
+        unfiltered_income_query = db.query(func.sum(models.Transaction.amount))\
+            .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+            .filter(
+                models.Transaction.tenant_id == tenant_id,
+                models.Transaction.amount > 0,
+                models.Transaction.is_transfer == False,
+                models.Transaction.date >= start_date,
+                models.Transaction.date <= end_date,
+                or_(models.Category.type == 'income', models.Category.type == None)
+            )
+        if account_id: unfiltered_income_query = unfiltered_income_query.filter(models.Transaction.account_id == account_id)
+        if user_id:
+            unfiltered_income_query = unfiltered_income_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        unfiltered_income = Decimal(unfiltered_income_query.scalar() or 0)
+        
         # Budget Health
         all_budgets = db.query(models.Budget).filter(models.Budget.tenant_id == tenant_id).all()
         overall = next((b for b in all_budgets if b.category == 'OVERALL'), None)
@@ -219,11 +236,11 @@ class CoreAnalytics:
         avg_daily = monthly_spending / Decimal(max(1, days_in_month))
         
         savings_rate = 0.0
-        if monthly_income > 0:
-            savings_rate = float(((monthly_income - monthly_spending) / monthly_income) * 100)
+        if unfiltered_income > 0:
+            savings_rate = float(((unfiltered_income - monthly_spending) / unfiltered_income) * 100)
 
         return {
-            "breakdown": breakdown, "total_income": float(monthly_income), "monthly_total": float(monthly_spending),
+            "breakdown": breakdown, "total_income": float(monthly_income), "unfiltered_income": float(unfiltered_income), "monthly_total": float(monthly_spending),
             "monthly_spending": float(monthly_spending), "monthly_investment": float(monthly_investment),
             "total_investment": float(monthly_investment), "avg_daily_spending": float(avg_daily),
             "last_month_spending": float(last_month_spending), "last_month_investment": float(last_month_investment),
