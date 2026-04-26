@@ -141,6 +141,39 @@ class CoreAnalytics:
                                                              .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         last_month_investment = abs(Decimal(last_month_invest_query.scalar() or 0))
 
+        # Unfiltered Totals (for internal metrics like Savings Rate)
+        unfiltered_spending_query = db.query(func.sum(models.Transaction.amount))\
+            .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+            .filter(
+                models.Transaction.tenant_id == tenant_id,
+                models.Transaction.amount < 0,
+                models.Transaction.is_transfer == False,
+                models.Transaction.date >= start_date,
+                models.Transaction.date <= end_date,
+                or_(models.Category.type == 'expense', models.Category.type == None)
+            )
+        if account_id: unfiltered_spending_query = unfiltered_spending_query.filter(models.Transaction.account_id == account_id)
+        if user_id:
+            unfiltered_spending_query = unfiltered_spending_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        unfiltered_spending = abs(Decimal(unfiltered_spending_query.scalar() or 0))
+
+        unfiltered_investment_query = db.query(func.sum(models.Transaction.amount))\
+            .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+            .filter(
+                models.Transaction.tenant_id == tenant_id,
+                models.Transaction.amount < 0,
+                models.Transaction.is_transfer == False,
+                models.Transaction.date >= start_date,
+                models.Transaction.date <= end_date,
+                models.Category.type == 'investment'
+            )
+        if account_id: unfiltered_investment_query = unfiltered_investment_query.filter(models.Transaction.account_id == account_id)
+        if user_id:
+            unfiltered_investment_query = unfiltered_investment_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        unfiltered_investment = abs(Decimal(unfiltered_investment_query.scalar() or 0))
+
         # Monthly Income
         monthly_income_query = db.query(func.sum(models.Transaction.amount))\
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
@@ -237,10 +270,12 @@ class CoreAnalytics:
         
         savings_rate = 0.0
         if unfiltered_income > 0:
-            savings_rate = float(((unfiltered_income - monthly_spending) / unfiltered_income) * 100)
+            savings_rate = float(((unfiltered_income - unfiltered_spending) / unfiltered_income) * 100)
 
         return {
-            "breakdown": breakdown, "total_income": float(monthly_income), "unfiltered_income": float(unfiltered_income), "monthly_total": float(monthly_spending),
+            "breakdown": breakdown, "total_income": float(monthly_income), "unfiltered_income": float(unfiltered_income), 
+            "unfiltered_spending": float(unfiltered_spending), "unfiltered_investment": float(unfiltered_investment),
+            "monthly_total": float(monthly_spending),
             "monthly_spending": float(monthly_spending), "monthly_investment": float(monthly_investment),
             "total_investment": float(monthly_investment), "avg_daily_spending": float(avg_daily),
             "last_month_spending": float(last_month_spending), "last_month_investment": float(last_month_investment),
