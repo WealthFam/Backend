@@ -91,10 +91,12 @@ class CoreAnalytics:
             spending_base_query = spending_base_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
                                                            .filter(models.Account.type.notin_(["INVESTMENT", "CREDIT"]))
         
+        # Expenses = type 'expense' or None (uncategorized)
         monthly_spending = abs(Decimal(spending_base_query.filter(
             or_(models.Category.type == 'expense', models.Category.type == None)
         ).scalar() or 0))
 
+        # Investment Spending = IS investment
         monthly_investment = abs(Decimal(spending_base_query.filter(
             models.Category.type == 'investment'
         ).scalar() or 0))
@@ -224,8 +226,7 @@ class CoreAnalytics:
             user_role=user_role, user_id=user_id, exclude_from_reports=exclude_hidden, exclude_transfers=exclude_hidden
         )
         
-        from backend.app.modules.finance.models import Category
-        category_objs = db.query(Category).filter(Category.tenant_id == tenant_id).all()
+        category_objs = db.query(models.Category).filter(models.Category.tenant_id == tenant_id).all()
         cat_map = {c.name: c for c in category_objs}
         
         account_ids = list(set(txn.account_id for txn in recent_txns))

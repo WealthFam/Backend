@@ -105,6 +105,10 @@ class HistoryAnalytics:
         last_day = calendar.monthrange(end_month_start.year, end_month_start.month)[1]
         end_range_full = datetime(end_month_start.year, end_month_start.month, last_day, 23, 59, 59)
 
+        # Fetch category types for classification
+        category_objs = db.query(models.Category).filter(models.Category.tenant_id == tenant_id).all()
+        category_types = {c.name: c.type for c in category_objs}
+        
         # Monthly aggregation logic with strftime for absolute consistency across drivers
         monthly_stats_query = db.query(
             models.Transaction.category,
@@ -164,7 +168,7 @@ class HistoryAnalytics:
                         amt = abs(Decimal(str(row.total)))
                         if row.cat_type == 'investment':
                             total_inv_spent += amt
-                        else:
+                        elif row.cat_type == 'expense' or row.cat_type is None:
                             total_ops_spent += amt
                 except: continue
 
@@ -184,12 +188,21 @@ class HistoryAnalytics:
                 else:
                     month_data["data"].append({"category": cat_name, "limit": limit, "spent": spent})
 
-            # Calculate OVERALL limit: If an 'OVERALL' budget exists, use it. Otherwise, sum others.
+            # Calculate OVERALL limit: If an 'OVERALL' budget exists, use it. Otherwise, sum others (excluding investment).
             overall_budget = next((b for b in budgets if b.category == "OVERALL"), None)
             if overall_budget:
                 overall_limit = Decimal(overall_budget.amount_limit)
             else:
-                overall_limit = sum(Decimal(b.amount_limit) for b in budgets)
+                # Fallback: Sum all budgets that are specifically 'expense' or 'None'
+                overall_limit = sum(
+                    Decimal(b.amount_limit) for b in budgets 
+                    if b.category != "OVERALL" and (category_types.get(b.category) == "expense" or category_types.get(b.category) is None)
+                )
+
+            # Ensure "Uncategorized" spending is shown if it exists and there's no specific budget for it
+            uncategorized_spent = stats_map.get(m_start, {}).get("None", Decimal(0))
+            if uncategorized_spent > 0:
+                update_or_append("Uncategorized", Decimal(0), uncategorized_spent)
 
             update_or_append("OVERALL", overall_limit, total_ops_spent)
             update_or_append("INVESTMENT", Decimal(0), total_inv_spent)
