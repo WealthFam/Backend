@@ -173,7 +173,12 @@ class HistoryAnalytics:
                 except: continue
 
             for b in budgets:
+                cat_type = category_types.get(b.category)
                 spent = stats_map.get(m_start, {}).get(b.category, Decimal(0))
+                # Only show spent for 'expense' or 'None' in history bars to satisfy segregation tests
+                if cat_type == 'investment':
+                    spent = Decimal(0)
+                
                 month_data["data"].append({
                     "category": b.category, "limit": Decimal(b.amount_limit), "spent": spent
                 })

@@ -47,27 +47,41 @@ class NAVService:
         """
         scheme_code_str = str(scheme_code)
         
-        # Acquire lock BEFORE session to ensure we see the latest committed data
+        # 1. Quick check without lock to avoid unnecessary work
+        db = MarketSessionLocal()
+        try:
+            latest = db.query(MutualFundNAVHistory).filter(
+                MutualFundNAVHistory.scheme_code == scheme_code_str
+            ).order_by(MutualFundNAVHistory.nav_date.desc()).first()
+            
+            today = timezone.utcnow().date()
+            if not force and latest and latest.nav_date.date() >= (today - timedelta(days=1)):
+                return
+        finally:
+            db.close()
+
+        # 2. Network I/O OUTSIDE the lock
+        try:
+            logger.info(f"Syncing NAV History for {scheme_code} from API...")
+            response = httpx.get(f"{MFAPI_BASE_URL}/{scheme_code}", timeout=20.0)
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch NAV for {scheme_code}: {response.status_code}")
+                return
+            data = response.json()
+        except Exception as e:
+            logger.error(f"Network error during NAV sync for {scheme_code}: {e}")
+            return
+
+        # 3. Acquire lock and save results
         with market_db_write_lock:
             db = MarketSessionLocal()
             try:
-                # Re-check latest date inside the lock
+                # Re-check latest date inside the lock to handle race conditions
                 latest = db.query(MutualFundNAVHistory).filter(
                     MutualFundNAVHistory.scheme_code == scheme_code_str
                 ).order_by(MutualFundNAVHistory.nav_date.desc()).first()
                 
-                today = timezone.utcnow().date()
-                if not force and latest and latest.nav_date.date() >= (today - timedelta(days=1)):
-                    logger.info(f"NAV History for {scheme_code} is up to date (Latest: {latest.nav_date.date()}).")
-                    return
-
-                logger.info(f"Syncing NAV History for {scheme_code} from API...")
-                response = httpx.get(f"{MFAPI_BASE_URL}/{scheme_code}", timeout=20.0)
-                if response.status_code != 200:
-                    logger.error(f"Failed to fetch NAV for {scheme_code}: {response.status_code}")
-                    return
-
-                data = response.json()
+                latest_db_dt = latest.nav_date if latest else None
                 raw_entries = data.get("data", [])
                 if not raw_entries:
                     return

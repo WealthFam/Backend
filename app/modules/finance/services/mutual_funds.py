@@ -152,15 +152,16 @@ class MutualFundService:
                 return {"status": "completed", "updated": 0}
 
             # 3. Synchronize all NAVs for this tenant using the Market Cache
+            # Rule: Uniquify scheme codes to avoid redundant syncs for multiple folios
+            unique_scheme_codes = {h.scheme_code for h in holdings}
             updated_count = 0
-            for h in holdings:
+            for sc in unique_scheme_codes:
                 try:
                     # Offload to thread to keep the event loop responsive
-                    # NAVService handles its own market_db_write_lock internally
-                    await asyncio.to_thread(NAVService.sync_nav_history, h.scheme_code)
+                    await asyncio.to_thread(NAVService.sync_nav_history, sc)
                     updated_count += 1
                 except Exception as e:
-                    logger.error(f"Failed to sync NAV for {h.scheme_code}: {e}")
+                    logger.error(f"Failed to sync NAV for {sc}: {e}")
 
             # 4. Trigger holding updates from the fresh cache
             # This updates last_nav and current_value in the primary DB.
@@ -628,9 +629,24 @@ class MutualFundService:
         affected_schemes = set()
         
         with db_write_lock:
+            # Pre-fetch meta for all affected schemes to avoid network I/O inside lock
+            all_scheme_codes = {str(t.get('scheme_code')) for t in transactions if t.get('scheme_code')}
+            scheme_meta_map = {}
+            for sc in all_scheme_codes:
+                m = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == sc).first()
+                if not m:
+                    # Fetch from API outside the lock if possible? 
+                    # Actually, we are already inside the lock here.
+                    # But import_mapped_transactions is usually called after preview,
+                    # so meta should already exist.
+                    pass
+                else:
+                    scheme_meta_map[sc] = m
+
             for idx, txn in enumerate(transactions):
                 try:
-                    result = MutualFundService._add_transaction_logic(db, tenant_id, txn)
+                    sc = str(txn.get('scheme_code'))
+                    result = MutualFundService._add_transaction_logic(db, tenant_id, txn, meta=scheme_meta_map.get(sc))
                     
                     if result and hasattr(result, 'id'):
                         stats["processed"] += 1
@@ -666,23 +682,42 @@ class MutualFundService:
     @staticmethod
     def add_transaction(db: Session, tenant_id: str, data: dict):
         """Public method that wraps logic in a global lock for DuckDB safety."""
+        scheme_code = str(data.get('scheme_code'))
+        
+        # 1. Ensure Meta exists OUTSIDE the lock (Network I/O)
+        meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == scheme_code).first()
+        if not meta:
+            fund_data = MutualFundService.get_fund_nav(scheme_code)
+            if fund_data:
+                meta_info = fund_data.get("meta", {})
+                meta = MutualFundsMeta(
+                    scheme_code=str(meta_info.get("scheme_code")),
+                    scheme_name=meta_info.get("scheme_name"),
+                    fund_house=meta_info.get("fund_house"),
+                    category=meta_info.get("scheme_category")
+                )
+                with db_write_lock:
+                    db.add(meta)
+                    db.commit()
+            else:
+                raise ValueError("Invalid Scheme Code or API Error")
+
+        # 2. Proceed with transaction logic inside lock
         with db_write_lock:
-            result = MutualFundService._add_transaction_logic(db, tenant_id, data)
+            result = MutualFundService._add_transaction_logic(db, tenant_id, data, meta=meta)
             MutualFundService._safe_commit(db)
             return result
 
     @staticmethod
-    def _add_transaction_logic(db: Session, tenant_id: str, data: dict):
+    def _add_transaction_logic(db: Session, tenant_id: str, data: dict, meta: Optional[MutualFundsMeta] = None):
         # 1. Ensure Meta exists
-        scheme_code = data.get('scheme_code')
-        if not scheme_code:
-            logger.error(f"Missing scheme_code in transaction data: {data}")
-            raise ValueError(f"Missing scheme_code in transaction data. Available keys: {list(data.keys())}")
-        scheme_code = str(scheme_code)
-        meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == scheme_code).first()
+        scheme_code = str(data.get('scheme_code'))
+        if not meta:
+            meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == scheme_code).first()
         
         if not meta:
-            # Fetch from API and save
+            # This should have been handled by the caller outside the lock
+            # but we keep a fallback just in case.
             fund_data = MutualFundService.get_fund_nav(scheme_code)
             if fund_data:
                 meta_info = fund_data.get("meta", {})
@@ -693,9 +728,9 @@ class MutualFundService:
                     category=meta_info.get("scheme_category")
                 )
                 db.add(meta)
-                db.flush() # Use flush instead of commit to allow external batching
+                db.flush()
             else:
-                raise ValueError("Invalid Scheme Code or API Error")
+                raise ValueError(f"Metadata missing for scheme {scheme_code} and could not be fetched.")
 
         # 2. Check for duplicate order (Idempotency)
         user_id = data.get('user_id')

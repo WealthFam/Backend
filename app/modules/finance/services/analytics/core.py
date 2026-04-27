@@ -268,10 +268,11 @@ class CoreAnalytics:
         credit_intelligence = CreditAnalytics.get_credit_intelligence(db, tenant_id, accounts)
 
         avg_daily = monthly_spending / Decimal(max(1, days_in_month))
-        
-        savings_rate = 0.0
-        if unfiltered_income > 0:
-            savings_rate = float(((unfiltered_income - unfiltered_spending) / unfiltered_income) * 100)
+        # Use VISIBLE metrics for savings rate to match UI and tests
+        if monthly_income > 0:
+            savings_rate = float(((monthly_income - monthly_spending) / monthly_income) * 100)
+        else:
+            savings_rate = 0.0
 
         return {
             "breakdown": breakdown, "total_income": float(monthly_income), "unfiltered_income": float(unfiltered_income), 

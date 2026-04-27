@@ -62,12 +62,12 @@ class AnalyticsService:
         return CoreAnalytics.get_balance_forecast(db, tenant_id, **kwargs)
 
     @staticmethod
-    def get_mobile_dashboard_trends(db: Session, tenant_id: str, **kwargs):
-        return SpendingAnalytics.get_mobile_dashboard_trends(db, tenant_id, **kwargs)
+    def get_mobile_dashboard_trends(db: Session, tenant_id: str, *args, **kwargs):
+        return SpendingAnalytics.get_mobile_dashboard_trends(db, tenant_id, *args, **kwargs)
 
     @staticmethod
-    def get_mobile_dashboard_categories(db: Session, tenant_id: str, **kwargs):
-        return SpendingAnalytics.get_mobile_dashboard_categories(db, tenant_id, **kwargs)
+    def get_mobile_dashboard_categories(db: Session, tenant_id: str, *args, **kwargs):
+        return SpendingAnalytics.get_mobile_dashboard_categories(db, tenant_id, *args, **kwargs)
 
     @staticmethod
     def get_calendar_heatmap(db: Session, tenant_id: str, **kwargs):

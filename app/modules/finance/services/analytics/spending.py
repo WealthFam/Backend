@@ -339,11 +339,38 @@ class SpendingAnalytics:
         sparkline = []
         curr = month_start.date()
         spend_map = {str(row.day): abs(float(row.total)) for row in spending}
+        
+        # Calculate daily limit for spending trend
+        daily_limit = 0.0
+        budget_query = db.query(func.sum(models.Budget.amount_limit)).filter(
+            models.Budget.tenant_id == tenant_id,
+            models.Budget.category == "OVERALL"
+        ).scalar() or 0
+        if budget_query > 0:
+            daily_limit = float(budget_query) / last_day
+
+        spending_trend = []
         while curr <= month_end.date():
-            sparkline.append(spend_map.get(str(curr), 0.0))
+            spending_trend.append({
+                "date": str(curr),
+                "amount": spend_map.get(str(curr), 0.0),
+                "daily_limit": daily_limit
+            })
             curr += timedelta(days=1)
             
-        return {"spending_sparkline": sparkline}
+        # Get Month-wise Trend (Last 6 months)
+        # Simplified: Just current month for now to fix the crash, we can expand later
+        month_wise_trend = [{
+            "month": month_start.strftime("%b %Y"),
+            "spent": float(sum(Decimal(str(r.total)) for r in spending)),
+            "budget": float(budget_query),
+            "is_selected": True
+        }]
+
+        return {
+            "month_wise_trend": month_wise_trend,
+            "spending_trend": spending_trend
+        }
 
     @staticmethod
     def get_mobile_dashboard_categories(db: Session, tenant_id: str, target_month: int, target_year: int, user_id: str = None):
@@ -386,7 +413,7 @@ class SpendingAnalytics:
             top_5.append({"name": "Others", "value": float(round(others_val, 2))})
             distribution = top_5
         
-        return distribution
+        return {"category_distribution": distribution}
 
     @staticmethod
     def get_spending_forecast(db: Session, tenant_id: str, user_id: str = None, start_date: datetime = None, end_date: datetime = None):
