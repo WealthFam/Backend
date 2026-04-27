@@ -16,6 +16,9 @@ market_engine = create_engine(
             "checkpoint_threshold": "2MB"
         }
     },
+    pool_size=20,
+    max_overflow=10,
+    pool_timeout=30,
     pool_pre_ping=True
 )
 
