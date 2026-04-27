@@ -35,9 +35,16 @@ class CoreAnalytics:
         
         # Categorize Balances
         breakdown = {
-            "net_worth": Decimal(0), "bank_balance": Decimal(0), "cash_balance": Decimal(0),
-            "credit_debt": Decimal(0), "investment_value": Decimal(0), "total_credit_limit": Decimal(0),
-            "available_credit": Decimal(0), "overall_credit_utilization": 0
+            "net_worth": Decimal(0), 
+            "bank_balance": Decimal(0), 
+            "cash_balance": Decimal(0),
+            "credit_debt": Decimal(0), 
+            "loan_debt": Decimal(0),
+            "total_debt": Decimal(0),
+            "investment_value": Decimal(0), 
+            "total_credit_limit": Decimal(0),
+            "available_credit": Decimal(0), 
+            "overall_credit_utilization": 0
         }
         
         for acc in accounts:
@@ -45,6 +52,7 @@ class CoreAnalytics:
             if acc.type == 'CREDIT_CARD':
                 debt_amount = bal if bal > 0 else Decimal(0) 
                 breakdown["credit_debt"] += debt_amount
+                breakdown["total_debt"] += debt_amount
                 breakdown["net_worth"] -= bal
                 limit = Decimal(acc.credit_limit or 0)
                 breakdown["total_credit_limit"] += limit
@@ -53,6 +61,9 @@ class CoreAnalytics:
                 breakdown["investment_value"] += bal
                 breakdown["net_worth"] += bal
             elif acc.type == 'LOAN':
+                debt_amount = bal if bal > 0 else Decimal(0)
+                breakdown["loan_debt"] += debt_amount
+                breakdown["total_debt"] += debt_amount
                 breakdown["net_worth"] -= bal
             else:
                 breakdown["net_worth"] += bal

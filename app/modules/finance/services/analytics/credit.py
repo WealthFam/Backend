@@ -26,7 +26,8 @@ class CreditAnalytics:
                 "days_until_due": None
             }
             if intel["limit"] > 0:
-                current_debt = abs(intel["balance"]) if intel["balance"] < 0 else 0
+                # In this system, debt for CREDIT_CARD and LOAN is stored as a POSITIVE balance.
+                current_debt = intel["balance"] if intel["balance"] > 0 else Decimal(0)
                 raw_util = (Decimal(current_debt) / Decimal(intel["limit"])) * 100
                 intel["utilization"] = float(max(Decimal(0), raw_util))
             
