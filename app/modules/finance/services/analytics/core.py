@@ -15,6 +15,8 @@ class CoreAnalytics:
     def get_summary_metrics(db: Session, tenant_id: str, user_role: str = "ADULT", account_id: str = None, start_date: datetime = None, end_date: datetime = None, user_id: str = None, exclude_hidden: bool = False):
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
+        if account_id in [None, "null", "undefined", ""]:
+            account_id = None
             
         if end_date:
             end_date = timezone.ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -178,15 +180,12 @@ class CoreAnalytics:
 
         # Monthly Income
         monthly_income_query = db.query(func.sum(models.Transaction.amount))\
-            .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount > 0,
                 models.Transaction.is_transfer == False,
-                models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= start_date,
-                models.Transaction.date <= end_date,
-                or_(models.Category.type == 'income', models.Category.type == None)
+                models.Transaction.date <= end_date
             )
         if account_id: monthly_income_query = monthly_income_query.filter(models.Transaction.account_id == account_id)
         if user_id:
@@ -196,14 +195,12 @@ class CoreAnalytics:
         
         # Unfiltered Income (including hidden for internal metrics like Savings Rate)
         unfiltered_income_query = db.query(func.sum(models.Transaction.amount))\
-            .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount > 0,
                 models.Transaction.is_transfer == False,
                 models.Transaction.date >= start_date,
-                models.Transaction.date <= end_date,
-                or_(models.Category.type == 'income', models.Category.type == None)
+                models.Transaction.date <= end_date
             )
         if account_id: unfiltered_income_query = unfiltered_income_query.filter(models.Transaction.account_id == account_id)
         if user_id:

@@ -24,8 +24,7 @@ class SpendingAnalytics:
         # Base filter (we join category to differentiate between expense and investment)
         filters = [
             Transaction.tenant_id == tenant_id,
-            Transaction.is_transfer == False,
-            Transaction.exclude_from_reports == False
+            Transaction.is_transfer == False
         ]
         
         if account_id:
@@ -59,10 +58,10 @@ class SpendingAnalytics:
             if not cat_val: return None
             return cat_type_map.get(cat_val) or cat_id_type_map.get(str(cat_val))
 
-        expenses = [t for t in txns if t.amount < 0 and (get_cat_type(t.category) == 'expense' or get_cat_type(t.category) is None)]
+        expenses = [t for t in txns if t.amount < 0 and (get_cat_type(t.category) == 'expense' or get_cat_type(t.category) is None) and not t.exclude_from_reports]
         # Investments are negative and of type 'investment'
-        investments = [t for t in txns if t.amount < 0 and get_cat_type(t.category) == 'investment']
-        # Income is positive
+        investments = [t for t in txns if t.amount < 0 and get_cat_type(t.category) == 'investment' and not t.exclude_from_reports]
+        # Income is positive (Including hidden income as per robust detection logic)
         income_txns = [t for t in txns if t.amount > 0]
         
         # Totals
