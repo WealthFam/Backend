@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from backend.app.core.database import db_write_lock
 from backend.app.modules.finance import models, schemas
+from backend.app.modules.ingestion import models as ingestion_models
+from fastapi import HTTPException
 
 class CategoryService:
     @staticmethod
@@ -34,20 +36,23 @@ class CategoryService:
             
         cats = db.query(models.Category).filter(models.Category.tenant_id == tenant_id).all()
         if not cats:
-            # Seed defaults
+            # Seed defaults with proper types
+            # Format: (Name, Icon, Type)
             defaults = [
-                ("Food & Dining", "🍔"), ("Groceries", "🥦"), ("Transport", "🚌"), 
-                ("Shopping", "🛍️"), ("Utilities", "💡"), ("Housing", "🏠"),
-                ("Healthcare", "🏥"), ("Entertainment", "🎬"), ("Salary", "💰"),
-                ("Investment", "📈"), ("Education", "🎓"), ("Dividend", "💵"),
-                ("FD Matured", "🏦"), ("Rent", "🏘️"), ("Gift", "🎁"),
-                 ("Other", "📦")
+                ("Food & Dining", "🍔", "expense"), ("Groceries", "🥦", "expense"), 
+                ("Transport", "🚌", "expense"), ("Shopping", "🛍️", "expense"), 
+                ("Utilities", "💡", "expense"), ("Housing", "🏠", "expense"),
+                ("Healthcare", "🏥", "expense"), ("Entertainment", "🎬", "expense"), 
+                ("Salary", "💰", "income"), ("Investment", "📈", "investment"), 
+                ("Education", "🎓", "expense"), ("Dividend", "💵", "income"),
+                ("FD Matured", "🏦", "income"), ("Rent", "🏘️", "expense"), 
+                ("Gift", "🎁", "income"), ("Other", "📦", "expense")
             ]
             new_cats = []
             with db_write_lock:
                 try:
-                    for name, icon in defaults:
-                        c = models.Category(tenant_id=tenant_id, name=name, icon=icon)
+                    for name, icon, cat_type in defaults:
+                        c = models.Category(tenant_id=tenant_id, name=name, icon=icon, type=cat_type)
                         db.add(c)
                         new_cats.append(c)
                     db.commit()
@@ -78,11 +83,42 @@ class CategoryService:
         db_cat = db.query(models.Category).filter(models.Category.id == category_id, models.Category.tenant_id == tenant_id).first()
         if not db_cat: return None
         
+        old_name = db_cat.name
         data = update.model_dump(exclude_unset=True)
+        new_name = data.get("name")
+        
         with db_write_lock:
             try:
+                # 1. If name changed, update all linked entities (Cascade Update)
+                if new_name and new_name != old_name:
+                    # Update Ledger Transactions
+                    db.query(models.Transaction).filter(
+                        models.Transaction.tenant_id == tenant_id,
+                        models.Transaction.category == old_name
+                    ).update({models.Transaction.category: new_name}, synchronize_session=False)
+
+                    # Update Triage Transactions
+                    db.query(ingestion_models.PendingTransaction).filter(
+                        ingestion_models.PendingTransaction.tenant_id == tenant_id,
+                        ingestion_models.PendingTransaction.category == old_name
+                    ).update({ingestion_models.PendingTransaction.category: new_name}, synchronize_session=False)
+
+                    # Update Classification Rules
+                    db.query(models.CategoryRule).filter(
+                        models.CategoryRule.tenant_id == tenant_id,
+                        models.CategoryRule.category == old_name
+                    ).update({models.CategoryRule.category: new_name}, synchronize_session=False)
+
+                    # Update Budgets
+                    db.query(models.Budget).filter(
+                        models.Budget.tenant_id == tenant_id,
+                        models.Budget.category == old_name
+                    ).update({models.Budget.category: new_name}, synchronize_session=False)
+
+                # 2. Update the Category itself
                 for k, v in data.items():
                     setattr(db_cat, k, v)
+                
                 db.commit()
                 db.refresh(db_cat)
             except Exception:
@@ -91,9 +127,82 @@ class CategoryService:
         return db_cat
 
     @staticmethod
+    def get_category_usage(db: Session, category_id: str, tenant_id: str) -> dict:
+        db_cat = db.query(models.Category).filter(models.Category.id == category_id, models.Category.tenant_id == tenant_id).first()
+        if not db_cat:
+            raise HTTPException(status_code=404, detail="Category not found")
+            
+        reasons = []
+        
+        # Check subcategories
+        child_count = db.query(models.Category).filter(models.Category.parent_id == category_id).count()
+        if child_count > 0:
+            reasons.append(f"Contains {child_count} active sub-folder(s)")
+            
+        # Check transactions
+        txn_count = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.category == db_cat.name
+        ).count()
+        if txn_count > 0:
+            reasons.append(f"Linked to {txn_count} existing transaction(s)")
+            
+        # Check pending transactions
+        pending_count = db.query(ingestion_models.PendingTransaction).filter(
+            ingestion_models.PendingTransaction.tenant_id == tenant_id,
+            ingestion_models.PendingTransaction.category == db_cat.name
+        ).count()
+        if pending_count > 0:
+            reasons.append(f"Used in {pending_count} pending triage item(s)")
+            
+        # Check rules
+        rule_count = db.query(models.CategoryRule).filter(
+            models.CategoryRule.tenant_id == tenant_id,
+            models.CategoryRule.category == db_cat.name
+        ).count()
+        if rule_count > 0:
+            reasons.append(f"Linked to {rule_count} classification rule(s)")
+            
+        return {
+            "is_safe": len(reasons) == 0,
+            "reasons": reasons,
+            "category_name": db_cat.name
+        }
+
+    @staticmethod
     def delete_category(db: Session, category_id: str, tenant_id: str) -> bool:
         db_cat = db.query(models.Category).filter(models.Category.id == category_id, models.Category.tenant_id == tenant_id).first()
         if not db_cat: return False
+        
+        # 1. Check for subcategories
+        has_children = db.query(models.Category).filter(models.Category.parent_id == category_id).first()
+        if has_children:
+            raise HTTPException(status_code=400, detail="This category contains sub-folders. Please delete or move them first.")
+
+        # 2. Check for active transactions (Ledger)
+        has_txns = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.category == db_cat.name
+        ).first()
+        if has_txns:
+            raise HTTPException(status_code=400, detail="This category is linked to existing transactions. Please re-categorize them first.")
+
+        # 3. Check for pending transactions (Triage)
+        has_pending = db.query(ingestion_models.PendingTransaction).filter(
+            ingestion_models.PendingTransaction.tenant_id == tenant_id,
+            ingestion_models.PendingTransaction.category == db_cat.name
+        ).first()
+        if has_pending:
+            raise HTTPException(status_code=400, detail="This category is currently being used in the Triage queue.")
+
+        # 4. Check for active rules
+        has_rules = db.query(models.CategoryRule).filter(
+            models.CategoryRule.tenant_id == tenant_id,
+            models.CategoryRule.category == db_cat.name
+        ).first()
+        if has_rules:
+            raise HTTPException(status_code=400, detail="An active classification rule is using this category.")
+
         with db_write_lock:
             try:
                 db.delete(db_cat)
@@ -192,11 +301,34 @@ class CategoryService:
         return db_rule
 
     @staticmethod
-    def get_category_rules(db: Session, tenant_id: str, skip: int = 0, limit: int = 50) -> dict:
+    def get_category_rules(db: Session, tenant_id: str, skip: int = 0, limit: int = 50, category: Optional[str] = None, search: Optional[str] = None) -> dict:
         query = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id)
+        
+        if category and category != 'all':
+            query = query.filter(models.CategoryRule.category == category)
+            
+        if search:
+            search_query = f"%{search}%"
+            query = query.filter(
+                (models.CategoryRule.name.ilike(search_query)) |
+                (models.CategoryRule.category.ilike(search_query)) |
+                (models.CategoryRule.keywords.ilike(search_query))
+            )
+            
         total = query.count()
         rules = query.order_by(models.CategoryRule.priority.desc()).offset(skip).limit(limit).all()
         
+        # Batch-load hit logs for enrichment
+        rule_ids = [str(r.id) for r in rules]
+        hit_logs = {}
+        if rule_ids:
+            logs = db.query(models.RuleHitLog).filter(
+                models.RuleHitLog.tenant_id == tenant_id,
+                models.RuleHitLog.rule_id.in_(rule_ids)
+            ).all()
+            for log in logs:
+                hit_logs[log.rule_id] = log
+
         for r in rules:
              r.is_valid = True
              r.validation_error = None
@@ -216,6 +348,11 @@ class CategoryService:
              
              # Cast Numeric to int for strict validation
              r.priority = int(r.priority)
+
+             # Enrich with hit stats from RuleHitLog
+             hit_log = hit_logs.get(str(r.id))
+             r.hit_count = hit_log.hit_count if hit_log else 0
+             r.last_hit_at = hit_log.last_hit_at if hit_log else None
              
         return {"data": rules, "total": total}
 
@@ -335,24 +472,36 @@ class CategoryService:
             logger.warning(f"AI cleaning failed for suggestions, falling back to heuristic: {e}")
 
         # 3. Aggregate by clean name
-        aggregated = {} 
+        from backend.app.modules.finance.services.category.rule_executor import RuleExecutor
         
-        existing_rules = CategoryService.get_category_rules(db, tenant_id)
+        rules_objects = db.query(models.CategoryRule).filter(models.CategoryRule.tenant_id == tenant_id).all()
         ignored = db.query(models.IgnoredSuggestion).filter(models.IgnoredSuggestion.tenant_id == tenant_id).all()
+        ignored_patterns = [i.pattern.lower() for i in ignored]
         
-        # Flatten existing keywords for exclusion
-        exclusion_set = set()
-        for r in existing_rules["data"]:
-            for kw in (r.keywords or []): 
-                if isinstance(kw, str): exclusion_set.add(kw.lower())
-        for i in ignored:
-            exclusion_set.add(i.pattern.lower())
-
+        aggregated = {} 
         for c in candidates:
             clean_name = clean_map.get(c.description, AIService.heuristic_clean_merchant(c.description))
+            desc_lower = c.description.lower()
+            clean_lower = clean_name.lower()
             
-            # Skip if already ruled or ignored
-            if clean_name.lower() in exclusion_set or c.description.lower() in exclusion_set:
+            # Check if ignored
+            if any(p in desc_lower or p in clean_lower for p in ignored_patterns):
+                continue
+                
+            # Check if already covered by an existing rule
+            is_covered = False
+            for r in rules_objects:
+                # 1. Exact Name match (Suggested name matches rule name)
+                if r.name and r.name.lower() == clean_lower:
+                    is_covered = True
+                    break
+                # 2. Keyword match (Does the rule apply to this description?)
+                kws = RuleExecutor._parse_keywords(r)
+                if any(kw.lower() in desc_lower for kw in kws):
+                    is_covered = True
+                    break
+            
+            if is_covered:
                 continue
 
             if clean_name not in aggregated:

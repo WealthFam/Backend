@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     APP_DATABASE_URL: Optional[str] = None
     DATABASE_URL_ENV: Optional[str] = Field(None, alias="DATABASE_URL")
     
+    # Market Data Secondary Database
+    MARKET_DATABASE_URL_ENV: Optional[str] = Field(None, alias="MARKET_DATABASE_URL")
+    
     @property
     def DATABASE_URL(self) -> str:
         # 1. Try APP_DATABASE_URL
@@ -27,6 +30,20 @@ class Settings(BaseSettings):
         # help out by making it absolute if it has 3 slashes instead of 4
         if url.startswith("duckdb:///data/") and os.path.exists("/data"):
              # duckdb:///data/foo -> duckdb:////data/foo
+             url = url.replace("duckdb:///data/", "duckdb:////data/")
+             
+        return url
+
+    @property
+    def MARKET_DATABASE_URL(self) -> str:
+        # 1. Try env variable
+        url = self.MARKET_DATABASE_URL_ENV
+        # 2. Default to secondary file in data folder
+        if not url:
+            url = "duckdb:///data/market_data.duckdb"
+            
+        # Robustness Check for Linux/Docker
+        if url.startswith("duckdb:///data/") and os.path.exists("/data"):
              url = url.replace("duckdb:///data/", "duckdb:////data/")
              
         return url

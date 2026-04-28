@@ -3,9 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, List, Optional, Union, Annotated
 from uuid import UUID
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator, BeforeValidator
-from typing import List, Optional, Union, Annotated
 
 # --- Finance Coercion Utilities (PRACTICES.md Section 11.2) ---
 # Critical for parsing financial data from UI sliders or legacy CSV inputs 
@@ -113,6 +111,13 @@ class TransactionCreate(TransactionBase):
     is_transfer: bool = False
     to_account_id: Optional[str] = None
     content_hash: Optional[str] = None
+    
+    # Mutual Fund Specific Fields
+    scheme_code: Optional[str] = None
+    folio_number: Optional[str] = None
+    nav: Optional[Decimal] = None
+    units: Optional[Decimal] = None
+    type: Optional[str] = None
 
 class TransactionUpdate(BaseModel):
     description: Optional[str] = None
@@ -208,12 +213,38 @@ class CategoryRuleRead(CategoryRuleBase):
     tenant_id: Union[UUID, str]
     is_valid: bool = Field(default=True, description="Indicates if the rule is currently functional")
     validation_error: Optional[str] = Field(default=None, description="Human-readable reason for validation failure")
+    hit_count: int = Field(default=0, description="Total number of transactions matched by this rule")
+    last_hit_at: Optional[datetime] = Field(default=None, description="Timestamp of last successful rule application")
     created_at: datetime
 
 class CategoryRulePagination(BaseModel):
     model_config = ConfigDict(strict=True)
     data: List[CategoryRuleRead]
     total: int
+
+# --- Triage Detection Schemas ---
+class TriageScanResult(BaseModel):
+    """Result of scanning a single rule against the triage queue."""
+    rule_id: str
+    rule_name: str
+    category: str
+    matching_count: int
+    preview: List[dict] = []
+
+class TriageScanSummary(BaseModel):
+    """Aggregate result of scanning all rules against the triage queue."""
+    total_pending: int
+    total_matches: int
+    rules_with_matches: List[TriageScanResult]
+
+class RuleStatsResponse(BaseModel):
+    """Aggregate rule performance statistics."""
+    total_rules: int
+    total_hits: int
+    rules_with_zero_hits: int
+    avg_hit_rate: float
+    top_rules: List[dict] = []
+    pending_triage: int = 0
 
 class RuleSuggestion(BaseModel):
     name: str
@@ -404,6 +435,10 @@ class RecurringTransactionRead(RecurringTransactionBase):
     
     model_config = ConfigDict(from_attributes=True, strict=True)
 
+class HistoryPoint(BaseModel):
+    date: datetime
+    amount: Decimal
+
 class RecurringSuggestion(BaseModel):
     name: str
     amount: Decimal
@@ -415,6 +450,7 @@ class RecurringSuggestion(BaseModel):
     last_date: datetime
     pattern: Optional[str] = None # The exact merchant/keyword detected
     detected_count: int = 0
+    recent_history: List[HistoryPoint] = []
         
 # --- Loan Schemas ---
 
@@ -582,5 +618,104 @@ class SpendingForecastResponse(BaseModel):
     trend: List[SpendingForecastDay]
     daily_burn_rate: Decimal
     forecast_total: Decimal
+
+class MutualFundBenchmarkRuleBase(BaseModel):
+    priority: int = Field(default=0, description="Execution priority (lower is higher)")
+    keyword: str = Field(description="Keyword to match against fund category/name")
+    benchmark_symbol: str = Field(description="MFAPI scheme code for the benchmark index")
+    benchmark_label: str = Field(description="Display label for the benchmark index")
+    styling_color: Optional[str] = Field(default="#3B82F6", description="Hex color for the benchmark line")
+    styling_style: str = Field(default="solid", description="Line style: solid, dashed, dotted")
+    styling_dash_array: Optional[str] = Field(default=None, description="SVG dash array for dashed lines")
+
+class MutualFundBenchmarkRuleCreate(MutualFundBenchmarkRuleBase):
+    pass
+
+class MutualFundBenchmarkRuleUpdate(BaseModel):
+    priority: Optional[int] = None
+    keyword: Optional[str] = None
+    benchmark_symbol: Optional[str] = None
+    benchmark_label: Optional[str] = None
+    styling_color: Optional[str] = None
+    styling_style: Optional[str] = None
+    styling_dash_array: Optional[str] = None
+
+class MutualFundBenchmarkRuleRead(MutualFundBenchmarkRuleBase):
+    id: Union[UUID, str]
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True, strict=True)
+
+class MutualFundBenchmarkRulePagination(BaseModel):
+    data: List[MutualFundBenchmarkRuleRead]
+    total: int
+    model_config = ConfigDict(strict=True)
+
+class MarketIndexItem(BaseModel):
+    name: str
+    value: str
+    change: str
+    percent: str
+    isUp: bool
+    sparkline: List[float] = []
+    labels: List[str] = []
+
+class MarketIndexResponse(BaseModel):
+    data: List[MarketIndexItem]
+    model_config = ConfigDict(strict=True)
+
+class MutualFundMasterRead(BaseModel):
+    scheme_code: Union[str, int]
+    scheme_name: str
+    isin_growth: Optional[str] = None
+    fund_house: Optional[str] = None
+    category: Optional[str] = None
+    nav: Optional[Decimal] = None
+    returns_3y: Optional[Decimal] = None
+    risk_level: str = "Moderate"
+    aum: Optional[str] = None
+    trending: bool = False
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class MutualFundSearchResponse(BaseModel):
+    data: List[MutualFundMasterRead]
+    total: int
+    page: int
+    limit: int
+    model_config = ConfigDict()
+
+class MutualFundHoldingRead(BaseModel):
+    id: Union[UUID, str]
+    scheme_code: Union[str, int]
+    scheme_name: str
+    folio_number: Optional[str] = None
+    units: Decimal
+    average_price: Decimal
+    current_value: Decimal
+    invested_value: Decimal
+    last_nav: Optional[Decimal] = None
+    category: Optional[str] = None
+    profit_loss: Decimal
+    profit_loss_pct: float
+    last_updated_at: Union[datetime, str]
+    has_multiple: bool = False
+    children: List[Any] = []
+    sparkline: List[float] = []
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class PortfolioOverviewResponse(BaseModel):
+    data: List[MutualFundHoldingRead]
+    total_invested: Decimal
+    total_current: Decimal
+    total_pl: Decimal
+    overall_xirr: Optional[float] = None
+    model_config = ConfigDict()
+
+class CreditCardBillPay(BaseModel):
+    source_account_id: Union[UUID, str]
+    amount: Decimal
+    date: datetime
+    description: Optional[str] = "Credit Card Bill Payment"
 
 CategoryRead.model_rebuild()

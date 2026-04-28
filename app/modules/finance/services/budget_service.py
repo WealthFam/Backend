@@ -29,29 +29,35 @@ class BudgetService:
         # Separate expenses (negative) and income (positive)
         # Note: SQL sum would mix them. We need to sum conditionally or fetch all.
         
-        total_expense = db.query(func.sum(models.Transaction.amount)).filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.date >= start_of_period,
-            models.Transaction.date < end_of_period,
-            models.Transaction.is_transfer == False,
-            models.Transaction.exclude_from_reports == False,
-            models.Transaction.amount < 0
-        )
+        total_expense_query = db.query(func.sum(models.Transaction.amount))\
+            .outerjoin(models.Category, (models.Transaction.category == models.Category.name) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+            .filter(
+                models.Transaction.tenant_id == tenant_id,
+                models.Transaction.date >= start_of_period,
+                models.Transaction.date < end_of_period,
+                models.Transaction.is_transfer == False,
+                models.Transaction.exclude_from_reports == False,
+                models.Transaction.amount < 0,
+                or_(models.Category.type == 'expense', models.Category.type == None)
+            )
         if user_id:
-             total_expense = total_expense.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
-        total_expense = abs(total_expense.scalar() or 0)
+             total_expense_query = total_expense_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        total_expense = abs(total_expense_query.scalar() or 0)
         
-        total_income = db.query(func.sum(models.Transaction.amount)).filter(
-            models.Transaction.tenant_id == tenant_id,
-            models.Transaction.date >= start_of_period,
-            models.Transaction.date < end_of_period,
-            models.Transaction.is_transfer == False,
-            models.Transaction.exclude_from_reports == False,
-            models.Transaction.amount > 0
-        )
+        total_income_query = db.query(func.sum(models.Transaction.amount))\
+            .outerjoin(models.Category, (models.Transaction.category == models.Category.name) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+            .filter(
+                models.Transaction.tenant_id == tenant_id,
+                models.Transaction.date >= start_of_period,
+                models.Transaction.date < end_of_period,
+                models.Transaction.is_transfer == False,
+                models.Transaction.exclude_from_reports == False,
+                models.Transaction.amount > 0,
+                or_(models.Category.type == 'income', models.Category.type == None)
+            )
         if user_id:
-            total_income = total_income.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
-        total_income = total_income.scalar() or 0
+            total_income_query = total_income_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        total_income = total_income_query.scalar() or 0
 
         # Excluded
         excluded_query = db.query(func.sum(func.abs(models.Transaction.amount))).filter(
@@ -307,11 +313,13 @@ class BudgetService:
 
         
         ytd_query = db.query(
-            func.sum(models.Transaction.amount).label("total")
-        ).filter(
+            models.Transaction.amount,
+            models.Category.type
+        ).outerjoin(models.Category, (models.Transaction.category == models.Category.name) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+         .filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= start_of_year,
-            models.Transaction.date < end_of_current, # Up to end of current month
+            models.Transaction.date < end_of_current,
             models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False
         )
@@ -319,12 +327,15 @@ class BudgetService:
         if user_id:
              ytd_query = ytd_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         
-        ytd_expense = abs(ytd_query.filter(models.Transaction.amount < 0).scalar() or 0)
-        ytd_income = ytd_query.filter(models.Transaction.amount > 0).scalar() or 0
+        ytd_txns = ytd_query.all()
+        ytd_expense = sum(abs(Decimal(t.amount)) for t in ytd_txns if t.amount < 0 and (t.type == 'expense' or t.type is None))
+        ytd_income = sum(Decimal(t.amount) for t in ytd_txns if t.amount > 0 and (t.type == 'income' or t.type is None))
+        ytd_investment = sum(abs(Decimal(t.amount)) for t in ytd_txns if t.amount < 0 and t.type == 'investment')
 
         ytd_stats = {
             "spent": float(ytd_expense),
             "income": float(ytd_income),
+            "invested": float(ytd_investment),
             "savings_rate": ((float(ytd_income) - float(ytd_expense)) / float(ytd_income) * 100) if ytd_income > 0 else 0
         }
 

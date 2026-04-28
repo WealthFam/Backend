@@ -48,7 +48,13 @@ class TransactionService:
                 data['tenant_id'] = tenant_id
                 
                 # Remove fields that exist in schema but not in the Transaction model
-                data.pop('to_account_id', None)
+                # This prevents TypeErrors during model instantiation.
+                fields_to_remove = [
+                    'to_account_id', 'scheme_code', 'folio_number', 
+                    'nav', 'units', 'type'
+                ]
+                for field in fields_to_remove:
+                    data.pop(field, None)
                 
                 # Use UUID if not provided
                 if not data.get('id'):
@@ -77,7 +83,9 @@ class TransactionService:
                         anchor_date = timezone.ensure_utc(db_account.last_synced_at)
                         txn_date = timezone.ensure_utc(db_transaction.date)
                         
-                        if not anchor_date or txn_date > anchor_date:
+                        # HARDENING: Use >= to ensure transactions created at the same time as 
+                        # an initial balance sync (common in tests) are correctly applied.
+                        if not anchor_date or txn_date >= anchor_date:
                             balance_change = 0
                             if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
                                 balance_change = -db_transaction.amount
@@ -243,15 +251,21 @@ class TransactionService:
         total_count = query.count()
         
         # Stats are based on all transactions for this vendor
-        all_txns = query.all()
+        all_txns_query = query.outerjoin(models.Category, (models.Transaction.category == models.Category.name) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+            .add_columns(models.Category.type.label('cat_type'))
         
-        total_spent = sum(abs(t.amount) for t in all_txns if t.amount < 0)
-        total_income = sum(t.amount for t in all_txns if t.amount > 0)
+        results = all_txns_query.all()
+        all_txns = [r[0] for r in results]
+        txn_types = {r[0].id: r[1] for r in results}
         
-        debit_count = sum(1 for t in all_txns if t.amount < 0)
+        total_spent = sum(abs(t.amount) for t in all_txns if t.amount < 0 and txn_types.get(t.id) != 'investment')
+        total_income = sum(t.amount for t in all_txns if t.amount > 0 and txn_types.get(t.id) == 'income')
+        total_invested = sum(abs(t.amount) for t in all_txns if t.amount < 0 and txn_types.get(t.id) == 'investment')
+        
+        debit_count = sum(1 for t in all_txns if t.amount < 0 and txn_types.get(t.id) != 'investment')
         avg_txn = (total_spent / debit_count) if debit_count > 0 else 0
-
-        # Group by month for chart
+        
+        # Group by month for chart (Total Outflow: Spent + Invested)
         monthly_map = {}
         for i in range(6):
             dt = now - relativedelta(months=i)
@@ -273,6 +287,7 @@ class TransactionService:
             "vendor_name": vendor_name,
             "total_spent": total_spent,
             "total_income": total_income,
+            "total_invested": total_invested,
             "transaction_count": total_count,
             "average_transaction": avg_txn,
             "chart_data": chart_data,
@@ -452,26 +467,41 @@ class TransactionService:
                     if update_data.get('linked_transaction_id'):
                         # Unlink old if exists
                         if db_txn.linked_transaction_id:
-                             old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                             old_linked = db.query(models.Transaction).filter(
+                                 models.Transaction.id == db_txn.linked_transaction_id,
+                                 models.Transaction.tenant_id == tenant_id
+                             ).first()
                              if old_linked:
                                 old_linked.linked_transaction_id = None
                                 db.add(old_linked)
         
                         target_id = update_data['linked_transaction_id']
-                        target_txn = db.query(models.Transaction).filter(models.Transaction.id == target_id).first()
+                        target_txn = db.query(models.Transaction).filter(
+                            models.Transaction.id == target_id,
+                            models.Transaction.tenant_id == tenant_id
+                        ).first()
                         
                         if target_txn:
                             db_txn.linked_transaction_id = target_txn.id
+                            db_txn.is_transfer = True
+                            db_txn.exclude_from_reports = True
+                            
                             target_txn.linked_transaction_id = db_txn.id
                             target_txn.is_transfer = True
                             target_txn.category = "Transfer"
                             target_txn.exclude_from_reports = True 
                             db.add(target_txn)
+                            
+                            db_txn.category = "Transfer"
+                            update_data['category'] = "Transfer"
         
                     elif to_account_id:
                         # Auto-create target if account provided
                         if db_txn.linked_transaction_id:
-                             old_linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                             old_linked = db.query(models.Transaction).filter(
+                                 models.Transaction.id == db_txn.linked_transaction_id,
+                                 models.Transaction.tenant_id == tenant_id
+                             ).first()
                              if old_linked: 
                                  db.delete(old_linked)
                         
@@ -498,6 +528,7 @@ class TransactionService:
                         db_txn.linked_transaction_id = target_txn.id
                         db_txn.category = "Transfer"
                         update_data['category'] = "Transfer"
+                        update_data.pop('linked_transaction_id', None)
 
                         # UPDATE TARGET ACCOUNT BALANCE
                         target_acc = db.query(models.Account).filter(models.Account.id == to_account_id).first()
@@ -970,190 +1001,21 @@ class TransactionService:
 
     @staticmethod
     def apply_rule_retrospectively(db: Session, rule_id: str, tenant_id: str, override: bool = False) -> dict:
-        rule = db.query(models.CategoryRule).filter(
-            models.CategoryRule.id == rule_id,
-            models.CategoryRule.tenant_id == tenant_id
-        ).first()
-        
-        if not rule:
-            return {"success": False, "message": "Rule not found"}
-        
-        keywords = json.loads(rule.keywords)
-        if not keywords:
-            return {"success": True, "affected": 0}
-            
-        filters = []
-        for k in keywords:
-            pattern = f"%{k}%"
-            filters.append(or_(
-                models.Transaction.description.ilike(pattern),
-                models.Transaction.recipient.ilike(pattern)
-            ))
-            
-        # 1. Update Confirmed Transactions
-        affected_count = 0
-        with db_write_lock:
-            try:
-                query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
-                if not override:
-                    query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
-                
-                query = query.filter(or_(*filters))
-                target_txns = query.all()
-                for txn in target_txns:
-                    txn.category = rule.category
-                    if rule.exclude_from_reports:
-                        txn.exclude_from_reports = True
-                    if rule.is_transfer and rule.to_account_id:
-                        txn.is_transfer = True
-                    db.add(txn)
-                    affected_count += 1
-                    
-                # 2. Update Pending Transactions (Triage)
-                pending_filters = []
-                for k in keywords:
-                    pattern = f"%{k}%"
-                    pending_filters.append(or_(
-                        ingestion_models.PendingTransaction.description.ilike(pattern),
-                        ingestion_models.PendingTransaction.recipient.ilike(pattern)
-                    ))
-
-                pending_query = db.query(ingestion_models.PendingTransaction).filter(
-                    ingestion_models.PendingTransaction.tenant_id == tenant_id
-                )
-                if not override:
-                    pending_query = pending_query.filter(
-                        (ingestion_models.PendingTransaction.category == "Uncategorized") | 
-                        (ingestion_models.PendingTransaction.category == None)
-                    )
-                
-                pending_query = pending_query.filter(or_(*pending_filters))
-                target_pending = pending_query.all()
-                for p_txn in target_pending:
-                    p_txn.category = rule.category
-                    if rule.exclude_from_reports:
-                        p_txn.exclude_from_reports = True
-                    if rule.is_transfer and rule.to_account_id:
-                        p_txn.is_transfer = True
-                        p_txn.to_account_id = rule.to_account_id
-                    db.add(p_txn)
-                    affected_count += 1
-
-                db.commit()
-                return {"success": True, "affected": affected_count, "category": rule.category}
-            except Exception:
-                db.rollback()
-                raise
+        """Backward-compat wrapper. Logic moved to RuleExecutor (PRACTICES.md §11)."""
+        from backend.app.modules.finance.services.category.rule_executor import RuleExecutor
+        return RuleExecutor.apply_rule_retrospectively(db, rule_id, tenant_id, override)
 
     @staticmethod
     def get_matching_count(db: Session, keywords: List[str], tenant_id: str, only_uncategorized: bool = True) -> int:
-        if not keywords: return 0
-        
-        # Confirmed Transactions
-        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
-        if only_uncategorized:
-            query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
-            
-        filters = []
-        for k in keywords:
-            pattern = f"%{k}%"
-            filters.append(or_(
-                models.Transaction.description.ilike(pattern),
-                models.Transaction.recipient.ilike(pattern)
-            ))
-        query = query.filter(or_(*filters))
-        confirmed_count = query.count()
-
-        # Pending Transactions
-        pending_query = db.query(ingestion_models.PendingTransaction).filter(
-            ingestion_models.PendingTransaction.tenant_id == tenant_id
-        )
-        if only_uncategorized:
-            pending_query = pending_query.filter(
-                (ingestion_models.PendingTransaction.category == "Uncategorized") | 
-                (ingestion_models.PendingTransaction.category == None)
-            )
-            
-        pending_filters = []
-        for k in keywords:
-            pattern = f"%{k}%"
-            pending_filters.append(or_(
-                ingestion_models.PendingTransaction.description.ilike(pattern),
-                ingestion_models.PendingTransaction.recipient.ilike(pattern)
-            ))
-        pending_query = pending_query.filter(or_(*pending_filters))
-        pending_count = pending_query.count()
-
-        return confirmed_count + pending_count
+        """Backward-compat wrapper. Logic moved to RuleExecutor."""
+        from backend.app.modules.finance.services.category.rule_executor import RuleExecutor
+        return RuleExecutor.get_matching_count(db, keywords, tenant_id, only_uncategorized)
 
     @staticmethod
     def get_matching_preview(db: Session, keywords: List[str], tenant_id: str, skip: int = 0, limit: int = 5, only_uncategorized: bool = True) -> List[dict]:
-        if not keywords: return []
-        
-        # Confirmed
-        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
-        if only_uncategorized:
-            query = query.filter((models.Transaction.category == "Uncategorized") | (models.Transaction.category == None))
-            
-        filters = []
-        for k in keywords:
-            pattern = f"%{k}%"
-            filters.append(or_(
-                models.Transaction.description.ilike(pattern),
-                models.Transaction.recipient.ilike(pattern)
-            ))
-        query = query.filter(or_(*filters))
-        confirmed_matches = query.order_by(models.Transaction.date.desc()).limit(limit + skip).all()
-
-        # Pending
-        pending_query = db.query(ingestion_models.PendingTransaction).filter(
-            ingestion_models.PendingTransaction.tenant_id == tenant_id
-        )
-        if only_uncategorized:
-            pending_query = pending_query.filter(
-                (ingestion_models.PendingTransaction.category == "Uncategorized") | 
-                (ingestion_models.PendingTransaction.category == None)
-            )
-            
-        pending_filters = []
-        for k in keywords:
-            pattern = f"%{k}%"
-            pending_filters.append(or_(
-                ingestion_models.PendingTransaction.description.ilike(pattern),
-                ingestion_models.PendingTransaction.recipient.ilike(pattern)
-            ))
-        pending_query = pending_query.filter(or_(*pending_filters))
-        pending_matches = pending_query.order_by(ingestion_models.PendingTransaction.date.desc()).limit(limit + skip).all()
-
-        # Combine and Sort
-        combined = []
-        for m in confirmed_matches:
-            combined.append({
-                "id": m.id,
-                "date": m.date,
-                "description": m.description,
-                "recipient": m.recipient,
-                "amount": m.amount,
-                "category": m.category,
-                "tenant_id": m.tenant_id,
-                "account_id": m.account_id,
-                "is_pending": False
-            })
-        for m in pending_matches:
-            combined.append({
-                "id": m.id,
-                "date": m.date,
-                "description": m.description,
-                "recipient": m.recipient,
-                "amount": m.amount,
-                "category": m.category,
-                "tenant_id": m.tenant_id,
-                "account_id": m.account_id,
-                "is_pending": True
-            })
-            
-        combined.sort(key=lambda x: x["date"], reverse=True)
-        return combined[skip:skip+limit]
+        """Backward-compat wrapper. Logic moved to RuleExecutor."""
+        from backend.app.modules.finance.services.category.rule_executor import RuleExecutor
+        return RuleExecutor.get_matching_preview(db, keywords, tenant_id, skip, limit, only_uncategorized)
 
     @staticmethod
     def bulk_rename(db: Session, old_name: str, new_name: str, tenant_id: str, sync_to_parser: bool = False) -> int:

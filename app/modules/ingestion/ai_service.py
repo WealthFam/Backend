@@ -343,25 +343,38 @@ class GeminiProvider:
             f"\n\nPORTFOLIO & MARKET DATA:\n{portfolio_data}"
         )
 
-        try:
-            logger.info(f"Generating Gemini hybrid brief with model: {model_id}")
-            response = client.models.generate_content(
-                model=model_id,
-                contents=f"{prompt}\n\nRESPONSE FORMAT: Valid JSON Object with 'summary' and 'highlights' keys."
-            )
-            if not response or not response.text:
-                return {"summary": "Strategist is synthesizing offline.", "highlights": []}
-            
-            text = response.text
-            start = text.find('{')
-            end = text.rfind('}') + 1
-            if start != -1 and end != 0:
-                return json.loads(text[start:end])
-            
-            return {"summary": text, "highlights": []} # Fallback if JSON fails
-        except Exception as e:
-            logger.error(f"Gemini mutual fund brief error: {e}")
-            raise e
+        max_retries = 3
+        retry_delay = 2.0
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Generating Gemini hybrid brief with model: {model_id} (Attempt {attempt + 1})")
+                response = client.models.generate_content(
+                    model=model_id,
+                    contents=f"{prompt}\n\nRESPONSE FORMAT: Valid JSON Object with 'summary' and 'highlights' keys."
+                )
+                if not response or not response.text:
+                    return {"summary": "Strategist is synthesizing offline.", "highlights": []}
+                
+                text = response.text
+                start = text.find('{')
+                end = text.rfind('}') + 1
+                if start != -1 and end != 0:
+                    return json.loads(text[start:end])
+                
+                return {"summary": text, "highlights": []} # Fallback if JSON fails
+            except Exception as e:
+                err_msg = str(e).upper()
+                is_retryable = any(kw in err_msg for kw in ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE", "OVERLOAD"])
+                
+                if is_retryable and attempt < max_retries - 1:
+                    wait_time = retry_delay * (2 ** attempt)
+                    logger.warning(f"AI Provider busy ({err_msg}). Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                    
+                logger.error(f"Gemini mutual fund brief error after {attempt+1} attempts: {e}")
+                raise e
 
     def generate_holding_insights(
         self, config: ingestion_models.AIConfiguration, holding_data: str
@@ -394,44 +407,57 @@ class GeminiProvider:
             f"\nFUND TELEMETRY:\n{holding_data}"
         )
 
-        try:
-            logger.info(f"Generating Fund Deep-Dive with model: {model_id}")
-            response = client.models.generate_content(
-                model=model_id,
-                contents=f"{prompt}\n\nRESPONSE FORMAT: Valid JSON Object with 'summary', 'highlights', and 'suggestions' keys."
-            )
-            if not response or not response.text:
-                return {"summary": "Strategist is auditing the NAV history...", "highlights": [], "suggestions": []}
-            
-            text = response.text
-            start = text.find('{')
-            end = text.rfind('}') + 1
-            if start != -1 and end != 0:
-                return json.loads(text[start:end])
-            
-            return {"summary": text, "highlights": [], "suggestions": []}
-        except Exception as e:
-            # Check for 503 or overload errors specifically
-            err_msg = str(e).upper()
-            if "503" in err_msg or "UNAVAILABLE" in err_msg or "OVERLOAD" in err_msg:
-                logger.warning(f"Primary AI model '{model_id}' overwhelmed (503). Retrying once with gemini-1.5-flash...")
-                try:
-                    # One-time secondary attempt with known stable model
-                    response = client.models.generate_content(
-                        model="models/gemini-1.5-flash",
-                        contents=f"{prompt}\n\nRESPONSE FORMAT: Valid JSON Object."
-                    )
-                    if response and response.text:
-                        text = response.text
-                        start = text.find('{')
-                        end = text.rfind('}') + 1
-                        if start != -1 and end != 0:
-                            return json.loads(text[start:end])
-                except Exception as e2:
-                    logger.error(f"Fallback AI generation also failed: {e2}")
-            
-            logger.error(f"Gemini fund deep-dive error: {e}")
-            raise e
+        max_retries = 3
+        retry_delay = 2.0 # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Generating Fund Deep-Dive with model: {model_id} (Attempt {attempt + 1})")
+                response = client.models.generate_content(
+                    model=model_id,
+                    contents=f"{prompt}\n\nRESPONSE FORMAT: Valid JSON Object with 'summary', 'highlights', and 'suggestions' keys."
+                )
+                if not response or not response.text:
+                    return {"summary": "Strategist is auditing the NAV history...", "highlights": [], "suggestions": []}
+                
+                text = response.text
+                start = text.find('{')
+                end = text.rfind('}') + 1
+                if start != -1 and end != 0:
+                    return json.loads(text[start:end])
+                
+                return {"summary": text, "highlights": [], "suggestions": []}
+            except Exception as e:
+                err_msg = str(e).upper()
+                
+                # Check for Rate Limit (429) or Overload (503)
+                is_retryable = any(kw in err_msg for kw in ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE", "OVERLOAD"])
+                
+                if is_retryable and attempt < max_retries - 1:
+                    wait_time = retry_delay * (2 ** attempt)
+                    logger.warning(f"AI Provider busy/exhausted ({err_msg}). Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                
+                # If we're here, it's either not retryable or we're out of retries
+                if "503" in err_msg or "UNAVAILABLE" in err_msg or "OVERLOAD" in err_msg:
+                    logger.warning(f"Primary AI model '{model_id}' overwhelmed. Final fallback to stable model...")
+                    try:
+                        response = client.models.generate_content(
+                            model="models/gemini-1.5-flash",
+                            contents=f"{prompt}\n\nRESPONSE FORMAT: Valid JSON Object."
+                        )
+                        if response and response.text:
+                            text = response.text
+                            start = text.find('{')
+                            end = text.rfind('}') + 1
+                            if start != -1 and end != 0:
+                                return json.loads(text[start:end])
+                    except Exception as e2:
+                        logger.error(f"Fallback AI generation also failed: {e2}")
+                
+                logger.error(f"Gemini fund deep-dive error after {attempt+1} attempts: {e}")
+                raise e
 
     def batch_clean_merchant_names(self, config: ingestion_models.AIConfiguration, descriptions: List[str]) -> Optional[Dict[str, str]]:
         if not config.api_key or not descriptions:
@@ -577,8 +603,12 @@ class AIService:
                 ingestion_models.AIInsightCache.tenant_id == tenant_id,
                 ingestion_models.AIInsightCache.insight_type == cache_type
             ).first()
-            if cached:
-                return cached.content
+            if cached and cached.content:
+                # Standard 24-hour age check
+                if cached.updated_at:
+                    age = (timezone.utcnow() - cached.updated_at).total_seconds()
+                    if age < 86400: # 24 hours
+                        return cached.content
 
         # 2. Provider Fetch
         try:
@@ -601,21 +631,7 @@ class AIService:
             if result:
                 with db_write_lock:
                     try:
-                        # Update Cache
-                        cached = db.query(ingestion_models.AIInsightCache).filter(
-                            ingestion_models.AIInsightCache.tenant_id == tenant_id,
-                            ingestion_models.AIInsightCache.insight_type == cache_type
-                        ).first()
-                        if cached:
-                            cached.content = result
-                            cached.updated_at = timezone.utcnow()
-                        else:
-                            new_cache = ingestion_models.AIInsightCache(
-                                tenant_id=tenant_id,
-                                insight_type=cache_type,
-                                content=result
-                            )
-                            db.add(new_cache)
+                        cls.update_cache(db, tenant_id, cache_type, result)
                         db.commit()
                         return result
                     except Exception as catch_err:
@@ -625,7 +641,7 @@ class AIService:
         except Exception as e:
             db.rollback()
             logger.warning(f"AI Refresh failed for dashboard summary: {e}")
-            # Fallback to cache
+            # Fallback to cache even if stale
             cached = db.query(ingestion_models.AIInsightCache).filter(
                 ingestion_models.AIInsightCache.tenant_id == tenant_id,
                 ingestion_models.AIInsightCache.insight_type == cache_type

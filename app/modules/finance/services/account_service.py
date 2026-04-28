@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from sqlalchemy.orm import Session
 
@@ -66,7 +66,7 @@ class AccountService:
         return db_account
 
     @staticmethod
-    def get_accounts(db: Session, tenant_id: str, owner_id: Optional[str] = None, user_role: str = "ADULT", include_unverified: bool = False) -> List[models.Account]:
+    def get_accounts(db: Session, tenant_id: str, owner_id: Optional[str] = None, user_role: str = "ADULT", include_unverified: bool = False, return_as_dict: bool = True) -> List[Any]:
         if owner_id in [None, "null", "undefined", ""]:
             owner_id = None
         
@@ -99,6 +99,9 @@ class AccountService:
                     links_map[acc_id] = []
                 links_map[acc_id].append(goal_name)
                 
+            if not return_as_dict:
+                return accounts
+
             # Convert to dict and add linked_goals
             account_dicts = []
             for acc in accounts:
@@ -283,3 +286,33 @@ class AccountService:
                 db.rollback()
                 raise
         return db_account
+    @staticmethod
+    def pay_credit_bill(db: Session, account_id: str, payload: schemas.CreditCardBillPay, tenant_id: str) -> models.Transaction:
+        """
+        Records a credit card bill payment as a transfer from a bank account to the credit card.
+        """
+        from backend.app.modules.finance.services.transfer_service import TransferService
+        
+        # Verify both accounts exist and belong to the tenant
+        target_card = db.query(models.Account).filter(models.Account.id == account_id, models.Account.tenant_id == tenant_id).first()
+        source_bank = db.query(models.Account).filter(models.Account.id == str(payload.source_account_id), models.Account.tenant_id == tenant_id).first()
+        
+        if not target_card or not source_bank:
+            raise ValueError("One or more accounts not found.")
+            
+        if target_card.type != models.AccountType.CREDIT_CARD:
+            raise ValueError("Target account must be a Credit Card.")
+
+        # Create the transfer
+        return TransferService.create_transfer(
+            db,
+            tenant_id,
+            account_id=str(payload.source_account_id),
+            to_account_id=account_id,
+            amount=payload.amount,
+            date=payload.date,
+            description=payload.description or f"Bill Payment for {target_card.name}",
+            recipient=target_card.name,
+            source="MANUAL_BILL_PAY",
+            exclude_from_reports=True # Transfers are usually excluded from spending reports
+        )

@@ -1,4 +1,5 @@
 import logging
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from . import utils
 
@@ -15,11 +16,15 @@ def run_schema_sync(engine: Engine):
     """
     logger.info("Initializing Schema Sync Scaffholding...")
     
-    with engine.begin() as connection:
-        apply_patches(connection)
+    # DuckDB can be sensitive to multiple DDL operations on the same table within a single transaction.
+    # We pass the engine to apply_patches to allow it to manage transaction boundaries.
+    apply_patches(engine)
     
     # 3. Run one-time data repairs (Self-healing)
     run_data_repair_v1_mf(engine)
+    
+    # 4. Seed benchmark rules
+    seed_benchmark_rules(engine)
     
     logger.info("Schema sync completed.")
 
@@ -60,56 +65,148 @@ def run_data_repair_v1_mf(engine: Engine):
     except Exception as e:
         logger.warning(f"Skipping Mutual Fund data repair: {e}")
 
-def apply_patches(connection):
+def apply_patches(engine: Engine):
     """
     PLACEHOLDER FOR FUTURE SCHEMA EVOLUTION.
     
-    If you need to add a column, create an index, or rebuild a table in the future,
-    add the logic here using the 'utils' helpers.
-    
-    Example:
-    utils.safe_add_column(connection, "users", "new_feature_enabled", "BOOLEAN DEFAULT FALSE")
+    Each patch is executed in its own isolated transaction to satisfy DuckDB's 
+    strict requirement for clear transaction boundaries during DDL operations.
     """
     
-    # -------------------------------------------------------------------------
-    # SCAFFOLD: Put future ad-hoc migrations below this line
-    # -------------------------------------------------------------------------
-    
     logger.info("Applying ad-hoc schema patches...")
-    
+
+    # DuckDB Hardening: Force a checkpoint before starting patches to ensure
+    # all previous operations (like metadata.create_all) are fully flushed.
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA force_checkpoint;"))
+
     # [2026-04-14] Fix column name mismatch in mutual_fund_holdings
-    utils.safe_rename_column(connection, "mutual_fund_holdings", "last_updated", "last_updated_at")
+    with engine.begin() as connection:
+        utils.safe_rename_column(connection, "mutual_fund_holdings", "last_updated", "last_updated_at")
     
-    # [2026-04-15] Add missing latitude and longitude columns to ingestion and transactions
-    utils.safe_add_column(connection, "unparsed_messages", "latitude", "DECIMAL(10, 8)")
-    utils.safe_add_column(connection, "unparsed_messages", "longitude", "DECIMAL(11, 8)")
-    utils.safe_add_column(connection, "pending_transactions", "latitude", "DECIMAL(10, 8)")
-    utils.safe_add_column(connection, "pending_transactions", "longitude", "DECIMAL(11, 8)")
-    utils.safe_add_column(connection, "transactions", "latitude", "DECIMAL(10, 8)")
-    utils.safe_add_column(connection, "transactions", "longitude", "DECIMAL(11, 8)")
+    # [2026-04-15] Add missing latitude and longitude columns
+    for table in ["unparsed_messages", "pending_transactions", "transactions"]:
+        with engine.begin() as connection:
+            utils.safe_add_column(connection, table, "latitude", "DECIMAL(10, 8)")
+        with engine.begin() as connection:
+            utils.safe_add_column(connection, table, "longitude", "DECIMAL(11, 8)")
     
     # [2026-04-15] Add missing mutual fund columns 
-    utils.safe_add_column(connection, "mutual_fund_holdings", "average_price", "DECIMAL(15, 4)")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "current_value", "DECIMAL(15, 2)")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "last_nav", "DECIMAL(15, 4)")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "user_id", "VARCHAR")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "goal_id", "VARCHAR")
+    for col, col_type in [
+        ("average_price", "DECIMAL(15, 4)"),
+        ("current_value", "DECIMAL(15, 2)"),
+        ("last_nav", "DECIMAL(15, 4)"),
+        ("user_id", "VARCHAR"),
+        ("goal_id", "VARCHAR"),
+        ("invested_value", "DECIMAL(15, 2) DEFAULT 0") # [2026-04-18]
+    ]:
+        with engine.begin() as connection:
+            utils.safe_add_column(connection, "mutual_fund_holdings", col, col_type)
     
-    # [2026-04-15] Legacy patches migrated from upgrade_mf_schema.py
-    utils.safe_add_column(connection, "mutual_fund_orders", "transaction_hash", "VARCHAR")
-    utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmark_value", "DOUBLE")
-
-    # [2026-04-18] Fix 0 invested metrics 
-    utils.safe_add_column(connection, "mutual_fund_holdings", "invested_value", "DECIMAL(15, 2) DEFAULT 0")
+    # [2026-04-15] Legacy patches
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_orders", "transaction_hash", "VARCHAR")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmark_value", "DOUBLE")
 
     # [2026-04-17] Hardened fix for account creation snapshots
-    utils.safe_add_column(connection, "balance_snapshots", "credit_limit", "DECIMAL(15, 2)")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "balance_snapshots", "credit_limit", "DECIMAL(15, 2)")
 
-    # [2026-04-19] Add soft-delete columns for Mutual Funds
-    utils.safe_add_column(connection, "mutual_fund_holdings", "is_deleted", "BOOLEAN DEFAULT FALSE")
-    utils.safe_add_column(connection, "mutual_fund_holdings", "deleted_at", "TIMESTAMP")
-    utils.safe_add_column(connection, "mutual_fund_orders", "is_deleted", "BOOLEAN DEFAULT FALSE")
-    utils.safe_add_column(connection, "mutual_fund_orders", "deleted_at", "TIMESTAMP")
+    # [2026-04-21] Add Mutual Fund Benchmarks table
+    # We split drop and create to avoid transaction conflicts
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS mutual_fund_benchmarks"))
+    
+    with engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS mutual_fund_benchmarks (
+                id VARCHAR PRIMARY KEY,
+                category VARCHAR UNIQUE,
+                benchmark_symbol VARCHAR,
+                benchmark_label VARCHAR,
+                is_default BOOLEAN DEFAULT FALSE,
+                styling_color VARCHAR,
+                styling_style VARCHAR,
+                styling_dash_array VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+
+    # [2026-04-21] Add multi-benchmark support to cache
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_holdings", "is_deleted", "BOOLEAN DEFAULT FALSE")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "portfolio_timeline_cache", "benchmarks_json", "TEXT")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_holdings", "deleted_at", "TIMESTAMP")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_orders", "is_deleted", "BOOLEAN DEFAULT FALSE")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "mutual_fund_orders", "deleted_at", "TIMESTAMP")
+
+    # [2026-04-21] Align benchmark field names (Idempotent renames)
+    with engine.begin() as connection:
+        utils.safe_rename_column(connection, "mutual_fund_benchmarks", "benchmark_scheme_code", "benchmark_symbol")
+    with engine.begin() as connection:
+        utils.safe_rename_column(connection, "mutual_fund_benchmarks", "benchmark_name", "benchmark_label")
+
+    # [2026-04-21] Add Mutual Fund Benchmark Rules table
+    with engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS mutual_fund_benchmark_rules (
+                id VARCHAR PRIMARY KEY,
+                priority INTEGER DEFAULT 0,
+                keyword VARCHAR NOT NULL,
+                benchmark_symbol VARCHAR NOT NULL,
+                benchmark_label VARCHAR NOT NULL,
+                styling_color VARCHAR,
+                styling_style VARCHAR DEFAULT 'solid',
+                styling_dash_array VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
 
     # TODO: Add schema evolution logic here as the app grows.
     pass
+
+def seed_benchmark_rules(engine: Engine):
+    """
+    Seeds the mutual_fund_benchmark_rules table with initial heuristics.
+    """
+    from sqlalchemy import text
+    from uuid import uuid4
+    
+    rules = [
+        # priority, keyword, symbol, label, color, dash
+        (10, "small cap", "147703", "Nifty Smallcap 250 Index", "#F43F5E", "5,5"),
+        (20, "mid cap", "147701", "Nifty Midcap 150 Index", "#F59E0B", "5,5"),
+        (30, "large cap", "120716", "Nifty 50 Index", "#10B981", "5,5"),
+        (40, "bluechip", "120716", "Nifty 50 Index", "#10B981", "5,5"),
+        (50, "index", "120716", "Nifty 50 Index", "#10B981", "5,5"),
+        (100, "", "120716", "Nifty 50 Index", "#10B981", "5,5") # Default fallback
+    ]
+    
+    with engine.begin() as conn:
+        # Check if any rules exist
+        try:
+            count = conn.execute(text("SELECT COUNT(*) FROM mutual_fund_benchmark_rules")).scalar()
+            if count == 0:
+                logger.info("Seeding initial Mutual Fund benchmark rules...")
+                for priority, keyword, symbol, label, color, dash in rules:
+                    conn.execute(text("""
+                        INSERT INTO mutual_fund_benchmark_rules 
+                        (id, priority, keyword, benchmark_symbol, benchmark_label, styling_color, styling_dash_array)
+                        VALUES (:id, :priority, :keyword, :symbol, :label, :color, :dash)
+                    """), {
+                        "id": str(uuid4()),
+                        "priority": priority,
+                        "keyword": keyword,
+                        "symbol": symbol,
+                        "label": label,
+                        "color": color,
+                        "dash": dash
+                    })
+        except Exception as e:
+            logger.warning(f"Skipping benchmark rules seeding: {e}")

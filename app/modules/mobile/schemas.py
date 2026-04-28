@@ -60,6 +60,8 @@ class DashboardSummary(BaseModel):
     yesterday_total: float = 0.0
     last_month_same_day_total: float = 0.0
     monthly_total: float
+    monthly_investment: float = 0.0
+    monthly_income: float = 0.0
     currency: str = "INR"
     daily_budget_limit: float = 0.0
     prorated_budget: float = 0.0
