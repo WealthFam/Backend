@@ -1,3 +1,5 @@
+from datetime import datetime
+from typing import Optional
 from sqlalchemy.orm import Session
 from backend.app.core.database import db_write_lock
 from backend.app.modules.finance.models import Transaction
@@ -11,61 +13,99 @@ class TransferService:
     @staticmethod
     def approve_transfer(db: Session, pending: PendingTransaction, tenant_id: str) -> Transaction:
         """
-        Creates two linked transactions representing the transfer atomically.
+        Creates two linked transactions representing the transfer atomically from a pending transaction.
         """
         if not pending.is_transfer or not pending.to_account_id:
             raise ValueError("Pending transaction is not marked as a transfer or missing destination account.")
 
+        return TransferService.create_transfer(
+            db, 
+            tenant_id,
+            account_id=pending.account_id,
+            to_account_id=pending.to_account_id,
+            amount=pending.amount,
+            date=pending.date,
+            description=pending.description,
+            recipient=pending.recipient,
+            external_id=pending.external_id,
+            source=pending.source,
+            exclude_from_reports=pending.exclude_from_reports,
+            latitude=pending.latitude,
+            longitude=pending.longitude,
+            exclude_pending_id=pending.id,
+            source_balance_is_synced=getattr(pending, 'balance_is_synced', False)
+        )
+
+    @staticmethod
+    def create_transfer(
+        db: Session, 
+        tenant_id: str,
+        account_id: str,
+        to_account_id: str,
+        amount: float,
+        date: datetime,
+        description: Optional[str] = None,
+        recipient: Optional[str] = None,
+        external_id: Optional[str] = None,
+        source: str = "MANUAL",
+        exclude_from_reports: bool = True,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        exclude_pending_id: Optional[str] = None,
+        source_balance_is_synced: bool = False
+    ) -> Transaction:
+        """
+        Creates two linked transactions representing the transfer atomically.
+        """
         from backend.app.modules.finance.services.transaction_service import TransactionService
         from backend.app.modules.finance import schemas
 
         with db_write_lock:
             try:
-                # 1. Create Source Transaction (Debit)
+                # 1. Create Source Transaction (Debit/Outflow from perspective of source account)
                 source_create = schemas.TransactionCreate(
-                    account_id=pending.account_id,
-                    amount=pending.amount,
-                    date=pending.date,
-                    description=f"Transfer to {pending.to_account_id} (Linked)",
-                    recipient=pending.recipient,
+                    account_id=account_id,
+                    amount=-amount,
+                    date=date,
+                    description=description or f"Transfer to {to_account_id} (Linked)",
+                    recipient=recipient,
                     category="Transfer",
                     is_transfer=True,
-                    external_id=pending.external_id,
-                    source=pending.source,
-                    exclude_from_reports=pending.exclude_from_reports,
-                    latitude=pending.latitude,
-                    longitude=pending.longitude
+                    external_id=external_id,
+                    source=source,
+                    exclude_from_reports=exclude_from_reports,
+                    latitude=latitude,
+                    longitude=longitude
                 )
                 
-                update_source_balance = not getattr(pending, 'balance_is_synced', False)
                 source_txn = TransactionService.create_transaction(
                     db, source_create, tenant_id, 
-                    exclude_pending_id=pending.id,
-                    update_balance=update_source_balance,
-                    commit=False # Don't commit yet
+                    exclude_pending_id=exclude_pending_id,
+                    update_balance=not source_balance_is_synced,
+                    commit=False 
                 )
                 
-                # 2. Create Target Transaction (Credit)
+                # 2. Create Target Transaction (Credit/Inflow from perspective of target account)
                 target_create = schemas.TransactionCreate(
-                    account_id=pending.to_account_id,
-                    amount=-pending.amount, 
-                    date=pending.date,
-                    description=f"Transfer from {pending.account_id} (Linked)",
-                    recipient=pending.recipient,
+                    account_id=to_account_id,
+                    amount=amount, 
+                    date=date,
+                    description=description or f"Transfer from {account_id} (Linked)",
+                    recipient=recipient,
                     category="Transfer",
                     is_transfer=True,
-                    external_id=f"LINKED-{pending.external_id}" if pending.external_id else None,
-                    source=pending.source,
-                    exclude_from_reports=pending.exclude_from_reports,
-                    latitude=pending.latitude,
-                    longitude=pending.longitude
+                    external_id=f"LINKED-{external_id}" if external_id else None,
+                    source=source,
+                    exclude_from_reports=exclude_from_reports,
+                    latitude=latitude,
+                    longitude=longitude
                 )
                 
                 target_txn = TransactionService.create_transaction(
                     db, target_create, tenant_id,
-                    exclude_pending_id=pending.id,
+                    exclude_pending_id=exclude_pending_id,
                     update_balance=True,
-                    commit=False # Don't commit yet
+                    commit=False 
                 )
                 
                 # 3. Link them

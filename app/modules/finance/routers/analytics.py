@@ -182,3 +182,16 @@ def get_spending_forecast(
         start_date=s_date,
         end_date=e_date
     )
+
+@router.get("/credit-intelligence")
+def get_credit_intelligence(
+    user_id: str = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return AnalyticsService.get_credit_intelligence(
+        db, 
+        str(current_user.tenant_id),
+        owner_id=user_id,
+        user_role=current_user.role
+    )

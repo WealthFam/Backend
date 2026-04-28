@@ -76,3 +76,10 @@ class AnalyticsService:
     @staticmethod
     def get_daily_spending_history(db: Session, tenant_id: str, **kwargs):
         return HistoryAnalytics.get_daily_spending_history(db, tenant_id, **kwargs)
+
+    @staticmethod
+    def get_credit_intelligence(db: Session, tenant_id: str, **kwargs):
+        # We need to get accounts to analyze them
+        from backend.app.modules.finance.services.account_service import AccountService
+        accounts = AccountService.get_accounts(db, tenant_id, return_as_dict=False, **kwargs)
+        return CreditAnalytics.get_credit_intelligence(db, tenant_id, accounts)

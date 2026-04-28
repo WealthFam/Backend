@@ -96,3 +96,19 @@ def update_account_balance(
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+@router.post("/accounts/{account_id}/pay-bill")
+def pay_credit_bill(
+    account_id: str,
+    payload: schemas.CreditCardBillPay,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        return AccountService.pay_credit_bill(
+            db, account_id, payload, str(current_user.tenant_id)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

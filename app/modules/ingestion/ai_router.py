@@ -205,6 +205,54 @@ def delete_merchant_alias(
     success = ExternalParserService.delete_alias(str(current_user.tenant_id), alias_id)
     return {"status": "success" if success else "failed"}
 
+@router.get("/status")
+def get_ai_status(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    config = db.query(ingestion_models.AIConfiguration).filter(
+        ingestion_models.AIConfiguration.tenant_id == str(current_user.tenant_id)
+    ).first()
+
+    if not config or not config.is_enabled:
+        return {
+            "is_enabled": False,
+            "has_api_key": bool(config.api_key) if config else False,
+            "status": "disabled"
+        }
+
+    if not config.api_key:
+        return {
+            "is_enabled": True,
+            "has_api_key": False,
+            "status": "error",
+            "error_message": "Missing API Key"
+        }
+
+    # Live check: list models
+    from backend.app.modules.ingestion.ai_service import AIService
+    try:
+        models = AIService.list_available_models(db, str(current_user.tenant_id), config.provider, config.api_key)
+        if models:
+            return {
+                "is_enabled": True,
+                "has_api_key": True,
+                "status": "healthy"
+            }
+        return {
+            "is_enabled": True,
+            "has_api_key": True,
+            "status": "error",
+            "error_message": "No models available"
+        }
+    except Exception as e:
+        return {
+            "is_enabled": True,
+            "has_api_key": True,
+            "status": "error",
+            "error_message": str(e)
+        }
+
 @router.post("/training/{message_id}/auto-parse")
 def auto_parse_training_message(
     message_id: str,

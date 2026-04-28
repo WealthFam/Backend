@@ -3,9 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, List, Optional, Union, Annotated
 from uuid import UUID
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator, BeforeValidator
-from typing import List, Optional, Union, Annotated
 
 # --- Finance Coercion Utilities (PRACTICES.md Section 11.2) ---
 # Critical for parsing financial data from UI sliders or legacy CSV inputs 
@@ -713,5 +711,11 @@ class PortfolioOverviewResponse(BaseModel):
     total_pl: Decimal
     overall_xirr: Optional[float] = None
     model_config = ConfigDict()
+
+class CreditCardBillPay(BaseModel):
+    source_account_id: Union[UUID, str]
+    amount: Decimal
+    date: datetime
+    description: Optional[str] = "Credit Card Bill Payment"
 
 CategoryRead.model_rebuild()
