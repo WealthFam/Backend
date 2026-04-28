@@ -97,9 +97,6 @@ class CreditAnalytics:
                     due_month = last_statement_date.month
                     
                     # If due_day <= billing_day, due is in the NEXT month
-                    # (e.g., billing 15th, due 5th → due is next month's 5th)
-                    # If due_day > billing_day, due is in the SAME month
-                    # (e.g., billing 1st, due 20th → due is same month's 20th)
                     if due_day <= billing_day:
                         due_month += 1
                         if due_month > 12:
@@ -112,7 +109,6 @@ class CreditAnalytics:
                         last_day = calendar.monthrange(due_year, due_month)[1]
                         due_date = date(due_year, due_month, last_day)
                     
-                    # If due date is already past, advance to next cycle
                     if due_date < today:
                         adv_month = due_month + 1
                         adv_year = due_year
@@ -127,37 +123,73 @@ class CreditAnalytics:
 
             if last_statement_date:
                 intel["last_statement_date"] = last_statement_date.isoformat()
+                intel["last_bill_date"] = intel["last_statement_date"] # Alias for frontend
                 ls_midnight = datetime.combine(last_statement_date, time(23, 59, 59, 999999))
                 
+                # Previous cycle date for historical context
+                p_month = last_statement_date.month - 1
+                p_year = last_statement_date.year
+                if p_month == 0:
+                    p_month = 12
+                    p_year -= 1
+                try:
+                    prev_stmt_date = date(p_year, p_month, billing_day)
+                except ValueError:
+                    prev_stmt_date = date(p_year, p_month, calendar.monthrange(p_year, p_month)[1])
+                
+                ps_midnight = datetime.combine(prev_stmt_date, time(23, 59, 59, 999999))
+
                 # Unbilled spend = Purchases AFTER last statement (excluding hidden)
                 unbilled_raw = db.query(func.sum(models.Transaction.amount)).filter(
                     models.Transaction.account_id == str(card_id),
                     models.Transaction.date > ls_midnight,
-                    models.Transaction.amount < 0, # Spent is negative
+                    models.Transaction.amount < 0,
                     models.Transaction.is_transfer == False,
                     models.Transaction.exclude_from_reports == False
                 ).scalar()
                 
                 unbilled_spend = abs(Decimal(unbilled_raw or 0))
                 
-                # Payments made AFTER last statement (excluding hidden)
+                # Payments made AFTER last statement
                 payments_raw = db.query(func.sum(models.Transaction.amount)).filter(
                     models.Transaction.account_id == str(card_id),
                     models.Transaction.date > ls_midnight,
-                    models.Transaction.amount > 0, # Payment is positive
+                    models.Transaction.amount > 0,
                     models.Transaction.is_transfer == False,
                     models.Transaction.exclude_from_reports == False
                 ).scalar()
                 current_cycle_payments = Decimal(payments_raw or 0)
+
+                # Last cycle spend = Purchases BETWEEN prev statement and last statement
+                last_cycle_raw = db.query(func.sum(models.Transaction.amount)).filter(
+                    models.Transaction.account_id == str(card_id),
+                    models.Transaction.date > ps_midnight,
+                    models.Transaction.date <= ls_midnight,
+                    models.Transaction.amount < 0,
+                    models.Transaction.is_transfer == False,
+                    models.Transaction.exclude_from_reports == False
+                ).scalar()
+                
+                # Last cycle payments
+                last_cycle_payments_raw = db.query(func.sum(models.Transaction.amount)).filter(
+                    models.Transaction.account_id == str(card_id),
+                    models.Transaction.date > ps_midnight,
+                    models.Transaction.date <= ls_midnight,
+                    models.Transaction.amount > 0,
+                    models.Transaction.is_transfer == False,
+                    models.Transaction.exclude_from_reports == False
+                ).scalar()
                 
                 # Statement balance = Current Balance - Unbilled + Payments
                 statement_balance = balance - unbilled_spend + current_cycle_payments
                 
                 intel["statement_balance"] = max(Decimal(0), statement_balance)
                 intel["unbilled_spend"] = unbilled_spend
-                intel["current_cycle_spend"] = unbilled_spend  # Total expenses this cycle (no inflows)
+                intel["current_cycle_spend"] = unbilled_spend
                 intel["current_cycle_payments"] = current_cycle_payments
-                intel["minimum_due"] = intel["statement_balance"] * Decimal("0.05") # 5% fallback
+                intel["last_cycle_spend"] = abs(Decimal(last_cycle_raw or 0))
+                intel["last_cycle_payments"] = Decimal(last_cycle_payments_raw or 0)
+                intel["minimum_due"] = intel["statement_balance"] * Decimal("0.05")
             
             if due_date:
                 today = timezone.utcnow().date()
@@ -168,6 +200,8 @@ class CreditAnalytics:
                 elif intel["days_until_due"] <= 3:
                     intel["status"] = "Due Soon"
 
+            # Final naming alignment for frontend
+            intel["credit_limit"] = intel.pop("limit")
             credit_intelligence.append(intel)
             
         return credit_intelligence
