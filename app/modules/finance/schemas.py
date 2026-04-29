@@ -29,7 +29,7 @@ def coerce_decimal(v: Any) -> Any:
 # Hardened Financial Types: Maintains high-precision math while allowing API flexibility.
 StrictDecimal = Annotated[Decimal, BeforeValidator(coerce_decimal)]
 
-from backend.app.modules.finance.models import AccountType, TransactionType
+from backend.app.modules.finance.models import AccountType, TransactionType, StatementStatus, StatementSource
 
 class AccountBase(BaseModel):
     name: str
@@ -719,3 +719,48 @@ class CreditCardBillPay(BaseModel):
     description: Optional[str] = "Credit Card Bill Payment"
 
 CategoryRead.model_rebuild()
+
+class StatementTransactionRead(BaseModel):
+    id: str
+    statement_id: str
+    date: datetime
+    amount: Decimal
+    type: TransactionType
+    description: str
+    ref_id: Optional[str] = None
+    category_suggestion: Optional[str] = None
+    is_reconciled: bool = False
+    matched_transaction_id: Optional[str] = None
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class StatementRead(BaseModel):
+    id: str
+    account_id: Optional[str] = None
+    vault_id: Optional[str] = None
+    filename: str
+    status: StatementStatus
+    source: StatementSource
+    email_sender: Optional[str] = None
+    email_sender: Optional[str] = None
+    email_sender: Optional[str] = None
+    created_at: datetime
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    
+    transactions: List[StatementTransactionRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+class BulkIngestRequestItem(BaseModel):
+    transaction_id: str
+    category: Optional[str] = None
+    create_rule: bool = True
+    exclude_from_reports: bool = False
+
+class BulkIngestRequest(BaseModel):
+    items: List[BulkIngestRequestItem]

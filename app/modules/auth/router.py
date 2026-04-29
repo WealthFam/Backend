@@ -146,7 +146,8 @@ def create_family_member(
         full_name=payload.full_name,
         avatar=payload.avatar,
         dob=payload.dob,
-        pan_number=payload.pan_number
+        pan_number=payload.pan_number,
+        phone_number=payload.phone_number
     )
     db.add(new_user)
     db.commit()
@@ -178,6 +179,8 @@ def update_family_member(
         member.dob = payload.dob
     if payload.pan_number is not None:
         member.pan_number = payload.pan_number
+    if payload.phone_number is not None:
+        member.phone_number = payload.phone_number
     if payload.password:
         member.password_hash = security.get_password_hash(payload.password)
         

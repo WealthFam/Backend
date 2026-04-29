@@ -14,6 +14,7 @@ class DocumentType(str, enum.Enum):
     POLICY = "POLICY"
     TAX = "TAX"
     IDENTITY = "IDENTITY"
+    STATEMENT = "STATEMENT"
     OTHER = "OTHER"
 
 class DocumentVault(Base):

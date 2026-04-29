@@ -266,7 +266,7 @@ class CategoryService:
 
     # --- Rules ---
     @staticmethod
-    def create_category_rule(db: Session, rule: schemas.CategoryRuleCreate, tenant_id: str) -> models.CategoryRule:
+    def create_category_rule(db: Session, rule: schemas.CategoryRuleCreate, tenant_id: str, commit: bool = True) -> models.CategoryRule:
         data = rule.model_dump()
         if isinstance(data.get('keywords'), list):
             data['keywords'] = json.dumps(data['keywords'])
@@ -279,12 +279,19 @@ class CategoryService:
         with db_write_lock:
             try:
                 db.add(db_rule)
-                db.commit()
-                db.refresh(db_rule)
+                if commit:
+                    db.commit()
+                    db.refresh(db_rule)
             except Exception:
                 db.rollback()
                 raise
         
+        if not commit:
+            return db_rule
+
+        # Expunge to prevent accidental sync of deserialized list back to DB
+        db.expunge(db_rule)
+
         # Manually deserialize keywords for Pydantic response
         db_rule.is_valid = True
         db_rule.validation_error = None
@@ -332,6 +339,7 @@ class CategoryService:
         for r in rules:
              r.is_valid = True
              r.validation_error = None
+             db.expunge(r)
              try:
                  keywords = json.loads(r.keywords)
                  r.keywords = keywords
@@ -357,7 +365,7 @@ class CategoryService:
         return {"data": rules, "total": total}
 
     @staticmethod
-    def update_category_rule(db: Session, rule_id: str, rule_update: schemas.CategoryRuleUpdate, tenant_id: str) -> Optional[models.CategoryRule]:
+    def update_category_rule(db: Session, rule_id: str, rule_update: schemas.CategoryRuleUpdate, tenant_id: str, commit: bool = True) -> Optional[models.CategoryRule]:
         db_rule = db.query(models.CategoryRule).filter(
             models.CategoryRule.id == rule_id,
             models.CategoryRule.tenant_id == tenant_id
@@ -375,12 +383,19 @@ class CategoryService:
                     else:
                         setattr(db_rule, key, value)
                         
-                db.commit()
-                db.refresh(db_rule)
+                if commit:
+                    db.commit()
+                    db.refresh(db_rule)
             except Exception:
                 db.rollback()
                 raise
         
+        if not commit:
+            return db_rule
+
+        # Expunge to prevent accidental sync of deserialized list back to DB
+        db.expunge(db_rule)
+
         # Deserialize for response
         db_rule.is_valid = True
         db_rule.validation_error = None

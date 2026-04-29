@@ -165,6 +165,28 @@ class ExternalParserService:
             return None
 
     @staticmethod
+    def parse_statement(tenant_id: str, file_content: bytes, password: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Call the external parser microservice for Bank Statement parsing.
+        """
+        try:
+            url = f"{settings.PARSER_SERVICE_URL}/ingest/statement"
+            
+            files = {'file': ('statement.pdf', file_content, 'application/pdf')}
+            data = {}
+            if password:
+                data['password'] = password
+            
+            response = requests.post(url, files=files, data=data, headers=ExternalParserService._get_auth_header(tenant_id), timeout=60)
+            
+            if response.status_code == 200:
+                return response.json() 
+            return {"status": "error", "message": f"Parser returned {response.status_code}", "logs": [response.text]}
+        except Exception as e:
+            logger.error(f"Error calling external parser: {e}")
+            return {"status": "error", "message": str(e)}
+
+    @staticmethod
     def create_pattern(tenant_id: str, source: str, regex_pattern: str, mapping: Dict[str, Any]) -> bool:
         """
         Push a new regex pattern to the microservice.

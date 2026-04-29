@@ -454,4 +454,59 @@ class MutualFundBenchmarkRule(Base):
     styling_dash_array = Column(String, nullable=True)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
 
+class StatementStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    PARSED = "PARSED"
+    FAILED = "FAILED"
+
+class StatementSource(str, enum.Enum):
+    EMAIL = "EMAIL"
+    MANUAL = "MANUAL"
+
+class Statement(Base):
+    __tablename__ = "statements"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=True, index=True)
+    vault_id = Column(String, nullable=True) # ID of the file in Vault
+    filename = Column(String, nullable=False)
+    status = Column(SqlEnum(StatementStatus), default=StatementStatus.PENDING, nullable=False)
+    source = Column(SqlEnum(StatementSource), default=StatementSource.MANUAL, nullable=False)
+    email_sender = Column(String, nullable=True) # The "From" address if source is EMAIL
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
+
+    transactions = relationship("StatementTransaction", back_populates="statement", cascade="all, delete-orphan")
+    account = relationship("Account", backref=backref("statements", cascade="all, delete-orphan"))
+
+class StatementTransaction(Base):
+    __tablename__ = "statement_transactions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    statement_id = Column(String, ForeignKey("statements.id"), nullable=False, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    date = Column(UTCDateTime, nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False)
+    type = Column(SqlEnum(TransactionType), nullable=False)
+    description = Column(String, nullable=False)
+    ref_id = Column(String, nullable=True)
+    category_suggestion = Column(String, nullable=True)
+    is_reconciled = Column(Boolean, default=False)
+    matched_transaction_id = Column(String, nullable=True) # ID in transactions table
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
+
+    statement = relationship("Statement", back_populates="transactions")
+
+class StatementPasswordCache(Base):
+    __tablename__ = "statement_password_cache"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    sender_email = Column(String, nullable=False, index=True)
+    password = Column(String, nullable=False)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
+
 

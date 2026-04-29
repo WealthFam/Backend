@@ -168,6 +168,26 @@ def apply_patches(engine: Engine):
             )
         """))
 
+    # [2026-04-28] Add User enhancements (ORM create_all handles the new tables)
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "users", "phone_number", "VARCHAR")
+
+    # [2026-04-29] Decouple Statement Sync from General Email Sync
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "email_configurations", "statement_last_sync_at", "TIMESTAMP")
+
+    # [2026-04-29] Statement Enhancements (Soft-delete & Email source)
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "statements", "email_sender", "VARCHAR")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "statements", "is_deleted", "BOOLEAN DEFAULT FALSE")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "statements", "deleted_at", "TIMESTAMP")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "statement_transactions", "is_deleted", "BOOLEAN DEFAULT FALSE")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "statement_transactions", "deleted_at", "TIMESTAMP")
+
     # TODO: Add schema evolution logic here as the app grows.
     pass
 

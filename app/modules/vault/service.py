@@ -4,7 +4,7 @@ import shutil
 import uuid
 from typing import List, Optional
 
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session, joinedload
 
 from . import models
@@ -64,6 +64,10 @@ class VaultService:
                     # Deferred import to avoid mandatory dependency on PyMuPDF (fitz)
                     import fitz  # PyMuPDF
                     doc = fitz.open(file_path)
+                    if doc.is_encrypted:
+                        logger.info(f"  Skipping thumbnail: PDF is encrypted.")
+                        doc.close()
+                        return None
                     if doc.page_count > 0:
                         page = doc.load_page(0)  # first page
                         pix = page.get_pixmap(matrix=fitz.Matrix(THUMBNAIL_SIZE[0]/page.rect.width, THUMBNAIL_SIZE[0]/page.rect.width))
@@ -260,7 +264,8 @@ class VaultService:
         search: Optional[str] = None,
         is_folder: Optional[bool] = None,
         skip: int = 0,
-        limit: int = 50
+        limit: int = 50,
+        role: str = "ADULT"
     ) -> tuple[List[models.DocumentVault], int]:
         """List documents with tenant and owner isolation"""
         query = db.query(models.DocumentVault).options(
@@ -301,12 +306,25 @@ class VaultService:
             query = query.filter(models.DocumentVault.is_folder == is_folder)
             
         if user_id:
-            query = query.filter(
-                or_(
-                    models.DocumentVault.owner_id == user_id,
-                    models.DocumentVault.is_shared == True
-                )
+            from backend.app.modules.auth.models import UserRole
+            
+            # Base visibility: Owner or Shared
+            visibility_clause = or_(
+                models.DocumentVault.owner_id == user_id,
+                models.DocumentVault.is_shared == True
             )
+            
+            # RBAC Extension: Children don't see statements or identity docs even if shared
+            if str(role) == "CHILD" or role == UserRole.CHILD:
+                visibility_clause = or_(
+                    models.DocumentVault.owner_id == user_id,
+                    and_(
+                        models.DocumentVault.is_shared == True,
+                        models.DocumentVault.file_type.notin_([models.DocumentType.STATEMENT, models.DocumentType.IDENTITY])
+                    )
+                )
+            
+            query = query.filter(visibility_clause)
             
         total = query.count()
         items = query.order_by(models.DocumentVault.is_folder.desc(), models.DocumentVault.filename.asc()).offset(skip).limit(limit).all()
