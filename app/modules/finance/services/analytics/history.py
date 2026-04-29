@@ -121,7 +121,6 @@ class HistoryAnalytics:
                  models.Transaction.date >= start_range, 
                  models.Transaction.date <= end_range_full,
                  models.Transaction.amount < 0, 
-                 models.Transaction.is_transfer == False,
                  models.Transaction.exclude_from_reports == False)\
          .group_by(models.Transaction.category, models.Category.name, models.Category.type, text('month_str'))
         
@@ -227,7 +226,7 @@ class HistoryAnalytics:
             func.count(models.Transaction.id).label('count')
         ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
          .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.date >= start_date,
-                 models.Transaction.amount < 0, models.Transaction.is_transfer == False,
+                 models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False,
                  or_(models.Category.type == 'expense', models.Category.type == None))
         
         if user_id: query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
@@ -309,7 +308,6 @@ class HistoryAnalytics:
         ).filter(
             Transaction.tenant_id == tenant_id,
             Transaction.amount < 0,
-            Transaction.is_transfer == False,
             Transaction.exclude_from_reports == False,
             Transaction.date >= start_date,
             Transaction.date <= end_date

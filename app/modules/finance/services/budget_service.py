@@ -35,7 +35,6 @@ class BudgetService:
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.date >= start_of_period,
                 models.Transaction.date < end_of_period,
-                models.Transaction.is_transfer == False,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.amount < 0,
                 or_(models.Category.type == 'expense', models.Category.type == None)
@@ -50,7 +49,6 @@ class BudgetService:
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.date >= start_of_period,
                 models.Transaction.date < end_of_period,
-                models.Transaction.is_transfer == False,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.amount > 0,
                 or_(models.Category.type == 'income', models.Category.type == None)
@@ -64,7 +62,7 @@ class BudgetService:
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= start_of_period,
             models.Transaction.date < end_of_period,
-            or_(models.Transaction.exclude_from_reports == True, models.Transaction.is_transfer == True)
+            models.Transaction.exclude_from_reports == True
         )
         if user_id:
              excluded_query = excluded_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
@@ -74,7 +72,7 @@ class BudgetService:
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= start_of_period,
             models.Transaction.date < end_of_period,
-            or_(models.Transaction.exclude_from_reports == True, models.Transaction.is_transfer == True),
+            models.Transaction.exclude_from_reports == True,
             models.Transaction.amount > 0
         )
         if user_id:
@@ -145,7 +143,6 @@ class BudgetService:
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= start_of_period,
             models.Transaction.date < end_of_period,
-            models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False
         )
         
@@ -167,7 +164,7 @@ class BudgetService:
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= start_of_period,
             models.Transaction.date < end_of_period,
-            or_(models.Transaction.exclude_from_reports == True, models.Transaction.is_transfer == True)
+            models.Transaction.exclude_from_reports == True
         )
 
         if user_id:
@@ -320,7 +317,6 @@ class BudgetService:
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= start_of_year,
             models.Transaction.date < end_of_current,
-            models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False
         )
         

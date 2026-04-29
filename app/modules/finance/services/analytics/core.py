@@ -91,7 +91,6 @@ class CoreAnalytics:
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount < 0,
-                models.Transaction.is_transfer == False,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date
@@ -126,7 +125,6 @@ class CoreAnalytics:
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount < 0,
-                models.Transaction.is_transfer == False,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= last_month_start,
                 models.Transaction.date <= last_month_comparison_point,
@@ -144,7 +142,6 @@ class CoreAnalytics:
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount < 0,
-                models.Transaction.is_transfer == False,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= last_month_start,
                 models.Transaction.date <= last_month_comparison_point,
@@ -154,6 +151,7 @@ class CoreAnalytics:
         if user_id:
             last_month_invest_query = last_month_invest_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
                                                              .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+        
         last_month_investment = abs(Decimal(last_month_invest_query.scalar() or 0))
 
         # Unfiltered Totals (for internal metrics like Savings Rate)
@@ -162,7 +160,6 @@ class CoreAnalytics:
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount < 0,
-                models.Transaction.is_transfer == False,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date,
                 or_(models.Category.type == 'expense', models.Category.type == None)
@@ -178,7 +175,6 @@ class CoreAnalytics:
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount < 0,
-                models.Transaction.is_transfer == False,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date,
                 models.Category.type == 'investment'
@@ -194,7 +190,7 @@ class CoreAnalytics:
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount > 0,
-                models.Transaction.is_transfer == False,
+                models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date
             )
@@ -209,7 +205,7 @@ class CoreAnalytics:
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount > 0,
-                models.Transaction.is_transfer == False,
+                models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date
             )
@@ -264,7 +260,7 @@ class CoreAnalytics:
 
         # Top Category
         top_cat_query = db.query(models.Transaction.category, func.sum(models.Transaction.amount).label('total'))\
-            .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0, models.Transaction.is_transfer == False, 
+            .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False, 
                     models.Transaction.date >= start_date, models.Transaction.date <= end_date)\
             .group_by(models.Transaction.category).order_by(func.sum(models.Transaction.amount).asc()).first()
         top_spending_category = {"name": top_cat_query[0] or "Uncategorized", "amount": abs(Decimal(top_cat_query[1]))} if top_cat_query else None
@@ -314,14 +310,14 @@ class CoreAnalytics:
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             today_query = db.query(func.sum(models.Transaction.amount)).filter(
                 models.Transaction.tenant_id == tenant_id, models.Transaction.date >= today_start,
-                models.Transaction.amount < 0, models.Transaction.is_transfer == False
+                models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
             )
             today_total = abs(float(today_query.scalar() or 0))
             
             yesterday_start = today_start - timedelta(days=1)
             yesterday_query = db.query(func.sum(models.Transaction.amount)).filter(
                 models.Transaction.tenant_id == tenant_id, models.Transaction.date >= yesterday_start,
-                models.Transaction.date < today_start, models.Transaction.amount < 0, models.Transaction.is_transfer == False
+                models.Transaction.date < today_start, models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
             )
             yesterday_total = abs(float(yesterday_query.scalar() or 0))
 
@@ -379,16 +375,16 @@ class CoreAnalytics:
         
         today_total = abs(Decimal(db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.tenant_id == tenant_id, models.Transaction.date >= today_start,
-            models.Transaction.amount < 0, models.Transaction.is_transfer == False
+            models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
         ).scalar() or 0))
         
         monthly_total = abs(Decimal(db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.tenant_id == tenant_id, models.Transaction.date >= month_start,
-            models.Transaction.amount < 0, models.Transaction.is_transfer == False
+            models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
         ).scalar() or 0))
         
         latest_txn = db.query(models.Transaction).filter(
-            models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0, models.Transaction.is_transfer == False
+            models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
         ).order_by(models.Transaction.date.desc()).first()
         
         budgets = BudgetService.get_budgets(db, tenant_id, now.year, now.month)

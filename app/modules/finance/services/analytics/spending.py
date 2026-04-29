@@ -24,7 +24,7 @@ class SpendingAnalytics:
         # Base filter (we join category to differentiate between expense and investment)
         filters = [
             Transaction.tenant_id == tenant_id,
-            Transaction.is_transfer == False
+            Transaction.exclude_from_reports == False
         ]
         
         if account_id:
@@ -139,7 +139,7 @@ class SpendingAnalytics:
         # Excluded/Shielded Transactions
         excluded_filters = [
             Transaction.tenant_id == tenant_id,
-            or_(Transaction.is_transfer == True, Transaction.exclude_from_reports == True)
+            Transaction.exclude_from_reports == True
         ]
         if account_id: excluded_filters.append(Transaction.account_id == account_id)
         if start_date: excluded_filters.append(Transaction.date >= start_date)
@@ -164,7 +164,6 @@ class SpendingAnalytics:
         # Trend Data (Daily) - Use expenses by default
         trend_filters = [
             Transaction.tenant_id == tenant_id,
-            Transaction.is_transfer == False,
             Transaction.exclude_from_reports == False,
             Transaction.amount < 0
         ]
@@ -235,7 +234,6 @@ class SpendingAnalytics:
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= start_date,
             models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False,
             or_(models.Category.type == 'expense', models.Category.type == None)
         )
@@ -279,7 +277,6 @@ class SpendingAnalytics:
         ).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False
         )
         
@@ -326,7 +323,7 @@ class SpendingAnalytics:
             func.sum(models.Transaction.amount).label('total')
         ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
          .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.date >= month_start, models.Transaction.date <= month_end,
-                 models.Transaction.amount < 0, models.Transaction.is_transfer == False,
+                 models.Transaction.amount < 0,
                  models.Transaction.exclude_from_reports == False,
                  or_(models.Category.type == 'expense', models.Category.type == None))
         
@@ -380,7 +377,7 @@ class SpendingAnalytics:
 
         query = db.query(models.Transaction)\
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
-            .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0, models.Transaction.is_transfer == False,
+            .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0,
                     models.Transaction.exclude_from_reports == False,
                     models.Transaction.date >= month_start, models.Transaction.date <= month_end,
                     or_(models.Category.type == 'expense', models.Category.type == None))
@@ -438,7 +435,6 @@ class SpendingAnalytics:
             models.Transaction.date <= end_date,
             models.Transaction.date <= now, # Only historical for actuals
             models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False
         )
         
@@ -458,7 +454,6 @@ class SpendingAnalytics:
             models.Transaction.date >= four_months_ago,
             models.Transaction.date < now.replace(day=1), # Complete months only
             models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False
         )
         if user_id:
@@ -475,7 +470,6 @@ class SpendingAnalytics:
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.date >= thirty_days_ago,
             models.Transaction.amount < 0,
-            models.Transaction.is_transfer == False,
             models.Transaction.exclude_from_reports == False
         )
         if user_id:

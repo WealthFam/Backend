@@ -193,7 +193,6 @@ class RecurringService:
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.type == models.TransactionType.DEBIT,
             models.Transaction.date >= lookback_date,
-            models.Transaction.is_transfer == False,
             models.Transaction.is_emi == False
         ).order_by(models.Transaction.date.desc()).all()
 

@@ -144,7 +144,6 @@ class CreditAnalytics:
                     models.Transaction.account_id == str(card_id),
                     models.Transaction.date > ls_midnight,
                     models.Transaction.amount < 0,
-                    models.Transaction.is_transfer == False,
                     models.Transaction.exclude_from_reports == False
                 ).scalar()
                 
@@ -155,7 +154,6 @@ class CreditAnalytics:
                     models.Transaction.account_id == str(card_id),
                     models.Transaction.date > ls_midnight,
                     models.Transaction.amount > 0,
-                    models.Transaction.is_transfer == False,
                     models.Transaction.exclude_from_reports == False
                 ).scalar()
                 current_cycle_payments = Decimal(payments_raw or 0)
@@ -166,7 +164,6 @@ class CreditAnalytics:
                     models.Transaction.date > ps_midnight,
                     models.Transaction.date <= ls_midnight,
                     models.Transaction.amount < 0,
-                    models.Transaction.is_transfer == False,
                     models.Transaction.exclude_from_reports == False
                 ).scalar()
                 
@@ -176,7 +173,6 @@ class CreditAnalytics:
                     models.Transaction.date > ps_midnight,
                     models.Transaction.date <= ls_midnight,
                     models.Transaction.amount > 0,
-                    models.Transaction.is_transfer == False,
                     models.Transaction.exclude_from_reports == False
                 ).scalar()
                 

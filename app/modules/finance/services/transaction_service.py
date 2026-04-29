@@ -198,8 +198,6 @@ class TransactionService:
 
         if exclude_from_reports:
             query = query.filter(models.Transaction.exclude_from_reports == False)
-        if exclude_transfers:
-            query = query.filter(models.Transaction.is_transfer == False)
 
         if user_id:
             # Filter by account ownership: show user's accounts OR shared accounts
@@ -237,7 +235,6 @@ class TransactionService:
         query = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.exclude_from_reports == False,
-            models.Transaction.is_transfer == False,
             or_(
                 models.Transaction.description.ilike(search_pattern),
                 models.Transaction.recipient.ilike(search_pattern)
@@ -370,8 +367,6 @@ class TransactionService:
             
         if exclude_from_reports:
             query = query.filter(models.Transaction.exclude_from_reports == False)
-        if exclude_transfers:
-            query = query.filter(models.Transaction.is_transfer == False)
             
         return query.count()
 

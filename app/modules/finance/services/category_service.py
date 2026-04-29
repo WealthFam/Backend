@@ -64,8 +64,17 @@ class CategoryService:
 
     @staticmethod
     def create_category(db: Session, category: schemas.CategoryCreate, tenant_id: str) -> models.Category:
+        data = category.model_dump()
+        
+        # Hierarchical Type Inheritance: 
+        # If this is a child and its type is the default 'expense', check if parent has a different type.
+        if data.get('parent_id'):
+            parent = db.query(models.Category).filter(models.Category.id == data['parent_id']).first()
+            if parent and parent.type != data.get('type'):
+                data['type'] = parent.type
+                
         db_cat = models.Category(
-            **category.model_dump(),
+            **data,
             tenant_id=tenant_id
         )
         with db_write_lock:
@@ -116,8 +125,18 @@ class CategoryService:
                     ).update({models.Budget.category: new_name}, synchronize_session=False)
 
                 # 2. Update the Category itself
+                new_type = data.get("type")
+                type_changed = new_type and new_type != db_cat.type
+                
                 for k, v in data.items():
                     setattr(db_cat, k, v)
+                
+                # 3. If type changed, cascade to direct children (Hierarchical Sync)
+                if type_changed:
+                    db.query(models.Category).filter(
+                        models.Category.parent_id == category_id,
+                        models.Category.tenant_id == tenant_id
+                    ).update({models.Category.type: new_type}, synchronize_session=False)
                 
                 db.commit()
                 db.refresh(db_cat)
