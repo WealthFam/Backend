@@ -15,24 +15,32 @@ from backend.app.modules.vault.service import VaultService
 
 router = APIRouter(prefix="/statements", tags=["Statements"], redirect_slashes=False)
 
-@router.get("", response_model=List[finance_schemas.StatementRead])
+@router.get("", response_model=finance_schemas.PaginatedStatementRead)
 def list_statements(
+    skip: int = 0,
+    limit: int = 20,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    List all processed statements for the tenant.
-    Children are not allowed to view statements.
+    List processed statements for the tenant with pagination.
     """
     from backend.app.modules.auth.models import UserRole
     if current_user.role == UserRole.CHILD:
-        return []
+        return {"items": [], "total": 0}
     
-    statements = db.query(finance_models.Statement).filter(
+    query = db.query(finance_models.Statement).filter(
         finance_models.Statement.tenant_id == current_user.tenant_id,
         finance_models.Statement.is_deleted == False
-    ).order_by(finance_models.Statement.created_at.desc()).all()
-    return statements
+    )
+    
+    if search:
+        query = query.filter(finance_models.Statement.filename.ilike(f"%{search}%"))
+        
+    total = query.count()
+    statements = query.order_by(finance_models.Statement.created_at.desc()).offset(skip).limit(limit).all()
+    return {"items": statements, "total": total}
 
 @router.post("/upload")
 async def upload_statement(
@@ -62,14 +70,17 @@ async def upload_statement(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/{statement_id}/transactions", response_model=List[finance_schemas.StatementTransactionRead])
+@router.get("/{statement_id}/transactions", response_model=finance_schemas.PaginatedStatementTransactionRead)
 def get_statement_transactions(
     statement_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get transactions extracted from a specific statement.
+    Get transactions extracted from a specific statement with pagination.
     """
     # Verify ownership
     statement = db.query(finance_models.Statement).filter(
@@ -80,7 +91,19 @@ def get_statement_transactions(
     if not statement:
         raise HTTPException(status_code=404, detail="Statement not found")
         
-    return statement.transactions
+    query = db.query(finance_models.StatementTransaction).filter(
+        finance_models.StatementTransaction.statement_id == statement_id,
+        finance_models.StatementTransaction.tenant_id == current_user.tenant_id,
+        finance_models.StatementTransaction.is_deleted == False
+    )
+    
+    if search:
+        query = query.filter(finance_models.StatementTransaction.description.ilike(f"%{search}%"))
+        
+    total = query.count()
+    transactions = query.order_by(finance_models.StatementTransaction.date.asc()).offset(skip).limit(limit).all()
+    
+    return {"items": transactions, "total": total}
 
 @router.delete("/{statement_id}")
 def delete_statement(

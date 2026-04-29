@@ -744,17 +744,21 @@ class StatementRead(BaseModel):
     status: StatementStatus
     source: StatementSource
     email_sender: Optional[str] = None
-    email_sender: Optional[str] = None
-    email_sender: Optional[str] = None
     created_at: datetime
-    is_deleted: bool = False
-    deleted_at: Optional[datetime] = None
     is_deleted: bool = False
     deleted_at: Optional[datetime] = None
     
     transactions: List[StatementTransactionRead] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+class PaginatedStatementRead(BaseModel):
+    items: List[StatementRead]
+    total: int
+
+class PaginatedStatementTransactionRead(BaseModel):
+    items: List[StatementTransactionRead]
+    total: int
 
 class BulkIngestRequestItem(BaseModel):
     transaction_id: str
