@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import json
@@ -60,7 +60,8 @@ async def upload_statement(
             db, str(current_user.tenant_id), 
             file.filename, content, source="MANUAL",
             account_id=account_id,
-            manual_password=password
+            manual_password=password,
+            email_sender=current_user.email
         )
         
         if statement.status == finance_models.StatementStatus.PARSED:
@@ -175,18 +176,19 @@ def manual_reconcile(
     StatementProcessor.reconcile_statement(db, statement_id)
     return {"status": "success"}
 
-@router.post("/{statement_id}/retry")
-async def retry_parsing(
+@router.post("/{statement_id}/reprocess")
+async def manual_reprocess(
     statement_id: str,
-    password: str,
+    password: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Retry parsing a PENDING or FAILED statement with a manual password.
+    Manually trigger a full re-parse of a statement.
+    If it's PENDING/FAILED due to password, provide the 'password' query param.
     """
     try:
-        return await StatementProcessor.retry_statement(db, str(current_user.tenant_id), statement_id, password)
+        return await StatementProcessor.retry_statement(db, str(current_user.tenant_id), statement_id, password or "", email_sender=current_user.email)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

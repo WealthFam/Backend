@@ -488,6 +488,7 @@ class Statement(Base):
     status = Column(SqlEnum(StatementStatus), default=StatementStatus.PENDING, nullable=False)
     source = Column(SqlEnum(StatementSource), default=StatementSource.MANUAL, nullable=False)
     email_sender = Column(String, nullable=True) # The "From" address if source is EMAIL
+    email_body = Column(String, nullable=True) # The content of the email
     created_at = Column(UTCDateTime, default=timezone.utcnow)
     failure_reason = Column(String, nullable=True) # Reason for Status=FAILED
     is_deleted = Column(Boolean, default=False, nullable=False)

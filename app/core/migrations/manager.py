@@ -114,7 +114,6 @@ def apply_patches(engine: Engine):
         utils.safe_add_column(connection, "balance_snapshots", "credit_limit", "DECIMAL(15, 2)")
 
     # [2026-04-21] Add Mutual Fund Benchmarks table
-    # We split drop and create to avoid transaction conflicts
     with engine.begin() as connection:
         connection.execute(text("DROP TABLE IF EXISTS mutual_fund_benchmarks"))
     
@@ -146,7 +145,7 @@ def apply_patches(engine: Engine):
     with engine.begin() as connection:
         utils.safe_add_column(connection, "mutual_fund_orders", "deleted_at", "TIMESTAMP")
 
-    # [2026-04-21] Align benchmark field names (Idempotent renames)
+    # [2026-04-21] Align benchmark field names
     with engine.begin() as connection:
         utils.safe_rename_column(connection, "mutual_fund_benchmarks", "benchmark_scheme_code", "benchmark_symbol")
     with engine.begin() as connection:
@@ -168,42 +167,36 @@ def apply_patches(engine: Engine):
             )
         """))
 
-    # [2026-04-28] Add User enhancements (ORM create_all handles the new tables)
+    # [2026-04-28] Add User enhancements
     with engine.begin() as connection:
         utils.safe_add_column(connection, "users", "phone_number", "VARCHAR")
 
-    # [2026-04-29] Decouple Statement Sync from General Email Sync
+    # [2026-04-29] Decouple Statement Sync
     with engine.begin() as connection:
         utils.safe_add_column(connection, "email_configurations", "statement_last_sync_at", "TIMESTAMP")
 
-    # [2026-04-29] Statement Enhancements (Soft-delete & Email source)
+    # [2026-04-29] Statement Enhancements
     with engine.begin() as connection:
+        utils.safe_add_column(connection, "statements", "failure_reason", "VARCHAR")
         utils.safe_add_column(connection, "statements", "email_sender", "VARCHAR")
-    with engine.begin() as connection:
+        utils.safe_add_column(connection, "statements", "email_body", "VARCHAR")
         utils.safe_add_column(connection, "statements", "is_deleted", "BOOLEAN DEFAULT FALSE")
-    with engine.begin() as connection:
         utils.safe_add_column(connection, "statements", "deleted_at", "TIMESTAMP")
-    with engine.begin() as connection:
         utils.safe_add_column(connection, "statement_transactions", "is_deleted", "BOOLEAN DEFAULT FALSE")
-    with engine.begin() as connection:
         utils.safe_add_column(connection, "statement_transactions", "deleted_at", "TIMESTAMP")
     
-    # [2026-04-30] Transaction Soft-delete Support
+    # [2026-04-30] Transaction Soft-delete
     with engine.begin() as connection:
         utils.safe_add_column(connection, "transactions", "is_deleted", "BOOLEAN DEFAULT FALSE")
     with engine.begin() as connection:
         utils.safe_add_column(connection, "transactions", "deleted_at", "TIMESTAMP")
 
-    # [2026-05-01] Extended Soft-delete Support
+    # [2026-05-01] Extended Soft-delete
     for table in ["accounts", "loans", "investment_goals", "expense_groups", "recurring_transactions", "budgets"]:
         with engine.begin() as connection:
             utils.safe_add_column(connection, table, "is_deleted", "BOOLEAN DEFAULT FALSE")
         with engine.begin() as connection:
             utils.safe_add_column(connection, table, "deleted_at", "TIMESTAMP")
-
-    # [2026-05-01] Statement Failure Reason Support
-    with engine.begin() as connection:
-        utils.safe_add_column(connection, "statements", "failure_reason", "VARCHAR")
 
 def seed_benchmark_rules(engine: Engine):
     """
@@ -213,17 +206,15 @@ def seed_benchmark_rules(engine: Engine):
     from uuid import uuid4
     
     rules = [
-        # priority, keyword, symbol, label, color, dash
         (10, "small cap", "147703", "Nifty Smallcap 250 Index", "#F43F5E", "5,5"),
         (20, "mid cap", "147701", "Nifty Midcap 150 Index", "#F59E0B", "5,5"),
         (30, "large cap", "120716", "Nifty 50 Index", "#10B981", "5,5"),
         (40, "bluechip", "120716", "Nifty 50 Index", "#10B981", "5,5"),
         (50, "index", "120716", "Nifty 50 Index", "#10B981", "5,5"),
-        (100, "", "120716", "Nifty 50 Index", "#10B981", "5,5") # Default fallback
+        (100, "", "120716", "Nifty 50 Index", "#10B981", "5,5")
     ]
     
     with engine.begin() as conn:
-        # Check if any rules exist
         try:
             count = conn.execute(text("SELECT COUNT(*) FROM mutual_fund_benchmark_rules")).scalar()
             if count == 0:

@@ -18,21 +18,21 @@ logger = logging.getLogger(__name__)
 class IngestionService:
     @staticmethod
     def log_event(db: Session, tenant_id: str, event_type: str, status: str, message: Optional[str] = None, data: Optional[dict] = None, device_id: Optional[str] = None):
-        with db_write_lock:
-            """
-            Log an ingestion event for auditing.
-            """
+        """
+        Log an ingestion event for auditing.
+        """
         logger.info(f"INGESTION EVENT: {event_type} | STATUS: {status} | MESSAGE: {message}")
-        event = ingestion_models.IngestionEvent(
-            tenant_id=tenant_id,
-            device_id=device_id,
-            event_type=event_type,
-            status=status,
-            message=message,
-            data_json=json.dumps(data) if data else None
-        )
-        db.add(event)
-        db.commit()
+        with db_write_lock:
+            event = ingestion_models.IngestionEvent(
+                tenant_id=tenant_id,
+                device_id=device_id,
+                event_type=event_type,
+                status=status,
+                message=message,
+                data_json=json.dumps(data) if data else None
+            )
+            db.add(event)
+            db.commit()
 
     @staticmethod
     def match_account(db: Session, tenant_id: str, mask: str) -> Optional[finance_models.Account]:
@@ -157,7 +157,7 @@ class IngestionService:
                             source=parsed.source or "AUTO"
                         )
                         db.add(snapshot)
-                        db.commit()
+                        db.flush()  # Use flush instead of commit to keep session alive for transaction creation
                         balance_synced = True
 
             txn_create = finance_schemas.TransactionCreate(
@@ -180,7 +180,8 @@ class IngestionService:
             try:
                 db_txn = TransactionService.create_transaction(
                     db, txn_create, tenant_id, 
-                    update_balance=not balance_synced
+                    update_balance=not balance_synced,
+                    commit=False # Bug 5 Fix: Defer commit until end of flow
                 )
                 db.commit()
 

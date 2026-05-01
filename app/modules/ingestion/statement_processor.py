@@ -27,6 +27,18 @@ from backend.app.modules.ingestion.utils.crypto import CryptoUtils
 
 logger = logging.getLogger(__name__)
 
+class _VaultMockFile:
+    """Helper class to mock FastAPI's UploadFile for internal vault uploads."""
+    def __init__(self, path, name):
+        self.file = open(path, "rb")
+        self.filename = name
+        self.content_type = "application/pdf"
+    
+    def close(self):
+        if self.file:
+            self.file.close()
+            self.file = None
+
 class StatementProcessor:
     
     @staticmethod
@@ -97,6 +109,44 @@ class StatementProcessor:
         """
         Extract attachments from an email and process if they look like statements.
         """
+        # Extract email body for context (Prefer HTML for better formatting)
+        email_body = ""
+        html_body = ""
+        plain_body = ""
+        
+        if msg.is_multipart():
+            for part in msg.walk():
+                content_type = part.get_content_type()
+                disposition = str(part.get("Content-Disposition"))
+                
+                if "attachment" in disposition:
+                    continue
+                    
+                if content_type == "text/plain":
+                    try:
+                        payload = part.get_payload(decode=True)
+                        charset = part.get_content_charset() or 'utf-8'
+                        plain_body = payload.decode(charset, errors='replace')
+                    except: pass
+                elif content_type == "text/html":
+                    try:
+                        payload = part.get_payload(decode=True)
+                        charset = part.get_content_charset() or 'utf-8'
+                        html_body = payload.decode(charset, errors='replace')
+                    except: pass
+        else:
+            try:
+                payload = msg.get_payload(decode=True)
+                charset = msg.get_content_charset() or 'utf-8'
+                body = payload.decode(charset, errors='replace')
+                if msg.get_content_type() == "text/html":
+                    html_body = body
+                else:
+                    plain_body = body
+            except: pass
+
+        email_body = html_body or plain_body
+
         for part in msg.walk():
             if part.get_content_maintype() == 'multipart':
                 continue
@@ -115,7 +165,12 @@ class StatementProcessor:
             # Process attachment
             file_bytes = part.get_payload(decode=True)
             sender = msg.get("From", "Unknown")
-            await StatementProcessor.process_statement_file(db, tenant_id, filename, file_bytes, source="EMAIL", email_sender=sender)
+            await StatementProcessor.process_statement_file(
+                db, tenant_id, filename, file_bytes, 
+                source="EMAIL", 
+                email_sender=sender,
+                email_body=email_body
+            )
 
     @staticmethod
     async def update_statement(db: Session, tenant_id: str, statement_id: str, update_data: Any) -> finance_models.Statement:
@@ -178,6 +233,28 @@ class StatementProcessor:
             
         # Trigger reconciliation if account link changed or was set
         if update_data.account_id and update_data.account_id != old_account_id:
+            # If it was FAILED due to missing account, try to re-process now that we have one
+            if statement.status == finance_models.StatementStatus.FAILED:
+                try:
+                    from backend.app.modules.vault.service import VaultService
+                    doc_meta = VaultService.get_document_by_id(db, statement.vault_id, tenant_id)
+                    if doc_meta and doc_meta.file_path and os.path.exists(doc_meta.file_path):
+                        with open(doc_meta.file_path, "rb") as f:
+                            doc_bytes = f.read()
+                        
+                        # Re-process with the explicit account_id
+                        # This will clear failure_reason and update transactions
+                        await StatementProcessor.process_statement_file(
+                            db, tenant_id, statement.filename, doc_bytes,
+                            source=statement.source.value,
+                            account_id=update_data.account_id,
+                            email_sender=statement.email_sender
+                        )
+                        # Re-fetch because process_statement_file commits
+                        db.refresh(statement)
+                except Exception as re_e:
+                    logger.error(f"Re-processing failed statement after account update failed: {re_e}")
+
             try:
                 StatementProcessor.reconcile_statement(db, statement_id)
             except Exception as e:
@@ -186,7 +263,7 @@ class StatementProcessor:
         return statement
 
     @staticmethod
-    async def process_statement_file(db: Session, tenant_id: str, filename: str, file_bytes: bytes, source: str = "MANUAL", account_id: Optional[str] = None, email_sender: Optional[str] = None, manual_password: Optional[str] = None):
+    async def process_statement_file(db: Session, tenant_id: str, filename: str, file_bytes: bytes, source: str = "MANUAL", account_id: Optional[str] = None, email_sender: Optional[str] = None, email_body: Optional[str] = None, manual_password: Optional[str] = None):
         """
         Main entry point for processing a statement file (PDF).
         Handles unlocking, parsing, and saving.
@@ -210,7 +287,7 @@ class StatementProcessor:
         if not unlocked_bytes:
             logger.warning(f"Failed to unlock statement: {filename}")
             # Create a PENDING statement record that requires manual password
-            return await StatementProcessor._create_pending_statement(db, tenant_id, filename, file_bytes, source, email_sender=email_sender)
+            return await StatementProcessor._create_pending_statement(db, tenant_id, filename, file_bytes, source, email_sender=email_sender, email_body=email_body)
 
         # 2. Heuristic Check: Is this actually a financial statement?
         # We only check if we successfully unlocked it.
@@ -223,90 +300,87 @@ class StatementProcessor:
         if password_used:
             StatementProcessor._cache_working_password(db, tenant_id, email_sender, password_used)
 
-        # 4. Call Parser Service
+        # 3. Save to Vault (ALWAYS do this before parsing so we have the file if parsing fails)
+        vault_doc = None
         try:
-            parser_result = ExternalParserService.parse_statement(tenant_id, unlocked_bytes, password=password_used)
-            if not parser_result or parser_result.get("status") != "success":
-                raise Exception(f"Parser failed: {parser_result.get('logs')}")
-                
-            transactions = parser_result.get("results", [])
-            if not transactions:
-                raise Exception("No transactions extracted from statement.")
-
-            # 3. Save to Vault
-            # We save the ORIGINAL (encrypted) file to the vault for security
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                 tmp.write(file_bytes)
                 tmp_path = tmp.name
                 
-            class MockFile:
-                def __init__(self, path, name):
-                    self.file = open(path, "rb")
-                    self.filename = name
-                    self.content_type = "application/pdf"
-            
-            mock_file = MockFile(tmp_path, filename)
-            
-            # Get an owner for the vault (default to first tenant user)
+            mock_file = _VaultMockFile(tmp_path, filename)
             owner = db.query(User).filter(User.tenant_id == tenant_id).first()
             owner_id = str(owner.id) if owner else None
             
-            # Now we can just await it since we are in an async method
             vault_doc = await VaultService.upload_document(
                 db, tenant_id, owner_id, mock_file, 
                 file_type=DocumentType.STATEMENT,
                 description=f"Automated statement ingestion from {source}"
             )
             
-            mock_file.file.close()
+            mock_file.close()
             if os.path.exists(tmp_path): os.remove(tmp_path)
+        except Exception as vault_err:
+            logger.error(f"Failed to save statement to vault: {vault_err}")
+            # We continue anyway, but statement won't have a vault_id
 
-            # 4. Create Statement and StatementTransactions
-            with db_write_lock:
-                # Deduce Account (Use mask from first transaction)
-                account = None
-                if account_id:
+        # 4. Call Parser Service
+        try:
+            parser_result = ExternalParserService.parse_statement(tenant_id, unlocked_bytes, password=password_used)
+            if not parser_result or parser_result.get("status") != "success":
+                raise ValueError(f"Parser failed: {parser_result.get('logs', 'Unknown error')}")
+                
+            transactions = parser_result.get("results", [])
+            if not transactions:
+                raise ValueError("No transactions extracted from statement.")
+        except Exception as parse_err:
+            logger.error(f"Parsing failed for {filename}: {parse_err}")
+            # Create a FAILED record so user knows why
+            statement = existing
+            if not statement:
+                statement = finance_models.Statement(
+                    tenant_id=tenant_id,
+                    filename=filename,
+                    source=finance_models.StatementSource(source),
+                    email_sender=email_sender
+                )
+                db.add(statement)
+            
+            statement.status = finance_models.StatementStatus.FAILED
+            statement.failure_reason = str(parse_err)
+            if vault_doc: statement.vault_id = vault_doc.id
+            statement.email_sender = email_sender or statement.email_sender
+            statement.email_body = email_body or statement.email_body
+            db.commit()
+            return statement
+
+        # 5. Create Statement and StatementTransactions
+        with db_write_lock:
+            # Deduce Account (Use mask from first transaction)
+            account = None
+            if account_id:
+                account = db.query(finance_models.Account).filter(
+                    finance_models.Account.id == account_id,
+                    finance_models.Account.tenant_id == tenant_id
+                ).first()
+            
+            if not account:
+                raw_mask = transactions[0]["transaction"]["account"]["mask"]
+                # Normalize: Strip EVERYTHING except digits to avoid hex/noise
+                clean_mask = re.sub(r'[^0-9]', '', raw_mask)
+                account_mask = clean_mask[-4:] if len(clean_mask) >= 4 else clean_mask
+                
+                if account_mask:
                     account = db.query(finance_models.Account).filter(
-                        finance_models.Account.id == account_id,
-                        finance_models.Account.tenant_id == tenant_id
+                        finance_models.Account.tenant_id == tenant_id,
+                        finance_models.Account.account_mask.endswith(account_mask)
                     ).first()
+            
+            if not account:
+                # BLOCK IMPORT: Account must exist.
+                raw_mask = transactions[0]["transaction"]["account"]["mask"]
+                failure_msg = f"Account ending in '{raw_mask}' not found for tenant. Link account first."
                 
-                if not account:
-                    raw_mask = transactions[0]["transaction"]["account"]["mask"]
-                    # Normalize: Strip EVERYTHING except digits to avoid hex/noise
-                    clean_mask = re.sub(r'[^0-9]', '', raw_mask)
-                    account_mask = clean_mask[-4:] if len(clean_mask) >= 4 else clean_mask
-                    
-                    if account_mask:
-                        account = db.query(finance_models.Account).filter(
-                            finance_models.Account.tenant_id == tenant_id,
-                            finance_models.Account.account_mask.endswith(account_mask)
-                        ).first()
-                
-                if not account:
-                    # BLOCK IMPORT: Account must exist.
-                    raw_mask = transactions[0]["transaction"]["account"]["mask"]
-                    failure_msg = f"Account ending in '{raw_mask}' not found for tenant. Link account first."
-                    
-                    # Update or Create a FAILED statement record
-                    statement = existing
-                    if not statement:
-                        statement = finance_models.Statement(
-                            tenant_id=tenant_id,
-                            filename=filename,
-                            source=finance_models.StatementSource(source),
-                            email_sender=email_sender
-                        )
-                        db.add(statement)
-                    
-                    statement.status = finance_models.StatementStatus.FAILED
-                    statement.failure_reason = failure_msg
-                    statement.email_sender = email_sender or statement.email_sender
-                    
-                    db.commit()
-                    raise ValueError(failure_msg)
-
-                # Use existing statement record if we have one
+                # Update or Create a FAILED statement record
                 statement = existing
                 if not statement:
                     statement = finance_models.Statement(
@@ -317,53 +391,67 @@ class StatementProcessor:
                     )
                     db.add(statement)
                 
-                statement.account_id = str(account.id)
-                statement.vault_id = vault_doc.id
-                statement.status = finance_models.StatementStatus.PARSED
+                statement.status = finance_models.StatementStatus.FAILED
+                statement.failure_reason = failure_msg
+                if vault_doc: statement.vault_id = vault_doc.id
                 statement.email_sender = email_sender or statement.email_sender
+                statement.email_body = email_body or statement.email_body
                 
                 db.commit()
-                db.refresh(statement)
+                return statement # Return the failed statement record
 
-                # Clear existing transactions if any (re-processing)
-                db.query(finance_models.StatementTransaction).filter(
-                    finance_models.StatementTransaction.statement_id == statement.id,
-                    finance_models.StatementTransaction.is_deleted == False
-                ).delete()
-                
-                from backend.app.modules.finance.services.transaction_service import TransactionService
-                for item in transactions:
-                    t = item["transaction"]
-                    
-                    # 1. Start with the parser's category
-                    cat_sug = t.get("category")
-                    
-                    # 2. Check rules engine to override if we have a better match
-                    rule_cat = TransactionService.get_suggested_category(db, tenant_id, t["description"], t.get("recipient", ""))
-                    if rule_cat and rule_cat != "Uncategorized":
-                        cat_sug = rule_cat
-                        
-                    st = finance_models.StatementTransaction(
-                        statement_id=statement.id,
-                        tenant_id=tenant_id,
-                        date=datetime.fromisoformat(t["date"]),
-                        amount=t["amount"],
-                        type=finance_models.TransactionType.CREDIT if t["type"] == "CREDIT" else finance_models.TransactionType.DEBIT,
-                        description=t["description"],
-                        ref_id=t.get("ref_id"),
-                        category_suggestion=cat_sug
-                    )
-                    db.add(st)
-                
-                db.commit()
-                
-            # 5. Run Reconciliation (Future)
-            StatementProcessor.reconcile_statement(db, statement.id)
-            return statement
+            # Use existing statement record if we have one
+            statement = existing
+            if not statement:
+                statement = finance_models.Statement(
+                    tenant_id=tenant_id,
+                    filename=filename,
+                    source=finance_models.StatementSource(source),
+                    email_sender=email_sender
+                )
+                db.add(statement)
             
-        except Exception as e:
-            logger.error(f"Error processing statement {filename}: {e}")
-            db.rollback()
+            statement.account_id = str(account.id)
+            if vault_doc: statement.vault_id = vault_doc.id
+            statement.status = finance_models.StatementStatus.PARSED
+            statement.failure_reason = None
+            statement.email_sender = email_sender or statement.email_sender
+            statement.email_body = email_body or statement.email_body
+            
+            db.commit()
+            db.refresh(statement)
+
+            # Clear existing transactions if any (re-processing)
+            db.query(finance_models.StatementTransaction).filter(
+                finance_models.StatementTransaction.statement_id == statement.id,
+                finance_models.StatementTransaction.is_deleted == False
+            ).delete()
+            
+            from backend.app.modules.finance.services.transaction_service import TransactionService
+            for item in transactions:
+                t = item["transaction"]
+                cat_sug = t.get("category")
+                rule_cat = TransactionService.get_suggested_category(db, tenant_id, t["description"], t.get("recipient", ""))
+                if rule_cat and rule_cat != "Uncategorized":
+                    cat_sug = rule_cat
+                    
+                st = finance_models.StatementTransaction(
+                    statement_id=statement.id,
+                    tenant_id=tenant_id,
+                    date=datetime.fromisoformat(t["date"]),
+                    amount=t["amount"],
+                    type=finance_models.TransactionType.CREDIT if t["type"] == "CREDIT" else finance_models.TransactionType.DEBIT,
+                    description=t["description"],
+                    ref_id=t.get("ref_id"),
+                    category_suggestion=cat_sug
+                )
+                db.add(st)
+            
+            db.commit()
+            
+        # 6. Run Reconciliation
+        StatementProcessor.reconcile_statement(db, statement.id)
+        return statement
 
     @staticmethod
     def _try_unlock_pdf(db: Session, tenant_id: str, file_bytes: bytes, email_sender: Optional[str] = None, manual_password: Optional[str] = None) -> Tuple[Optional[bytes], Optional[str]]:
@@ -501,8 +589,14 @@ class StatementProcessor:
         Uses pdfplumber to extract text from the first 2 pages.
         """
         keywords = ["statement", "transaction", "balance", "account", "credit", "debit", "summary", "invoice"]
+        
+        # Use a temporary file instead of BytesIO to avoid 'expected str, bytes or os.PathLike object' errors
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(pdf_bytes)
+            temp_path = tmp.name
+            
         try:
-            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            with pdfplumber.open(temp_path) as pdf:
                 # Check first 2 pages for performance
                 text = ""
                 for page in pdf.pages[:min(len(pdf.pages), 2)]:
@@ -514,6 +608,9 @@ class StatementProcessor:
         except Exception as e:
             logger.warning(f"Heuristic check failed: {e}. Defaulting to True.")
             return True # Fallback to true if parsing fails
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
     @staticmethod
     def _cache_working_password(db: Session, tenant_id: str, sender: Optional[str], password: str):
@@ -544,7 +641,7 @@ class StatementProcessor:
         db.commit()
 
     @staticmethod
-    async def _create_pending_statement(db: Session, tenant_id: str, filename: str, file_bytes: bytes, source: str, email_sender: Optional[str] = None) -> finance_models.Statement:
+    async def _create_pending_statement(db: Session, tenant_id: str, filename: str, file_bytes: bytes, source: str, email_sender: Optional[str] = None, email_body: Optional[str] = None) -> finance_models.Statement:
         """
         Save the statement even if it fails decryption, so the user can provide the password manually later.
         """
@@ -554,13 +651,7 @@ class StatementProcessor:
                 tmp.write(file_bytes)
                 tmp_path = tmp.name
                 
-            class MockFile:
-                def __init__(self, path, name):
-                    self.file = open(path, "rb")
-                    self.filename = name
-                    self.content_type = "application/pdf"
-            
-            mock_file = MockFile(tmp_path, filename)
+            mock_file = _VaultMockFile(tmp_path, filename)
             owner = db.query(User).filter(User.tenant_id == tenant_id).first()
             owner_id = str(owner.id) if owner else None
             
@@ -570,7 +661,7 @@ class StatementProcessor:
                 description=f"Pending statement (decryption failed) from {source}"
             )
             
-            mock_file.file.close()
+            mock_file.close()
             if os.path.exists(tmp_path): os.remove(tmp_path)
 
             # 2. Create or Update PENDING Statement record
@@ -585,6 +676,7 @@ class StatementProcessor:
                 statement.status = finance_models.StatementStatus.PENDING
                 statement.vault_id = vault_doc.id
                 statement.email_sender = email_sender or statement.email_sender
+                statement.email_body = email_body or statement.email_body
             else:
                 statement = finance_models.Statement(
                     tenant_id=tenant_id,
@@ -593,7 +685,8 @@ class StatementProcessor:
                     filename=filename,
                     status=finance_models.StatementStatus.PENDING,
                     source=finance_models.StatementSource(source),
-                    email_sender=email_sender
+                    email_sender=email_sender,
+                    email_body=email_body
                 )
                 db.add(statement)
             
@@ -605,7 +698,7 @@ class StatementProcessor:
             db.rollback()
 
     @staticmethod
-    async def retry_statement(db: Session, tenant_id: str, statement_id: str, password: str) -> Dict[str, Any]:
+    async def retry_statement(db: Session, tenant_id: str, statement_id: str, password: str, email_sender: Optional[str] = None) -> Dict[str, Any]:
         """
         Retry parsing a pending statement with a new password.
         Follows Ironclad Service Pattern.
@@ -636,13 +729,13 @@ class StatementProcessor:
                 db, tenant_id, 
                 statement.filename, doc_bytes, 
                 source=statement.source.value,
-                email_sender=statement.email_sender,
+                account_id=statement.account_id,
+                email_sender=email_sender or statement.email_sender,
                 manual_password=password
             )
             
             if new_statement and new_statement.status == finance_models.StatementStatus.PARSED:
                 # If process_statement_file updated the SAME record (idempotency), we are done.
-                # If it created a NEW record (unlikely now), we soft-delete the old one.
                 if new_statement.id != statement.id:
                     with db_write_lock:
                         statement.is_deleted = True
@@ -651,7 +744,9 @@ class StatementProcessor:
                 
                 return {"status": "success", "message": "Statement parsed successfully.", "statement_id": new_statement.id}
             else:
-                raise ValueError("Failed to decrypt with provided password.")
+                # Parsing failed or account matching failed
+                error_msg = new_statement.failure_reason if new_statement else "Unknown error during reprocessing."
+                raise ValueError(error_msg or "Failed to decrypt with provided password.")
         except Exception as e:
             raise e
 

@@ -744,6 +744,7 @@ class StatementRead(BaseModel):
     status: StatementStatus
     source: StatementSource
     email_sender: Optional[str] = None
+    email_body: Optional[str] = None
     created_at: datetime
     failure_reason: Optional[str] = None
     is_deleted: bool = False
