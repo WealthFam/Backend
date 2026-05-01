@@ -547,6 +547,53 @@ class GeminiProvider:
             logger.error(f"Gemini auto_parse_transaction error: {e}")
             return None
 
+    def generate_budget_recommendation(
+        self, config: ingestion_models.AIConfiguration, category: str, spending_data: str
+    ) -> Optional[Dict[str, Any]]:
+        if not config.api_key:
+            return None
+
+        client = genai.Client(api_key=config.api_key)
+        model_id = config.model_name or "gemini-1.5-flash"
+        if not model_id.startswith("models/"):
+            model_id = f"models/{model_id}"
+
+        prompt = (
+            "You are a Precision Financial Strategist. Recommend a monthly budget for the category below "
+            "based on historical spending and Indian societal norms (e.g., inflation, urban living costs, festivals).\n\n"
+            "CONTEXT:\n"
+            f"Category: {category}\n"
+            f"Historical Spending Data: {spending_data}\n\n"
+            "CRITICAL RULES:\n"
+            "1. Be mathematically aggressive yet realistic.\n"
+            "2. If it's a fixed cost (Rent/Bills), match the historical average.\n"
+            "3. If it's discretionary (Dining/Travel), recommend a 10-15% optimization unless trends show high inflation.\n"
+            "4. Return EXACTLY one JSON object with these keys:\n"
+            "   - 'amount': (number) The recommended monthly limit in INR.\n"
+            "   - 'title': (string) A punchy 2-3 word headline (e.g., 'Dining Optimization').\n"
+            "   - 'reason': (string) Exactly one concise sentence explaining the recommendation.\n"
+            "   - 'icon': (string) A relevant emoji.\n"
+            "   - 'color': (string) One of: primary, success, warning, error.\n"
+        )
+
+        try:
+            logger.info(f"Generating Gemini budget recommendation for {category}")
+            response = client.models.generate_content(
+                model=model_id,
+                contents=f"{prompt}\n\nRESPONSE FORMAT: Single JSON Object."
+            )
+            if not response or not response.text:
+                return None
+
+            text = response.text
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            if start != -1 and end != 0:
+                return json.loads(text[start:end])
+        except Exception as e:
+            logger.error(f"Gemini budget recommendation error: {e}")
+            return None
+
 class AIService:
     _providers = {
         "gemini": GeminiProvider()
@@ -1046,3 +1093,77 @@ class AIService:
             return alt
             
         return clean
+
+    @classmethod
+    def generate_budget_recommendation(cls, db: Session, tenant_id: str, category: str, spending_data: Dict[str, Any], force_refresh: bool = False) -> Optional[Dict[str, Any]]:
+        cache_type = f"budget_recommendation_{category}"
+        
+        # 1. Cache Check
+        if not force_refresh:
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == cache_type
+            ).first()
+            if cached and cached.content:
+                try:
+                    return json.loads(cached.content)
+                except: pass
+
+        # 2. Provider Fetch
+        try:
+            config = db.query(ingestion_models.AIConfiguration).filter(
+                ingestion_models.AIConfiguration.tenant_id == tenant_id,
+                ingestion_models.AIConfiguration.is_enabled == True
+            ).first()
+
+            if not config:
+                return None
+
+            provider = cls._providers.get(config.provider.lower())
+            if not provider or not hasattr(provider, 'generate_budget_recommendation'):
+                return None
+
+            data_str = json.dumps(spending_data, indent=2, default=str)
+            result = provider.generate_budget_recommendation(config, category, data_str)
+
+            if result:
+                with db_write_lock:
+                    try:
+                        cls.update_cache(db, tenant_id, cache_type, json.dumps(result))
+                        db.commit()
+                        return result
+                    except Exception as catch_err:
+                        db.rollback()
+                        logger.error(f"Error caching budget recommendation: {catch_err}")
+                        return result
+        except Exception as e:
+            logger.error(f"AI budget recommendation failed: {e}")
+            # Fallback to cache
+            cached = db.query(ingestion_models.AIInsightCache).filter(
+                ingestion_models.AIInsightCache.tenant_id == tenant_id,
+                ingestion_models.AIInsightCache.insight_type == cache_type
+            ).first()
+            if cached:
+                try: return json.loads(cached.content)
+                except: pass
+            
+        return None
+
+    @classmethod
+    def update_cache(cls, db: Session, tenant_id: str, insight_type: str, content: str):
+        """Helper to upsert AIInsightCache"""
+        cached = db.query(ingestion_models.AIInsightCache).filter(
+            ingestion_models.AIInsightCache.tenant_id == tenant_id,
+            ingestion_models.AIInsightCache.insight_type == insight_type
+        ).first()
+        
+        if cached:
+            cached.content = content
+            cached.updated_at = timezone.utcnow()
+        else:
+            new_cache = ingestion_models.AIInsightCache(
+                tenant_id=tenant_id,
+                insight_type=insight_type,
+                content=content
+            )
+            db.add(new_cache)

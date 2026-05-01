@@ -60,3 +60,12 @@ def get_ai_insights(
     db: Session = Depends(get_db)
 ):
     return BudgetService.get_ai_insights(db, str(current_user.tenant_id), year=year, month=month, user_id=user_id, force_refresh=force_refresh)
+    
+@router.get("/budgets/recommendation/{category}")
+def get_budget_recommendation(
+    category: str,
+    force_refresh: bool = False,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return BudgetService.get_budget_recommendation(db, str(current_user.tenant_id), category, force_refresh=force_refresh)
