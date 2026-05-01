@@ -150,4 +150,18 @@ def simulate_loan(
     if not result:
         raise HTTPException(status_code=404, detail="Loan not found")
     return result
+    
+@router.delete("/loans/{loan_id}")
+def delete_loan(
+    loan_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Soft-delete a loan.
+    """
+    success = service.delete_loan(db, loan_id, str(current_user.tenant_id))
+    if not success:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    return {"status": "success", "message": "Loan soft-deleted"}
 

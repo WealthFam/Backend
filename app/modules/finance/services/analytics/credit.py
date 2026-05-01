@@ -142,6 +142,7 @@ class CreditAnalytics:
                 # Unbilled spend = Purchases AFTER last statement (excluding hidden)
                 unbilled_raw = db.query(func.sum(models.Transaction.amount)).filter(
                     models.Transaction.account_id == str(card_id),
+                    models.Transaction.is_deleted == False,
                     models.Transaction.date > ls_midnight,
                     models.Transaction.amount < 0,
                     models.Transaction.exclude_from_reports == False
@@ -152,6 +153,7 @@ class CreditAnalytics:
                 # Payments made AFTER last statement
                 payments_raw = db.query(func.sum(models.Transaction.amount)).filter(
                     models.Transaction.account_id == str(card_id),
+                    models.Transaction.is_deleted == False,
                     models.Transaction.date > ls_midnight,
                     models.Transaction.amount > 0,
                     models.Transaction.exclude_from_reports == False
@@ -161,6 +163,7 @@ class CreditAnalytics:
                 # Last cycle spend = Purchases BETWEEN prev statement and last statement
                 last_cycle_raw = db.query(func.sum(models.Transaction.amount)).filter(
                     models.Transaction.account_id == str(card_id),
+                    models.Transaction.is_deleted == False,
                     models.Transaction.date > ps_midnight,
                     models.Transaction.date <= ls_midnight,
                     models.Transaction.amount < 0,
@@ -170,6 +173,7 @@ class CreditAnalytics:
                 # Last cycle payments
                 last_cycle_payments_raw = db.query(func.sum(models.Transaction.amount)).filter(
                     models.Transaction.account_id == str(card_id),
+                    models.Transaction.is_deleted == False,
                     models.Transaction.date > ps_midnight,
                     models.Transaction.date <= ls_midnight,
                     models.Transaction.amount > 0,

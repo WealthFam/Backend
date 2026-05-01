@@ -745,12 +745,16 @@ class StatementRead(BaseModel):
     source: StatementSource
     email_sender: Optional[str] = None
     created_at: datetime
+    failure_reason: Optional[str] = None
     is_deleted: bool = False
     deleted_at: Optional[datetime] = None
     
     transactions: List[StatementTransactionRead] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+class StatementUpdate(BaseModel):
+    account_id: Optional[str] = None
 
 class PaginatedStatementRead(BaseModel):
     items: List[StatementRead]

@@ -85,7 +85,8 @@ def get_statement_transactions(
     # Verify ownership
     statement = db.query(finance_models.Statement).filter(
         finance_models.Statement.id == statement_id,
-        finance_models.Statement.tenant_id == current_user.tenant_id
+        finance_models.Statement.tenant_id == current_user.tenant_id,
+        finance_models.Statement.is_deleted == False
     ).first()
     
     if not statement:
@@ -143,6 +144,25 @@ async def trigger_sync(
     background_tasks.add_task(StatementProcessor.sync_statements, db, str(current_user.tenant_id), since_date=parsed_date)
     return {"status": "success", "message": "Sync triggered in background."}
 
+@router.patch("/{statement_id}", response_model=finance_schemas.StatementRead)
+async def update_statement(
+    statement_id: str,
+    update_data: finance_schemas.StatementUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update statement details (e.g., re-link to a different account).
+    """
+    try:
+        return await StatementProcessor.update_statement(
+            db, str(current_user.tenant_id), statement_id, update_data
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update statement: {str(e)}")
+
 @router.post("/{statement_id}/reconcile")
 def manual_reconcile(
     statement_id: str,
@@ -184,7 +204,8 @@ def ingest_statement_transaction(
     """
     st_txn = db.query(finance_models.StatementTransaction).filter(
         finance_models.StatementTransaction.id == transaction_id,
-        finance_models.StatementTransaction.tenant_id == current_user.tenant_id
+        finance_models.StatementTransaction.tenant_id == current_user.tenant_id,
+        finance_models.StatementTransaction.is_deleted == False
     ).first()
     
     if not st_txn:

@@ -1067,19 +1067,11 @@ def label_message(
             account = IngestionService.match_account(db, str(current_user.tenant_id), payload.account_mask)
 
         if not account:
-            # Create auto-account if mask provided
-            mask = payload.account_mask or "0000"
-            account = finance_models.Account(
-                tenant_id=str(current_user.tenant_id),
-                name=f"Detected: (XX{mask[-4:]})",
-                type=finance_models.AccountType.BANK,
-                account_mask=mask[-4:],
-                is_verified=False,
-                balance=0.0
+            mask = payload.account_mask or "unknown"
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Account ending in '{mask[-4:]}' not found. Please link the account in settings first."
             )
-            db.add(account)
-            db.commit()
-            db.refresh(account)
 
         effective_ref = payload.ref_id
         if not effective_ref:

@@ -15,7 +15,10 @@ class HistoryAnalytics:
         if user_id in [None, "null", "undefined", ""]: user_id = None
         from backend.app.modules.finance.services.mutual_funds import MutualFundService
         
-        accounts_query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
+        accounts_query = db.query(models.Account).filter(
+            models.Account.tenant_id == tenant_id,
+            models.Account.is_deleted == False
+        )
         if user_id: accounts_query = accounts_query.filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         accounts = accounts_query.all()
         account_ids = [str(a.id) for a in accounts]
@@ -36,7 +39,11 @@ class HistoryAnalytics:
         transactions = db.query(
             models.Transaction.account_id, func.date(models.Transaction.date).label('d'),
             func.sum(models.Transaction.amount).label('total')
-        ).filter(models.Transaction.account_id.in_(account_ids), models.Transaction.date >= start_history - timedelta(days=1))\
+        ).filter(
+            models.Transaction.account_id.in_(account_ids),
+            models.Transaction.is_deleted == False,
+            models.Transaction.date >= start_history - timedelta(days=1)
+        )\
          .group_by(models.Transaction.account_id, func.date(models.Transaction.date)).all()
         
         txn_map = {}
@@ -82,7 +89,10 @@ class HistoryAnalytics:
     @staticmethod
     def get_budget_history(db: Session, tenant_id: str, months: int = 6, user_id: str = None, target_date: datetime = None, account_id: str = None):
         if user_id in [None, "null", "undefined", ""]: user_id = None
-        budgets = db.query(models.Budget).filter(models.Budget.tenant_id == tenant_id).all()
+        budgets = db.query(models.Budget).filter(
+            models.Budget.tenant_id == tenant_id,
+            models.Budget.is_deleted == False
+        ).all()
         categories = [b.category for b in budgets]
         
         if not categories:
@@ -118,6 +128,7 @@ class HistoryAnalytics:
             func.sum(models.Transaction.amount).label('total')
         ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
          .filter(models.Transaction.tenant_id == tenant_id, 
+                 models.Transaction.is_deleted == False,
                  models.Transaction.date >= start_range, 
                  models.Transaction.date <= end_range_full,
                  models.Transaction.amount < 0, 
@@ -126,7 +137,10 @@ class HistoryAnalytics:
         
         if user_id: 
             monthly_stats_query = monthly_stats_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                      .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                                      .filter(
+                                                          models.Account.is_deleted == False,
+                                                          or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                                      )
         
         if account_id:
             monthly_stats_query = monthly_stats_query.filter(models.Transaction.account_id == account_id)
@@ -225,12 +239,17 @@ class HistoryAnalytics:
             func.sum(models.Transaction.amount).label('total'),
             func.count(models.Transaction.id).label('count')
         ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
-         .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.date >= start_date,
+         .filter(models.Transaction.tenant_id == tenant_id, 
+                 models.Transaction.is_deleted == False,
+                 models.Transaction.date >= start_date,
                  models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False,
                  or_(models.Category.type == 'expense', models.Category.type == None))
         
         if user_id: query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                 .filter(
+                                     models.Account.is_deleted == False,
+                                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                 )
             
         results = query.group_by(func.date(models.Transaction.date)).all()
         return [{"date": str(row.day), "value": abs(float(row.total)), "count": int(row.count)} for row in results]
@@ -254,6 +273,7 @@ class HistoryAnalytics:
             models.Transaction.description
         ).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.latitude != None,
             models.Transaction.longitude != None,
             models.Transaction.amount < 0, # Usually want to heat up spending
@@ -266,7 +286,10 @@ class HistoryAnalytics:
             query = query.filter(models.Transaction.date <= end_date)
         if user_id:
             query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                         )
 
         results = query.all()
         
@@ -307,6 +330,7 @@ class HistoryAnalytics:
             func.sum(Transaction.amount).label('total')
         ).filter(
             Transaction.tenant_id == tenant_id,
+            Transaction.is_deleted == False,
             Transaction.amount < 0,
             Transaction.exclude_from_reports == False,
             Transaction.date >= start_date,
@@ -315,7 +339,10 @@ class HistoryAnalytics:
         
         if user_id:
             query = query.join(Account, Transaction.account_id == Account.id)\
-                         .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+                         .filter(
+                             Account.is_deleted == False,
+                             or_(Account.owner_id == user_id, Account.owner_id == None)
+                         )
             
         results = query.group_by(func.date(Transaction.date)).all()
         

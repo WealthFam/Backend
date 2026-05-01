@@ -110,6 +110,12 @@ class NotificationService:
         return NotificationService.broadcast_alert(db, tenant_id, title, body, category="BUDGET_ALERT")
 
     @staticmethod
+    def notify_statement_blocked(db: Session, tenant_id: str, filename: str, account_mask: str):
+        title = "🚫 Statement Blocked"
+        body = f"Statement '{filename}' could not be imported because account ending in '{account_mask}' does not exist. Please link the account first."
+        return NotificationService.broadcast_alert(db, tenant_id, title, body, category="CRITICAL", icon="🚫")
+
+    @staticmethod
     def check_all_alerts(db: Session, tenant_id: str):
         """Helper to run all scheduled checks for a tenant"""
         from backend.app.modules.finance.services.investment_goal_service import InvestmentGoalService

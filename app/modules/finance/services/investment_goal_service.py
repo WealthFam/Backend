@@ -19,7 +19,8 @@ class InvestmentGoalService:
             joinedload(models.InvestmentGoal.assets).joinedload(models.GoalAsset.linked_account),
             joinedload(models.InvestmentGoal.holdings).joinedload(models.MutualFundHolding.meta)
         ).filter(
-            models.InvestmentGoal.tenant_id == tenant_id
+            models.InvestmentGoal.tenant_id == tenant_id,
+            models.InvestmentGoal.is_deleted == False
         )
         
         if user_id:
@@ -34,7 +35,8 @@ class InvestmentGoalService:
                 joinedload(models.MutualFundHolding.meta)
             ).filter(
                 models.MutualFundHolding.goal_id == goal.id,
-                models.MutualFundHolding.tenant_id == tenant_id
+                models.MutualFundHolding.tenant_id == tenant_id,
+                models.MutualFundHolding.is_deleted == False
             ).all()
 
             mf_amount = Decimal('0.0')
@@ -72,7 +74,8 @@ class InvestmentGoalService:
                 asset_val = Decimal('0.0')
                 type_str = str(a.type.value if hasattr(a.type, 'value') else a.type).upper()
                 if type_str == "BANK_ACCOUNT" and a.linked_account:
-                    asset_val = Decimal(str(a.linked_account.balance or 0))
+                    if not a.linked_account.is_deleted:
+                        asset_val = Decimal(str(a.linked_account.balance or 0))
                 elif type_str == "MANUAL":
                     asset_val = Decimal(str(a.manual_amount or 0))
                 
@@ -129,7 +132,8 @@ class InvestmentGoalService:
     def update_goal(db: Session, goal_id: str, update: schemas.InvestmentGoalUpdate, tenant_id: str) -> Optional[models.InvestmentGoal]:
         db_goal = db.query(models.InvestmentGoal).filter(
             models.InvestmentGoal.id == goal_id,
-            models.InvestmentGoal.tenant_id == tenant_id
+            models.InvestmentGoal.tenant_id == tenant_id,
+            models.InvestmentGoal.is_deleted == False
         ).first()
         if not db_goal:
             return None
@@ -146,17 +150,17 @@ class InvestmentGoalService:
     def delete_goal(db: Session, goal_id: str, tenant_id: str) -> bool:
         db_goal = db.query(models.InvestmentGoal).filter(
             models.InvestmentGoal.id == goal_id,
-            models.InvestmentGoal.tenant_id == tenant_id
+            models.InvestmentGoal.tenant_id == tenant_id,
+            models.InvestmentGoal.is_deleted == False
         ).first()
         if not db_goal:
             return False
             
-        # Unlink holdings
-        db.query(models.MutualFundHolding).filter(
-            models.MutualFundHolding.goal_id == goal_id
-        ).update({models.MutualFundHolding.goal_id: None})
+        now = timezone.utcnow()
+        db_goal.is_deleted = True
+        db_goal.deleted_at = now
         
-        db.delete(db_goal)
+        # We don't unlink holdings/assets so they can be restored if the goal is restored
         db.commit()
         return True
 
@@ -171,7 +175,8 @@ class InvestmentGoalService:
         if actual_id.isdigit():
             holdings = db.query(models.MutualFundHolding).filter(
                 models.MutualFundHolding.scheme_code == actual_id,
-                models.MutualFundHolding.tenant_id == tenant_id
+                models.MutualFundHolding.tenant_id == tenant_id,
+                models.MutualFundHolding.is_deleted == False
             ).all()
             if not holdings:
                 return False
@@ -183,10 +188,21 @@ class InvestmentGoalService:
         # Otherwise treat as standard holding ID
         holding = db.query(models.MutualFundHolding).filter(
             models.MutualFundHolding.id == actual_id,
-            models.MutualFundHolding.tenant_id == tenant_id
+            models.MutualFundHolding.tenant_id == tenant_id,
+            models.MutualFundHolding.is_deleted == False
         ).first()
         if not holding:
             return False
+
+        # Validate target goal if provided
+        if goal_id:
+            goal = db.query(models.InvestmentGoal).filter(
+                models.InvestmentGoal.id == goal_id,
+                models.InvestmentGoal.tenant_id == tenant_id,
+                models.InvestmentGoal.is_deleted == False
+            ).first()
+            if not goal:
+                return False
             
         holding.goal_id = goal_id
         db.commit()
@@ -196,7 +212,8 @@ class InvestmentGoalService:
     def add_asset(db: Session, goal_id: str, asset: schemas.GoalAssetCreate, tenant_id: str) -> Optional[models.GoalAsset]:
         goal = db.query(models.InvestmentGoal).filter(
             models.InvestmentGoal.id == goal_id,
-            models.InvestmentGoal.tenant_id == tenant_id
+            models.InvestmentGoal.tenant_id == tenant_id,
+            models.InvestmentGoal.is_deleted == False
         ).first()
         if not goal:
             return None
@@ -204,6 +221,16 @@ class InvestmentGoalService:
         data = asset.model_dump()
         if data.get('linked_account_id') == '':
             data['linked_account_id'] = None
+
+        # Validate linked account if provided
+        if data.get('linked_account_id'):
+            acc = db.query(models.Account).filter(
+                models.Account.id == data['linked_account_id'],
+                models.Account.tenant_id == tenant_id,
+                models.Account.is_deleted == False
+            ).first()
+            if not acc:
+                raise ValueError("Linked account not found or is deleted")
 
         db_asset = models.GoalAsset(
             **data,

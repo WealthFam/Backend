@@ -161,7 +161,8 @@ class CategoryService:
         # Check transactions
         txn_count = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
-            models.Transaction.category == db_cat.name
+            models.Transaction.category == db_cat.name,
+            models.Transaction.is_deleted == False
         ).count()
         if txn_count > 0:
             reasons.append(f"Linked to {txn_count} existing transaction(s)")
@@ -201,7 +202,8 @@ class CategoryService:
         # 2. Check for active transactions (Ledger)
         has_txns = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
-            models.Transaction.category == db_cat.name
+            models.Transaction.category == db_cat.name,
+            models.Transaction.is_deleted == False
         ).first()
         if has_txns:
             raise HTTPException(status_code=400, detail="This category is linked to existing transactions. Please re-categorize them first.")
@@ -481,6 +483,7 @@ class CategoryService:
             func.count(models.Transaction.id).label("count")
         ).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.category != "Uncategorized",
             models.Transaction.category != None
         ).group_by(

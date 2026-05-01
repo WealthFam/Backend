@@ -75,27 +75,38 @@ class TransactionService:
                 if update_balance:
                     db_account = db.query(models.Account).filter(
                         models.Account.id == transaction.account_id,
-                        models.Account.tenant_id == tenant_id
+                        models.Account.tenant_id == tenant_id,
+                        models.Account.is_deleted == False
                     ).first()
                     
-                    if db_account:
-                        from backend.app.core import timezone
-                        anchor_date = timezone.ensure_utc(db_account.last_synced_at)
-                        txn_date = timezone.ensure_utc(db_transaction.date)
+                    if not db_account:
+                        # Safety: Check if it exists but is deleted to provide better error
+                        deleted_acc = db.query(models.Account).filter(
+                            models.Account.id == transaction.account_id,
+                            models.Account.tenant_id == tenant_id
+                        ).first()
+                        if deleted_acc:
+                            raise ValueError(f"Cannot create transaction for deleted account '{deleted_acc.name}'")
+                        else:
+                            raise ValueError("Account not found")
+
+                    from backend.app.core import timezone
+                    anchor_date = timezone.ensure_utc(db_account.last_synced_at)
+                    txn_date = timezone.ensure_utc(db_transaction.date)
+                    
+                    # HARDENING: Use >= to ensure transactions created at the same time as 
+                    # an initial balance sync (common in tests) are correctly applied.
+                    if not anchor_date or txn_date >= anchor_date:
+                        balance_change = 0
+                        if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
+                            balance_change = -db_transaction.amount
+                        else:
+                            balance_change = db_transaction.amount
                         
-                        # HARDENING: Use >= to ensure transactions created at the same time as 
-                        # an initial balance sync (common in tests) are correctly applied.
-                        if not anchor_date or txn_date >= anchor_date:
-                            balance_change = 0
-                            if db_account.type in [models.AccountType.LOAN, models.AccountType.CREDIT_CARD]:
-                                balance_change = -db_transaction.amount
-                            else:
-                                balance_change = db_transaction.amount
-                            
-                            if balance_change != 0:
-                                db.query(models.Account).filter(models.Account.id == db_account.id).update({
-                                    "balance": models.Account.balance + balance_change
-                                })
+                        if balance_change != 0:
+                            db.query(models.Account).filter(models.Account.id == db_account.id).update({
+                                "balance": models.Account.balance + balance_change
+                            })
                 
                 if commit:
                     db.commit()
@@ -147,11 +158,17 @@ class TransactionService:
 
         query = db.query(models.Transaction).options(
             joinedload(models.Transaction.account)
-        ).filter(models.Transaction.tenant_id == tenant_id)
+        ).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
+        )
         
         if user_role == "CHILD":
             query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(models.Account.type.notin_(["INVESTMENT", "CREDIT"]))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             models.Account.type.notin_(["INVESTMENT", "CREDIT"])
+                         )
 
         if account_id:
             query = query.filter(models.Transaction.account_id == account_id)
@@ -203,7 +220,10 @@ class TransactionService:
             # Filter by account ownership: show user's accounts OR shared accounts
             from sqlalchemy import or_
             query = query.outerjoin(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                         )
             
         sort_column = models.Transaction.date
         if sort_by == "amount":
@@ -234,6 +254,7 @@ class TransactionService:
 
         query = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.exclude_from_reports == False,
             or_(
                 models.Transaction.description.ilike(search_pattern),
@@ -242,7 +263,10 @@ class TransactionService:
         )
         if user_id:
             query = query.outerjoin(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                         )
 
         # Total count for pagination
         total_count = query.count()
@@ -313,11 +337,17 @@ class TransactionService:
         if category in [None, "null", "undefined", "", "OVERALL"]:
             category = None
             
-        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+        query = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
+        )
 
         if user_role == "CHILD":
             query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(models.Account.type.notin_(["INVESTMENT", "CREDIT"]))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             models.Account.type.notin_(["INVESTMENT", "CREDIT"])
+                         )
 
         if account_id:
             query = query.filter(models.Transaction.account_id == account_id)
@@ -326,7 +356,10 @@ class TransactionService:
             # Filter by account ownership: show user's accounts OR shared accounts
             from sqlalchemy import or_
             query = query.outerjoin(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                         )
 
         if start_date:
             query = query.filter(models.Transaction.date >= ensure_utc(start_date))
@@ -418,13 +451,17 @@ class TransactionService:
                             "balance": models.Account.balance + balance_change
                         })
                 
-                # 4. Perform Delete
-                # Since we fetched objects, we could delete them directly or use bulk delete.
-                # Bulk delete is still efficient for the deletion part.
+                # 4. Perform Soft Delete
+                from backend.app.core.timezone import utcnow
+                now = utcnow()
+                
                 count = db.query(models.Transaction).filter(
                     models.Transaction.id.in_(transaction_ids),
                     models.Transaction.tenant_id == tenant_id
-                ).delete(synchronize_session=False)
+                ).update({
+                    models.Transaction.is_deleted: True,
+                    models.Transaction.deleted_at: now
+                }, synchronize_session=False)
                 
                 db.commit()
                 return count
@@ -438,7 +475,8 @@ class TransactionService:
             try:
                 db_txn = db.query(models.Transaction).filter(
                     models.Transaction.id == txn_id,
-                    models.Transaction.tenant_id == tenant_id
+                    models.Transaction.tenant_id == tenant_id,
+                    models.Transaction.is_deleted == False
                 ).first()
             
                 if not db_txn:
@@ -462,18 +500,20 @@ class TransactionService:
                     if update_data.get('linked_transaction_id'):
                         # Unlink old if exists
                         if db_txn.linked_transaction_id:
-                             old_linked = db.query(models.Transaction).filter(
-                                 models.Transaction.id == db_txn.linked_transaction_id,
-                                 models.Transaction.tenant_id == tenant_id
-                             ).first()
-                             if old_linked:
+                            old_linked = db.query(models.Transaction).filter(
+                                models.Transaction.id == db_txn.linked_transaction_id,
+                                models.Transaction.tenant_id == tenant_id,
+                                models.Transaction.is_deleted == False
+                            ).first()
+                            if old_linked:
                                 old_linked.linked_transaction_id = None
                                 db.add(old_linked)
         
                         target_id = update_data['linked_transaction_id']
                         target_txn = db.query(models.Transaction).filter(
                             models.Transaction.id == target_id,
-                            models.Transaction.tenant_id == tenant_id
+                            models.Transaction.tenant_id == tenant_id,
+                            models.Transaction.is_deleted == False
                         ).first()
                         
                         if target_txn:
@@ -493,12 +533,13 @@ class TransactionService:
                     elif to_account_id:
                         # Auto-create target if account provided
                         if db_txn.linked_transaction_id:
-                             old_linked = db.query(models.Transaction).filter(
-                                 models.Transaction.id == db_txn.linked_transaction_id,
-                                 models.Transaction.tenant_id == tenant_id
-                             ).first()
-                             if old_linked: 
-                                 db.delete(old_linked)
+                            old_linked = db.query(models.Transaction).filter(
+                                models.Transaction.id == db_txn.linked_transaction_id,
+                                models.Transaction.tenant_id == tenant_id,
+                                models.Transaction.is_deleted == False
+                            ).first()
+                            if old_linked: 
+                                db.delete(old_linked)
                         
                         import uuid
                         target_txn_id = str(uuid.uuid4())
@@ -526,7 +567,10 @@ class TransactionService:
                         update_data.pop('linked_transaction_id', None)
 
                         # UPDATE TARGET ACCOUNT BALANCE
-                        target_acc = db.query(models.Account).filter(models.Account.id == to_account_id).first()
+                        target_acc = db.query(models.Account).filter(
+                            models.Account.id == to_account_id,
+                            models.Account.is_deleted == False
+                        ).first()
                         if target_acc:
                             from backend.app.core import timezone
                             t_anchor = timezone.ensure_utc(target_acc.last_synced_at)
@@ -546,7 +590,10 @@ class TransactionService:
                 elif is_transfer_update is False:
                     db_txn.is_transfer = False
                     if db_txn.linked_transaction_id:
-                        linked = db.query(models.Transaction).filter(models.Transaction.id == db_txn.linked_transaction_id).first()
+                        linked = db.query(models.Transaction).filter(
+                            models.Transaction.id == db_txn.linked_transaction_id,
+                            models.Transaction.is_deleted == False
+                        ).first()
                         if linked:
                             linked.linked_transaction_id = None
                             linked.is_transfer = False 
@@ -578,7 +625,11 @@ class TransactionService:
                 
                 if has_important_change:
                     # A. Revert Old Balance Contribution
-                    old_acc = db.query(models.Account).filter(models.Account.id == old_account_id).first()
+                    old_acc = db.query(models.Account).filter(
+                        models.Account.id == old_account_id,
+                        models.Account.tenant_id == tenant_id,
+                        models.Account.is_deleted == False
+                    ).first()
                     if old_acc:
                         old_anchor = timezone.ensure_utc(old_acc.last_synced_at)
                         old_txn_date = timezone.ensure_utc(old_date)
@@ -596,7 +647,10 @@ class TransactionService:
                                 })
                     
                     # B. Apply New Balance Contribution
-                    new_acc = db.query(models.Account).filter(models.Account.id == db_txn.account_id).first()
+                    new_acc = db.query(models.Account).filter(
+                        models.Account.id == db_txn.account_id,
+                        models.Account.is_deleted == False
+                    ).first()
                     if new_acc:
                         new_anchor = timezone.ensure_utc(new_acc.last_synced_at)
                         new_txn_date = timezone.ensure_utc(db_txn.date)
@@ -663,7 +717,8 @@ class TransactionService:
             models.Transaction.date >= start_date,
             models.Transaction.date <= end_date,
             models.Transaction.amount.between(min_amt, max_amt),
-            models.Transaction.linked_transaction_id == None # Not already linked
+            models.Transaction.linked_transaction_id == None, # Not already linked
+            models.Transaction.is_deleted == False
         )
 
         return query.order_by(models.Transaction.date.desc()).limit(10).all()
@@ -802,7 +857,8 @@ class TransactionService:
                 # 2. Link to existing
                 target_txn = db.query(models.Transaction).filter(
                     models.Transaction.id == linked_transaction_id_override,
-                    models.Transaction.tenant_id == tenant_id
+                    models.Transaction.tenant_id == tenant_id,
+                    models.Transaction.is_deleted == False
                 ).first()
                 
                 if target_txn:
@@ -906,7 +962,8 @@ class TransactionService:
     ) -> dict:
         db_txn = db.query(models.Transaction).filter(
             models.Transaction.id == txn_id,
-            models.Transaction.tenant_id == tenant_id
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
         ).first()
         
         if not db_txn:
@@ -964,6 +1021,7 @@ class TransactionService:
                     query = db.query(models.Transaction).filter(
                         models.Transaction.tenant_id == tenant_id,
                         models.Transaction.id != txn_id,
+                        models.Transaction.is_deleted == False,
                         (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)
                     )
                     
@@ -1018,6 +1076,7 @@ class TransactionService:
         pattern = f"%{old_name}%"
         query = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             or_(
                 models.Transaction.recipient.ilike(pattern),
                 models.Transaction.description.ilike(pattern)

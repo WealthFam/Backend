@@ -60,7 +60,8 @@ class TransactionDeduplicator:
                 finance_models.Transaction.tenant_id == tenant_id,
                 finance_models.Transaction.account_id == account_id,
                 finance_models.Transaction.amount == amount,
-                func.date(finance_models.Transaction.date) == date.date()
+                func.date(finance_models.Transaction.date) == date.date(),
+                finance_models.Transaction.is_deleted == False
             )
         else:
             # Precise timestamp match
@@ -68,7 +69,8 @@ class TransactionDeduplicator:
                 finance_models.Transaction.tenant_id == tenant_id,
                 finance_models.Transaction.account_id == account_id,
                 finance_models.Transaction.amount == amount,
-                finance_models.Transaction.date == date
+                finance_models.Transaction.date == date,
+                finance_models.Transaction.is_deleted == False
             )
         
         # Match Description OR Recipient
@@ -129,7 +131,8 @@ class TransactionDeduplicator:
             # Confirmed
             existing = db.query(finance_models.Transaction).filter(
                 finance_models.Transaction.tenant_id == tenant_id,
-                or_(finance_models.Transaction.external_id == ref_id, finance_models.Transaction.external_id == external_id)
+                or_(finance_models.Transaction.external_id == ref_id, finance_models.Transaction.external_id == external_id),
+                finance_models.Transaction.is_deleted == False
             ).first()
             if existing: return True, f"Ref ID {ref_id} already confirmed", str(existing.id)
             
@@ -150,7 +153,8 @@ class TransactionDeduplicator:
         
         existing_hash = db.query(finance_models.Transaction).filter(
             finance_models.Transaction.tenant_id == tenant_id,
-            finance_models.Transaction.content_hash == content_hash
+            finance_models.Transaction.content_hash == content_hash,
+            finance_models.Transaction.is_deleted == False
         ).first()
         if existing_hash: return True, "Standardized field-hash match", str(existing_hash.id)
 

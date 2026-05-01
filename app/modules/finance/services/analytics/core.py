@@ -22,7 +22,10 @@ class CoreAnalytics:
             end_date = timezone.ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
         
         # Accounts & Net Worth (Accounts are filtered by owner_id if user_id is provided)
-        accounts_query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
+        accounts_query = db.query(models.Account).filter(
+            models.Account.tenant_id == tenant_id,
+            models.Account.is_deleted == False
+        )
         if user_id:
             accounts_query = accounts_query.filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         
@@ -90,6 +93,7 @@ class CoreAnalytics:
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
+                models.Transaction.is_deleted == False,
                 models.Transaction.amount < 0,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= start_date,
@@ -98,10 +102,16 @@ class CoreAnalytics:
         if account_id: spending_base_query = spending_base_query.filter(models.Transaction.account_id == account_id)
         if user_id:
             spending_base_query = spending_base_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                           .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                                           .filter(
+                                                               models.Account.is_deleted == False,
+                                                               or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                                           )
         if user_role == "CHILD":
             spending_base_query = spending_base_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                           .filter(models.Account.type.notin_(["INVESTMENT", "CREDIT"]))
+                                                           .filter(
+                                                               models.Account.is_deleted == False,
+                                                               models.Account.type.notin_(["INVESTMENT", "CREDIT"])
+                                                           )
         
         # Expenses = type 'expense' or None (uncategorized)
         monthly_spending = abs(Decimal(spending_base_query.filter(
@@ -124,6 +134,7 @@ class CoreAnalytics:
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
+                models.Transaction.is_deleted == False,
                 models.Transaction.amount < 0,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= last_month_start,
@@ -133,7 +144,10 @@ class CoreAnalytics:
         if account_id: last_month_query = last_month_query.filter(models.Transaction.account_id == account_id)
         if user_id:
             last_month_query = last_month_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                                 .filter(
+                                                     models.Account.is_deleted == False,
+                                                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                                 )
         last_month_spending = abs(Decimal(last_month_query.scalar() or 0))
 
         # Last month investment comparison
@@ -141,6 +155,7 @@ class CoreAnalytics:
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
+                models.Transaction.is_deleted == False,
                 models.Transaction.amount < 0,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= last_month_start,
@@ -150,7 +165,10 @@ class CoreAnalytics:
         if account_id: last_month_invest_query = last_month_invest_query.filter(models.Transaction.account_id == account_id)
         if user_id:
             last_month_invest_query = last_month_invest_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                             .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                                             .filter(
+                                                                 models.Account.is_deleted == False,
+                                                                 or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                                             )
         
         last_month_investment = abs(Decimal(last_month_invest_query.scalar() or 0))
 
@@ -159,6 +177,7 @@ class CoreAnalytics:
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
+                models.Transaction.is_deleted == False,
                 models.Transaction.amount < 0,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date,
@@ -167,13 +186,17 @@ class CoreAnalytics:
         if account_id: unfiltered_spending_query = unfiltered_spending_query.filter(models.Transaction.account_id == account_id)
         if user_id:
             unfiltered_spending_query = unfiltered_spending_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                                 .filter(
+                                                     models.Account.is_deleted == False,
+                                                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                                 )
         unfiltered_spending = abs(Decimal(unfiltered_spending_query.scalar() or 0))
 
         unfiltered_investment_query = db.query(func.sum(models.Transaction.amount))\
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
+                models.Transaction.is_deleted == False,
                 models.Transaction.amount < 0,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date,
@@ -182,7 +205,10 @@ class CoreAnalytics:
         if account_id: unfiltered_investment_query = unfiltered_investment_query.filter(models.Transaction.account_id == account_id)
         if user_id:
             unfiltered_investment_query = unfiltered_investment_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                                 .filter(
+                                                     models.Account.is_deleted == False,
+                                                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                                 )
         unfiltered_investment = abs(Decimal(unfiltered_investment_query.scalar() or 0))
 
         # Monthly Income
@@ -190,6 +216,7 @@ class CoreAnalytics:
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount > 0,
+                models.Transaction.is_deleted == False,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date
@@ -197,7 +224,10 @@ class CoreAnalytics:
         if account_id: monthly_income_query = monthly_income_query.filter(models.Transaction.account_id == account_id)
         if user_id:
             monthly_income_query = monthly_income_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                                 .filter(
+                                                     models.Account.is_deleted == False,
+                                                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                                 )
         monthly_income = Decimal(monthly_income_query.scalar() or 0)
         
         # Unfiltered Income (including hidden for internal metrics like Savings Rate)
@@ -205,6 +235,7 @@ class CoreAnalytics:
             .filter(
                 models.Transaction.tenant_id == tenant_id,
                 models.Transaction.amount > 0,
+                models.Transaction.is_deleted == False,
                 models.Transaction.exclude_from_reports == False,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date
@@ -212,11 +243,17 @@ class CoreAnalytics:
         if account_id: unfiltered_income_query = unfiltered_income_query.filter(models.Transaction.account_id == account_id)
         if user_id:
             unfiltered_income_query = unfiltered_income_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                                 .filter(
+                                                     models.Account.is_deleted == False,
+                                                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                                 )
         unfiltered_income = Decimal(unfiltered_income_query.scalar() or 0)
         
         # Budget Health
-        all_budgets = db.query(models.Budget).filter(models.Budget.tenant_id == tenant_id).all()
+        all_budgets = db.query(models.Budget).filter(
+            models.Budget.tenant_id == tenant_id,
+            models.Budget.is_deleted == False
+        ).all()
         overall = next((b for b in all_budgets if b.category == 'OVERALL'), None)
         total_budget_limit = Decimal(overall.amount_limit) if overall else sum(Decimal(b.amount_limit) for b in all_budgets)
         budget_health = {
@@ -260,7 +297,7 @@ class CoreAnalytics:
 
         # Top Category
         top_cat_query = db.query(models.Transaction.category, func.sum(models.Transaction.amount).label('total'))\
-            .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False, 
+            .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.is_deleted == False, models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False, 
                     models.Transaction.date >= start_date, models.Transaction.date <= end_date)\
             .group_by(models.Transaction.category).order_by(func.sum(models.Transaction.amount).asc()).first()
         top_spending_category = {"name": top_cat_query[0] or "Uncategorized", "amount": abs(Decimal(top_cat_query[1]))} if top_cat_query else None
@@ -309,14 +346,14 @@ class CoreAnalytics:
         if is_current_month:
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             today_query = db.query(func.sum(models.Transaction.amount)).filter(
-                models.Transaction.tenant_id == tenant_id, models.Transaction.date >= today_start,
+                models.Transaction.tenant_id == tenant_id, models.Transaction.is_deleted == False, models.Transaction.date >= today_start,
                 models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
             )
             today_total = abs(float(today_query.scalar() or 0))
             
             yesterday_start = today_start - timedelta(days=1)
             yesterday_query = db.query(func.sum(models.Transaction.amount)).filter(
-                models.Transaction.tenant_id == tenant_id, models.Transaction.date >= yesterday_start,
+                models.Transaction.tenant_id == tenant_id, models.Transaction.is_deleted == False, models.Transaction.date >= yesterday_start,
                 models.Transaction.date < today_start, models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
             )
             yesterday_total = abs(float(yesterday_query.scalar() or 0))
@@ -374,17 +411,17 @@ class CoreAnalytics:
         month_start = timezone.ensure_utc(datetime(now.year, now.month, 1))
         
         today_total = abs(Decimal(db.query(func.sum(models.Transaction.amount)).filter(
-            models.Transaction.tenant_id == tenant_id, models.Transaction.date >= today_start,
+            models.Transaction.tenant_id == tenant_id, models.Transaction.is_deleted == False, models.Transaction.date >= today_start,
             models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
         ).scalar() or 0))
         
         monthly_total = abs(Decimal(db.query(func.sum(models.Transaction.amount)).filter(
-            models.Transaction.tenant_id == tenant_id, models.Transaction.date >= month_start,
+            models.Transaction.tenant_id == tenant_id, models.Transaction.is_deleted == False, models.Transaction.date >= month_start,
             models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
         ).scalar() or 0))
         
         latest_txn = db.query(models.Transaction).filter(
-            models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
+            models.Transaction.tenant_id == tenant_id, models.Transaction.is_deleted == False, models.Transaction.amount < 0, models.Transaction.exclude_from_reports == False
         ).order_by(models.Transaction.date.desc()).first()
         
         budgets = BudgetService.get_budgets(db, tenant_id, now.year, now.month)
@@ -399,13 +436,21 @@ class CoreAnalytics:
     @staticmethod
     def get_balance_forecast(db: Session, tenant_id: str, days: int = 30, account_id: str = None, user_id: str = None):
         if user_id in [None, "null", "undefined", ""]: user_id = None
-        liquid_accounts = db.query(models.Account).filter(models.Account.tenant_id == tenant_id, models.Account.type.in_(['BANK', 'WALLET']))
+        liquid_accounts = db.query(models.Account).filter(
+            models.Account.tenant_id == tenant_id, 
+            models.Account.is_deleted == False,
+            models.Account.type.in_(['BANK', 'WALLET'])
+        )
         if account_id: liquid_accounts = liquid_accounts.filter(models.Account.id == account_id)
         if user_id: liquid_accounts = liquid_accounts.filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
         liquid_accounts = liquid_accounts.all()
         
         current_balance = sum(Decimal(acc.balance or 0) for acc in liquid_accounts)
-        recs = db.query(models.RecurringTransaction).filter(models.RecurringTransaction.tenant_id == tenant_id, models.RecurringTransaction.is_active == True).all()
+        recs = db.query(models.RecurringTransaction).filter(
+            models.RecurringTransaction.tenant_id == tenant_id, 
+            models.RecurringTransaction.is_active == True,
+            models.RecurringTransaction.is_deleted == False
+        ).all()
         
         forecast = []
         today = timezone.utcnow().date()

@@ -262,7 +262,10 @@ class RuleExecutor:
         affected_count = 0
         with db_write_lock:
             try:
-                query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+                query = db.query(models.Transaction).filter(
+                    models.Transaction.tenant_id == tenant_id,
+                    models.Transaction.is_deleted == False
+                )
                 if not override:
                     query = query.filter(
                         (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)
@@ -332,7 +335,10 @@ class RuleExecutor:
             return 0
 
         # Confirmed Transactions
-        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+        query = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
+        )
         if only_uncategorized:
             query = query.filter(
                 (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)
@@ -364,7 +370,10 @@ class RuleExecutor:
             return []
 
         # Confirmed
-        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+        query = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
+        )
         if only_uncategorized:
             query = query.filter(
                 (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)

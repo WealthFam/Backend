@@ -70,7 +70,11 @@ class LoanService:
     def record_repayment(self, db: Session, loan_id: str, repayment: schemas.LoanRepayment, tenant_id: str) -> schemas.LoanRead:
         from backend.app.modules.finance.services.transaction_service import TransactionService
         
-        loan = db.query(Loan).filter(Loan.id == loan_id, Loan.tenant_id == tenant_id).first()
+        loan = db.query(Loan).filter(
+            Loan.id == loan_id, 
+            Loan.tenant_id == tenant_id,
+            Loan.is_deleted == False
+        ).first()
         if not loan:
             raise ValueError("Loan not found")
             
@@ -108,11 +112,17 @@ class LoanService:
         db.add(source_txn)
         db.commit()
         
-        account = db.query(Account).filter(Account.id == loan.account_id).first()
+        account = db.query(Account).filter(
+            Account.id == loan.account_id,
+            Account.is_deleted == False
+        ).first()
         return self._map_to_read_schema(loan, account)
 
     def get_loans(self, db: Session, tenant_id: str, user_id: str = None) -> list[schemas.LoanRead]:
-        query = db.query(Loan).filter(Loan.tenant_id == tenant_id)
+        query = db.query(Loan).filter(
+            Loan.tenant_id == tenant_id,
+            Loan.is_deleted == False
+        )
         
         if user_id:
             # Filter by account ownership (user's loans or shared loans)
@@ -124,17 +134,27 @@ class LoanService:
         results = []
         for loan in loans:
             # Fetch associated account to get current balance
-            account = db.query(Account).filter(Account.id == loan.account_id).first()
+            account = db.query(Account).filter(
+                Account.id == loan.account_id,
+                Account.is_deleted == False
+            ).first()
             if account:
                 results.append(self._map_to_read_schema(loan, account))
         return results
 
     def get_loan_details(self, db: Session, loan_id: str, tenant_id: str) -> schemas.LoanDetail:
-        loan = db.query(Loan).filter(Loan.id == loan_id, Loan.tenant_id == tenant_id).first()
+        loan = db.query(Loan).filter(
+            Loan.id == loan_id, 
+            Loan.tenant_id == tenant_id,
+            Loan.is_deleted == False
+        ).first()
         if not loan:
             return None
         
-        account = db.query(Account).filter(Account.id == loan.account_id).first()
+        account = db.query(Account).filter(
+            Account.id == loan.account_id,
+            Account.is_deleted == False
+        ).first()
         base_read = self._map_to_read_schema(loan, account)
         
         # Generate Amortization Schedule
@@ -149,11 +169,18 @@ class LoanService:
         self, db: Session, loan_id: str, tenant_id: str
     ) -> Optional[Dict[str, Any]]:
         """Runs strategic prepayment simulations against the current outstanding balance."""
-        loan = db.query(Loan).filter(Loan.id == loan_id, Loan.tenant_id == tenant_id).first()
+        loan = db.query(Loan).filter(
+            Loan.id == loan_id, 
+            Loan.tenant_id == tenant_id,
+            Loan.is_deleted == False
+        ).first()
         if not loan:
             return None
 
-        account = db.query(Account).filter(Account.id == loan.account_id).first()
+        account = db.query(Account).filter(
+            Account.id == loan.account_id,
+            Account.is_deleted == False
+        ).first()
         return financial_math.run_loan_scenarios(
             principal=Decimal(str(account.balance)),
             annual_interest_rate=Decimal(str(loan.interest_rate)),
@@ -165,11 +192,18 @@ class LoanService:
         extra_monthly: Decimal, one_time: Decimal
     ) -> Optional[Dict[str, Any]]:
         """Runs a custom prepayment simulation and calculates savings."""
-        loan = db.query(Loan).filter(Loan.id == loan_id, Loan.tenant_id == tenant_id).first()
+        loan = db.query(Loan).filter(
+            Loan.id == loan_id, 
+            Loan.tenant_id == tenant_id,
+            Loan.is_deleted == False
+        ).first()
         if not loan:
             return None
 
-        account = db.query(Account).filter(Account.id == loan.account_id).first()
+        account = db.query(Account).filter(
+            Account.id == loan.account_id,
+            Account.is_deleted == False
+        ).first()
         principal = Decimal(str(account.balance))
         rate = Decimal(str(loan.interest_rate))
         emi = Decimal(str(loan.emi_amount))
@@ -227,6 +261,7 @@ class LoanService:
         # Fetch actual transactions to determine exact status
         paid_emi_txns = db.query(Transaction).filter(
             Transaction.loan_id == loan.id,
+            Transaction.is_deleted == False,
             Transaction.is_emi == True,
             Transaction.type == TransactionType.CREDIT # Repayment entering the loan account
         ).all()
@@ -278,3 +313,36 @@ class LoanService:
                 break
                 
         return schedule
+
+    def delete_loan(self, db: Session, loan_id: str, tenant_id: str) -> bool:
+        """Soft-deletes a loan and optionally its associated account."""
+        loan = db.query(Loan).filter(
+            Loan.id == loan_id, 
+            Loan.tenant_id == tenant_id,
+            Loan.is_deleted == False
+        ).first()
+        
+        if not loan:
+            return False
+            
+        with db.begin_nested():
+            now = timezone.utcnow()
+            loan.is_deleted = True
+            loan.deleted_at = now
+            
+            # If the associated account is a LOAN account, soft-delete it too
+            if loan.account and loan.account.type == AccountType.LOAN:
+                loan.account.is_deleted = True
+                loan.account.deleted_at = now
+                
+                # Soft-delete its transactions
+                db.query(Transaction).filter(
+                    Transaction.account_id == loan.account_id,
+                    Transaction.is_deleted == False
+                ).update({
+                    Transaction.is_deleted: True,
+                    Transaction.deleted_at: now
+                }, synchronize_session=False)
+        
+        db.commit()
+        return True

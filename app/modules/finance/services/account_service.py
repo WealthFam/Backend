@@ -70,7 +70,10 @@ class AccountService:
         if owner_id in [None, "null", "undefined", ""]:
             owner_id = None
         
-        query = db.query(models.Account).filter(models.Account.tenant_id == tenant_id)
+        query = db.query(models.Account).filter(
+            models.Account.tenant_id == tenant_id,
+            models.Account.is_deleted == False
+        )
         
         # Only filter out unverified accounts if not explicitly requested
         if not include_unverified:
@@ -119,7 +122,8 @@ class AccountService:
     def update_account(db: Session, account_id: str, account_update: schemas.AccountUpdate, tenant_id: str) -> Optional[models.Account]:
         db_account = db.query(models.Account).filter(
             models.Account.id == account_id,
-            models.Account.tenant_id == tenant_id
+            models.Account.tenant_id == tenant_id,
+            models.Account.is_deleted == False
         ).first()
         
         if not db_account:
@@ -157,19 +161,21 @@ class AccountService:
     def delete_account(db: Session, account_id: str, tenant_id: str) -> bool:
         db_account = db.query(models.Account).filter(
             models.Account.id == account_id,
-            models.Account.tenant_id == tenant_id
+            models.Account.tenant_id == tenant_id,
+            models.Account.is_deleted == False
         ).first()
 
         if not db_account:
             return False
 
         # ── USER Safeguard: Check for higher-level dependencies ─────────────────────
-        
-        # 1. Check if account is used in any Investment Goals
+        # Only check against ACTIVE (non-deleted) goals
         linked_goal = db.query(models.InvestmentGoal.name)\
             .join(models.GoalAsset, models.GoalAsset.goal_id == models.InvestmentGoal.id)\
-            .filter(models.GoalAsset.linked_account_id == account_id)\
-            .first()
+            .filter(
+                models.GoalAsset.linked_account_id == account_id,
+                models.InvestmentGoal.is_deleted == False
+            ).first()
             
         if linked_goal:
             raise ValueError(
@@ -178,71 +184,73 @@ class AccountService:
             )
 
         # 2. Check if account has an associated Loan (is a loan account itself)
-        if db_account.type == models.AccountType.LOAN or db_account.loan_details:
+        if (db_account.type == models.AccountType.LOAN or db_account.loan_details) and \
+           (db_account.loan_details and not db_account.loan_details.is_deleted):
              raise ValueError(
                 f"Cannot delete account '{db_account.name}' because it contains an active loan. "
                 "Please close or delete the loan details first."
             )
 
-        # 3. Check if account is used as an EMI source for other loans
-        linked_loan_id = db.query(models.Loan.id).filter(models.Loan.bank_account_id == account_id).first()
-        if linked_loan_id:
+        # 3. Check if account is used as an EMI source for other active loans
+        linked_loan = db.query(models.Loan).filter(
+            models.Loan.bank_account_id == account_id,
+            models.Loan.is_deleted == False
+        ).first()
+        if linked_loan:
             raise ValueError(
-                f"Cannot delete account '{db_account.name}' because it is used for EMI deductions for a loan. "
+                f"Cannot delete account '{db_account.name}' because it is used for EMI deductions for loan '{linked_loan.name}'. "
                 "Please update the loan's bank account first."
             )
 
         with db_write_lock:
             try:
-                # ── Phase 1: Explicit Cleanup of children + COMMIT ───────────────────
-                # This satisfy DuckDB's requirement that FK references must be 
-                # committed-gone before the parent record is deleted.
-
-                # 1. Nullify linked_transaction_id on transfer twins in OTHER accounts
-                db.execute(
-                    models.Transaction.__table__.update()
-                    .where(models.Transaction.linked_transaction_id.in_(
-                        db.query(models.Transaction.id).filter(models.Transaction.account_id == account_id)
-                    ))
-                    .values(linked_transaction_id=None)
-                )
-
-                # 2. Delete transactions
+                # ── Phase 1: Soft-delete children ───────────────────
+                # 1. Soft-delete transactions
+                now = timezone.utcnow()
                 db.query(models.Transaction).filter(
-                    models.Transaction.account_id == account_id
-                ).delete(synchronize_session='fetch')
+                    models.Transaction.account_id == account_id,
+                    models.Transaction.is_deleted == False
+                ).update({
+                    models.Transaction.is_deleted: True,
+                    models.Transaction.deleted_at: now
+                }, synchronize_session=False)
 
-                # 3. Delete balance snapshots (FK to accounts.id)
-                db.query(models.BalanceSnapshot).filter(
-                    models.BalanceSnapshot.account_id == account_id
-                ).delete(synchronize_session='fetch')
-
-                # 4. Delete pending and recurring transactions
-                db.query(ingestion_models.PendingTransaction).filter(
-                    ingestion_models.PendingTransaction.account_id == account_id
-                ).delete(synchronize_session='fetch')
-
+                # 2. Soft-delete recurring transactions
                 db.query(models.RecurringTransaction).filter(
-                    models.RecurringTransaction.account_id == account_id
-                ).delete(synchronize_session='fetch')
+                    models.RecurringTransaction.account_id == account_id,
+                    models.RecurringTransaction.is_deleted == False
+                ).update({
+                    models.RecurringTransaction.is_deleted: True,
+                    models.RecurringTransaction.deleted_at: now
+                }, synchronize_session=False)
 
-                # Commit Phase 1: DuckDB now sees children as definitively GONE.
-                db.commit()
+                # 3. Soft-delete statements
+                db.query(models.Statement).filter(
+                    models.Statement.account_id == account_id,
+                    models.Statement.is_deleted == False
+                ).update({
+                    models.Statement.is_deleted: True,
+                    models.Statement.deleted_at: now
+                }, synchronize_session=False)
 
-                # ── Phase 2: Parent Deletion + COMMIT ────────────────────────────────
-                # Re-fetch the account to get a clean ORM object for the second commit.
-                db_account = db.query(models.Account).filter(
-                    models.Account.id == account_id,
-                    models.Account.tenant_id == tenant_id
-                ).first()
+                # 4. Soft-delete associated Loan if it's a loan account
+                db.query(models.Loan).filter(
+                    models.Loan.account_id == account_id,
+                    models.Loan.is_deleted == False
+                ).update({
+                    models.Loan.is_deleted: True,
+                    models.Loan.deleted_at: now
+                }, synchronize_session=False)
+
+                # ── Phase 2: Soft-delete Parent ────────────────────────────────
+                db_account.is_deleted = True
+                db_account.deleted_at = now
                 
-                if db_account:
-                    db.delete(db_account)
-                    db.commit()
+                db.commit()
 
             except Exception as e:
                 db.rollback()
-                logger.error(f"Failed to delete account {account_id}: {e}")
+                logger.error(f"Failed to soft-delete account {account_id}: {e}")
                 raise e
 
         return True
@@ -256,7 +264,8 @@ class AccountService:
             try:
                 db_account = db.query(models.Account).filter(
                     models.Account.id == account_id,
-                    models.Account.tenant_id == tenant_id
+                    models.Account.tenant_id == tenant_id,
+                    models.Account.is_deleted == False
                 ).first()
                 
                 if not db_account:
@@ -294,8 +303,16 @@ class AccountService:
         from backend.app.modules.finance.services.transfer_service import TransferService
         
         # Verify both accounts exist and belong to the tenant
-        target_card = db.query(models.Account).filter(models.Account.id == account_id, models.Account.tenant_id == tenant_id).first()
-        source_bank = db.query(models.Account).filter(models.Account.id == str(payload.source_account_id), models.Account.tenant_id == tenant_id).first()
+        target_card = db.query(models.Account).filter(
+            models.Account.id == account_id, 
+            models.Account.tenant_id == tenant_id,
+            models.Account.is_deleted == False
+        ).first()
+        source_bank = db.query(models.Account).filter(
+            models.Account.id == str(payload.source_account_id), 
+            models.Account.tenant_id == tenant_id,
+            models.Account.is_deleted == False
+        ).first()
         
         if not target_card or not source_bank:
             raise ValueError("One or more accounts not found.")

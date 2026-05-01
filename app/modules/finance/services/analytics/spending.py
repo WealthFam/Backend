@@ -24,6 +24,7 @@ class SpendingAnalytics:
         # Base filter (we join category to differentiate between expense and investment)
         filters = [
             Transaction.tenant_id == tenant_id,
+            Transaction.is_deleted == False,
             Transaction.exclude_from_reports == False
         ]
         
@@ -42,7 +43,10 @@ class SpendingAnalytics:
         
         if user_id:
             query = query.join(Account, Transaction.account_id == Account.id)\
-                         .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+                         .filter(
+                             Account.is_deleted == False,
+                             or_(Account.owner_id == user_id, Account.owner_id == None)
+                         )
 
         # We take all relevant transactions for this period
         txns = query.all()
@@ -139,6 +143,7 @@ class SpendingAnalytics:
         # Excluded/Shielded Transactions
         excluded_filters = [
             Transaction.tenant_id == tenant_id,
+            Transaction.is_deleted == False,
             Transaction.exclude_from_reports == True
         ]
         if account_id: excluded_filters.append(Transaction.account_id == account_id)
@@ -148,7 +153,10 @@ class SpendingAnalytics:
         ex_query = db.query(Transaction).filter(*excluded_filters)
         if user_id:
             ex_query = ex_query.join(Account, Transaction.account_id == Account.id)\
-                               .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+                               .filter(
+                                   Account.is_deleted == False,
+                                   or_(Account.owner_id == user_id, Account.owner_id == None)
+                               )
         
         ex_txns = ex_query.all()
         excluded_income = sum(Decimal(t.amount) for t in ex_txns if t.amount > 0)
@@ -164,6 +172,7 @@ class SpendingAnalytics:
         # Trend Data (Daily) - Use expenses by default
         trend_filters = [
             Transaction.tenant_id == tenant_id,
+            Transaction.is_deleted == False,
             Transaction.exclude_from_reports == False,
             Transaction.amount < 0
         ]
@@ -196,7 +205,10 @@ class SpendingAnalytics:
         
         if user_id:
             trend_query = trend_query.join(Account, Transaction.account_id == Account.id)\
-                                     .filter(or_(Account.owner_id == user_id, Account.owner_id == None))
+                                     .filter(
+                                         Account.is_deleted == False,
+                                         or_(Account.owner_id == user_id, Account.owner_id == None)
+                                     )
             
         trend_results = trend_query.group_by(func.date(Transaction.date)).order_by(func.date(Transaction.date)).all()
         final_trend = [{"date": str(r.day), "amount": float(abs(Decimal(r.total)))} for r in trend_results]
@@ -232,6 +244,7 @@ class SpendingAnalytics:
         ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
          .filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.date >= start_date,
             models.Transaction.amount < 0,
             models.Transaction.exclude_from_reports == False,
@@ -240,7 +253,10 @@ class SpendingAnalytics:
         
         if user_id:
             query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                         )
             
         spending = query.group_by(func.date(models.Transaction.date)).order_by('day').all()
         
@@ -276,6 +292,7 @@ class SpendingAnalytics:
             func.sum(models.Transaction.amount).label('total')
         ).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.amount < 0,
             models.Transaction.exclude_from_reports == False
         )
@@ -287,7 +304,10 @@ class SpendingAnalytics:
             
         if user_id:
             query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                         )
                          
         if category:
             # Hierarchical Category Filtering
@@ -323,12 +343,16 @@ class SpendingAnalytics:
             func.sum(models.Transaction.amount).label('total')
         ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
          .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.date >= month_start, models.Transaction.date <= month_end,
+                 models.Transaction.is_deleted == False,
                  models.Transaction.amount < 0,
                  models.Transaction.exclude_from_reports == False,
                  or_(models.Category.type == 'expense', models.Category.type == None))
         
         if user_id: query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                 .filter(
+                                     models.Account.is_deleted == False,
+                                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                 )
             
         spending = query.group_by(func.date(models.Transaction.date)).order_by('day').all()
         
@@ -340,7 +364,8 @@ class SpendingAnalytics:
         daily_limit = 0.0
         budget_query = db.query(func.sum(models.Budget.amount_limit)).filter(
             models.Budget.tenant_id == tenant_id,
-            models.Budget.category == "OVERALL"
+            models.Budget.category == "OVERALL",
+            models.Budget.is_deleted == False
         ).scalar() or 0
         if budget_query > 0:
             daily_limit = float(budget_query) / last_day
@@ -378,12 +403,16 @@ class SpendingAnalytics:
         query = db.query(models.Transaction)\
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(models.Transaction.tenant_id == tenant_id, models.Transaction.amount < 0,
+                    models.Transaction.is_deleted == False,
                     models.Transaction.exclude_from_reports == False,
                     models.Transaction.date >= month_start, models.Transaction.date <= month_end,
                     or_(models.Category.type == 'expense', models.Category.type == None))
 
         if user_id: query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                 .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                 .filter(
+                                     models.Account.is_deleted == False,
+                                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                 )
 
         txns = query.all()
         db_categories = db.query(models.Category).filter(models.Category.tenant_id == tenant_id).all()
@@ -431,6 +460,7 @@ class SpendingAnalytics:
         ).join(models.Account, models.Transaction.account_id == models.Account.id)\
          .filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.date >= start_date,
             models.Transaction.date <= end_date,
             models.Transaction.date <= now, # Only historical for actuals
@@ -439,7 +469,10 @@ class SpendingAnalytics:
         )
         
         if user_id:
-             query = query.filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+             query = query.filter(
+                 models.Account.is_deleted == False,
+                 or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+             )
              
         historical_raw = query.group_by(func.date(models.Transaction.date), models.Account.owner_id).all()
         
@@ -451,6 +484,7 @@ class SpendingAnalytics:
             func.sum(models.Transaction.amount).label('total')
         ).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.date >= four_months_ago,
             models.Transaction.date < now.replace(day=1), # Complete months only
             models.Transaction.amount < 0,
@@ -458,7 +492,10 @@ class SpendingAnalytics:
         )
         if user_id:
              dom_query = dom_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                    .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                    .filter(
+                                        models.Account.is_deleted == False,
+                                        or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                    )
         
         dom_history = dom_query.group_by(extract('day', models.Transaction.date)).all()
         # Calculate historical average for each day of the month
@@ -468,13 +505,17 @@ class SpendingAnalytics:
         thirty_days_ago = now - timedelta(days=30)
         burn_query = db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.date >= thirty_days_ago,
             models.Transaction.amount < 0,
             models.Transaction.exclude_from_reports == False
         )
         if user_id:
              burn_query = burn_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                                    .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                                    .filter(
+                                        models.Account.is_deleted == False,
+                                        or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                    )
         
         total_recent_burn = abs(Decimal(burn_query.scalar() or 0))
         daily_burn_rate = total_recent_burn / Decimal(30)
@@ -501,6 +542,7 @@ class SpendingAnalytics:
         recs = db.query(models.RecurringTransaction).filter(
             models.RecurringTransaction.tenant_id == tenant_id,
             models.RecurringTransaction.is_active == True,
+            models.RecurringTransaction.is_deleted == False,
             models.RecurringTransaction.type == 'DEBIT'
         ).all()
 

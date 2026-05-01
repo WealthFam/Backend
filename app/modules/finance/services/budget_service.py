@@ -33,6 +33,7 @@ class BudgetService:
             .outerjoin(models.Category, (models.Transaction.category == models.Category.name) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
+                models.Transaction.is_deleted == False,
                 models.Transaction.date >= start_of_period,
                 models.Transaction.date < end_of_period,
                 models.Transaction.exclude_from_reports == False,
@@ -40,13 +41,18 @@ class BudgetService:
                 or_(models.Category.type == 'expense', models.Category.type == None)
             )
         if user_id:
-             total_expense_query = total_expense_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+             total_expense_query = total_expense_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                 .filter(
+                     models.Account.is_deleted == False,
+                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                 )
         total_expense = abs(total_expense_query.scalar() or 0)
         
         total_income_query = db.query(func.sum(models.Transaction.amount))\
             .outerjoin(models.Category, (models.Transaction.category == models.Category.name) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
+                models.Transaction.is_deleted == False,
                 models.Transaction.date >= start_of_period,
                 models.Transaction.date < end_of_period,
                 models.Transaction.exclude_from_reports == False,
@@ -54,36 +60,51 @@ class BudgetService:
                 or_(models.Category.type == 'income', models.Category.type == None)
             )
         if user_id:
-            total_income_query = total_income_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+            total_income_query = total_income_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                .filter(
+                    models.Account.is_deleted == False,
+                    or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                )
         total_income = total_income_query.scalar() or 0
 
         # Excluded
         excluded_query = db.query(func.sum(func.abs(models.Transaction.amount))).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.date >= start_of_period,
             models.Transaction.date < end_of_period,
             models.Transaction.exclude_from_reports == True
         )
         if user_id:
-             excluded_query = excluded_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+             excluded_query = excluded_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                 .filter(
+                     models.Account.is_deleted == False,
+                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                 )
         total_excluded = excluded_query.scalar() or 0
         
         excluded_income_query = db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.date >= start_of_period,
             models.Transaction.date < end_of_period,
             models.Transaction.exclude_from_reports == True,
             models.Transaction.amount > 0
         )
         if user_id:
-             excluded_income_query = excluded_income_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+             excluded_income_query = excluded_income_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                 .filter(
+                     models.Account.is_deleted == False,
+                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                 )
         excluded_income = excluded_income_query.scalar() or 0
         
 
         # Budget Limit
         overall_b = db.query(models.Budget).filter(
             models.Budget.tenant_id == tenant_id,
-            models.Budget.category == 'OVERALL'
+            models.Budget.category == 'OVERALL',
+            models.Budget.is_deleted == False
         ).first()
         
         limit = overall_b.amount_limit if overall_b else None
@@ -111,7 +132,10 @@ class BudgetService:
         Get all budgets and calculate progress based on target month's spending.
         Supports hierarchical rollup (children to parents) and user/member filtering.
         """
-        budgets = db.query(models.Budget).filter(models.Budget.tenant_id == tenant_id).all()
+        budgets = db.query(models.Budget).filter(
+            models.Budget.tenant_id == tenant_id,
+            models.Budget.is_deleted == False
+        ).all()
         all_categories = db.query(models.Category).filter(models.Category.tenant_id == tenant_id).all()
         
         # Build category hierarchy maps
@@ -141,6 +165,7 @@ class BudgetService:
             func.sum(models.Transaction.amount).label("sum")
         ).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.date >= start_of_period,
             models.Transaction.date < end_of_period,
             models.Transaction.exclude_from_reports == False
@@ -150,6 +175,7 @@ class BudgetService:
             spending_query = spending_query.join(
                 models.Account, models.Transaction.account_id == models.Account.id
             ).filter(
+                models.Account.is_deleted == False,
                 or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
             )
 
@@ -162,6 +188,7 @@ class BudgetService:
             func.sum(models.Transaction.amount).label("sum")
         ).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.date >= start_of_period,
             models.Transaction.date < end_of_period,
             models.Transaction.exclude_from_reports == True
@@ -171,6 +198,7 @@ class BudgetService:
             excluded_query = excluded_query.join(
                 models.Account, models.Transaction.account_id == models.Account.id
             ).filter(
+                models.Account.is_deleted == False,
                 or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
             )
 
@@ -243,7 +271,8 @@ class BudgetService:
         # Upsert: Check if budget exists for category
         existing = db.query(models.Budget).filter(
             models.Budget.tenant_id == tenant_id,
-            models.Budget.category == budget.category
+            models.Budget.category == budget.category,
+            models.Budget.is_deleted == False
         ).first()
         
         if existing:
@@ -264,9 +293,15 @@ class BudgetService:
 
     @staticmethod
     def delete_budget(db: Session, budget_id: str, tenant_id: str) -> bool:
-        b = db.query(models.Budget).filter(models.Budget.id == budget_id, models.Budget.tenant_id == tenant_id).first()
+        b = db.query(models.Budget).filter(
+            models.Budget.id == budget_id, 
+            models.Budget.tenant_id == tenant_id,
+            models.Budget.is_deleted == False
+        ).first()
         if not b: return False
-        db.delete(b)
+        
+        b.is_deleted = True
+        b.deleted_at = timezone.utcnow()
         db.commit()
         return True
 
@@ -315,13 +350,18 @@ class BudgetService:
         ).outerjoin(models.Category, (models.Transaction.category == models.Category.name) & (models.Transaction.tenant_id == models.Category.tenant_id))\
          .filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.date >= start_of_year,
             models.Transaction.date < end_of_current,
             models.Transaction.exclude_from_reports == False
         )
         
         if user_id:
-             ytd_query = ytd_query.join(models.Account, models.Transaction.account_id == models.Account.id).filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+             ytd_query = ytd_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                .filter(
+                    models.Account.is_deleted == False,
+                    or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                )
         
         ytd_txns = ytd_query.all()
         ytd_expense = sum(abs(Decimal(t.amount)) for t in ytd_txns if t.amount < 0 and (t.type == 'expense' or t.type is None))

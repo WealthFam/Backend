@@ -187,9 +187,23 @@ def apply_patches(engine: Engine):
         utils.safe_add_column(connection, "statement_transactions", "is_deleted", "BOOLEAN DEFAULT FALSE")
     with engine.begin() as connection:
         utils.safe_add_column(connection, "statement_transactions", "deleted_at", "TIMESTAMP")
+    
+    # [2026-04-30] Transaction Soft-delete Support
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "transactions", "is_deleted", "BOOLEAN DEFAULT FALSE")
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "transactions", "deleted_at", "TIMESTAMP")
 
-    # TODO: Add schema evolution logic here as the app grows.
-    pass
+    # [2026-05-01] Extended Soft-delete Support
+    for table in ["accounts", "loans", "investment_goals", "expense_groups", "recurring_transactions", "budgets"]:
+        with engine.begin() as connection:
+            utils.safe_add_column(connection, table, "is_deleted", "BOOLEAN DEFAULT FALSE")
+        with engine.begin() as connection:
+            utils.safe_add_column(connection, table, "deleted_at", "TIMESTAMP")
+
+    # [2026-05-01] Statement Failure Reason Support
+    with engine.begin() as connection:
+        utils.safe_add_column(connection, "statements", "failure_reason", "VARCHAR")
 
 def seed_benchmark_rules(engine: Engine):
     """

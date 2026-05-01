@@ -676,6 +676,9 @@ class MutualFundService:
                 db.execute(text("PRAGMA force_checkpoint;"))
             except Exception as e:
                 logger.warning(f"Failed to force DuckDB checkpoint: {e}")
+                
+            # Invalidate timeline cache
+            MutualFundService.clear_timeline_cache(db, tenant_id)
             
         return stats
 
@@ -1022,7 +1025,10 @@ class MutualFundService:
                 h.is_deleted = True
                 h.deleted_at = timezone.utcnow()
         
-        # 5. Special Commit
+        # 5. Invalidate timeline cache
+        MutualFundService.clear_timeline_cache(db, tenant_id)
+        
+        # 6. Special Commit
         MutualFundService._safe_commit(db)
         return len(processed_orders)
 
@@ -1060,6 +1066,9 @@ class MutualFundService:
                     "is_deleted": True,
                     "deleted_at": timezone.utcnow()
                 }, synchronize_session=False)
+                
+                # Invalidate timeline cache
+                MutualFundService.clear_timeline_cache(db, tenant_id)
                 
                 MutualFundService._safe_commit(db)
                 return True
@@ -1103,6 +1112,9 @@ class MutualFundService:
                 "is_deleted": True,
                 "deleted_at": timezone.utcnow()
             }, synchronize_session=False)
+            
+            # Invalidate timeline cache
+            MutualFundService.clear_timeline_cache(db, tenant_id)
             
             MutualFundService._safe_commit(db)
             return True

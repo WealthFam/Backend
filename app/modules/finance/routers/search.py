@@ -35,6 +35,7 @@ def global_search(
     # 1. Accounts
     accounts = db.query(Account).filter(
         Account.tenant_id == tenant_id,
+        Account.is_deleted == False,
         Account.name.ilike(f"%{q}%")
     ).all()
     for acc in accounts:
@@ -50,6 +51,7 @@ def global_search(
     # 2. Loans
     loans = db.query(Loan).join(Account).filter(
         Loan.tenant_id == tenant_id,
+        Loan.is_deleted == False,
         Account.name.ilike(f"%{q}%")
     ).all()
     for loan in loans:
@@ -65,6 +67,7 @@ def global_search(
     # 3. Investment Goals
     goals = db.query(InvestmentGoal).filter(
         InvestmentGoal.tenant_id == tenant_id,
+        InvestmentGoal.is_deleted == False,
         InvestmentGoal.name.ilike(f"%{q}%")
     ).all()
     for goal in goals:
@@ -80,7 +83,8 @@ def global_search(
     # 4. Mutual Funds (Holdings joined with meta to search by name)
     holdings = db.query(MutualFundHolding).join(MutualFundsMeta).filter(
         MutualFundHolding.tenant_id == tenant_id,
-        MutualFundsMeta.scheme_name.ilike(f"%{q}%")
+        MutualFundsMeta.scheme_name.ilike(f"%{q}%"),
+        MutualFundHolding.is_deleted == False
     ).all()
     
     mf_groups = {}
@@ -113,6 +117,7 @@ def global_search(
         func.count(Transaction.id).label('tx_count')
     ).filter(
         Transaction.tenant_id == tenant_id,
+        Transaction.is_deleted == False,
         Transaction.recipient.ilike(f"%{q}%"),
         Transaction.recipient != None,
         Transaction.recipient != ""
