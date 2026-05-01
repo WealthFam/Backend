@@ -826,7 +826,7 @@ class TransactionService:
                 to_account_id=final_to_account_id,
                 priority=10
             )
-            CategoryService.create_category_rule(db, rule_create, tenant_id)
+            CategoryService.create_category_rule(db, rule_create, tenant_id, commit=False)
 
         txn_create = schemas.TransactionCreate(
             account_id=final_account_id,
@@ -851,7 +851,8 @@ class TransactionService:
                 real_txn = TransactionService.create_transaction(
                     db, txn_create, tenant_id, 
                     exclude_pending_id=pending_id,
-                    update_balance=not getattr(pending, 'balance_is_synced', False)
+                    update_balance=not getattr(pending, 'balance_is_synced', False),
+                    commit=False
                 )
                 
                 # 2. Link to existing
@@ -871,22 +872,42 @@ class TransactionService:
                 pending.is_transfer = final_is_transfer
                 pending.to_account_id = final_to_account_id
                 pending.exclude_from_reports = final_exclude
-                real_txn = TransferService.approve_transfer(db, pending, tenant_id)
+                real_txn = TransferService.approve_transfer(db, pending, tenant_id, commit=False)
             else:
                 real_txn = TransactionService.create_transaction(
                     db, txn_create, tenant_id, 
                     exclude_pending_id=pending_id,
-                    update_balance=not getattr(pending, 'balance_is_synced', False)
+                    update_balance=not getattr(pending, 'balance_is_synced', False),
+                    commit=False
                 )
         else:
             real_txn = TransactionService.create_transaction(
                 db, txn_create, tenant_id, 
                 exclude_pending_id=pending_id,
-                update_balance=not getattr(pending, 'balance_is_synced', False)
+                update_balance=not getattr(pending, 'balance_is_synced', False),
+                commit=False
             )
 
         db.delete(pending)
         db.commit()
+
+        # Bug 6 Fix: Trigger notification after final commit
+        try:
+            from backend.app.modules.notifications.services import NotificationService
+            db_account = db.query(models.Account).filter(models.Account.id == real_txn.account_id).first()
+            if db_account:
+                NotificationService.notify_transaction(
+                    db, 
+                    tenant_id, 
+                    real_txn.amount, 
+                    real_txn.description or real_txn.recipient, 
+                    db_account.name,
+                    user_id=db_account.owner_id,
+                    category_name=real_txn.category
+                )
+        except Exception as e:
+            logger.error(f"Failed to trigger approval notification: {e}")
+
         return real_txn
 
     @staticmethod

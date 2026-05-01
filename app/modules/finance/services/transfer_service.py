@@ -11,7 +11,7 @@ class TransferService:
     """
     
     @staticmethod
-    def approve_transfer(db: Session, pending: PendingTransaction, tenant_id: str) -> Transaction:
+    def approve_transfer(db: Session, pending: PendingTransaction, tenant_id: str, commit: bool = True) -> Transaction:
         """
         Creates two linked transactions representing the transfer atomically from a pending transaction.
         """
@@ -33,7 +33,8 @@ class TransferService:
             latitude=pending.latitude,
             longitude=pending.longitude,
             exclude_pending_id=pending.id,
-            source_balance_is_synced=getattr(pending, 'balance_is_synced', False)
+            source_balance_is_synced=getattr(pending, 'balance_is_synced', False),
+            commit=commit
         )
 
     @staticmethod
@@ -52,7 +53,8 @@ class TransferService:
         latitude: Optional[float] = None,
         longitude: Optional[float] = None,
         exclude_pending_id: Optional[str] = None,
-        source_balance_is_synced: bool = False
+        source_balance_is_synced: bool = False,
+        commit: bool = True
     ) -> Transaction:
         """
         Creates two linked transactions representing the transfer atomically.
@@ -116,8 +118,9 @@ class TransferService:
                 db.add(target_txn)
                 
                 # 4. Final Atomic Commit
-                db.commit()
-                db.refresh(source_txn)
+                if commit:
+                    db.commit()
+                    db.refresh(source_txn)
                 
                 return source_txn
             except Exception:
