@@ -625,8 +625,13 @@ class MutualFundBenchmarkRuleBase(BaseModel):
     benchmark_symbol: str = Field(description="MFAPI scheme code for the benchmark index")
     benchmark_label: str = Field(description="Display label for the benchmark index")
     styling_color: Optional[str] = Field(default="#3B82F6", description="Hex color for the benchmark line")
-    styling_style: str = Field(default="solid", description="Line style: solid, dashed, dotted")
+    styling_style: Optional[str] = Field(default="solid", description="Line style: solid, dashed, dotted")
     styling_dash_array: Optional[str] = Field(default=None, description="SVG dash array for dashed lines")
+
+    @field_validator('styling_style', mode='before')
+    @classmethod
+    def validate_styling_style(cls, v):
+        return v or "solid"
 
 class MutualFundBenchmarkRuleCreate(MutualFundBenchmarkRuleBase):
     pass
@@ -642,7 +647,7 @@ class MutualFundBenchmarkRuleUpdate(BaseModel):
 
 class MutualFundBenchmarkRuleRead(MutualFundBenchmarkRuleBase):
     id: Union[UUID, str]
-    created_at: datetime
+    created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True, strict=True)
 
 class MutualFundBenchmarkRulePagination(BaseModel):
