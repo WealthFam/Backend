@@ -379,14 +379,55 @@ class SpendingAnalytics:
             })
             curr += timedelta(days=1)
             
-        # Get Month-wise Trend (Last 6 months)
-        # Simplified: Just current month for now to fix the crash, we can expand later
-        month_wise_trend = [{
-            "month": month_start.strftime("%b %Y"),
-            "spent": float(sum(Decimal(str(r.total)) for r in spending)),
-            "budget": float(budget_query),
-            "is_selected": True
-        }]
+        # Get Month-wise Trend (Last 6 months including target)
+        six_months_ago = month_start - timedelta(days=150) # Approx 5 months prior
+        six_months_ago = six_months_ago.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # Optimized group-by query for historical months
+        month_trend_query = db.query(
+            extract('year', models.Transaction.date).label('year'),
+            extract('month', models.Transaction.date).label('month'),
+            func.sum(models.Transaction.amount).label('total')
+        ).outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
+         .filter(models.Transaction.tenant_id == tenant_id, 
+                 models.Transaction.date >= six_months_ago, 
+                 models.Transaction.date <= month_end,
+                 models.Transaction.is_deleted == False,
+                 models.Transaction.amount < 0,
+                 models.Transaction.exclude_from_reports == False,
+                 or_(models.Category.type == 'expense', models.Category.type == None))
+        
+        if user_id: 
+            month_trend_query = month_trend_query.join(models.Account, models.Transaction.account_id == models.Account.id)\
+                                                 .filter(
+                                                     models.Account.is_deleted == False,
+                                                     or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                                                 )
+        
+        month_results = month_trend_query.group_by(
+            extract('year', models.Transaction.date),
+            extract('month', models.Transaction.date)
+        ).all()
+        
+        results_map = {(int(r.year), int(r.month)): abs(float(r.total)) for r in month_results}
+        
+        month_wise_trend = []
+        curr_m = six_months_ago
+        # Ensure we cover exactly 6 months up to the target month
+        for _ in range(6):
+            key = (curr_m.year, curr_m.month)
+            month_wise_trend.append({
+                "month": curr_m.strftime("%b %Y"),
+                "spent": results_map.get(key, 0.0),
+                "budget": float(budget_query),
+                "is_selected": (curr_m.year == target_year and curr_m.month == target_month)
+            })
+            
+            # Increment month
+            if curr_m.month == 12:
+                curr_m = curr_m.replace(year=curr_m.year + 1, month=1)
+            else:
+                curr_m = curr_m.replace(month=curr_m.month + 1)
 
         return {
             "month_wise_trend": month_wise_trend,
