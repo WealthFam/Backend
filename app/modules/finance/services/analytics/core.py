@@ -273,6 +273,22 @@ class CoreAnalytics:
         account_ids = list(set(txn.account_id for txn in recent_txns))
         account_map = {a.id: a for a in db.query(models.Account).options(joinedload(models.Account.owner)).filter(models.Account.id.in_(account_ids)).all()}
 
+        # Document map for visual indicator
+        from backend.app.modules.vault.models import DocumentVault
+        txn_ids = [txn.id for txn in recent_txns]
+        linked_doc_counts = {}
+        if txn_ids:
+            linked_doc_counts = {
+                row.transaction_id: row.count 
+                for row in db.query(
+                    DocumentVault.transaction_id, 
+                    func.count(DocumentVault.id).label('count')
+                ).filter(
+                    DocumentVault.tenant_id == tenant_id,
+                    DocumentVault.transaction_id.in_(txn_ids)
+                ).group_by(DocumentVault.transaction_id).all()
+            }
+
         enriched_txns = []
         for txn in recent_txns:
             cat_obj = cat_map.get(txn.category)
@@ -284,11 +300,14 @@ class CoreAnalytics:
                     if parent: display_category = f"{parent.name} › {cat_obj.name}"
 
             txn_dict = {
-                "id": txn.id, "date": txn.date, "description": txn.description, "amount": Decimal(txn.amount),
+                "id": txn.id, "date": txn.date, "description": txn.description,
+                "recipient": txn.recipient or txn.description,
+                "amount": Decimal(txn.amount),
                 "category": display_category, "category_icon": cat_obj.icon if cat_obj else "🏷️",
                 "category_color": cat_obj.color if cat_obj else "#9ca3af", "account_id": str(txn.account_id),
                 "is_transfer": txn.is_transfer, "exclude_from_reports": txn.exclude_from_reports,
-                "expense_group_id": str(txn.expense_group_id) if txn.expense_group_id else None, "source": txn.source
+                "expense_group_id": str(txn.expense_group_id) if txn.expense_group_id else None, "source": txn.source,
+                "has_documents": linked_doc_counts.get(txn.id, 0) > 0
             }
             account = account_map.get(txn.account_id)
             if account and account.owner:

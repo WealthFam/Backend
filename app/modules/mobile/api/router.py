@@ -26,6 +26,11 @@ from backend.app.modules.mobile import schemas as mobile_schemas
 from backend.app.modules.mobile.services.expense_group_service import MobileExpenseGroupService
 from backend.app.modules.mobile.services.investment_goal_service import MobileInvestmentGoalService
 from backend.app.modules.ingestion.ai_service import AIService
+from backend.app.modules.vault.service import VaultService as CoreVaultService
+from backend.app.modules.vault import models as vault_models
+from fastapi import UploadFile, File, Form
+from fastapi.responses import FileResponse
+import os
 
 router = APIRouter(tags=["Mobile"])
 logger = logging.getLogger(__name__)
@@ -528,10 +533,18 @@ def get_dashboard_summary(
         ).group_by(DocumentVault.transaction_id).all()
     }
 
+    # Category map for icons
+    category_objs = db.query(finance_models.Category).filter(
+        finance_models.Category.tenant_id == str(current_user.tenant_id)
+    ).all()
+    cat_map = {c.name.lower(): c for c in category_objs}
+
     def enrich_txn(txn):
+        display_category = txn.get('category') or "Uncategorized"
         ext = {
             "account_name": account_map.get(txn['account_id']).name if account_map.get(txn['account_id']) else "Unknown",
-            "has_documents": linked_doc_counts.get(txn['id'], 0) > 0
+            "has_documents": linked_doc_counts.get(txn['id'], 0) > 0,
+            "category_icon": resolve_category_icon(display_category, cat_map)
         }
         gid = txn.get('expense_group_id')
         if gid and group_map.get(gid):
@@ -590,6 +603,26 @@ def get_dashboard_categories(
     target_year = year or now.year
     return AnalyticsService.get_mobile_dashboard_categories(
         db, str(current_user.tenant_id), target_month, target_year, user_id=target_user_id
+    )
+
+@router.get("/vendor/stats")
+def get_vendor_stats(
+    vendor_name: str,
+    skip: int = 0,
+    limit: int = 3,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get spending trends and recent transactions for a specific merchant.
+    """
+    return TransactionService.get_vendor_stats(
+        db, 
+        str(current_user.tenant_id), 
+        vendor_name, 
+        user_id=None, # TBD: Add support for filtering by family member if needed
+        skip=skip, 
+        limit=limit
     )
 
 @router.get("/dashboard/investments", response_model=mobile_schemas.DashboardInvestmentsResponse)
@@ -659,7 +692,7 @@ def get_mobile_heatmap(
         user_id=target_user_id
     )
 
-@router.get("/triage", response_model=List[mobile_schemas.RecentTransaction])
+@router.get("/ingestion/triage", response_model=List[mobile_schemas.RecentTransaction])
 def list_mobile_triage(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -689,9 +722,70 @@ def list_mobile_triage(
             "category": txn.category,
             "account_name": txn.account.name if txn.account else "Unknown",
             "account_owner_name": owner_name,
-            "source": txn.source
+            "source": txn.source,
+            "recipient": txn.recipient or txn.description,
+            "has_documents": db.query(vault_models.DocumentVault).filter(vault_models.DocumentVault.transaction_id == txn.id).count() > 0
         })
     return enriched
+
+@router.post("/ingestion/triage/{triage_id}/approve")
+def approve_mobile_triage(
+    triage_id: str,
+    payload: dict,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Approve a transaction from triage via mobile app.
+    """
+    return TransactionService.process_triage(
+        db, str(current_user.tenant_id), triage_id, approve=True, data=payload
+    )
+
+@router.delete("/ingestion/triage/{triage_id}")
+def discard_mobile_triage(
+    triage_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Discard a transaction from triage via mobile app.
+    """
+    return TransactionService.process_triage(
+        db, str(current_user.tenant_id), triage_id, approve=False
+    )
+
+
+def resolve_category_icon(display_category: str, cat_map: Dict[str, finance_models.Category]) -> Optional[str]:
+    """
+    Common logic to resolve an icon for a category, with hardcoded fallbacks for 
+    high-frequency categories if DB icon is missing. Matches web app behavior.
+    """
+    if not display_category:
+        return "🏷️"
+        
+    leaf_cat_name = display_category.split(" › ")[-1].lower()
+    
+    # 1. Try DB map
+    if leaf_cat_name in cat_map:
+        db_icon = cat_map[leaf_cat_name].icon
+        if db_icon:
+            return db_icon
+            
+    # 2. Fallback to hardcoded common icons
+    DEFAULT_ICONS = {
+        "food": "🍔", "groceries": "🛒", "rent": "🏠", "shopping": "🛍️",
+        "transport": "🚗", "travel": "✈️", "health": "💊", "entertainment": "🎬",
+        "utilities": "💡", "salary": "💰", "transfer": "↔️", "investment": "📈",
+        "education": "🎓", "gift": "🎁", "other": "📦", "uncategorized": "📁"
+    }
+    # Check if leaf name matches any key (substring match for broader hits)
+    for key, emoji in DEFAULT_ICONS.items():
+        if key in leaf_cat_name:
+            return emoji
+            
+    return "🏷️"
+
 
 @router.get("/transactions", response_model=mobile_schemas.TransactionResponse)
 def list_mobile_transactions(
@@ -704,6 +798,9 @@ def list_mobile_transactions(
     end_date: Optional[str] = None,
     member_id: Optional[str] = None,
     expense_group_id: Optional[str] = None,
+    category: Optional[str] = None,
+    account_id: Optional[str] = None,
+    search: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -733,7 +830,8 @@ def list_mobile_transactions(
     # Fetch categories for enrichment
     from backend.app.modules.finance.models import Category
     category_objs = db.query(Category).filter(Category.tenant_id == str(current_user.tenant_id)).all()
-    cat_map = {c.name: c for c in category_objs}
+    cat_map = {c.name.lower(): c for c in category_objs}
+    cat_id_map = {c.id: c for c in category_objs}
     
     # Filter by user ownership if target_user_id is set
     if target_user_id:
@@ -745,6 +843,21 @@ def list_mobile_transactions(
 
     if expense_group_id:
         query = query.filter(finance_models.Transaction.expense_group_id == expense_group_id)
+
+    if category:
+        # Match either exact name or as the leaf of a hierarchical category
+        query = query.filter(
+            or_(
+                finance_models.Transaction.category == category,
+                finance_models.Transaction.category.like(f"% › {category}")
+            )
+        )
+    
+    if account_id:
+        query = query.filter(finance_models.Transaction.account_id == account_id)
+    
+    if search:
+        query = query.filter(finance_models.Transaction.description.ilike(f"%{search}%"))
     
     if month and year:
         if day:
@@ -800,18 +913,23 @@ def list_mobile_transactions(
         
         # Ensure hierarchy display parity with web
         if display_category and " › " not in display_category:
-            cat_obj = cat_map.get(display_category)
+            cat_obj = cat_map.get(display_category.lower())
             if cat_obj and cat_obj.parent_id:
-                parent = next((c for c in category_objs if c.id == cat_obj.parent_id), None)
+                parent = cat_id_map.get(cat_obj.parent_id)
                 if parent:
                     display_category = f"{parent.name} › {cat_obj.name}"
+
+        # Determine category icon
+        cat_icon = resolve_category_icon(display_category, cat_map)
 
         enriched.append({
             "id": txn.id,
             "date": txn.date,
             "description": txn.description,
+            "recipient": txn.recipient or txn.description,
             "amount": float(txn.amount),
             "category": display_category,
+            "category_icon": cat_icon,
             "account_id": str(txn.account_id),
             "account_name": txn.account.name if txn.account else "Unknown",
             "account_owner_name": owner_name,
@@ -1396,3 +1514,170 @@ def get_mobile_calendar_heatmap(
         user_id=target_user_id,
         end_date=end_date
     )
+
+# --- Vault Proxies ---
+
+@router.get("/vault")
+def list_mobile_vault(
+    transaction_id: Optional[str] = None,
+    parent_id: Optional[str] = "ROOT",
+    search: Optional[str] = None,
+    is_folder: Optional[bool] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    items, total = CoreVaultService.get_documents(
+        db=db,
+        tenant_id=str(current_user.tenant_id),
+        user_id=str(current_user.id),
+        transaction_id=transaction_id,
+        parent_id=parent_id,
+        search=search,
+        is_folder=is_folder,
+        skip=skip,
+        limit=limit,
+        role=current_user.role
+    )
+    return {"data": items, "total": total}
+
+@router.post("/vault/upload")
+async def upload_mobile_vault_document(
+    file: UploadFile = File(...),
+    file_type: vault_models.DocumentType = Form(vault_models.DocumentType.OTHER),
+    transaction_id: Optional[str] = Form(None),
+    parent_id: Optional[str] = Form(None),
+    is_shared: bool = Form(True),
+    description: Optional[str] = Form(None),
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return await CoreVaultService.upload_document(
+        db=db,
+        tenant_id=str(current_user.tenant_id),
+        owner_id=str(current_user.id),
+        file=file,
+        file_type=file_type,
+        transaction_id=transaction_id,
+        parent_id=parent_id,
+        is_shared=is_shared,
+        description=description
+    )
+
+@router.post("/vault/folders")
+def create_mobile_vault_folder(
+    name: str = Form(...),
+    parent_id: Optional[str] = Form(None),
+    is_shared: bool = Form(True),
+    description: Optional[str] = Form(None),
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return CoreVaultService.create_folder(
+        db=db,
+        tenant_id=str(current_user.tenant_id),
+        owner_id=str(current_user.id),
+        name=name,
+        parent_id=parent_id,
+        is_shared=is_shared,
+        description=description
+    )
+
+@router.delete("/vault/{document_id}")
+def delete_mobile_vault_document(
+    document_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    doc = CoreVaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if doc.owner_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Only the owner can delete this document")
+
+    success = CoreVaultService.delete_document(db, document_id, str(current_user.tenant_id))
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete document")
+        
+    return {"status": "success"}
+
+@router.patch("/vault/move")
+def move_mobile_vault_documents(
+    data: dict,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    doc_ids = data.get("doc_ids", [])
+    target_parent_id = data.get("target_parent_id")
+    CoreVaultService.move_documents(db, doc_ids, str(current_user.tenant_id), target_parent_id)
+    return {"status": "success"}
+
+@router.patch("/vault/{document_id}/link-transaction")
+def link_mobile_vault_document_to_transaction(
+    document_id: str,
+    data: dict,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    transaction_id = data.get("transaction_id")
+    doc = CoreVaultService.link_transaction(db, document_id, str(current_user.tenant_id), transaction_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
+
+@router.get("/vault/{document_id}/download")
+def download_mobile_vault_document(
+    document_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    doc = CoreVaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not doc.is_shared and doc.owner_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return FileResponse(
+        path=doc.file_path,
+        filename=doc.filename,
+        media_type=doc.mime_type
+    )
+
+@router.get("/vault/{document_id}/thumbnail")
+def get_mobile_vault_thumbnail(
+    document_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    doc = CoreVaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not os.path.exists(doc.thumbnail_path or ""):
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+    return FileResponse(path=doc.thumbnail_path, media_type="image/jpeg")
+
+@router.put("/vault/{document_id}")
+def update_mobile_vault_document(
+    document_id: str,
+    filename: Optional[str] = Form(None),
+    file_type: Optional[vault_models.DocumentType] = Form(None),
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    doc = CoreVaultService.get_document_by_id(db, document_id, str(current_user.tenant_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if filename is not None:
+        doc.filename = filename
+    if file_type is not None:
+        doc.file_type = file_type
+        
+    db.commit()
+    db.refresh(doc)
+    return doc
