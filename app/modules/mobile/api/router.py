@@ -640,6 +640,7 @@ def get_dashboard_investments(
     if inv_data["current_value"] <= 0 and inv_data["total_invested"] <= 0:
         return {"investment_summary": None}
 
+
     return {
         "investment_summary": {
             "total_invested": inv_data["total_invested"],
@@ -1015,66 +1016,238 @@ def get_mobile_funds(
     
     from backend.app.modules.finance.services.mutual_funds import MutualFundService
     
-    # Fetch portfolio
+    # 1. Fetch Analytics for Summary (Ensures parity with Web)
+    analytics = MutualFundService.get_portfolio_analytics(db, str(current_user.tenant_id), user_id=target_user_id)
+    
+    # 2. Fetch Detailed Holdings
     holdings = MutualFundService.get_portfolio(db, str(current_user.tenant_id), target_user_id)
     
-    total_invested = 0.0
-    total_current = 0.0
-    
-    clean_holdings = []
-    
-    today_total_change = 0.0
+    # 3. Combine Folios
+    combined_holdings = {}
     
     for h in holdings:
-        inv = float(h.get('invested_value', 0))
-        cur = float(h.get('current_value', 0))
-        
-        # Calculate Day Change using Sparkline (Last 2 points)
-        # Sparkline is [..., T-2, T-1, T] 
-        # But in get_portfolio logic: sparkline = [float(d.get("nav", 0.0)) for d in sparkline_data if d.get("nav")]
-        # And it says: sparkline_data.reverse() # Reverse to chronological order (Oldest -> Newest)
-        # So sparkline[-1] is Latest NAV, sparkline[-2] is Previous Day NAV
-        
-        day_change = 0.0
-        day_change_limit = 0.0
-        
-        sparkline = h.get('sparkline', [])
+        scheme_code = h['scheme_code']
         units = float(h.get('units', 0))
+        cur = float(h.get('current_value', 0))
+        inv = float(h.get('invested_value', 0))
         
-        if len(sparkline) >= 2 and units > 0:
-            latest_nav = sparkline[-1]
-            prev_nav = sparkline[-2]
-            day_change = (latest_nav - prev_nav) * units
-            
-        today_total_change += day_change
-
-        total_invested += inv
-        total_current += cur
+        if scheme_code not in combined_holdings:
+            combined_holdings[scheme_code] = {
+                "scheme_code": scheme_code,
+                "scheme_name": h['scheme_name'],
+                "total_units": 0.0,
+                "current_value": 0.0,
+                "invested_value": 0.0,
+                "category": h.get('category'),
+                "last_updated": h.get('last_updated_at', ''),
+                "folios": []
+            }
         
-        clean_holdings.append(mobile_schemas.FundHolding(
-            scheme_code=h['scheme_code'],
-            scheme_name=h['scheme_name'],
+        ch = combined_holdings[scheme_code]
+        ch["total_units"] += units
+        ch["current_value"] += cur
+        ch["invested_value"] += inv
+        ch["folios"].append(mobile_schemas.Folio(
+            folio_number=h.get('folio_number', 'Unknown'),
             units=units,
             current_value=cur,
             invested_value=inv,
+            profit_loss=cur - inv
+        ))
+    
+    clean_holdings = []
+    from backend.app.modules.finance.services.external.nav_service import NAVService
+    for s_code, ch in combined_holdings.items():
+        cur = ch["current_value"]
+        inv = ch["invested_value"]
+        total_units = ch["total_units"]
+        
+        # Calculate day change for combined holding
+        day_change = 0.0
+        try:
+            delta_info = NAVService.get_latest_nav_delta(s_code)
+            day_change = float(total_units) * float(delta_info.get("delta", 0))
+        except:
+            pass
+
+        clean_holdings.append(mobile_schemas.FundHolding(
+            scheme_code=s_code,
+            scheme_name=ch["scheme_name"],
+            units=total_units,
+            current_value=cur,
+            invested_value=inv,
             profit_loss=cur - inv,
-            last_updated=h.get('last_updated', ''),
+            last_updated=ch["last_updated"],
+            category=ch["category"],
             day_change=day_change,
             day_change_percentage=(day_change / (cur - day_change) * 100) if (cur - day_change) > 0 else 0.0,
-            xirr=None 
+            folios=ch["folios"]
         ))
 
-    day_change_pct = (today_total_change / (total_current - today_total_change) * 100) if (total_current - today_total_change) > 0 else 0.0
-        
+    # Calculate Top Gainers/Losers for insights (on combined holdings)
+    # Sort by profit/loss percentage
+    def get_pl_percent(h):
+        inv = h.invested_value
+        if inv > 0:
+            return float(h.profit_loss / inv) * 100
+        return 0.0
+
+    sorted_holdings = sorted(clean_holdings, key=get_pl_percent, reverse=True)
+    top_gainers = sorted_holdings[:3]
+    top_losers = sorted_holdings[-3:] if len(sorted_holdings) > 3 else []
+    top_losers = [h for h in top_losers if get_pl_percent(h) < 0] # Only show if actually losing
+
+    # Generate dynamic text insights
+    text_insights = []
+    asset_alloc = analytics.get("asset_allocation")
+    
+    # 1. Diversification insight
+    if asset_alloc:
+        active_assets = [k for k, v in asset_alloc.items() if v > 0]
+        if len(active_assets) >= 3:
+            text_insights.append(f"Your portfolio is well diversified across {len(active_assets)} asset classes.")
+        elif "equity" in active_assets and asset_alloc["equity"] > 80:
+            text_insights.append("Your portfolio is highly concentrated in Equity (High Risk/High Reward).")
+            
+    # 2. Concentration insight
+    if len(clean_holdings) > 3:
+        total_val = float(analytics.get("current_value", 0))
+        if total_val > 0:
+            top_3_val = sum(h.current_value for h in sorted_holdings[:3])
+            concentration = (float(top_3_val) / total_val) * 100
+            if concentration > 70:
+                text_insights.append(f"Top 3 holdings account for {concentration:.1f}% of your portfolio.")
+
+    # 3. Best performer insight
+    if top_gainers:
+        best = top_gainers[0]
+        best_pl = get_pl_percent(best)
+        if best_pl > 15:
+            text_insights.append(f"{best.scheme_name} is your star performer with {best_pl:.1f}% returns.")
+
     return {
-        "total_invested": total_invested,
-        "total_current": total_current,
-        "total_pl": total_current - total_invested,
-        "day_change": today_total_change,
-        "day_change_percentage": day_change_pct,
-        "xirr": None, 
+        "total_invested": analytics.get("total_invested", 0.0),
+        "total_current": analytics.get("current_value", 0.0),
+        "total_pl": analytics.get("profit_loss", 0.0),
+        "day_change": analytics.get("day_change", 0.0),
+        "day_change_percentage": analytics.get("day_change_percent", 0.0),
+        "xirr": analytics.get("xirr"),
+        "asset_allocation": asset_alloc,
+        "top_gainers": top_gainers,
+        "top_losers": top_losers,
+        "text_insights": text_insights,
         "holdings": clean_holdings
     }
+
+@router.get("/funds/{scheme_code}", response_model=mobile_schemas.FundDetailResponse)
+def get_fund_details(
+    scheme_code: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed information for a specific mutual fund scheme.
+    """
+    tenant_id = str(current_user.tenant_id)
+    from backend.app.modules.finance.services.mutual_funds import MutualFundService
+    from backend.app.modules.finance.models import MutualFundHolding, MutualFundsMeta, MutualFundOrder
+    from backend.app.modules.finance.services.external.nav_service import NAVService
+    from datetime import date, timedelta
+    
+    # 1. Fetch Holdings for this scheme
+    holdings = db.query(MutualFundHolding).filter(
+        MutualFundHolding.tenant_id == tenant_id,
+        MutualFundHolding.scheme_code == scheme_code,
+        MutualFundHolding.is_deleted == False
+    ).all()
+    
+    if not holdings:
+        raise HTTPException(status_code=404, detail="No holdings found for this scheme")
+    
+    # 2. Aggregates
+    total_units = sum(float(h.units) for h in holdings)
+    total_current = sum(float(h.current_value or 0) for h in holdings)
+    total_invested = sum(float(h.invested_value or 0) for h in holdings)
+    
+    folios = [
+        mobile_schemas.Folio(
+            folio_number=h.folio_number or "Unknown",
+            units=float(h.units),
+            current_value=float(h.current_value or 0),
+            invested_value=float(h.invested_value or 0),
+            profit_loss=float(h.current_value or 0) - float(h.invested_value or 0)
+        ) for h in holdings
+    ]
+    
+    # 3. Meta
+    meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == scheme_code).first()
+    
+    # 4. Timeline & Benchmark
+    # First purchase date
+    first_order = db.query(MutualFundOrder).filter(
+        MutualFundOrder.tenant_id == tenant_id,
+        MutualFundOrder.scheme_code == scheme_code,
+        MutualFundOrder.is_deleted == False
+    ).order_by(MutualFundOrder.order_date.asc()).first()
+    
+    start_date = (first_order.order_date.date() - timedelta(days=10)) if first_order else (date.today() - timedelta(days=365))
+    end_date = date.today()
+    
+    history = NAVService.get_nav_history(scheme_code, start_date, end_date)
+    
+    # Benchmark (Nifty 50 = 120716)
+    benchmark_history = NAVService.get_nav_history("120716", start_date, end_date)
+    bm_map = {entry['date']: float(entry['value']) for entry in benchmark_history}
+    
+    timeline = [
+        mobile_schemas.TimelinePoint(
+            date=entry['date'],
+            value=float(entry['value']),
+            benchmark_value=bm_map.get(entry['date'])
+        ) for entry in history
+    ]
+    
+    # 5. Events
+    orders = db.query(MutualFundOrder).filter(
+        MutualFundOrder.tenant_id == tenant_id,
+        MutualFundOrder.scheme_code == scheme_code,
+        MutualFundOrder.is_deleted == False
+    ).order_by(MutualFundOrder.order_date.desc()).all()
+    
+    events = [
+        mobile_schemas.InvestmentEvent(
+            date=o.order_date.strftime("%Y-%m-%d"),
+            amount=float(o.amount),
+            type=o.type,
+            units=float(o.units)
+        ) for o in orders
+    ]
+    
+    # 6. Day Change
+    day_change = 0.0
+    try:
+        delta_info = NAVService.get_latest_nav_delta(scheme_code)
+        day_change = float(total_units) * float(delta_info.get("delta", 0))
+    except:
+        pass
+
+    return mobile_schemas.FundDetailResponse(
+        scheme_code=scheme_code,
+        scheme_name=meta.scheme_name if meta else holdings[0].scheme_name,
+        category=meta.category if meta else "Other",
+        fund_house=meta.fund_house if meta else None,
+        total_units=total_units,
+        current_value=total_current,
+        invested_value=total_invested,
+        profit_loss=total_current - total_invested,
+        profit_loss_percentage=(total_current - total_invested) / total_invested * 100 if total_invested > 0 else 0,
+        day_change=day_change,
+        day_change_percentage=(day_change / (total_current - day_change) * 100) if (total_current - day_change) > 0 else 0.0,
+        xirr=None, 
+        folios=folios,
+        timeline=timeline,
+        events=events
+    )
 
 @router.get("/categories", response_model=List[mobile_schemas.Category])
 def get_categories(

@@ -1764,6 +1764,7 @@ class MutualFundService:
             "equity": Decimal("0.0"),
             "debt": Decimal("0.0"),
             "hybrid": Decimal("0.0"),
+            "gold": Decimal("0.0"),
             "other": Decimal("0.0")
         }
         category_allocation = {}

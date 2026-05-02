@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 
 class DeviceBase(BaseModel):
@@ -153,6 +153,13 @@ class TransactionResponse(BaseModel):
     data: List[RecentTransaction]
     next_page: Optional[int] = None
 
+class Folio(BaseModel):
+    folio_number: str
+    units: float
+    current_value: float
+    invested_value: float
+    profit_loss: float
+
 class FundHolding(BaseModel):
     scheme_code: str
     scheme_name: str
@@ -163,8 +170,38 @@ class FundHolding(BaseModel):
     day_change: Optional[float] = 0.0
     day_change_percentage: Optional[float] = 0.0
     last_updated: str
+    category: Optional[str] = None
     xirr: Optional[float] = None
     allocation_percentage: Optional[float] = None
+    folios: List[Folio] = []
+
+class TimelinePoint(BaseModel):
+    date: str
+    value: float
+    benchmark_value: Optional[float] = None
+
+class InvestmentEvent(BaseModel):
+    date: str
+    amount: float
+    type: str # BUY/SELL
+    units: float
+
+class FundDetailResponse(BaseModel):
+    scheme_code: str
+    scheme_name: str
+    category: str
+    fund_house: Optional[str] = None
+    total_units: float
+    current_value: float
+    invested_value: float
+    profit_loss: float
+    profit_loss_percentage: float
+    day_change: Optional[float] = 0.0
+    day_change_percentage: Optional[float] = 0.0
+    xirr: Optional[float] = None
+    folios: List[Folio]
+    timeline: List[TimelinePoint]
+    events: List[InvestmentEvent]
 
 class MobileFundsResponse(BaseModel):
     total_invested: float
@@ -173,6 +210,10 @@ class MobileFundsResponse(BaseModel):
     day_change_percentage: Optional[float] = 0.0
     total_pl: float
     xirr: Optional[float] = None
+    asset_allocation: Optional[Dict[str, float]] = None
+    top_gainers: Optional[List[FundHolding]] = []
+    top_losers: Optional[List[FundHolding]] = []
+    text_insights: Optional[List[str]] = []
     holdings: List[FundHolding]
 
 class Category(BaseModel):

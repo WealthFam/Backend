@@ -100,6 +100,9 @@ def categorize_fund(scheme_category: str) -> str:
     hybrid_keywords = ['hybrid', 'balanced', 'allocation', 'arbitrage', 
                        'equity savings', 'multi asset']
     
+    # Gold/Commodities
+    commodity_keywords = ['gold', 'silver', 'commodity', 'natural resources']
+    
     for keyword in equity_keywords:
         if keyword in category_lower:
             return 'equity'
@@ -111,6 +114,10 @@ def categorize_fund(scheme_category: str) -> str:
     for keyword in hybrid_keywords:
         if keyword in category_lower:
             return 'hybrid'
+            
+    for keyword in commodity_keywords:
+        if keyword in category_lower:
+            return 'gold'
     
     return 'other'
 
