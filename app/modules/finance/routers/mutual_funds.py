@@ -337,6 +337,7 @@ def delete_holding(
 def preview_cas_pdf(
     file: UploadFile = File(...),
     password: str = Form(...),
+    user_id: Optional[str] = Form(None),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -355,11 +356,13 @@ def preview_cas_pdf(
         # 2. Map to schemes
         mapped_transactions = MutualFundService.map_transactions_to_schemes(raw_transactions)
         
-        # 3. Check for duplicates
+        # 3. Stamp the correct target user_id BEFORE duplicate check.
+        # If the caller specifies a target user (e.g. a different family member),
+        # use that so check_duplicates queries the right user's orders.
+        effective_user_id = user_id or str(current_user.id)
         tenant_id = str(current_user.tenant_id)
         for txn in mapped_transactions:
-            if 'user_id' not in txn:
-                txn['user_id'] = current_user.id
+            txn['user_id'] = effective_user_id
         
         mapped_transactions = MutualFundService.check_duplicates(db, tenant_id, mapped_transactions)
         
@@ -380,6 +383,7 @@ def preview_cas_email(
     password: str = Form(...),
     email_config_id: Optional[str] = Form(None),
     period: Optional[str] = Form(None),
+    user_id: Optional[str] = Form(None),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -416,11 +420,13 @@ def preview_cas_email(
     # 2. Map to schemes
     mapped_transactions = MutualFundService.map_transactions_to_schemes(raw_transactions)
     
-    # 3. Check for duplicates
+    # 3. Stamp the correct target user_id BEFORE duplicate check.
+    # If the caller specifies a target user (e.g. a different family member),
+    # use that so check_duplicates queries the right user's orders.
+    effective_user_id = user_id or str(current_user.id)
     tenant_id = str(current_user.tenant_id)
     for txn in mapped_transactions:
-        if 'user_id' not in txn:
-            txn['user_id'] = current_user.id
+        txn['user_id'] = effective_user_id
     
     mapped_transactions = MutualFundService.check_duplicates(db, tenant_id, mapped_transactions)
     
@@ -470,8 +476,8 @@ def import_cas_pdf(
     db: Session = Depends(get_db)
 ):
     """Legacy compatibility: Import PDF in one go."""
-    # Corrected arguments: must pass current_user and db explicitly
-    preview = preview_cas_pdf(file, password, current_user, db)
+    # Pass user_id to preview so duplicates are checked against the correct user
+    preview = preview_cas_pdf(file, password, user_id, current_user, db)
     mapped_txns = preview["transactions"]
     for txn in mapped_txns:
         txn['import_source'] = 'PDF'
@@ -488,7 +494,8 @@ def trigger_cas_email_import(
     db: Session = Depends(get_db)
 ):
     """Legacy compatibility: Sync Email in one go."""
-    preview = preview_cas_email(password, email_config_id, period, current_user, db)
+    # Pass user_id to preview so duplicates are checked against the correct user
+    preview = preview_cas_email(password, email_config_id, period, user_id, current_user, db)
     mapped_txns = preview["transactions"]
     for txn in mapped_txns:
         txn['import_source'] = 'EMAIL'

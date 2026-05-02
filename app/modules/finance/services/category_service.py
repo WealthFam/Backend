@@ -64,8 +64,17 @@ class CategoryService:
 
     @staticmethod
     def create_category(db: Session, category: schemas.CategoryCreate, tenant_id: str) -> models.Category:
+        data = category.model_dump()
+        
+        # Hierarchical Type Inheritance: 
+        # If this is a child and its type is the default 'expense', check if parent has a different type.
+        if data.get('parent_id'):
+            parent = db.query(models.Category).filter(models.Category.id == data['parent_id']).first()
+            if parent and parent.type != data.get('type'):
+                data['type'] = parent.type
+                
         db_cat = models.Category(
-            **category.model_dump(),
+            **data,
             tenant_id=tenant_id
         )
         with db_write_lock:
@@ -116,8 +125,18 @@ class CategoryService:
                     ).update({models.Budget.category: new_name}, synchronize_session=False)
 
                 # 2. Update the Category itself
+                new_type = data.get("type")
+                type_changed = new_type and new_type != db_cat.type
+                
                 for k, v in data.items():
                     setattr(db_cat, k, v)
+                
+                # 3. If type changed, cascade to direct children (Hierarchical Sync)
+                if type_changed:
+                    db.query(models.Category).filter(
+                        models.Category.parent_id == category_id,
+                        models.Category.tenant_id == tenant_id
+                    ).update({models.Category.type: new_type}, synchronize_session=False)
                 
                 db.commit()
                 db.refresh(db_cat)
@@ -142,7 +161,8 @@ class CategoryService:
         # Check transactions
         txn_count = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
-            models.Transaction.category == db_cat.name
+            models.Transaction.category == db_cat.name,
+            models.Transaction.is_deleted == False
         ).count()
         if txn_count > 0:
             reasons.append(f"Linked to {txn_count} existing transaction(s)")
@@ -182,7 +202,8 @@ class CategoryService:
         # 2. Check for active transactions (Ledger)
         has_txns = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
-            models.Transaction.category == db_cat.name
+            models.Transaction.category == db_cat.name,
+            models.Transaction.is_deleted == False
         ).first()
         if has_txns:
             raise HTTPException(status_code=400, detail="This category is linked to existing transactions. Please re-categorize them first.")
@@ -266,7 +287,7 @@ class CategoryService:
 
     # --- Rules ---
     @staticmethod
-    def create_category_rule(db: Session, rule: schemas.CategoryRuleCreate, tenant_id: str) -> models.CategoryRule:
+    def create_category_rule(db: Session, rule: schemas.CategoryRuleCreate, tenant_id: str, commit: bool = True) -> models.CategoryRule:
         data = rule.model_dump()
         if isinstance(data.get('keywords'), list):
             data['keywords'] = json.dumps(data['keywords'])
@@ -279,12 +300,19 @@ class CategoryService:
         with db_write_lock:
             try:
                 db.add(db_rule)
-                db.commit()
-                db.refresh(db_rule)
+                if commit:
+                    db.commit()
+                    db.refresh(db_rule)
             except Exception:
                 db.rollback()
                 raise
         
+        if not commit:
+            return db_rule
+
+        # Expunge to prevent accidental sync of deserialized list back to DB
+        db.expunge(db_rule)
+
         # Manually deserialize keywords for Pydantic response
         db_rule.is_valid = True
         db_rule.validation_error = None
@@ -332,6 +360,7 @@ class CategoryService:
         for r in rules:
              r.is_valid = True
              r.validation_error = None
+             db.expunge(r)
              try:
                  keywords = json.loads(r.keywords)
                  r.keywords = keywords
@@ -357,7 +386,7 @@ class CategoryService:
         return {"data": rules, "total": total}
 
     @staticmethod
-    def update_category_rule(db: Session, rule_id: str, rule_update: schemas.CategoryRuleUpdate, tenant_id: str) -> Optional[models.CategoryRule]:
+    def update_category_rule(db: Session, rule_id: str, rule_update: schemas.CategoryRuleUpdate, tenant_id: str, commit: bool = True) -> Optional[models.CategoryRule]:
         db_rule = db.query(models.CategoryRule).filter(
             models.CategoryRule.id == rule_id,
             models.CategoryRule.tenant_id == tenant_id
@@ -375,12 +404,19 @@ class CategoryService:
                     else:
                         setattr(db_rule, key, value)
                         
-                db.commit()
-                db.refresh(db_rule)
+                if commit:
+                    db.commit()
+                    db.refresh(db_rule)
             except Exception:
                 db.rollback()
                 raise
         
+        if not commit:
+            return db_rule
+
+        # Expunge to prevent accidental sync of deserialized list back to DB
+        db.expunge(db_rule)
+
         # Deserialize for response
         db_rule.is_valid = True
         db_rule.validation_error = None
@@ -447,6 +483,7 @@ class CategoryService:
             func.count(models.Transaction.id).label("count")
         ).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.category != "Uncategorized",
             models.Transaction.category != None
         ).group_by(

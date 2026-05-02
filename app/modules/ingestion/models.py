@@ -20,6 +20,7 @@ class EmailConfiguration(Base):
     auto_sync_enabled = Column(Boolean, default=False)
     last_sync_at = Column(UTCDateTime, nullable=True) # General expense sync
     cas_last_sync_at = Column(UTCDateTime, nullable=True) # Mutual fund CAS sync
+    statement_last_sync_at = Column(UTCDateTime, nullable=True) # Bank statement sync
     created_at = Column(UTCDateTime, default=timezone.utcnow)
 
 class EmailSyncLog(Base):

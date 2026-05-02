@@ -206,7 +206,7 @@ class RuleExecutor:
                     category_override=rule.category,
                     is_transfer_override=rule.is_transfer,
                     to_account_id_override=rule.to_account_id if rule.is_transfer else None,
-                    exclude_from_reports_override=rule.exclude_from_reports if rule.exclude_from_reports else None
+                    exclude_from_reports_override=rule.exclude_from_reports
                 )
                 if result:
                     affected += 1
@@ -262,7 +262,10 @@ class RuleExecutor:
         affected_count = 0
         with db_write_lock:
             try:
-                query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+                query = db.query(models.Transaction).filter(
+                    models.Transaction.tenant_id == tenant_id,
+                    models.Transaction.is_deleted == False
+                )
                 if not override:
                     query = query.filter(
                         (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)
@@ -271,10 +274,15 @@ class RuleExecutor:
                 target_txns = query.all()
                 for txn in target_txns:
                     txn.category = rule.category
-                    if rule.exclude_from_reports:
-                        txn.exclude_from_reports = True
-                    if rule.is_transfer and rule.to_account_id:
+                    txn.exclude_from_reports = rule.exclude_from_reports
+                    
+                    # Handle transfer status change
+                    if txn.is_transfer and not rule.is_transfer:
+                        txn.is_transfer = False
+                        txn.linked_transaction_id = None
+                    elif rule.is_transfer:
                         txn.is_transfer = True
+                        # Note: we don't automatically link here as it requires complex matching
                     db.add(txn)
                     affected_count += 1
 
@@ -299,11 +307,12 @@ class RuleExecutor:
                 target_pending = pending_query.all()
                 for p_txn in target_pending:
                     p_txn.category = rule.category
-                    if rule.exclude_from_reports:
-                        p_txn.exclude_from_reports = True
-                    if rule.is_transfer and rule.to_account_id:
-                        p_txn.is_transfer = True
+                    p_txn.exclude_from_reports = rule.exclude_from_reports
+                    p_txn.is_transfer = rule.is_transfer
+                    if rule.is_transfer:
                         p_txn.to_account_id = rule.to_account_id
+                    else:
+                        p_txn.to_account_id = None
                     db.add(p_txn)
                     affected_count += 1
 
@@ -326,7 +335,10 @@ class RuleExecutor:
             return 0
 
         # Confirmed Transactions
-        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+        query = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
+        )
         if only_uncategorized:
             query = query.filter(
                 (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)
@@ -358,7 +370,10 @@ class RuleExecutor:
             return []
 
         # Confirmed
-        query = db.query(models.Transaction).filter(models.Transaction.tenant_id == tenant_id)
+        query = db.query(models.Transaction).filter(
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
+        )
         if only_uncategorized:
             query = query.filter(
                 (models.Transaction.category == "Uncategorized") | (models.Transaction.category == None)

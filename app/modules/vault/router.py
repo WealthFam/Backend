@@ -257,6 +257,10 @@ def list_documents(
     db: Session = Depends(get_db)
 ):
     """List vault documents/folders with hierarchical support"""
+    # RBAC: Children should not see sensitive document types (like STATEMENTS)
+    from backend.app.modules.auth.models import UserRole
+    role = current_user.role
+    
     items, total = VaultService.get_documents(
         db=db,
         tenant_id=str(current_user.tenant_id),
@@ -267,7 +271,8 @@ def list_documents(
         search=search,
         is_folder=is_folder,
         skip=skip,
-        limit=limit
+        limit=limit,
+        role=role  # Pass role to service
     )
     return {
         "data": items,

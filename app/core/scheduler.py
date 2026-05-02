@@ -67,6 +67,7 @@ def auto_sync_job():
         for config in configs:
             logger.info(f"[AutoSync] Syncing {config.email}...")
             try:
+                # A. Sync General Transaction Emails
                 result = EmailSyncService.sync_emails(
                     db=db,
                     tenant_id=config.tenant_id,
@@ -82,6 +83,14 @@ def auto_sync_job():
                 if result.get("status") == "completed":
                     config.last_sync_at = timezone.utcnow()
                     db.commit()
+                
+                # B. Sync Bank Statements (New)
+                # This uses the dedicated statement_last_sync_at timestamp
+                from backend.app.modules.ingestion.statement_processor import StatementProcessor
+                asyncio.run(StatementProcessor.sync_statements(
+                    db=db, 
+                    tenant_id=config.tenant_id
+                ))
                     
             except Exception as e:
                 logger.error(f"[AutoSync] Error syncing {config.email}: {e}")

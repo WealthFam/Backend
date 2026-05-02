@@ -30,11 +30,13 @@ class RecurringService:
         if user_id in [None, "null", "undefined", ""]:
             user_id = None
         query = db.query(models.RecurringTransaction).filter(
-            models.RecurringTransaction.tenant_id == tenant_id
+            models.RecurringTransaction.tenant_id == tenant_id,
+            models.RecurringTransaction.is_deleted == False
         )
         if user_id:
             from sqlalchemy import or_
             query = query.join(models.Account, models.RecurringTransaction.account_id == models.Account.id).filter(
+                models.Account.is_deleted == False,
                 or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
             )
         return query.all()
@@ -45,7 +47,8 @@ class RecurringService:
             try:
                 db_rec = db.query(models.RecurringTransaction).filter(
                     models.RecurringTransaction.id == recurrence_id,
-                    models.RecurringTransaction.tenant_id == tenant_id
+                    models.RecurringTransaction.tenant_id == tenant_id,
+                    models.RecurringTransaction.is_deleted == False
                 ).first()
                 
                 if not db_rec: return None
@@ -67,11 +70,16 @@ class RecurringService:
             try:
                 db_rec = db.query(models.RecurringTransaction).filter(
                     models.RecurringTransaction.id == recurrence_id,
-                    models.RecurringTransaction.tenant_id == tenant_id
+                    models.RecurringTransaction.tenant_id == tenant_id,
+                    models.RecurringTransaction.is_deleted == False
                 ).first()
                 
                 if not db_rec: return False
-                db.delete(db_rec)
+                
+                now = timezone.utcnow()
+                db_rec.is_deleted = True
+                db_rec.deleted_at = now
+                
                 db.commit()
                 return True
             except Exception as e:
@@ -88,6 +96,7 @@ class RecurringService:
         due_items = db.query(models.RecurringTransaction).filter(
             models.RecurringTransaction.tenant_id == tenant_id,
             models.RecurringTransaction.is_active == True,
+            models.RecurringTransaction.is_deleted == False,
             models.RecurringTransaction.next_run_date <= timezone.utcnow()
         ).all()
         
@@ -191,9 +200,9 @@ class RecurringService:
         lookback_date = timezone.utcnow() - relativedelta(months=12)
         transactions = db.query(models.Transaction).filter(
             models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False,
             models.Transaction.type == models.TransactionType.DEBIT,
             models.Transaction.date >= lookback_date,
-            models.Transaction.is_transfer == False,
             models.Transaction.is_emi == False
         ).order_by(models.Transaction.date.desc()).all()
 
@@ -298,7 +307,8 @@ class RecurringService:
                 # Deduplication
                 existing = db.query(models.RecurringTransaction).filter(
                     models.RecurringTransaction.tenant_id == tenant_id,
-                    models.RecurringTransaction.name.ilike(f"%{merchant}%")
+                    models.RecurringTransaction.name.ilike(f"%{merchant}%"),
+                    models.RecurringTransaction.is_deleted == False
                 ).first()
                 if existing: continue
 

@@ -8,7 +8,8 @@ class ExpenseGroupService:
     def get_expense_groups(db: Session, tenant_id: str, user_id: str = None) -> List[models.ExpenseGroup]:
         # 1. Fetch all groups
         groups = db.query(models.ExpenseGroup).filter(
-            models.ExpenseGroup.tenant_id == tenant_id
+            models.ExpenseGroup.tenant_id == tenant_id,
+            models.ExpenseGroup.is_deleted == False
         ).all()
         
         if not groups:
@@ -23,13 +24,17 @@ class ExpenseGroupService:
             func.sum(models.Transaction.amount)
         ).filter(
             models.Transaction.expense_group_id.in_(group_ids),
-            models.Transaction.tenant_id == tenant_id
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
         )
         
         if user_id:
             from sqlalchemy import or_
             query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                         )
             
         totals = query.group_by(models.Transaction.expense_group_id).all()
         
@@ -57,7 +62,8 @@ class ExpenseGroupService:
     def update_expense_group(db: Session, group_id: str, update: schemas.ExpenseGroupUpdate, tenant_id: str) -> Optional[models.ExpenseGroup]:
         db_group = db.query(models.ExpenseGroup).filter(
             models.ExpenseGroup.id == group_id,
-            models.ExpenseGroup.tenant_id == tenant_id
+            models.ExpenseGroup.tenant_id == tenant_id,
+            models.ExpenseGroup.is_deleted == False
         ).first()
         
         if not db_group:
@@ -75,17 +81,17 @@ class ExpenseGroupService:
     def delete_expense_group(db: Session, group_id: str, tenant_id: str) -> bool:
         db_group = db.query(models.ExpenseGroup).filter(
             models.ExpenseGroup.id == group_id,
-            models.ExpenseGroup.tenant_id == tenant_id
+            models.ExpenseGroup.tenant_id == tenant_id,
+            models.ExpenseGroup.is_deleted == False
         ).first()
         
         if not db_group:
             return False
             
-        # Optional: Decide what to do with transactions in this group. 
-        # For now, we'll just let them have an orphaned expense_group_id or set it to NULL.
-        # SQLite/DuckDB foreign keys might need handling if strictly enforced.
+        now = timezone.utcnow()
+        db_group.is_deleted = True
+        db_group.deleted_at = now
         
-        db.delete(db_group)
         db.commit()
         return True
 
@@ -94,7 +100,8 @@ class ExpenseGroupService:
         # Verify group exists
         db_group = db.query(models.ExpenseGroup).filter(
             models.ExpenseGroup.id == group_id,
-            models.ExpenseGroup.tenant_id == tenant_id
+            models.ExpenseGroup.tenant_id == tenant_id,
+            models.ExpenseGroup.is_deleted == False
         ).first()
         if not db_group:
             return 0
@@ -102,7 +109,8 @@ class ExpenseGroupService:
         # Update transactions in bulk
         count = db.query(models.Transaction).filter(
             models.Transaction.id.in_(transaction_ids),
-            models.Transaction.tenant_id == tenant_id
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
         ).update({models.Transaction.expense_group_id: group_id}, synchronize_session=False)
         
         db.commit()

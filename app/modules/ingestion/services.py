@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -12,26 +13,26 @@ from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.base import ParsedTransaction
 from backend.app.modules.ingestion.transfer_detector import TransferDetector
 
+logger = logging.getLogger(__name__)
+
 class IngestionService:
     @staticmethod
     def log_event(db: Session, tenant_id: str, event_type: str, status: str, message: Optional[str] = None, data: Optional[dict] = None, device_id: Optional[str] = None):
-        with db_write_lock:
-            """
-            Log an ingestion event for auditing.
-            """
-        import logging
-        logger = logging.getLogger(__name__)
+        """
+        Log an ingestion event for auditing.
+        """
         logger.info(f"INGESTION EVENT: {event_type} | STATUS: {status} | MESSAGE: {message}")
-        event = ingestion_models.IngestionEvent(
-            tenant_id=tenant_id,
-            device_id=device_id,
-            event_type=event_type,
-            status=status,
-            message=message,
-            data_json=json.dumps(data) if data else None
-        )
-        db.add(event)
-        db.commit()
+        with db_write_lock:
+            event = ingestion_models.IngestionEvent(
+                tenant_id=tenant_id,
+                device_id=device_id,
+                event_type=event_type,
+                status=status,
+                message=message,
+                data_json=json.dumps(data) if data else None
+            )
+            db.add(event)
+            db.commit()
 
     @staticmethod
     def match_account(db: Session, tenant_id: str, mask: str) -> Optional[finance_models.Account]:
@@ -42,70 +43,45 @@ class IngestionService:
         if not mask or len(mask) < 2:
             return None
             
-        # Basic suffix match
-        # DuckDB/SQLAlchemy 'like' or 'endswith'
-        # We assume the mask in DB (e.g. "XX1234") ends with the SMS mask (e.g. "1234")
-        # or simplified: just check if DB account_mask ends with the provided digits
-        
         accounts = db.query(finance_models.Account).filter(
             finance_models.Account.tenant_id == tenant_id,
             finance_models.Account.account_mask != None
         ).all()
         
+        # Normalize search mask: last 4 digits
+        search_mask = "".join(filter(str.isdigit, mask))[-4:]
+        
         for acc in accounts:
-            if acc.account_mask and acc.account_mask.endswith(mask[-4:]):
+            if acc.account_mask and acc.account_mask.endswith(search_mask):
                 return acc
         return None
 
     @staticmethod
     def process_transaction(db: Session, tenant_id: str, parsed: ParsedTransaction, extra_data: Optional[dict] = None):
-        with db_write_lock:
-            """
-            Process a parsed transaction: match account, save transaction.
-            """
         account = None
         if parsed.account_mask:
             account = IngestionService.match_account(db, tenant_id, parsed.account_mask)
             
         if not account and parsed.account_mask:
-            # Auto-Discovery: Create new untrusted account
-            source_label = parsed.source if parsed.source else "Auto"
-            account = finance_models.Account(
-                tenant_id=tenant_id,
-                name=f"Detected: {source_label} (XX{parsed.account_mask[-4:]})",
-                type=finance_models.AccountType.BANK, # Default to Bank
-                account_mask=parsed.account_mask[-4:], # Store last 4 digits
-                is_verified=False,
-                balance=0.0
-            )
-            db.add(account)
-            db.commit()
-            db.refresh(account)
+            # BLOCK AUTO-DISCOVERY: Account must be pre-linked.
+            logger.warning(f"INGESTION BLOCKED: Account ending in '{parsed.account_mask[-4:]}' not found for tenant.")
+            return {
+                "status": "blocked", 
+                "reason": f"Account ending in '{parsed.account_mask[-4:]}' not found. Link account first.",
+                "account_mask": parsed.account_mask[-4:]
+            }
             
         is_fallback_account = False
         if not account:
-             # Fallback if no mask was present in SMS at all, send to triage
-             account = db.query(finance_models.Account).filter(
-                 finance_models.Account.tenant_id == tenant_id,
-                 finance_models.Account.name == "Unmatched Account"
-             ).first()
-             
-             if not account:
-                 account = finance_models.Account(
-                     tenant_id=tenant_id,
-                     name="Unmatched Account",
-                     type=finance_models.AccountType.BANK,
-                     is_verified=False,
-                     balance=0.0
-                 )
-                 db.add(account)
-                 db.commit()
-                 db.refresh(account)
-                 
-             is_fallback_account = True
+            # BLOCK: No account matched.
+            reason = "No account mask detected in message." if not parsed.account_mask else f"Account ending in '{parsed.account_mask[-4:]}' not found."
+            logger.warning(f"INGESTION BLOCKED: {reason}")
+            return {
+                "status": "blocked", 
+                "reason": f"{reason} Please link the account in settings first.",
+                "account_mask": parsed.account_mask[-4:] if parsed.account_mask else None
+            }
             
-        # Create Transaction or Move to Triage
-        
         # Determine amount sign
         final_amount = parsed.amount
         if parsed.type == "DEBIT":
@@ -122,8 +98,6 @@ class IngestionService:
         is_dup, reason, existing_id = TransactionDeduplicator.check_duplicate(db, tenant_id, parsed, str(account.id), final_amount)
         
         if is_dup:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.warning(f"INGESTION SKIPPED: Duplicate detected - {reason} (Existing ID: {existing_id})")
             return {"status": "skipped", "reason": f"Deduplicated: {reason}", "deduplicated": True, "existing_id": existing_id}
 
@@ -136,7 +110,6 @@ class IngestionService:
             if ip.pattern.lower() in check_text:
                 return {"status": "skipped", "reason": f"Ignored by user pattern: {ip.pattern}"}
         
-        
         # Try to detect internal transfer
         all_accounts = db.query(finance_models.Account).filter(finance_models.Account.tenant_id == tenant_id).all()
         all_rules = db.query(finance_models.CategoryRule).filter(finance_models.CategoryRule.tenant_id == tenant_id).all()
@@ -144,21 +117,14 @@ class IngestionService:
         is_transfer, to_account_id = TransferDetector.detect(parsed.description, parsed.recipient, all_accounts, all_rules)
         
         # Try to auto-categorize
-        # Prioritize category from parser if available (e.g. from Learned Patterns)
         category = parsed.category
-        
         if not category or category == "Uncategorized":
             category = TransactionService.get_suggested_category(db, tenant_id, parsed.description, parsed.recipient)
         
-        # If it's a transfer, we force category to "Transfer" if it matches a transfer rule
         if is_transfer:
             category = "Transfer"
         
-        # Auto-ingest if we have a real category
-        # If the category came from the parser (not None), we treat it as high confidence
         is_auto_ingest = (category and category != "Uncategorized")
-        
-        # Force triage if fallback account is used
         if is_fallback_account:
             is_auto_ingest = False
         
@@ -167,39 +133,33 @@ class IngestionService:
 
         if is_auto_ingest:
             # High confidence -> Directly to transactions
-            # BALANCE ANCHORING
-            # If parsed data has a balance, we anchor the account balance immediately as the "New Reality"
-            # but only if the message is newer than or same date as last sync.
             if parsed.balance is not None:
-                # Check if this message is newer than the current anchor
                 is_newer = True
                 if account.last_synced_at and parsed.date < account.last_synced_at:
                     is_newer = False
                 
                 if is_newer:
-                    # Update anchor fields
-                    account.last_synced_balance = parsed.balance
-                    account.last_synced_at = parsed.date
-                    if parsed.credit_limit:
-                        account.last_synced_limit = parsed.credit_limit
-                    
-                    # Update current running balance
-                    account.balance = parsed.balance
-                    if parsed.credit_limit:
-                        account.credit_limit = parsed.credit_limit
-                    
-                    # Create snapshot
-                    snapshot = finance_models.BalanceSnapshot(
-                        account_id=str(account.id),
-                        tenant_id=tenant_id,
-                        balance=parsed.balance,
-                        timestamp=parsed.date,
-                        source=parsed.source or "AUTO"
-                    )
-                    db.add(snapshot)
-                    balance_synced = True
+                    with db_write_lock:
+                        account.last_synced_balance = parsed.balance
+                        account.last_synced_at = parsed.date
+                        if parsed.credit_limit:
+                            account.last_synced_limit = parsed.credit_limit
+                        
+                        account.balance = parsed.balance
+                        if parsed.credit_limit:
+                            account.credit_limit = parsed.credit_limit
+                        
+                        snapshot = finance_models.BalanceSnapshot(
+                            account_id=str(account.id),
+                            tenant_id=tenant_id,
+                            balance=parsed.balance,
+                            timestamp=parsed.date,
+                            source=parsed.source or "AUTO"
+                        )
+                        db.add(snapshot)
+                        db.flush()  # Use flush instead of commit to keep session alive for transaction creation
+                        balance_synced = True
 
-            # High confidence -> Post Transaction
             txn_create = finance_schemas.TransactionCreate(
                 account_id=str(account.id),
                 amount=final_amount,
@@ -218,19 +178,15 @@ class IngestionService:
                 exclude_from_reports=is_transfer
             )
             try:
-                # If we already anchored the balance (balance_synced=True), 
-                # we must NOT update the balance again in create_transaction.
                 db_txn = TransactionService.create_transaction(
                     db, txn_create, tenant_id, 
-                    update_balance=not balance_synced
+                    update_balance=not balance_synced,
+                    commit=False # Bug 5 Fix: Defer commit until end of flow
                 )
                 db.commit()
 
-                # Trigger Real-time Mobile Notification
                 NotificationService.notify_transaction(
-                    db, 
-                    tenant_id, 
-                    final_amount, 
+                    db, tenant_id, final_amount, 
                     parsed.description or parsed.recipient, 
                     account.name,
                     user_id=account.owner_id
@@ -261,14 +217,12 @@ class IngestionService:
                 latitude=extra_data.get("latitude") if extra_data else None,
                 longitude=extra_data.get("longitude") if extra_data else None
             )
-            db.add(pending)
-            db.commit()
+            with db_write_lock:
+                db.add(pending)
+                db.commit()
             
-            # Notify about pending transaction requiring triage
             NotificationService.notify_triage(
-                db, 
-                tenant_id, 
-                final_amount, 
+                db, tenant_id, final_amount, 
                 parsed.description or parsed.recipient or "Merchant",
                 account.name
             )
@@ -277,37 +231,28 @@ class IngestionService:
 
     @staticmethod
     def capture_unparsed(db: Session, tenant_id: str, source: str, raw_content: str, subject: Optional[str] = None, sender: Optional[str] = None, latitude: Optional[float] = None, longitude: Optional[float] = None):
-        with db_write_lock:
-            """
-            Save a message that looks like a transaction but failed all parsers.
-            """
         msg_hash = hashlib.md5(raw_content.encode()).hexdigest()
 
-        # Ignore Pattern Check
         check_text = f"{(subject or '')} {(raw_content or '')}".lower()
         ignored_patterns = db.query(ingestion_models.IgnoredPattern).filter(
             ingestion_models.IgnoredPattern.tenant_id == tenant_id
         ).all()
         for ip in ignored_patterns:
             if ip.pattern.lower() in check_text:
-                return # Skip noise
+                return 
             
-        # Spam Filter Check
         spam_filters = db.query(ingestion_models.SpamFilter).filter(
             ingestion_models.SpamFilter.tenant_id == tenant_id
         ).all()
         for sf in spam_filters:
-            # Match by sender AND subject if both are set in the filter
-            # If only one is set, it matches if that one matches
             sender_match = (not sf.sender or sf.sender == sender)
             subject_match = (not sf.subject or sf.subject == subject)
             if sender_match and subject_match:
-                # Caught!
-                sf.count_blocked = (sf.count_blocked or 0) + 1
-                db.commit() # Save the counter update
+                with db_write_lock:
+                    sf.count_blocked = (sf.count_blocked or 0) + 1
+                    db.commit()
                 return 
 
-        # Check if already exists to avoid spam
         existing = db.query(ingestion_models.UnparsedMessage).filter(
             ingestion_models.UnparsedMessage.tenant_id == tenant_id,
             ingestion_models.UnparsedMessage.content_hash == msg_hash
@@ -324,5 +269,6 @@ class IngestionService:
             latitude=latitude,
             longitude=longitude
         )
-        db.add(msg)
-        db.commit()
+        with db_write_lock:
+            db.add(msg)
+            db.commit()

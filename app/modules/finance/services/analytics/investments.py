@@ -15,7 +15,10 @@ class InvestmentAnalytics:
         family_members = db.query(User).filter(User.tenant_id == tenant_id).all()
         
         # Get all accounts in the tenant
-        accounts = db.query(models.Account).filter(models.Account.tenant_id == tenant_id).all()
+        accounts = db.query(models.Account).filter(
+            models.Account.tenant_id == tenant_id,
+            models.Account.is_deleted == False
+        ).all()
         
         # Calculate breakdown
         member_wealth = []
@@ -87,6 +90,7 @@ class InvestmentAnalytics:
             .outerjoin(models.Category, (or_(models.Transaction.category == models.Category.id, models.Transaction.category == models.Category.name)) & (models.Transaction.tenant_id == models.Category.tenant_id))\
             .filter(
                 models.Transaction.tenant_id == tenant_id,
+                models.Transaction.is_deleted == False,
                 models.Transaction.date >= start_date,
                 models.Transaction.date <= end_date,
                 models.Category.type == 'investment',
@@ -94,7 +98,10 @@ class InvestmentAnalytics:
             )
         if user_id:
             query = query.join(models.Account, models.Transaction.account_id == models.Account.id)\
-                         .filter(or_(models.Account.owner_id == user_id, models.Account.owner_id == None))
+                         .filter(
+                             models.Account.is_deleted == False,
+                             or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
+                         )
                          
         total = abs(Decimal(query.scalar() or 0))
         return total

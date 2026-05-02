@@ -29,7 +29,7 @@ def coerce_decimal(v: Any) -> Any:
 # Hardened Financial Types: Maintains high-precision math while allowing API flexibility.
 StrictDecimal = Annotated[Decimal, BeforeValidator(coerce_decimal)]
 
-from backend.app.modules.finance.models import AccountType, TransactionType
+from backend.app.modules.finance.models import AccountType, TransactionType, StatementStatus, StatementSource
 
 class AccountBase(BaseModel):
     name: str
@@ -625,8 +625,13 @@ class MutualFundBenchmarkRuleBase(BaseModel):
     benchmark_symbol: str = Field(description="MFAPI scheme code for the benchmark index")
     benchmark_label: str = Field(description="Display label for the benchmark index")
     styling_color: Optional[str] = Field(default="#3B82F6", description="Hex color for the benchmark line")
-    styling_style: str = Field(default="solid", description="Line style: solid, dashed, dotted")
+    styling_style: Optional[str] = Field(default="solid", description="Line style: solid, dashed, dotted")
     styling_dash_array: Optional[str] = Field(default=None, description="SVG dash array for dashed lines")
+
+    @field_validator('styling_style', mode='before')
+    @classmethod
+    def validate_styling_style(cls, v):
+        return v or "solid"
 
 class MutualFundBenchmarkRuleCreate(MutualFundBenchmarkRuleBase):
     pass
@@ -642,7 +647,7 @@ class MutualFundBenchmarkRuleUpdate(BaseModel):
 
 class MutualFundBenchmarkRuleRead(MutualFundBenchmarkRuleBase):
     id: Union[UUID, str]
-    created_at: datetime
+    created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True, strict=True)
 
 class MutualFundBenchmarkRulePagination(BaseModel):
@@ -719,3 +724,57 @@ class CreditCardBillPay(BaseModel):
     description: Optional[str] = "Credit Card Bill Payment"
 
 CategoryRead.model_rebuild()
+
+class StatementTransactionRead(BaseModel):
+    id: str
+    statement_id: str
+    date: datetime
+    amount: Decimal
+    type: TransactionType
+    description: str
+    ref_id: Optional[str] = None
+    category_suggestion: Optional[str] = None
+    is_reconciled: bool = False
+    matched_transaction_id: Optional[str] = None
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class StatementRead(BaseModel):
+    id: str
+    account_id: Optional[str] = None
+    vault_id: Optional[str] = None
+    filename: str
+    status: StatementStatus
+    source: StatementSource
+    email_sender: Optional[str] = None
+    email_body: Optional[str] = None
+    created_at: datetime
+    failure_reason: Optional[str] = None
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    
+    transactions: List[StatementTransactionRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+class StatementUpdate(BaseModel):
+    account_id: Optional[str] = None
+
+class PaginatedStatementRead(BaseModel):
+    items: List[StatementRead]
+    total: int
+
+class PaginatedStatementTransactionRead(BaseModel):
+    items: List[StatementTransactionRead]
+    total: int
+
+class BulkIngestRequestItem(BaseModel):
+    transaction_id: str
+    category: Optional[str] = None
+    create_rule: bool = True
+    exclude_from_reports: bool = False
+
+class BulkIngestRequest(BaseModel):
+    items: List[BulkIngestRequestItem]

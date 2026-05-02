@@ -33,6 +33,7 @@ class User(Base):
     avatar = Column(String, nullable=True) # Emoji or color or URL
     dob = Column(UTCDateTime, nullable=True)
     pan_number = Column(String, nullable=True)
+    phone_number = Column(String, nullable=True)
     role = Column(SqlEnum(UserRole), default=UserRole.ADULT, nullable=False)
     # Storing scopes as minimal JSON string or use a separate table if needed.
     # For DuckDB/SQLite, simple JSON string is often easiest if no native JSON type.

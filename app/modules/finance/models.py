@@ -52,6 +52,8 @@ class Account(Base):
     is_verified = Column(Boolean, default=True, nullable=False) # False = Auto-detected from SMS
     import_config = Column(String, nullable=True) # JSON config for CSV/Excel mapping
     created_at = Column(UTCDateTime, default=timezone.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan",
                                primaryjoin="Account.id == Transaction.account_id",
@@ -92,6 +94,8 @@ class Transaction(Base):
     is_emi = Column(Boolean, default=False, nullable=False)
     loan_id = Column(String, ForeignKey("loans.id"), nullable=True)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
     expense_group = relationship("ExpenseGroup", back_populates="transactions")
 
@@ -190,6 +194,8 @@ class Budget(Base):
     amount_limit = Column(Numeric(15, 2), nullable=False) # Monthly Limit
     period = Column(String, default="MONTHLY") # For future extensibility
     updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
 class ExpenseGroup(Base):
     __tablename__ = "expense_groups"
@@ -204,6 +210,8 @@ class ExpenseGroup(Base):
     end_date = Column(UTCDateTime, nullable=True)
     budget = Column(Numeric(15, 2), default=0.0)
     icon = Column(String, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
     transactions = relationship("Transaction", back_populates="expense_group")
 
@@ -246,6 +254,8 @@ class RecurringTransaction(Base):
     longitude = Column(Numeric(10, 7), nullable=True)
     last_run_date = Column(UTCDateTime, nullable=True) # To track when it last ran
     created_at = Column(UTCDateTime, default=timezone.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
 class Loan(Base):
     __tablename__ = "loans"
@@ -266,6 +276,8 @@ class Loan(Base):
     loan_type = Column(SqlEnum(LoanType), default=LoanType.OTHER, nullable=False)
     
     created_at = Column(UTCDateTime, default=timezone.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
     account = relationship("Account", back_populates="loan_details")
 
@@ -297,6 +309,8 @@ class InvestmentGoal(Base):
     is_completed = Column(Boolean, default=False)
     owner_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
     holdings = relationship("MutualFundHolding", back_populates="goal")
     assets = relationship("GoalAsset", back_populates="goal", cascade="all, delete-orphan")
@@ -453,5 +467,62 @@ class MutualFundBenchmarkRule(Base):
     styling_style = Column(String, nullable=True, default="solid")
     styling_dash_array = Column(String, nullable=True)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
+
+class StatementStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    PARSED = "PARSED"
+    FAILED = "FAILED"
+
+class StatementSource(str, enum.Enum):
+    EMAIL = "EMAIL"
+    MANUAL = "MANUAL"
+
+class Statement(Base):
+    __tablename__ = "statements"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=True, index=True)
+    vault_id = Column(String, nullable=True) # ID of the file in Vault
+    filename = Column(String, nullable=False)
+    status = Column(SqlEnum(StatementStatus), default=StatementStatus.PENDING, nullable=False)
+    source = Column(SqlEnum(StatementSource), default=StatementSource.MANUAL, nullable=False)
+    email_sender = Column(String, nullable=True) # The "From" address if source is EMAIL
+    email_body = Column(String, nullable=True) # The content of the email
+    created_at = Column(UTCDateTime, default=timezone.utcnow)
+    failure_reason = Column(String, nullable=True) # Reason for Status=FAILED
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
+
+    transactions = relationship("StatementTransaction", back_populates="statement", cascade="all, delete-orphan")
+    account = relationship("Account", backref=backref("statements", cascade="all, delete-orphan"))
+
+class StatementTransaction(Base):
+    __tablename__ = "statement_transactions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    statement_id = Column(String, ForeignKey("statements.id"), nullable=False, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    date = Column(UTCDateTime, nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False)
+    type = Column(SqlEnum(TransactionType), nullable=False)
+    description = Column(String, nullable=False)
+    ref_id = Column(String, nullable=True)
+    category_suggestion = Column(String, nullable=True)
+    is_reconciled = Column(Boolean, default=False)
+    matched_transaction_id = Column(String, nullable=True) # ID in transactions table
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
+
+    statement = relationship("Statement", back_populates="transactions")
+
+class StatementPasswordCache(Base):
+    __tablename__ = "statement_password_cache"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    sender_email = Column(String, nullable=False, index=True)
+    password = Column(String, nullable=False)
+    updated_at = Column(UTCDateTime, default=timezone.utcnow, onupdate=timezone.utcnow)
 
 

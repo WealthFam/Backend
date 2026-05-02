@@ -46,6 +46,7 @@ class UserBase(BaseModel):
     avatar: Optional[str] = None
     dob: Optional[StrictDate] = None # ISO format YYYY-MM-DD
     pan_number: Optional[str] = None
+    phone_number: Optional[str] = None
     role: UserRole = UserRole.ADULT
 
 class UserCreate(UserBase):
@@ -64,6 +65,7 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     dob: Optional[StrictDate] = None
     pan_number: Optional[str] = None
+    phone_number: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
