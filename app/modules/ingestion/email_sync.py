@@ -207,7 +207,9 @@ class EmailSyncService:
                                     status="skipped",
                                     reason="Noise filter"
                                 )
-                                db.add(item_log)
+                                with db_write_lock:
+                                    db.add(item_log)
+                                    db.commit()
                                 continue
 
                             # Enqueue for batch analysis
@@ -222,9 +224,13 @@ class EmailSyncService:
                                 received_at=email_date,
                                 status="pending"
                             )
-                            db.add(item_log)
-                            db.flush() # Get ID
-
+                            with db_write_lock:
+                                db.add(item_log)
+                                db.commit() # Persist immediately
+                            
+                            # Refresh log_entry to prevent expiry issues after commit
+                            db.refresh(log_entry)
+                            
                             batch_queue.append({
                                 "id": e_id.decode() if isinstance(e_id, bytes) else str(e_id),
                                 "subject": subject,
@@ -314,7 +320,7 @@ class EmailSyncService:
                                 proc_result = IngestionService.process_transaction(db, tenant_id, parsed)
                                 p_status = proc_result.get("status")
                                 
-                                if p_status in ["success", "triaged"]:
+                                if p_status in ["success", "triage"]:
                                     stats["processed"] += 1
                                     
                                     # Update item log
