@@ -9,7 +9,7 @@ class TransferDetector:
     """
     
     @staticmethod
-    def detect(description: Optional[str], recipient: Optional[str], accounts: List[Account], rules: List[CategoryRule] = None) -> (bool, Optional[str]):
+    def detect(description: Optional[str], recipient: Optional[str], accounts: List[Account], rules: List[CategoryRule] = None, source_account_id: Optional[str] = None) -> (bool, Optional[str]):
         """
         Analyzes description and recipient to find a destination account ID.
         Returns (is_transfer, to_account_id).
@@ -35,18 +35,24 @@ class TransferDetector:
 
         # 1. Match by Account Mask (e.g., *1234 or XX1234)
         for acc in accounts:
+            if source_account_id and str(acc.id) == str(source_account_id):
+                continue
             if acc.account_mask:
                 mask = acc.account_mask.lower().replace('x', '').replace('*', '')
                 if mask and len(mask) >= 4:
                     patterns = [
-                        rf"(?i)(?:card|a/c|acc|to|paying|bill\s*for)\s*(?:[x\*]*){mask}",
-                        rf"{mask}"
+                        rf"(?i)(?:card|a/c|acc|to|paying|bill\s*for)\s*(?:[x\*]*){mask}"
                     ]
                     for p in patterns:
                         if re.search(p, text):
                             return True, acc.id
             
             # 2. Match by Account Name (direct match)
+            # Skip common bank names to avoid false positives with transaction text
+            common_banks = {"hdfc", "hdfc bank", "icici", "sbi", "axis", "kotak", "idbi", "bank", "credit", "card", "account"}
+            if acc.name and acc.name.lower() in common_banks:
+                continue
+                
             if len(acc.name) > 3 and acc.name.lower() in text:
                 return True, acc.id
                 

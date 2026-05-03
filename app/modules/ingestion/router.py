@@ -701,6 +701,7 @@ def list_triage(
             "is_transfer": item.is_transfer,
             "to_account_id": item.to_account_id,
             "exclude_from_reports": item.exclude_from_reports,
+            "raw_message": item.raw_message,
             "created_at": item.created_at
         })
 

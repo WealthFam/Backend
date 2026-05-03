@@ -39,7 +39,9 @@ class UTCDateTime(TypeDecorator):
             if isinstance(value, datetime):
                 if value.tzinfo is None:
                     value = value.replace(tzinfo=timezone.utc)
-                return value.astimezone(timezone.utc)
+                # DuckDB Driver Compatibility: Ensure we save as NAIVE UTC 
+                # to prevent driver-level local time conversion.
+                return value.astimezone(timezone.utc).replace(tzinfo=None)
             elif isinstance(value, datetime_date):
                 # Handle raw date objects by converting to midnight UTC datetime
                 return datetime(value.year, value.month, value.day, tzinfo=timezone.utc)

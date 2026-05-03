@@ -190,7 +190,9 @@ class TransactionService:
             from sqlalchemy import or_
             query = query.filter(or_(
                 models.Transaction.description.ilike(search_pattern),
-                models.Transaction.recipient.ilike(search_pattern)
+                models.Transaction.recipient.ilike(search_pattern),
+                models.Transaction.external_id.ilike(search_pattern),
+                models.Transaction.category.ilike(search_pattern)
             ))
             
         if category:
@@ -265,7 +267,9 @@ class TransactionService:
             models.Transaction.exclude_from_reports == False,
             or_(
                 models.Transaction.description.ilike(search_pattern),
-                models.Transaction.recipient.ilike(search_pattern)
+                models.Transaction.recipient.ilike(search_pattern),
+                models.Transaction.external_id.ilike(search_pattern),
+                models.Transaction.category.ilike(search_pattern)
             )
         )
         if user_id:
@@ -379,7 +383,9 @@ class TransactionService:
             from sqlalchemy import or_
             query = query.filter(or_(
                 models.Transaction.description.ilike(search_pattern),
-                models.Transaction.recipient.ilike(search_pattern)
+                models.Transaction.recipient.ilike(search_pattern),
+                models.Transaction.external_id.ilike(search_pattern),
+                models.Transaction.category.ilike(search_pattern)
             ))
             
         if category:
@@ -774,6 +780,7 @@ class TransactionService:
             query = query.filter(or_(
                 ingestion_models.PendingTransaction.description.ilike(search_pattern),
                 ingestion_models.PendingTransaction.recipient.ilike(search_pattern),
+                ingestion_models.PendingTransaction.raw_message.ilike(search_pattern),
                 ingestion_models.PendingTransaction.id.ilike(search_pattern),
                 cast(ingestion_models.PendingTransaction.amount, String).like(search_pattern)
             ))
@@ -1056,7 +1063,9 @@ class TransactionService:
                     search_pattern = f"%{pattern}%"
                     query = query.filter(or_(
                         models.Transaction.description.ilike(search_pattern),
-                        models.Transaction.recipient.ilike(search_pattern)
+                        models.Transaction.recipient.ilike(search_pattern),
+                        models.Transaction.external_id.ilike(search_pattern),
+                        models.Transaction.category.ilike(search_pattern)
                     ))
                         
                     similar_txns = query.all()

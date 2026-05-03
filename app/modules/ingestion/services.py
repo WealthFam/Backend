@@ -114,7 +114,7 @@ class IngestionService:
         all_accounts = db.query(finance_models.Account).filter(finance_models.Account.tenant_id == tenant_id).all()
         all_rules = db.query(finance_models.CategoryRule).filter(finance_models.CategoryRule.tenant_id == tenant_id).all()
         
-        is_transfer, to_account_id = TransferDetector.detect(parsed.description, parsed.recipient, all_accounts, all_rules)
+        is_transfer, to_account_id = TransferDetector.detect(parsed.description, parsed.recipient, all_accounts, all_rules, source_account_id=str(account.id))
         
         # Try to auto-categorize
         category = parsed.category
@@ -124,10 +124,14 @@ class IngestionService:
         if is_transfer:
             category = "Transfer"
         
-        is_auto_ingest = (category and category != "Uncategorized")
+        is_auto_ingest = False
+        triage_categories = ["uncategorized", "miscellaneous", "misc", "other", "unknown"]
+        if category and str(category).strip().lower() not in triage_categories:
+            is_auto_ingest = True
+            
         if is_fallback_account:
             is_auto_ingest = False
-        
+            
         from backend.app.modules.notifications import NotificationService
         balance_synced = False
 
@@ -208,6 +212,8 @@ class IngestionService:
                 category="Uncategorized",
                 source=parsed.source,
                 raw_message=parsed.raw_message,
+                balance=parsed.balance,
+                credit_limit=parsed.credit_limit,
                 content_hash=message_hash,
                 external_id=parsed.ref_id,
                 is_transfer=is_transfer,

@@ -856,7 +856,6 @@ class MutualFundService:
                 units=0,
                 average_price=0
             )
-            logger.info(f"DEBUG: Creating new holding: {scheme_code}, folio: {folio_number}, tenant: {tenant_id}")
             db.add(holding)
             db.flush() 
         else:

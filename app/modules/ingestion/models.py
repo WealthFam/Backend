@@ -59,10 +59,12 @@ class PendingTransaction(Base):
     external_id = Column(String, nullable=True) # Reference Number/UTR
     is_transfer = Column(Boolean, default=False, nullable=False)
     to_account_id = Column(String, nullable=True) # Destination Account ID for transfers
-    balance_is_synced = Column(Boolean, default=False, nullable=False) # True if account balance was updated at ingestion
+    balance = Column(Numeric(15, 2), nullable=True)
+    credit_limit = Column(Numeric(15, 2), nullable=True)
+    balance_is_synced = Column(Boolean, default=False, nullable=False)
     latitude = Column(Numeric(10, 8), nullable=True)
     longitude = Column(Numeric(11, 8), nullable=True)
-    expense_group_id = Column(String, nullable=True) # No FK to keep ingestion decoupled
+    expense_group_id = Column(String, nullable=True)
     exclude_from_reports = Column(Boolean, default=False, nullable=False)
     created_at = Column(UTCDateTime, default=timezone.utcnow)
 
