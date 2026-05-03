@@ -3,7 +3,7 @@ import uuid
 import logging
 import traceback
 from datetime import date, datetime, timedelta
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
@@ -17,10 +17,14 @@ from backend.app.modules.auth import security, services as auth_services
 from backend.app.modules.auth.dependencies import get_current_user
 from backend.app.modules.finance import models as finance_models
 from backend.app.modules.finance import schemas as finance_schemas
-from backend.app.modules.finance.services.analytics_service import AnalyticsService
+from backend.app.modules.finance.services.budget_service import BudgetService
+from backend.app.modules.finance.services.category_service import CategoryService
 from backend.app.modules.finance.services.mutual_funds import MutualFundService
+from backend.app.modules.finance.services.expense_group_service import ExpenseGroupService
+from backend.app.modules.finance.services.analytics import AnalyticsService
 from backend.app.modules.finance.services.transaction_service import TransactionService
 from backend.app.modules.ingestion import models as ingestion_models
+from backend.app.modules.ingestion import schemas as ingestion_schemas
 from backend.app.modules.ingestion.services import IngestionService
 from backend.app.modules.mobile import schemas as mobile_schemas
 from backend.app.modules.mobile.services.expense_group_service import MobileExpenseGroupService
@@ -129,6 +133,16 @@ def mobile_login(
         "user_name": user.full_name,
         "user_avatar": user.avatar
     }
+
+@router.post("/logout")
+def mobile_logout(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Mobile-specific logout.
+    """
+    return {"status": "success"}
 
 
 @router.post("/register-device", response_model=mobile_schemas.DeviceResponse)
@@ -732,16 +746,28 @@ def list_mobile_triage(
 @router.post("/ingestion/triage/{triage_id}/approve")
 def approve_mobile_triage(
     triage_id: str,
-    payload: dict,
+    payload: Dict[str, Any],
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Approve a transaction from triage via mobile app.
     """
-    return TransactionService.process_triage(
-        db, str(current_user.tenant_id), triage_id, approve=True, data=payload
+    txn = TransactionService.approve_pending_transaction(
+        db, 
+        triage_id, 
+        str(current_user.tenant_id), 
+        category_override=payload.get("category"),
+        is_transfer_override=payload.get("is_transfer", False),
+        to_account_id_override=payload.get("to_account_id"),
+        exclude_from_reports_override=payload.get("exclude_from_reports"),
+        create_rule=payload.get("create_rule", False),
+        account_id_override=payload.get("account_id"),
+        linked_transaction_id_override=payload.get("linked_transaction_id")
     )
+    if not txn:
+        raise HTTPException(status_code=404, detail="Pending transaction not found")
+    return {"status": "approved", "transaction_id": txn.id}
 
 @router.delete("/ingestion/triage/{triage_id}")
 def discard_mobile_triage(
@@ -752,9 +778,12 @@ def discard_mobile_triage(
     """
     Discard a transaction from triage via mobile app.
     """
-    return TransactionService.process_triage(
-        db, str(current_user.tenant_id), triage_id, approve=False
+    success = TransactionService.reject_pending_transaction(
+        db, triage_id, str(current_user.tenant_id)
     )
+    if not success:
+        raise HTTPException(status_code=404, detail="Pending transaction not found")
+    return {"status": "rejected"}
 
 
 def resolve_category_icon(display_category: str, cat_map: Dict[str, finance_models.Category]) -> Optional[str]:
@@ -1569,6 +1598,52 @@ def delete_mobile_investment_goal(
         raise HTTPException(status_code=404, detail="Investment goal not found")
     return {"status": "success"}
 
+
+# --- Expense Groups ---
+
+@router.get("/expense-groups", response_model=List[finance_schemas.ExpenseGroupRead])
+def list_mobile_expense_groups(
+    user_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    List expense groups for mobile.
+    """
+    effective_user_id = user_id or (str(current_user.id) if current_user.role == "CHILD" else None)
+    return MobileExpenseGroupService.get_expense_groups(db, str(current_user.tenant_id), user_id=effective_user_id)
+
+@router.post("/expense-groups", response_model=finance_schemas.ExpenseGroupRead)
+def create_mobile_expense_group(
+    group: finance_schemas.ExpenseGroupCreate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return MobileExpenseGroupService.create_expense_group(db, group, str(current_user.tenant_id))
+
+@router.put("/expense-groups/{group_id}", response_model=finance_schemas.ExpenseGroupRead)
+def update_mobile_expense_group(
+    group_id: str,
+    update: finance_schemas.ExpenseGroupUpdate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    db_group = MobileExpenseGroupService.update_expense_group(db, group_id, update, str(current_user.tenant_id))
+    if not db_group:
+        raise HTTPException(status_code=404, detail="Expense group not found")
+    return db_group
+
+@router.delete("/expense-groups/{group_id}")
+def delete_mobile_expense_group(
+    group_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    success = MobileExpenseGroupService.delete_expense_group(db, group_id, str(current_user.tenant_id))
+    if not success:
+        raise HTTPException(status_code=404, detail="Expense group not found")
+    return {"status": "success"}
+
 @router.post("/investment-goals/{goal_id}/link")
 def link_holding_to_goal(
     goal_id: str,
@@ -1854,3 +1929,195 @@ def update_mobile_vault_document(
     db.commit()
     db.refresh(doc)
     return doc
+
+
+# --- Budgets ---
+
+@router.get("/budgets/progress", response_model=List[finance_schemas.CategoryBudgetProgress])
+def get_mobile_budgets_progress(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return BudgetService.get_budgets(db, str(current_user.tenant_id), year=year, month=month)
+
+# --- Categories ---
+
+@router.get("/categories", response_model=List[finance_schemas.CategoryRead])
+def list_mobile_categories(
+    tree: bool = False,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return CategoryService.get_categories(db, str(current_user.tenant_id), tree=tree)
+
+@router.post("/categories", response_model=finance_schemas.CategoryRead)
+def create_mobile_category(
+    category: finance_schemas.CategoryCreate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return CategoryService.create_category(db, category, str(current_user.tenant_id))
+
+@router.put("/categories/{category_id}", response_model=finance_schemas.CategoryRead)
+def update_mobile_category(
+    category_id: str,
+    update: finance_schemas.CategoryUpdate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    cat = CategoryService.update_category(db, category_id, update, str(current_user.tenant_id))
+    if not cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return cat
+
+@router.delete("/categories/{category_id}")
+def delete_mobile_category(
+    category_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    success = CategoryService.delete_category(db, category_id, str(current_user.tenant_id))
+    if not success:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return {"status": "success"}
+
+# --- Mutual Funds ---
+
+@router.get("/mutual-funds/sync/status")
+def get_mobile_funds_sync_status(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return MutualFundService.get_latest_sync_status(db, str(current_user.tenant_id))
+
+@router.post("/mutual-funds/sync/refresh")
+async def refresh_mobile_funds_sync(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return await MutualFundService.refresh_tenant_navs(str(current_user.tenant_id), db=db)
+
+@router.get("/mutual-funds/analytics/performance-timeline")
+def get_mobile_funds_performance_timeline(
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return MutualFundService.get_performance_timeline(db, str(current_user.tenant_id))
+
+@router.get("/funds")
+def list_mobile_funds(
+    user_id: Optional[str] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return MutualFundService.get_portfolio(db, str(current_user.tenant_id), user_id=user_id)
+
+@router.get("/funds/{scheme_code}")
+def get_mobile_fund_details(
+    scheme_code: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return MutualFundService.get_scheme_details(db, str(current_user.tenant_id), scheme_code)
+
+# --- Transactions ---
+
+@router.get("/transactions/{transaction_id}", response_model=finance_schemas.TransactionRead)
+def get_mobile_transaction(
+    transaction_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    txn = db.query(finance_models.Transaction).filter(
+        finance_models.Transaction.id == transaction_id,
+        finance_models.Transaction.tenant_id == str(current_user.tenant_id)
+    ).first()
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return txn
+
+@router.put("/transactions/{transaction_id}", response_model=finance_schemas.TransactionRead)
+def update_mobile_transaction(
+    transaction_id: str,
+    update: finance_schemas.TransactionUpdate,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    txn = TransactionService.update_transaction(db, transaction_id, update, str(current_user.tenant_id))
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return txn
+
+
+# --- Analytics ---
+
+@router.get("/vendor/stats")
+def get_mobile_vendor_stats(
+    vendor_name: str,
+    skip: int = 0,
+    limit: int = 10,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get statistics for a specific vendor.
+    """
+    return TransactionService.get_vendor_stats(
+        db, 
+        str(current_user.tenant_id), 
+        vendor_name, 
+        user_id=str(current_user.id) if current_user.role == "CHILD" else None,
+        skip=skip,
+        limit=limit
+    )
+
+@router.get("/heatmap")
+def get_mobile_heatmap(
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get transaction coordinates for heatmap.
+    """
+    return AnalyticsService.get_heatmap_data(
+        db, 
+        str(current_user.tenant_id), 
+        start_date=start_date, 
+        end_date=end_date,
+        user_id=str(current_user.id) if current_user.role == "CHILD" else None
+    )
+
+@router.get("/heatmap/calendar")
+def get_mobile_calendar_heatmap(
+    days: int = 180,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get calendar activity data for mobile.
+    """
+    return AnalyticsService.get_calendar_heatmap(
+        db, 
+        str(current_user.tenant_id), 
+        days=days,
+        user_id=str(current_user.id) if current_user.role == "CHILD" else None
+    )
+
+
+# --- Ingestion ---
+
+@router.post("/ingestion/sms")
+def ingest_mobile_sms(
+    payload: ingestion_schemas.SmsPayload,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Mobile-specific SMS ingestion proxy.
+    """
+    from backend.app.modules.ingestion.router import ingest_sms
+    return ingest_sms(payload, current_user, db)

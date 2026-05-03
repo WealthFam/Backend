@@ -78,7 +78,7 @@ class CategorySpending(BaseModel):
 class RecentTransaction(BaseModel):
     id: str
     date: datetime
-    description: str
+    description: Optional[str] = None
     amount: float
     category: str
     account_name: Optional[str] = None
