@@ -63,6 +63,17 @@ def get_transactions(
         "size": limit
     }
 
+@router.get("/transactions/{transaction_id}", response_model=schemas.TransactionRead)
+def get_transaction(
+    transaction_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    db_txn = TransactionService.get_transaction(db, transaction_id, str(current_user.tenant_id))
+    if not db_txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return db_txn
+
 @router.post("/transactions/bulk-delete")
 def bulk_delete_transactions(
     payload: schemas.BulkDeleteRequest,

@@ -177,3 +177,21 @@ class SpamFilter(Base):
     source = Column(String, nullable=True) # SMS, EMAIL, ALL
     count_blocked = Column(Integer, default=0) # Track how many were caught
     created_at = Column(UTCDateTime, default=timezone.utcnow)
+
+class EmailSyncItemLog(Base):
+    __tablename__ = "email_sync_item_logs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    sync_log_id = Column(String, ForeignKey("email_sync_logs.id"), nullable=False, index=True)
+    
+    subject = Column(String, nullable=True)
+    sender = Column(String, nullable=True)
+    received_at = Column(UTCDateTime, nullable=True)
+    status = Column(String, default="skipped") # processed, failed, skipped
+    reason = Column(String, nullable=True) # Error message or skip reason
+    
+    # Metadata for drill-down
+    parser_used = Column(String, nullable=True)
+    transaction_id = Column(String, nullable=True) # Link to transactions table (no FK for DuckDB)
+    created_at = Column(UTCDateTime, default=timezone.utcnow)

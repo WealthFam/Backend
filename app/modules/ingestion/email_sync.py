@@ -7,6 +7,7 @@ from email.utils import parsedate_to_datetime
 from typing import Dict, Any, Optional
 from backend.app.core import timezone
 from sqlalchemy.orm import Session
+from backend.app.core.database import db_write_lock
 from backend.app.modules.ingestion import models as ingestion_models
 # from backend.app.modules.ingestion.registry import EmailParserRegistry
 from backend.app.modules.ingestion.services import IngestionService
@@ -21,12 +22,17 @@ class EmailSyncService:
         email_pass: str,
         folder: str = "INBOX",
         search_criterion: str = 'UNSEEN',
-        since_date: Optional[datetime] = None
+        since_date: Optional[datetime] = None,
+        log_id: Optional[str] = None
     ):
         from backend.app.core.database import SessionLocal
         import logging
         db = SessionLocal()
         try:
+            log_entry = None
+            if log_id:
+                log_entry = db.query(ingestion_models.EmailSyncLog).get(log_id)
+
             EmailSyncService.sync_emails(
                 db=db,
                 tenant_id=tenant_id,
@@ -36,7 +42,8 @@ class EmailSyncService:
                 email_pass=email_pass,
                 folder=folder,
                 search_criterion=search_criterion,
-                since_date=since_date
+                since_date=since_date,
+                log_entry=log_entry
             )
         except Exception as e:
             logging.error(f"Background Sync Error: {e}")
@@ -53,24 +60,26 @@ class EmailSyncService:
         email_pass: str,
         folder: str = "INBOX",
         search_criterion: str = 'UNSEEN',
-        since_date: Optional[datetime] = None
+        since_date: Optional[datetime] = None,
+        log_entry: Optional[ingestion_models.EmailSyncLog] = None
     ) -> Dict[str, Any]:
         """
         Connect to IMAP, fetch unread emails, parse them, and ingest transactions.
         """
         
-        # Create Log Entry
-        log_entry = ingestion_models.EmailSyncLog(
-            config_id=config_id,
-            tenant_id=tenant_id,
-            status="running",
-            message="Starting sync..."
-        )
-        db.add(log_entry)
-        db.commit() # Commit to get ID
-        db.refresh(log_entry)
+        # Create Log Entry if not provided
+        if not log_entry:
+            log_entry = ingestion_models.EmailSyncLog(
+                config_id=config_id,
+                tenant_id=tenant_id,
+                status="running",
+                message="Starting sync..."
+            )
+            db.add(log_entry)
+            db.commit() # Commit to get ID
+            db.refresh(log_entry)
 
-        stats = {"total_fetched": 0, "processed": 0, "failed": 0, "errors": []}
+        stats = {"total": 0, "processed": 0, "failed": 0, "duplicates": 0, "errors": []}
         
         try:
             # Connect to the server
@@ -187,16 +196,42 @@ class EmailSyncService:
                             if any(nk in subject_lower for nk in noise_keywords):
                                 stats["failed"] += 1
                                 stats["errors"].append(f"Skipped noise: {subject[:30]}...")
+                                
+                                # Record skipped noise
+                                item_log = ingestion_models.EmailSyncItemLog(
+                                    tenant_id=tenant_id,
+                                    sync_log_id=log_entry.id,
+                                    subject=subject,
+                                    sender=msg.get("From"),
+                                    received_at=email_date,
+                                    status="skipped",
+                                    reason="Noise filter"
+                                )
+                                db.add(item_log)
                                 continue
 
                             # Enqueue for batch analysis
                             sender_id = msg.get("From")
+                            
+                            # Create individual item log
+                            item_log = ingestion_models.EmailSyncItemLog(
+                                tenant_id=tenant_id,
+                                sync_log_id=log_entry.id,
+                                subject=subject,
+                                sender=sender_id,
+                                received_at=email_date,
+                                status="pending"
+                            )
+                            db.add(item_log)
+                            db.flush() # Get ID
+
                             batch_queue.append({
                                 "id": e_id.decode() if isinstance(e_id, bytes) else str(e_id),
                                 "subject": subject,
                                 "body_text": body,
                                 "sender": sender_id,
-                                "received_at": email_date
+                                "received_at": email_date,
+                                "item_log_id": item_log.id
                             })
                             
                 except Exception as e:
@@ -273,7 +308,7 @@ class EmailSyncService:
                                     credit_limit=t.get("credit_limit"),
                                     raw_message=t.get("raw_message") or body,
                                     source="EMAIL",
-                                    is_ai_parsed=parsed_item.get("metadata", {}).get("parser_used") == "AI Batch"
+                                    is_ai_parsed="AI" in str(parsed_item.get("metadata", {}).get("parser_used", "")).upper()
                                 )
                                 
                                 proc_result = IngestionService.process_transaction(db, tenant_id, parsed)
@@ -281,12 +316,38 @@ class EmailSyncService:
                                 
                                 if p_status in ["success", "triaged"]:
                                     stats["processed"] += 1
+                                    
+                                    # Update item log
+                                    item_log = db.query(ingestion_models.EmailSyncItemLog).get(item["item_log_id"])
+                                    if item_log:
+                                        with db_write_lock:
+                                            item_log.status = "processed"
+                                            item_log.parser_used = parsed_item.get("metadata", {}).get("parser_used")
+                                            item_log.transaction_id = proc_result.get("transaction_id")
+                                            db.commit()
                                 elif proc_result.get("deduplicated"):
-                                    pass
+                                    stats["processed"] += 1
+                                    stats["duplicates"] = stats.get("duplicates", 0) + 1
+                                    
+                                    # Update item log as duplicate
+                                    item_log = db.query(ingestion_models.EmailSyncItemLog).get(item["item_log_id"])
+                                    if item_log:
+                                        with db_write_lock:
+                                            item_log.status = "duplicate"
+                                            item_log.reason = proc_result.get("reason")
+                                            db.commit()
                                 else:
                                     stats["failed"] += 1
                                     reason = proc_result.get('message') or proc_result.get('reason') or "Unknown Error"
                                     stats["errors"].append(f"Ingestion failed for '{subject[:30]}...': {reason}")
+                                    
+                                    # Update item log
+                                    item_log = db.query(ingestion_models.EmailSyncItemLog).get(item["item_log_id"])
+                                    if item_log:
+                                        with db_write_lock:
+                                            item_log.status = "failed"
+                                            item_log.reason = reason
+                                            db.commit()
                         else:
                             stats["failed"] += 1
                             stats["errors"].append(f"Parser failed to extract: {subject[:30]}...")
@@ -305,6 +366,13 @@ class EmailSyncService:
                                     subject=subject,
                                     sender=sender_id
                                 )
+
+                            # Update item log
+                            item_log = db.query(ingestion_models.EmailSyncItemLog).get(item["item_log_id"])
+                            if item_log:
+                                item_log.status = "failed"
+                                item_log.reason = f"Parser failed to extract: {subject[:30]}..."
+                                db.commit()
 
             # Update Log Success
             if log_entry:

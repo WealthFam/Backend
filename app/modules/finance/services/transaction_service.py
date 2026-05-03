@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 
 class TransactionService:
     @staticmethod
+    def get_transaction(db: Session, transaction_id: str, tenant_id: str) -> Optional[models.Transaction]:
+        return db.query(models.Transaction).filter(
+            models.Transaction.id == transaction_id,
+            models.Transaction.tenant_id == tenant_id
+        ).first()
+
+    @staticmethod
     def create_transaction(db: Session, transaction: schemas.TransactionCreate, tenant_id: str, exclude_pending_id: Optional[str] = None, update_balance: bool = True, commit: bool = True):
         with db_write_lock:
             try:

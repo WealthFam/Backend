@@ -22,13 +22,13 @@ class ParsedTransaction(BaseModel):
     @model_validator(mode='after')
     def generate_fallback_ref(self) -> 'ParsedTransaction':
         if not self.ref_id:
-            # Format: YYYYMMDDHHMMSS-MASK-AMOUNT
-            # We use a hash-like prefix to indicate it's generated
-            date_str = self.date.strftime("%Y%m%d%H%M%S")
-            mask = self.account_mask or "XXXX"
-            # Ensure amount is stringified cleanly
-            amt_str = f"{self.amount:.2f}"
-            self.ref_id = f"GEN-{date_str}-{mask}-{amt_str}"
+            # Use a stable hash of the message content + amount + date
+            # This ensures that identical messages always generate the same Ref ID
+            import hashlib
+            # We use the date (no time), amount, and raw message to ensure uniqueness
+            payload = f"{self.date.date().isoformat()}:{self.amount:.2f}:{self.raw_message.strip()}"
+            content_hash = hashlib.md5(payload.encode()).hexdigest()[:12].upper()
+            self.ref_id = f"STB-{content_hash}"
         return self
 
 class BaseParser(ABC):

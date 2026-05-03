@@ -148,7 +148,7 @@ def ingest_sms(
             credit_limit=t.get("credit_limit"),
             raw_message=t.get("raw_message") or payload.message,
             source=f"SMS: {payload.sender}",
-            is_ai_parsed=str(item.get("metadata", {}).get("parser_used", "")).upper() == "AI"
+            is_ai_parsed="AI" in str(item.get("metadata", {}).get("parser_used", "")).upper()
         )
         
         extra_data = {
@@ -236,7 +236,7 @@ def ingest_email(
             credit_limit=t.get("credit_limit"),
             raw_message=t.get("raw_message") or payload.body,
             source=f"EMAIL: {payload.sender}",
-            is_ai_parsed=str(item.get("metadata", {}).get("parser_used", "")).upper() == "AI"
+            is_ai_parsed="AI" in str(item.get("metadata", {}).get("parser_used", "")).upper()
         )
         
         proc_result = IngestionService.process_transaction(db, str(current_user.tenant_id), parsed)
@@ -270,7 +270,7 @@ def sync_email_inbox(
         search_criterion=search_crit
     )
     
-    return {"status": "started", "message": "Email synchronization tracking in background."}
+    return {"status": "started", "message": "Sync is running in background"}
 
 @router.get("/email/configs", response_model=List[ingestion_schemas.EmailConfigRead])
 
@@ -382,6 +382,24 @@ def list_email_logs(
         "skip": skip
     }
 
+@router.get("/email/logs/{log_id}/items", response_model=List[ingestion_schemas.EmailSyncItemLogRead])
+def list_email_sync_items(
+    log_id: str,
+    current_user: auth_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Verify ownership of the parent log
+    log = db.query(ingestion_models.EmailSyncLog).filter(
+        ingestion_models.EmailSyncLog.id == log_id,
+        ingestion_models.EmailSyncLog.tenant_id == str(current_user.tenant_id)
+    ).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Log not found")
+
+    return db.query(ingestion_models.EmailSyncItemLog).filter(
+        ingestion_models.EmailSyncItemLog.sync_log_id == log_id
+    ).order_by(ingestion_models.EmailSyncItemLog.created_at.asc()).all()
+
 @router.get("/email/configs/{config_id}/logs", response_model=List[ingestion_schemas.EmailSyncLogRead])
 
 def get_email_sync_logs(
@@ -417,6 +435,17 @@ def sync_specific_email(
     
     criterion = 'ALL' 
     
+    # Create Log Entry immediately for tracking
+    log_entry = ingestion_models.EmailSyncLog(
+        config_id=config.id,
+        tenant_id=str(current_user.tenant_id),
+        status="running",
+        message="Initializing background sync..."
+    )
+    db.add(log_entry)
+    db.commit()
+    db.refresh(log_entry)
+
     background_tasks.add_task(
         EmailSyncService.run_sync_task_in_background,
         tenant_id=str(current_user.tenant_id),
@@ -426,14 +455,19 @@ def sync_specific_email(
         email_pass=config.password,
         folder=config.folder,
         search_criterion=criterion,
-        since_date=config.last_sync_at
+        since_date=config.last_sync_at,
+        log_id=log_entry.id
     )
     
     # Update last_sync_at immediately
     config.last_sync_at = timezone.utcnow()
     db.commit()
         
-    return {"status": "started", "message": "Email synchronization tracking in background."}
+    return {
+        "status": "started", 
+        "message": "Sync is running in background",
+        "log_id": log_entry.id
+    }
 
 @router.post("/csv/analyze")
 async def analyze_file(

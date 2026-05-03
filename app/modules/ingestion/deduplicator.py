@@ -23,9 +23,8 @@ class TransactionDeduplicator:
         txn_type = "DEBIT" if amount < 0 else "CREDIT"
         name = recipient or description or ""
         # Canonical format: tenant:account:date:amount:type:name
-        # We use absolute amount + explicit type to be crystal clear.
-        # Use full ISO format to capture time if available.
-        payload = f"{tenant_id}:{account_id}:{date.isoformat()}:{abs(amount):.2f}:{txn_type}:{name.strip()}"
+        # Use date.date() to ensure hash stability across alerts with different timestamps
+        payload = f"{tenant_id}:{account_id}:{date.date().isoformat()}:{abs(amount):.2f}:{txn_type}:{name.strip()}"
         return hashlib.md5(payload.encode()).hexdigest()
 
     @staticmethod
@@ -54,24 +53,15 @@ class TransactionDeduplicator:
         """
         # Use a small epsilon or exact match for decimal/float?
         # DuckDB usually handles float equality well for stored Decimals if precision is kept.
-        if date.time() == datetime.min.time():
-            # If incoming date is exactly midnight, assume Date-only match (legacy/CSV behavior)
-            query = db.query(finance_models.Transaction).filter(
-                finance_models.Transaction.tenant_id == tenant_id,
-                finance_models.Transaction.account_id == account_id,
-                finance_models.Transaction.amount == amount,
-                func.date(finance_models.Transaction.date) == date.date(),
-                finance_models.Transaction.is_deleted == False
-            )
-        else:
-            # Precise timestamp match
-            query = db.query(finance_models.Transaction).filter(
-                finance_models.Transaction.tenant_id == tenant_id,
-                finance_models.Transaction.account_id == account_id,
-                finance_models.Transaction.amount == amount,
-                finance_models.Transaction.date == date,
-                finance_models.Transaction.is_deleted == False
-            )
+        # AGGRESSIVE DEDUPLICATION: Compare the DATE portion only to catch 
+        # duplicates even if timestamps vary (common in multi-source alerts).
+        query = db.query(finance_models.Transaction).filter(
+            finance_models.Transaction.tenant_id == tenant_id,
+            finance_models.Transaction.account_id == account_id,
+            finance_models.Transaction.amount == amount,
+            func.date(finance_models.Transaction.date) == date.date(),
+            finance_models.Transaction.is_deleted == False
+        )
         
         # Match Description OR Recipient
         if recipient:

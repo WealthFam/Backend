@@ -93,6 +93,17 @@ class EmailSyncLogRead(IngestionBase):
     items_processed: int = 0
     message: Optional[str] = None
 
+class EmailSyncItemLogRead(IngestionBase):
+    id: str
+    subject: Optional[str] = None
+    sender: Optional[str] = None
+    received_at: Optional[datetime] = None
+    status: str
+    reason: Optional[str] = None
+    parser_used: Optional[str] = None
+    transaction_id: Optional[str] = None
+    created_at: datetime
+
 class SpamFilterSchema(IngestionBase):
     id: str
     tenant_id: str
