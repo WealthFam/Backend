@@ -404,7 +404,8 @@ class CoreAnalytics:
                     "total_invested": inv_data["total_invested"], "current_value": inv_data["current_value"],
                     "profit_loss": inv_data.get("profit_loss", inv_data["current_value"] - inv_data["total_invested"]),
                     "xirr": inv_data["xirr"], "sparkline": inv_data.get("sparkline", []),
-                    "day_change": inv_data.get("day_change", 0.0), "day_change_percent": inv_data.get("day_change_percent", 0.0)
+                    "day_change": inv_data.get("day_change", 0.0), "day_change_percent": inv_data.get("day_change_percent", 0.0),
+                    "last_updated_at": inv_data.get("last_updated_at")
                 }
         _, triage_count = TransactionService.get_pending_transactions(db, tenant_id, limit=1, user_id=user_id)
         family_members_count = db.query(auth_models.User).filter(auth_models.User.tenant_id == tenant_id).count()

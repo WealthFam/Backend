@@ -663,7 +663,8 @@ def get_dashboard_investments(
             "xirr": inv_data["xirr"],
             "sparkline": inv_data.get("sparkline", []),
             "day_change": inv_data.get("day_change", 0.0),
-            "day_change_percent": inv_data.get("day_change_percent", 0.0)
+            "day_change_percent": inv_data.get("day_change_percent", 0.0),
+            "last_updated_at": inv_data.get("last_updated_at")
         }
     }
 
@@ -1165,7 +1166,8 @@ def get_mobile_funds(
         "top_gainers": top_gainers,
         "top_losers": top_losers,
         "text_insights": text_insights,
-        "holdings": clean_holdings
+        "holdings": clean_holdings,
+        "last_updated_at": analytics.get("last_updated_at")
     }
 
 @router.get("/funds/{scheme_code}", response_model=mobile_schemas.FundDetailResponse)
@@ -1275,7 +1277,8 @@ def get_fund_details(
         xirr=None, 
         folios=folios,
         timeline=timeline,
-        events=events
+        events=events,
+        last_updated_at=holdings[0].last_updated_at.strftime("%d %b %Y %H:%M") if holdings and holdings[0].last_updated_at else None
     )
 
 @router.get("/categories", response_model=List[mobile_schemas.Category])

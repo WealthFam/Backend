@@ -113,6 +113,7 @@ class InvestmentSummary(BaseModel):
     sparkline: List[float] = []
     day_change: float = 0.0
     day_change_percent: float = 0.0
+    last_updated_at: Optional[str] = None
 
 class MobileDashboardResponse(BaseModel):
     summary: DashboardSummary
@@ -202,6 +203,7 @@ class FundDetailResponse(BaseModel):
     folios: List[Folio]
     timeline: List[TimelinePoint]
     events: List[InvestmentEvent]
+    last_updated_at: Optional[str] = None
 
 class MobileFundsResponse(BaseModel):
     total_invested: float
@@ -215,6 +217,7 @@ class MobileFundsResponse(BaseModel):
     top_losers: Optional[List[FundHolding]] = []
     text_insights: Optional[List[str]] = []
     holdings: List[FundHolding]
+    last_updated_at: Optional[str] = None
 
 class Category(BaseModel):
     id: str

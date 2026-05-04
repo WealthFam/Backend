@@ -74,6 +74,10 @@ class MarketDataService:
                     else:
                         labels.append(dt.strftime('%b %d'))
 
+                # Extract market update time
+                market_time = data.get("meta", {}).get("regularMarketTime")
+                last_updated_str = datetime.fromtimestamp(market_time).strftime("%d %b %H:%M") if market_time else None
+
                 return {
                     "name": idx['name'],
                     "symbol": idx['symbol'],
@@ -81,6 +85,7 @@ class MarketDataService:
                     "change": f"{change_dec:+.2f}",
                     "percent": f"{percent_dec:+.2f}%",
                     "isUp": change_dec >= 0,
+                    "last_updated": last_updated_str,
                     "sparkline": sparkline,
                     "labels": labels
                 }

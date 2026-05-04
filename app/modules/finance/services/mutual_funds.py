@@ -1191,7 +1191,7 @@ class MutualFundService:
                 current_val = Decimal(str(h.current_value or 0.0))
                 invested = units * avg_price
                 pl = (current_val - invested) if current_val > 0 else Decimal("0.0")
-                last_updated_str = h.last_updated_at.strftime("%d-%b-%Y") if h.last_updated_at else "N/A"
+                last_updated_str = h.last_updated_at.strftime("%d %b %Y %H:%M") if h.last_updated_at else "N/A"
                 
                 # Fetch meta
                 meta = db.query(MutualFundsMeta).filter(MutualFundsMeta.scheme_code == h.scheme_code).first()
@@ -1374,7 +1374,7 @@ class MutualFundService:
             "invested_value": Decimal(str(holding.units or 0)) * Decimal(str(holding.average_price or 0)),
             "profit_loss": current_value - (Decimal(str(holding.units or 0)) * Decimal(str(holding.average_price or 0))),
             "last_nav": Decimal(str(nav_history[-1]['value'])) if nav_history else Decimal(str(holding.last_nav or 0)),
-            "last_updated_at": holding.last_updated_at.strftime("%Y-%m-%d") if holding.last_updated_at else None,
+            "last_updated_at": holding.last_updated_at.strftime("%d %b %Y %H:%M") if holding.last_updated_at else None,
             "xirr": xirr_value,
             "transactions": orders_list,
             "nav_history": nav_history
@@ -1594,7 +1594,7 @@ class MutualFundService:
             "invested_value": total_invested_value,
             "profit_loss": profit_loss,
             "last_nav": Decimal(str(holdings[0].last_nav or 0)) if holdings else Decimal('0.0'),
-            "last_updated_at": holdings[0].last_updated_at.strftime("%Y-%m-%d") if holdings and holdings[0].last_updated_at else None,
+            "last_updated_at": holdings[0].last_updated_at.strftime("%d %b %Y %H:%M") if holdings and holdings[0].last_updated_at else None,
             "xirr": xirr_value,
             "transactions": enriched_orders,
             "nav_history": nav_history,
@@ -1941,6 +1941,13 @@ class MutualFundService:
             except Exception:
                 xirr_value = None
         
+        # Add last_updated_at to summary
+        last_updated = None
+        if holdings:
+            valid_dates = [h.last_updated_at for h in holdings if h.last_updated_at]
+            if valid_dates:
+                last_updated = max(valid_dates).strftime("%d %b %Y %H:%M")
+
         return {
             "asset_allocation": allocation,
             "category_allocation": category_allocation,
@@ -1954,7 +1961,8 @@ class MutualFundService:
             "sparkline": sparkline,
             "day_change": round(float(day_change), 2),
             "day_change_percent": round(float(day_change_percent), 2),
-            "active_schemes_count": len(holdings)
+            "active_schemes_count": len(holdings),
+            "last_updated_at": last_updated
         }
     
     @staticmethod
