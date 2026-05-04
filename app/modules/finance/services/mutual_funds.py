@@ -128,10 +128,10 @@ class MutualFundService:
             db = SessionLocal()
             created_local_db = True
 
+        sync_log = None
         try:
             # 1. Throttling Check: Don't sync if a successful sync happened recently
             if not force:
-                from backend.app.modules.finance.models import MutualFundSyncLog
                 last_sync = db.query(MutualFundSyncLog).filter(
                     MutualFundSyncLog.tenant_id == tenant_id,
                     MutualFundSyncLog.status == "completed"
@@ -202,10 +202,11 @@ class MutualFundService:
         except Exception as e:
             with db_write_lock:
                 db.rollback()
-                sync_log.status = "error"
-                sync_log.completed_at = timezone.utcnow()
-                sync_log.error_message = str(e)
-                db.commit()
+                if sync_log:
+                    sync_log.status = "error"
+                    sync_log.completed_at = timezone.utcnow()
+                    sync_log.error_message = str(e)
+                    db.commit()
             raise e
         finally:
             if created_local_db:
