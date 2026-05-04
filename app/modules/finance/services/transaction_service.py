@@ -249,7 +249,13 @@ class TransactionService:
         else:
             query = query.order_by(sort_column.desc())
 
-        return query.offset(skip).limit(limit).all()
+        if skip > 0:
+            query = query.offset(skip)
+            
+        if limit is not None and limit > 0:
+            query = query.limit(limit)
+            
+        return query.all()
 
     @staticmethod
     def get_vendor_stats(db: Session, tenant_id: str, vendor_name: str, user_id: Optional[str] = None, skip: int = 0, limit: int = 3) -> dict:
@@ -313,7 +319,11 @@ class TransactionService:
         chart_data = [{"month": k, "amount": v} for k, v in reversed(monthly_map.items())]
 
         # Paginated recent transactions
-        recent_txns = query.order_by(desc(models.Transaction.date)).offset(skip).limit(limit).all()
+        if skip > 0:
+            query = query.offset(skip)
+        if limit is not None and limit > 0:
+            query = query.limit(limit)
+        recent_txns = query.order_by(desc(models.Transaction.date)).all()
 
         return {
             "vendor_name": vendor_name,
@@ -800,7 +810,11 @@ class TransactionService:
         else:
             query = query.order_by(sort_column.desc(), ingestion_models.PendingTransaction.created_at.desc())
             
-        return query.offset(skip).limit(limit).all(), total
+        if skip > 0:
+            query = query.offset(skip)
+        if limit is not None and limit > 0:
+            query = query.limit(limit)
+        return query.all(), total
 
     @staticmethod
     def approve_pending_transaction(

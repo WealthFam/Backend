@@ -344,7 +344,13 @@ class CategoryService:
             )
             
         total = query.count()
-        rules = query.order_by(models.CategoryRule.priority.desc()).offset(skip).limit(limit).all()
+        
+        if skip > 0:
+            query = query.offset(skip)
+        if limit is not None and limit > 0:
+            query = query.limit(limit)
+            
+        rules = query.order_by(models.CategoryRule.priority.desc()).all()
         
         # Batch-load hit logs for enrichment
         rule_ids = [str(r.id) for r in rules]
