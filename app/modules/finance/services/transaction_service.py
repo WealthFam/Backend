@@ -319,11 +319,12 @@ class TransactionService:
         chart_data = [{"month": k, "amount": v} for k, v in reversed(monthly_map.items())]
 
         # Paginated recent transactions
+        query = query.order_by(desc(models.Transaction.date))
         if skip > 0:
             query = query.offset(skip)
         if limit is not None and limit > 0:
             query = query.limit(limit)
-        recent_txns = query.order_by(desc(models.Transaction.date)).all()
+        recent_txns = query.all()
 
         return {
             "vendor_name": vendor_name,
