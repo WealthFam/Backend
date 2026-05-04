@@ -2000,7 +2000,7 @@ async def refresh_mobile_funds_sync(
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return await MutualFundService.refresh_tenant_navs(str(current_user.tenant_id), db=db)
+    return await MutualFundService.refresh_tenant_navs(str(current_user.tenant_id), db=db, force=True)
 
 @router.get("/mutual-funds/analytics/performance-timeline")
 def get_mobile_funds_performance_timeline(

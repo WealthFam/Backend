@@ -118,7 +118,7 @@ class MutualFundService:
         ).order_by(MutualFundSyncLog.started_at.desc()).first()
 
     @staticmethod
-    async def refresh_tenant_navs(tenant_id: str, db: Optional[Session] = None):
+    async def refresh_tenant_navs(tenant_id: str, db: Optional[Session] = None, force: bool = False):
         """
         Background task to refresh all NAVs for a tenant and update timeline cache.
         """
@@ -129,7 +129,22 @@ class MutualFundService:
             created_local_db = True
 
         try:
-            # 1. Create Sync Log
+            # 1. Throttling Check: Don't sync if a successful sync happened recently
+            if not force:
+                from backend.app.modules.finance.models import MutualFundSyncLog
+                last_sync = db.query(MutualFundSyncLog).filter(
+                    MutualFundSyncLog.tenant_id == tenant_id,
+                    MutualFundSyncLog.status == "completed"
+                ).order_by(MutualFundSyncLog.completed_at.desc()).first()
+                
+                if last_sync and last_sync.completed_at:
+                    now = timezone.utcnow()
+                    # If last sync was less than 12 hours ago, skip
+                    if (now - last_sync.completed_at).total_seconds() < 43200:
+                        logger.info(f"Skipping background sync for tenant {tenant_id} as it was updated {last_sync.completed_at}")
+                        return {"status": "skipped", "message": "Recently updated"}
+
+            # 2. Create Sync Log
             sync_log = MutualFundSyncLog(
                 tenant_id=tenant_id,
                 status="running"

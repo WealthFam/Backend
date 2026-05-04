@@ -35,7 +35,7 @@ async def trigger_sync(
     """Trigger background NAV refresh for all holdings"""
     tenant_id = str(current_user.tenant_id)
     # Fire and forget - let it handle its own DB session
-    background_tasks.add_task(MutualFundService.refresh_tenant_navs, tenant_id)
+    background_tasks.add_task(MutualFundService.refresh_tenant_navs, tenant_id, force=True)
     return {"status": "running", "message": "Sync started in background"}
 
 @router.get("/sync/status")
@@ -95,15 +95,11 @@ def get_nav(scheme_code: str):
 
 @router.get("/portfolio", response_model=finance_schemas.PortfolioOverviewResponse)
 def get_portfolio(
-    background_tasks: BackgroundTasks,
     user_id: Optional[str] = Query(None),
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     tenant_id = str(current_user.tenant_id)
-    # Trigger background sync to keep cache fresh. 
-    # refresh_tenant_navs handles its own staleness checks inside.
-    background_tasks.add_task(MutualFundService.refresh_tenant_navs, tenant_id)
     
     holdings = MutualFundService.get_portfolio(db, tenant_id, user_id)
     
@@ -148,9 +144,6 @@ def get_performance_timeline(
     Get portfolio performance timeline.
     """
     tenant_id = str(current_user.tenant_id)
-    
-    # Ensure NAV history is being synced in background
-    background_tasks.add_task(MutualFundService.refresh_tenant_navs, tenant_id)
     
     return MutualFundService.get_performance_timeline(db, tenant_id, period, granularity, user_id, scheme_code, holding_id)
 

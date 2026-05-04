@@ -215,8 +215,8 @@ def start_scheduler():
     # Run email sync every 3 hours
     scheduler.add_job(auto_sync_job, 'interval', hours=3, id="auto_sync_job", replace_existing=True)
     
-    # Run mutual fund sync every 12 hours
-    scheduler.add_job(mutual_fund_sync_job, 'interval', hours=12, id="mutual_fund_sync_job", replace_existing=True)
+    # Run mutual fund sync daily at 03:00 AM
+    scheduler.add_job(mutual_fund_sync_job, CronTrigger(hour=3, minute=0), id="mutual_fund_sync_job", replace_existing=True)
     
     # NEW: Run pulse check every 6 hours
     scheduler.add_job(pulse_check_job, 'interval', hours=1, id="pulse_check_job", replace_existing=True)
