@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 import hashlib
-from datetime import datetime
-from typing import Optional, Tuple
+import re
+from datetime import datetime, timedelta
+from typing import Optional, Tuple, List
 from backend.app.modules.finance import models as finance_models
 from backend.app.modules.ingestion import models as ingestion_models
 from backend.app.modules.ingestion.base import ParsedTransaction
@@ -14,17 +15,41 @@ class TransactionDeduplicator:
     """
 
     @staticmethod
+    def normalize_vendor(name: str) -> str:
+        """
+        Normalize vendor names to ensure hash stability across sources.
+        Removes prefixes like 'Learned:', special characters, and standardizes whitespace.
+        """
+        if not name:
+            return ""
+        
+        # 1. Remove source-specific prefixes (e.g., "HDFC: ", "Learned: ")
+        name = re.sub(r'^[A-Za-z\s]+:\s*', '', name)
+        
+        # 2. Convert to uppercase for consistency
+        name = name.upper()
+        
+        # 3. Keep only alphanumeric and space
+        name = "".join(c for c in name if c.isalnum() or c.isspace())
+        
+        # 4. Standardize whitespace
+        return " ".join(name.split())
+
+    @staticmethod
     def generate_hash(tenant_id: str, account_id: str, date: datetime, amount: float, description: Optional[str], recipient: Optional[str] = None) -> str:
         """
         Generate a stable content hash for a transaction based on its fields.
         Standardizes amount to 2 decimal places and date to ISO format.
         Now explicitly includes transaction type (Debit/Credit).
+        Uses normalized vendor name for stability.
         """
         txn_type = "DEBIT" if amount < 0 else "CREDIT"
-        name = recipient or description or ""
+        raw_name = recipient or description or ""
+        name = TransactionDeduplicator.normalize_vendor(raw_name)
+        
         # Canonical format: tenant:account:date:amount:type:name
         # Use date.date() to ensure hash stability across alerts with different timestamps
-        payload = f"{tenant_id}:{account_id}:{date.date().isoformat()}:{abs(amount):.2f}:{txn_type}:{name.strip()}"
+        payload = f"{tenant_id}:{account_id}:{date.date().isoformat()}:{abs(amount):.2f}:{txn_type}:{name}"
         return hashlib.md5(payload.encode()).hexdigest()
 
     @staticmethod
@@ -45,36 +70,43 @@ class TransactionDeduplicator:
         amount: float,
         date: datetime,
         description: Optional[str] = None,
-        recipient: Optional[str] = None
+        recipient: Optional[str] = None,
+        allow_cross_day: bool = True
     ) -> Optional[finance_models.Transaction]:
         """
         Check if an existing transaction matches basic fields (Amount, Date, Desc/Recipient).
-        Resilient: Only compares the DATE part (ignoring time).
+        Resilient: Can compare with a +/- 1 day window to handle sync latency.
         """
-        # Use a small epsilon or exact match for decimal/float?
-        # DuckDB usually handles float equality well for stored Decimals if precision is kept.
-        # AGGRESSIVE DEDUPLICATION: Compare the DATE portion only to catch 
-        # duplicates even if timestamps vary (common in multi-source alerts).
+        # CROSS-DAY DEDUPLICATION: HDFC alerts (SMS/Email) often arrive on different days
+        # if the transaction occurred near midnight or due to bank sync delays.
+        date_list = [date.date()]
+        if allow_cross_day:
+            date_list.append((date - timedelta(days=1)).date())
+            date_list.append((date + timedelta(days=1)).date())
+
         query = db.query(finance_models.Transaction).filter(
             finance_models.Transaction.tenant_id == tenant_id,
             finance_models.Transaction.account_id == account_id,
             finance_models.Transaction.amount == amount,
-            func.date(finance_models.Transaction.date) == date.date(),
+            func.date(finance_models.Transaction.date).in_(date_list),
             finance_models.Transaction.is_deleted == False
         )
         
-        # Match Description OR Recipient
-        if recipient:
-            query = query.filter(
-                or_(
-                    finance_models.Transaction.description == description,
-                    finance_models.Transaction.recipient == recipient
-                )
-            )
-        elif description:
-            query = query.filter(finance_models.Transaction.description == description)
+        # Use normalized names for comparison if possible, or just match raw
+        norm_input = TransactionDeduplicator.normalize_vendor(recipient or description or "")
+        
+        results = query.all()
+        for existing in results:
+            # Check if any existing transaction has a similar vendor name
+            norm_existing = TransactionDeduplicator.normalize_vendor(existing.recipient or existing.description or "")
+            if norm_input == norm_existing and norm_input != "":
+                return existing
             
-        return query.first()
+            # Fallback to exact match on raw fields
+            if existing.recipient == recipient or existing.description == description:
+                return existing
+            
+        return None
 
     @staticmethod
     def check_duplicate(
@@ -135,6 +167,10 @@ class TransactionDeduplicator:
             
             pending = query_pending.first()
             if pending: return True, f"Ref ID {ref_id} already in triage", str(pending.id)
+            
+            # CROSS-SOURCE DEDUPLICATION: If we have a Ref ID, also check if it's a partial match 
+            # or exists in another source format (some sources might truncate).
+            # (Already handled by normalize_ref_id and exact match above)
 
         # 2. Content Hash Check
         content_hash = TransactionDeduplicator.generate_hash(
@@ -158,27 +194,29 @@ class TransactionDeduplicator:
         pending_hash = query_pending_hash.first()
         if pending_hash: return True, "Standardized field-hash match in triage", str(pending_hash.id)
 
-        # 3. Fields match (Date, Amount, Desc)
+        # 3. Fields match (Date, Amount, Desc) with 1-day window
         confirmed_match = TransactionDeduplicator.check_fields_match(db, tenant_id, account_id, amount, date, description, recipient)
         if confirmed_match:
-             return True, f"Identical fields match transaction {confirmed_match.id}", str(confirmed_match.id)
+             return True, f"Identical fields match transaction {confirmed_match.id} (Resilient Match)", str(confirmed_match.id)
              
         # Check Pending table fields too
+        date_list = [date.date(), (date - timedelta(days=1)).date(), (date + timedelta(days=1)).date()]
         query_pending_match = db.query(ingestion_models.PendingTransaction).filter(
             ingestion_models.PendingTransaction.tenant_id == tenant_id,
             ingestion_models.PendingTransaction.account_id == account_id,
             ingestion_models.PendingTransaction.amount == amount,
-            func.date(ingestion_models.PendingTransaction.date) == date.date(),
-            or_(
-                ingestion_models.PendingTransaction.description == description,
-                ingestion_models.PendingTransaction.recipient == recipient
-            ) if recipient else (ingestion_models.PendingTransaction.description == description)
+            func.date(ingestion_models.PendingTransaction.date).in_(date_list)
         )
+        
         if exclude_pending_id:
             query_pending_match = query_pending_match.filter(ingestion_models.PendingTransaction.id != exclude_pending_id)
             
-        pending_match = query_pending_match.first()
-        if pending_match:
-             return True, f"Identical fields match triage item {pending_match.id}", str(pending_match.id)
+        pending_results = query_pending_match.all()
+        norm_input = TransactionDeduplicator.normalize_vendor(recipient or description or "")
+        
+        for p in pending_results:
+            norm_p = TransactionDeduplicator.normalize_vendor(p.recipient or p.description or "")
+            if (norm_input == norm_p and norm_input != "") or (p.recipient == recipient or p.description == description):
+                return True, f"Identical fields match triage item {p.id} (Resilient Match)", str(p.id)
 
         return False, None, None
