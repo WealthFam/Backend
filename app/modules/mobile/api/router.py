@@ -515,14 +515,20 @@ def get_dashboard_summary(
     
     # Account map for names
     account_ids = list(set(txn['account_id'] for txn in metrics["recent_transactions"]))
-    accounts = db.query(finance_models.Account).filter(finance_models.Account.id.in_(account_ids)).all()
+    accounts = db.query(finance_models.Account).filter(
+        finance_models.Account.id.in_(account_ids),
+        finance_models.Account.is_deleted == False
+    ).all()
     account_map = {str(a.id): a for a in accounts}
 
     # Expense Group map for names
     group_ids = list(set(txn['expense_group_id'] for txn in metrics["recent_transactions"] if txn.get('expense_group_id')))
     group_map = {}
     if group_ids:
-        groups = db.query(finance_models.ExpenseGroup).filter(finance_models.ExpenseGroup.id.in_(group_ids)).all()
+        groups = db.query(finance_models.ExpenseGroup).filter(
+            finance_models.ExpenseGroup.id.in_(group_ids),
+            finance_models.ExpenseGroup.is_deleted == False
+        ).all()
         group_map = {str(g.id): g for g in groups}
 
     _, triage_count = TransactionService.get_pending_transactions(
@@ -832,6 +838,7 @@ def list_mobile_transactions(
     category: Optional[str] = None,
     account_id: Optional[str] = None,
     search: Optional[str] = None,
+    exclude_from_reports: bool = False,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -854,9 +861,11 @@ def list_mobile_transactions(
         joinedload(finance_models.Transaction.account).joinedload(finance_models.Account.owner)
     ).filter(
         finance_models.Transaction.tenant_id == str(current_user.tenant_id),
-        finance_models.Transaction.is_transfer == False,
-        finance_models.Transaction.exclude_from_reports == False
+        finance_models.Transaction.is_deleted == False
     )
+
+    if exclude_from_reports:
+        query = query.filter(finance_models.Transaction.exclude_from_reports == False)
 
     # Fetch categories for enrichment
     from backend.app.modules.finance.models import Category
@@ -874,6 +883,9 @@ def list_mobile_transactions(
 
     if expense_group_id:
         query = query.filter(finance_models.Transaction.expense_group_id == expense_group_id)
+    else:
+        # Default behavior: exclude transfers from regular lists
+        query = query.filter(finance_models.Transaction.is_transfer == False)
 
     if category:
         # Match either exact name or as the leaf of a hierarchical category
@@ -996,15 +1008,19 @@ def create_mobile_transaction(
     """
     from datetime import datetime
     
-    # Verify account ownership
-    account = db.query(finance_models.Account).filter(
-         finance_models.Account.id == payload.account_id,
-         or_(finance_models.Account.owner_id == str(current_user.id), finance_models.Account.owner_id == None),
-         finance_models.Account.tenant_id == str(current_user.tenant_id)
+    # 1. Verify account exists and is not deleted
+    db_account = db.query(finance_models.Account).filter(
+        finance_models.Account.id == payload.account_id,
+        finance_models.Account.tenant_id == str(current_user.tenant_id),
+        finance_models.Account.is_deleted == False
     ).first()
     
-    if not account:
+    if not db_account:
         raise HTTPException(status_code=404, detail="Account not found or access denied")
+        
+    # Check ownership
+    if db_account.owner_id and db_account.owner_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied to this account")
         
     txn = finance_models.Transaction(
         id=str(uuid.uuid4()),
@@ -1302,7 +1318,8 @@ def update_transaction_category(
     # 1. Update Transaction
     txn = db.query(finance_models.Transaction).filter(
         finance_models.Transaction.id == transaction_id,
-        finance_models.Transaction.tenant_id == str(current_user.tenant_id)
+        finance_models.Transaction.tenant_id == str(current_user.tenant_id),
+        finance_models.Transaction.is_deleted == False
     ).first()
     
     if not txn:
@@ -2035,7 +2052,8 @@ def get_mobile_transaction(
 ):
     txn = db.query(finance_models.Transaction).filter(
         finance_models.Transaction.id == transaction_id,
-        finance_models.Transaction.tenant_id == str(current_user.tenant_id)
+        finance_models.Transaction.tenant_id == str(current_user.tenant_id),
+        finance_models.Transaction.is_deleted == False
     ).first()
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")

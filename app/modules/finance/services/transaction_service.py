@@ -24,7 +24,8 @@ class TransactionService:
     def get_transaction(db: Session, transaction_id: str, tenant_id: str) -> Optional[models.Transaction]:
         return db.query(models.Transaction).filter(
             models.Transaction.id == transaction_id,
-            models.Transaction.tenant_id == tenant_id
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
         ).first()
 
     @staticmethod

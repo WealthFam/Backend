@@ -16,7 +16,8 @@ class MobileExpenseGroupService:
             models.Transaction.expense_group_id == str(group.id),
             models.Transaction.tenant_id == tenant_id,
             models.Transaction.exclude_from_reports == False,
-            models.Transaction.is_transfer == False
+            models.Transaction.is_transfer == False,
+            models.Transaction.is_deleted == False
         )
         
         if user_id:
@@ -31,19 +32,20 @@ class MobileExpenseGroupService:
     def get_expense_group(db: Session, group_id: str, tenant_id: str, user_id: str = None) -> Optional[models.ExpenseGroup]:
         group = db.query(models.ExpenseGroup).filter(
             models.ExpenseGroup.id == group_id,
-            models.ExpenseGroup.tenant_id == tenant_id
+            models.ExpenseGroup.tenant_id == tenant_id,
+            models.ExpenseGroup.is_deleted == False
         ).first()
         
         if group:
             group.total_spend = MobileExpenseGroupService.calculate_total_spend(db, group, tenant_id, user_id)
             
         return group
-
     @staticmethod
     def get_expense_groups(db: Session, tenant_id: str, user_id: str = None) -> List[models.ExpenseGroup]:
         # Fetch all groups for this tenant
         groups = db.query(models.ExpenseGroup).filter(
-            models.ExpenseGroup.tenant_id == tenant_id
+            models.ExpenseGroup.tenant_id == tenant_id,
+            models.ExpenseGroup.is_deleted == False
         ).all()
         
         if not groups:
@@ -58,14 +60,16 @@ class MobileExpenseGroupService:
     def link_transactions(db: Session, group_id: str, transaction_ids: List[str], tenant_id: str) -> int:
         db_group = db.query(models.ExpenseGroup).filter(
             models.ExpenseGroup.id == group_id,
-            models.ExpenseGroup.tenant_id == tenant_id
+            models.ExpenseGroup.tenant_id == tenant_id,
+            models.ExpenseGroup.is_deleted == False
         ).first()
         if not db_group:
             return 0
             
         count = db.query(models.Transaction).filter(
             models.Transaction.id.in_(transaction_ids),
-            models.Transaction.tenant_id == tenant_id
+            models.Transaction.tenant_id == tenant_id,
+            models.Transaction.is_deleted == False
         ).update({models.Transaction.expense_group_id: group_id}, synchronize_session=False)
         
         db.commit()
@@ -97,7 +101,8 @@ class MobileExpenseGroupService:
     def update_expense_group(db: Session, group_id: str, update: finance_schemas.ExpenseGroupUpdate, tenant_id: str) -> Optional[models.ExpenseGroup]:
         db_group = db.query(models.ExpenseGroup).filter(
             models.ExpenseGroup.id == group_id,
-            models.ExpenseGroup.tenant_id == tenant_id
+            models.ExpenseGroup.tenant_id == tenant_id,
+            models.ExpenseGroup.is_deleted == False
         ).first()
         
         if not db_group:
@@ -115,7 +120,8 @@ class MobileExpenseGroupService:
     def delete_expense_group(db: Session, group_id: str, tenant_id: str) -> bool:
         db_group = db.query(models.ExpenseGroup).filter(
             models.ExpenseGroup.id == group_id,
-            models.ExpenseGroup.tenant_id == tenant_id
+            models.ExpenseGroup.tenant_id == tenant_id,
+            models.ExpenseGroup.is_deleted == False
         ).first()
         
         if not db_group:
