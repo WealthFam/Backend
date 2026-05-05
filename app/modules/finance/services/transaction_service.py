@@ -159,7 +159,8 @@ class TransactionService:
         exclude_from_reports: bool = False,
         exclude_transfers: bool = False,
         sort_by: str = "date",
-        sort_order: str = "desc"
+        sort_order: str = "desc",
+        expense_group_id: Optional[str] = None
     ) -> List[models.Transaction]:
         if end_date:
             end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -180,11 +181,29 @@ class TransactionService:
 
         if account_id:
             query = query.filter(models.Transaction.account_id == account_id)
-        if start_date:
-            query = query.filter(models.Transaction.date >= ensure_utc(start_date))
 
+        # Date & Group Filter Logic
+        from sqlalchemy import or_, and_
+        date_filters = []
+        if start_date:
+            date_filters.append(models.Transaction.date >= ensure_utc(start_date))
         if end_date:
-            query = query.filter(models.Transaction.date <= end_date)
+            date_filters.append(models.Transaction.date <= end_date)
+
+        if expense_group_id:
+            if date_filters:
+                # Include transactions in the group OR matching the date range
+                query = query.filter(or_(
+                    models.Transaction.expense_group_id == expense_group_id,
+                    and_(*date_filters)
+                ))
+            else:
+                # No dates, just filter by group
+                query = query.filter(models.Transaction.expense_group_id == expense_group_id)
+        else:
+            # Standard date filtering
+            for f in date_filters:
+                query = query.filter(f)
         
         if search:
             search_pattern = f"%{search}%"
@@ -225,6 +244,9 @@ class TransactionService:
 
         if exclude_from_reports:
             query = query.filter(models.Transaction.exclude_from_reports == False)
+
+        if exclude_transfers:
+            query = query.filter(models.Transaction.is_transfer == False)
 
         if user_id:
             # Filter by account ownership: show user's accounts OR shared accounts
@@ -350,7 +372,8 @@ class TransactionService:
         user_role: str = "ADULT",
         user_id: Optional[str] = None,
         exclude_from_reports: bool = False,
-        exclude_transfers: bool = False
+        exclude_transfers: bool = False,
+        expense_group_id: Optional[str] = None
     ) -> int:
         if end_date:
             end_date = ensure_utc(end_date).replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -384,11 +407,25 @@ class TransactionService:
                              or_(models.Account.owner_id == user_id, models.Account.owner_id == None)
                          )
 
+        # Date & Group Filter Logic
+        from sqlalchemy import or_, and_
+        date_filters = []
         if start_date:
-            query = query.filter(models.Transaction.date >= ensure_utc(start_date))
-
+            date_filters.append(models.Transaction.date >= ensure_utc(start_date))
         if end_date:
-            query = query.filter(models.Transaction.date <= end_date)
+            date_filters.append(models.Transaction.date <= end_date)
+
+        if expense_group_id:
+            if date_filters:
+                query = query.filter(or_(
+                    models.Transaction.expense_group_id == expense_group_id,
+                    and_(*date_filters)
+                ))
+            else:
+                query = query.filter(models.Transaction.expense_group_id == expense_group_id)
+        else:
+            for f in date_filters:
+                query = query.filter(f)
             
         if search:
             search_pattern = f"%{search}%"
@@ -425,6 +462,9 @@ class TransactionService:
             
         if exclude_from_reports:
             query = query.filter(models.Transaction.exclude_from_reports == False)
+            
+        if exclude_transfers:
+            query = query.filter(models.Transaction.is_transfer == False)
             
         return query.count()
 

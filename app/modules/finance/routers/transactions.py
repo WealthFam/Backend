@@ -35,6 +35,7 @@ def get_transactions(
     user_id: Optional[str] = None,
     exclude_from_reports: bool = False,
     exclude_transfers: bool = False,
+    expense_group_id: Optional[str] = None,
     current_user: auth_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -48,12 +49,14 @@ def get_transactions(
         db, str(current_user.tenant_id), account_id, skip, limit, s_date, e_date, 
         search=search, category=category, user_role=current_user.role,
         sort_by=sort_by, sort_order=sort_order, user_id=user_id,
-        exclude_from_reports=exclude_from_reports, exclude_transfers=exclude_transfers
+        exclude_from_reports=exclude_from_reports, exclude_transfers=exclude_transfers,
+        expense_group_id=expense_group_id
     )
     total = TransactionService.count_transactions(
         db, str(current_user.tenant_id), account_id, s_date, e_date, 
         search=search, category=category, user_role=current_user.role, user_id=user_id,
-        exclude_from_reports=exclude_from_reports, exclude_transfers=exclude_transfers
+        exclude_from_reports=exclude_from_reports, exclude_transfers=exclude_transfers,
+        expense_group_id=expense_group_id
     )
     
     return {
