@@ -18,37 +18,42 @@ class TransactionDeduplicator:
     def normalize_vendor(name: str) -> str:
         """
         Normalize vendor names to ensure hash stability across sources.
-        Removes prefixes like 'Learned:', special characters, and standardizes whitespace.
+        Removes bank-specific prefixes, filler words, and standardizes whitespace.
         """
         if not name:
             return ""
         
-        # 1. Remove source-specific prefixes (e.g., "HDFC: ", "Learned: ")
-        name = re.sub(r'^[A-Za-z\s]+:\s*', '', name)
+        # 1. Remove source-specific prefixes and common filler words
+        # (e.g., "HDFC: ", "Info: ", "on ", "at ", "spent at ", "to ")
+        name = name.lower()
         
-        # 2. Convert to uppercase for consistency
-        name = name.upper()
+        # Strip prefixes like "info: ", "merchant: ", "learned: ", "spent at ", etc.
+        name = re.sub(r'^[a-z\s]+:\s*', '', name)
         
-        # 3. Keep only alphanumeric and space
+        # Strip common leading filler words
+        name = re.sub(r'^(on|at|to|spent|spent at|paid to|info|for|using)\s+', '', name)
+        
+        # 2. Keep only alphanumeric and space
         name = "".join(c for c in name if c.isalnum() or c.isspace())
         
-        # 4. Standardize whitespace
-        return " ".join(name.split())
+        # 3. Standardize whitespace and convert to uppercase
+        return " ".join(name.split()).upper()
 
     @staticmethod
     def generate_hash(tenant_id: str, account_id: str, date: datetime, amount: float, description: Optional[str], recipient: Optional[str] = None) -> str:
         """
         Generate a stable content hash for a transaction based on its fields.
-        Standardizes amount to 2 decimal places and date to ISO format.
-        Now explicitly includes transaction type (Debit/Credit).
-        Uses normalized vendor name for stability.
+        Uses date.date() to ensure hash stability across sources (SMS vs Email) 
+        which often have different timestamps for the same transaction.
         """
         txn_type = "DEBIT" if amount < 0 else "CREDIT"
+        
+        # Combine recipient and description to find the best representative name
         raw_name = recipient or description or ""
         name = TransactionDeduplicator.normalize_vendor(raw_name)
         
         # Canonical format: tenant:account:date:amount:type:name
-        # Use date.date() to ensure hash stability across alerts with different timestamps
+        # Using date.date() is CRITICAL for deduplicating SMS vs Email.
         payload = f"{tenant_id}:{account_id}:{date.date().isoformat()}:{abs(amount):.2f}:{txn_type}:{name}"
         return hashlib.md5(payload.encode()).hexdigest()
 
@@ -75,10 +80,8 @@ class TransactionDeduplicator:
     ) -> Optional[finance_models.Transaction]:
         """
         Check if an existing transaction matches basic fields (Amount, Date, Desc/Recipient).
-        Resilient: Can compare with a +/- 1 day window to handle sync latency.
+        Resilient: Checks across description/recipient fields and allows +/- 1 day window.
         """
-        # CROSS-DAY DEDUPLICATION: HDFC alerts (SMS/Email) often arrive on different days
-        # if the transaction occurred near midnight or due to bank sync delays.
         date_list = [date.date()]
         if allow_cross_day:
             date_list.append((date - timedelta(days=1)).date())
@@ -92,18 +95,18 @@ class TransactionDeduplicator:
             finance_models.Transaction.is_deleted == False
         )
         
-        # Use normalized names for comparison if possible, or just match raw
+        # Normalize the input name for robust comparison
         norm_input = TransactionDeduplicator.normalize_vendor(recipient or description or "")
+        if not norm_input:
+            return None
         
         results = query.all()
         for existing in results:
-            # Check if any existing transaction has a similar vendor name
-            norm_existing = TransactionDeduplicator.normalize_vendor(existing.recipient or existing.description or "")
-            if norm_input == norm_existing and norm_input != "":
-                return existing
+            # Check if EITHER existing description OR existing recipient matches our normalized input
+            norm_existing_desc = TransactionDeduplicator.normalize_vendor(existing.description)
+            norm_existing_recp = TransactionDeduplicator.normalize_vendor(existing.recipient)
             
-            # Fallback to exact match on raw fields
-            if existing.recipient == recipient or existing.description == description:
+            if norm_input == norm_existing_desc or norm_input == norm_existing_recp:
                 return existing
             
         return None
