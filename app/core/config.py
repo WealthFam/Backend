@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     # Parser Service
     PARSER_SERVICE_URL: str = "http://localhost:8001/v1"
     
-    model_config = ConfigDict(case_sensitive=True, env_file=".env", extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(
+        case_sensitive=True, 
+        env_file=(".env", "backend/.env"), 
+        extra="ignore", 
+        populate_by_name=True
+    )
 
 settings = Settings()
