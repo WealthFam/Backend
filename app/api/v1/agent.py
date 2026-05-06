@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 import httpx
@@ -23,6 +23,11 @@ async def proxy_agent_chat(
     Proxies chat requests to the AI Agent microservice.
     Injects tenant_id and passes through Authorization header.
     """
+    if settings.DISABLE_AI_AGENT:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The Strategic AI Advisor is currently disabled for this environment."
+        )
     message = payload.get("message")
     if not message:
         raise HTTPException(status_code=400, detail="Message is required")

@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     
     # AI Agent Service (Internal)
     AGENT_SERVICE_URL: str = "http://localhost:8002/api/v1"
+    DISABLE_AI_AGENT: bool = False
     
     model_config = ConfigDict(
         case_sensitive=True, 
