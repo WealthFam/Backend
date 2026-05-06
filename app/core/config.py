@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # Parser Service
     PARSER_SERVICE_URL: str = "http://localhost:8001/v1"
     
+    # AI Agent Service (Internal)
+    AGENT_SERVICE_URL: str = "http://localhost:8002/api/v1"
+    
     model_config = ConfigDict(
         case_sensitive=True, 
         env_file=(".env", "backend/.env"), 

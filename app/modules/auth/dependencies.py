@@ -1,5 +1,6 @@
+import logging
 from typing import Optional
-from fastapi import Depends, HTTPException, status, Query
+from fastapi import Depends, HTTPException, status, Query, Header
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 from backend.app.core.config import settings
@@ -12,6 +13,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login
 basic_scheme = HTTPBasic(auto_error=False)
 
 from backend.app.core import timezone
+
+logger = logging.getLogger(__name__)
 
 def get_current_user_from_token(db: Session, token: str) -> Optional[models.User]:
     """Synchronous helper for token validation (used by WebSockets)"""
@@ -38,10 +41,12 @@ def get_current_user_from_token(db: Session, token: str) -> Optional[models.User
         return None
 
 
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     token_query: Optional[str] = Query(None, alias="token"),
     basic_auth: HTTPBasicCredentials = Depends(basic_scheme),
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     db: Session = Depends(get_db)
 ) -> models.User:
     credentials_exception = HTTPException(
@@ -55,6 +60,13 @@ def get_current_user(
     if final_token:
         user = get_current_user_from_token(db, final_token)
         if user:
+            # Security Check: If X-Tenant-ID is provided (e.g. by AI Agent), verify it matches
+            if x_tenant_id and str(user.tenant_id) != x_tenant_id:
+                logger.warning(f"Tenant mismatch! Token tenant: {user.tenant_id}, Header tenant: {x_tenant_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tenant context mismatch."
+                )
             return user
         raise credentials_exception
 

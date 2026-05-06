@@ -6,6 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 ENV APP_DATABASE_URL="duckdb:////data/family_finance_v3.duckdb"
+ENV AGENT_SERVICE_URL="http://ai-agent:8002/api/v1"
 
 # 2. Set working directory
 WORKDIR /app
