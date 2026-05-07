@@ -1,7 +1,7 @@
 import hashlib
 import json
 import logging
-from typing import Optional
+from typing import Optional, Any
 
 from sqlalchemy.orm import Session
 
@@ -57,7 +57,9 @@ class IngestionService:
         return None
 
     @staticmethod
-    def process_transaction(db: Session, tenant_id: str, parsed: ParsedTransaction, extra_data: Optional[dict] = None):
+    def process_transaction(db: Session, tenant_id: str, parsed: Any, extra_data: Any = None):
+        if extra_data is None:
+            extra_data = {}
         account = None
         if parsed.account_mask:
             account = IngestionService.match_account(db, tenant_id, parsed.account_mask)
@@ -99,6 +101,48 @@ class IngestionService:
         
         if is_dup:
             logger.warning(f"INGESTION SKIPPED: Duplicate detected - {reason} (Existing ID: {existing_id})")
+            
+            # ENHANCEMENT: Update location if missing (handles both Triage and Ledger)
+            if extra_data.get("latitude") or extra_data.get("longitude"):
+                # 1. Check Triage
+                pending = db.query(ingestion_models.PendingTransaction).filter(
+                    ingestion_models.PendingTransaction.id == existing_id,
+                    ingestion_models.PendingTransaction.tenant_id == tenant_id
+                ).first()
+                if pending:
+                    updated = False
+                    if pending.latitude is None and extra_data.get("latitude"):
+                        pending.latitude = extra_data.get("latitude")
+                        updated = True
+                    if pending.longitude is None and extra_data.get("longitude"):
+                        pending.longitude = extra_data.get("longitude")
+                        updated = True
+                    if updated:
+                        logger.info(f"Updated location for pending transaction {pending.id}")
+                        db.commit()
+                else:
+                    # 2. Check Ledger
+                    from backend.app.modules.finance import models as finance_models
+                    logger.info(f"Deduplication: Checking ledger for existing_id={existing_id}")
+                    existing = db.query(finance_models.Transaction).filter(
+                        finance_models.Transaction.id == existing_id,
+                        finance_models.Transaction.tenant_id == tenant_id
+                    ).first()
+                    if existing:
+                        logger.info(f"Deduplication: Found existing transaction {existing.id}. Current lat: {existing.latitude}")
+                        updated = False
+                        if existing.latitude is None and extra_data.get("latitude"):
+                            existing.latitude = extra_data.get("latitude")
+                            updated = True
+                        if existing.longitude is None and extra_data.get("longitude"):
+                            existing.longitude = extra_data.get("longitude")
+                            updated = True
+                        if updated:
+                            logger.info(f"Updated location for existing transaction {existing.id} to {existing.latitude}, {existing.longitude}")
+                            db.commit()
+                    else:
+                        logger.warning(f"Deduplication: Could not find existing transaction {existing_id} in ledger for tenant {tenant_id}")
+            
             return {"status": "skipped", "reason": f"Deduplicated: {reason}", "deduplicated": True, "existing_id": existing_id}
 
         # IGNORE PATTERN CHECK
@@ -164,6 +208,7 @@ class IngestionService:
                         db.flush()  # Use flush instead of commit to keep session alive for transaction creation
                         balance_synced = True
 
+
             txn_create = finance_schemas.TransactionCreate(
                 account_id=str(account.id),
                 amount=final_amount,
@@ -174,8 +219,8 @@ class IngestionService:
                 external_id=parsed.ref_id,
                 source=parsed.source,
                 tags=[],
-                latitude=extra_data.get("latitude") if extra_data else None,
-                longitude=extra_data.get("longitude") if extra_data else None,
+                latitude=extra_data.get("latitude") or extra_data.get("lat"),
+                longitude=extra_data.get("longitude") or extra_data.get("lng"),
                 content_hash=message_hash,
                 is_transfer=is_transfer,
                 to_account_id=to_account_id,
@@ -196,7 +241,7 @@ class IngestionService:
                     user_id=account.owner_id
                 )
 
-                return {"status": "success", "transaction_id": db_txn.id, "account": account.name}
+                return {"status": "success", "transaction_id": str(db_txn.id), "account": account.name}
             except Exception as e:
                 db.rollback()
                 raise e
@@ -220,8 +265,8 @@ class IngestionService:
                 to_account_id=to_account_id,
                 exclude_from_reports=is_transfer,
                 balance_is_synced=balance_synced,
-                latitude=extra_data.get("latitude") if extra_data else None,
-                longitude=extra_data.get("longitude") if extra_data else None
+                latitude=extra_data.get("latitude") or extra_data.get("lat"),
+                longitude=extra_data.get("longitude") or extra_data.get("lng")
             )
             with db_write_lock:
                 db.add(pending)

@@ -49,7 +49,23 @@ class TransactionService:
                 if is_dup:
                     # If it found a match in confirmed transactions, return it
                     existing = db.query(models.Transaction).filter(models.Transaction.id == existing_id).first()
-                    if existing: return existing
+                    if existing:
+                        # ENHANCEMENT: If the existing transaction is missing location data 
+                        # but the new ingestion has it (e.g. SMS sync after Email sync), update it.
+                        updated = False
+                        if existing.latitude is None and transaction.latitude is not None:
+                            existing.latitude = transaction.latitude
+                            updated = True
+                        if existing.longitude is None and transaction.longitude is not None:
+                            existing.longitude = transaction.longitude
+                            updated = True
+                        
+                        if updated:
+                            logger.info(f"Updated location data for existing transaction {existing.id} via deduplication.")
+                            if commit:
+                                db.commit()
+                        
+                        return existing
                     return None
         
                 data = transaction.model_dump()

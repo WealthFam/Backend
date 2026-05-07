@@ -31,7 +31,7 @@ router = APIRouter(tags=["Ingestion"])
 
 # Schemas moved to ingestion.schemas
 
-@router.post("/sms")
+@router.post("/sms", response_model=Dict[str, Any])
 def ingest_sms(
     payload: ingestion_schemas.SmsPayload,
     current_user: auth_models.User = Depends(get_current_user),
@@ -130,9 +130,22 @@ def ingest_sms(
             try:
                 txn_date = timezone.ensure_utc(datetime.fromisoformat(txn_date.replace("Z", "+00:00")))
             except:
-                txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
+                # Fallback to payload metadata
+                if payload.date:
+                    try:
+                        txn_date = timezone.ensure_utc(datetime.fromisoformat(payload.date.replace("Z", "+00:00")))
+                    except:
+                        txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
+                else:
+                    txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
         else:
-            txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
+            if payload.date:
+                try:
+                    txn_date = timezone.ensure_utc(datetime.fromisoformat(payload.date.replace("Z", "+00:00")))
+                except:
+                    txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
+            else:
+                txn_date = timezone.ensure_utc(payload.received_at) if payload.received_at else timezone.utcnow()
 
         # Map to ParsedTransaction
         parsed = ParsedTransaction(
@@ -156,7 +169,7 @@ def ingest_sms(
             "longitude": payload.longitude,
             "device_id": payload.device_id
         }
-            
+        
         proc_result = IngestionService.process_transaction(db, str(current_user.tenant_id), parsed, extra_data=extra_data)
         results.append(proc_result)
 
@@ -239,7 +252,7 @@ def ingest_email(
             is_ai_parsed="AI" in str(item.get("metadata", {}).get("parser_used", "")).upper()
         )
         
-        proc_result = IngestionService.process_transaction(db, str(current_user.tenant_id), parsed)
+        proc_result = IngestionService.process_transaction(db, str(current_user.tenant_id), parsed, {})
         results.append(proc_result)
     
     return {

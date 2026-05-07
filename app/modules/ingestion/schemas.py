@@ -47,6 +47,9 @@ class SmsPayload(IngestionBase):
     device_id: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    date: Optional[str] = None
     received_at: Optional[Annotated[datetime, BeforeValidator(coerce_datetime)]] = None
 
 class EmailPayload(IngestionBase):
