@@ -122,7 +122,6 @@ class IngestionService:
                         db.commit()
                 else:
                     # 2. Check Ledger
-                    from backend.app.modules.finance import models as finance_models
                     logger.info(f"Deduplication: Checking ledger for existing_id={existing_id}")
                     existing = db.query(finance_models.Transaction).filter(
                         finance_models.Transaction.id == existing_id,
